@@ -244,8 +244,8 @@ const valueLabels = {
   LOGIN_FAILED_UNKNOWN_ACCOUNT: "Đăng nhập thất bại: tài khoản không tồn tại",
   LOGIN_FAILED_WRONG_PASSWORD: "Đăng nhập thất bại: mật khẩu không đúng",
   REGISTER_USER: "Tạo tài khoản",
-  EMAIL_VERIFICATION_REQUESTED: "Gửi yêu cầu xác minh email",
-  EMAIL_VERIFIED: "Xác minh email",
+  EMAIL_VERIFICATION_REQUESTED: "Gửi yêu cầu xác minh Email",
+  EMAIL_VERIFIED: "Xác minh Email",
   FORGOT_PASSWORD_REQUEST: "Yêu cầu đặt lại mật khẩu",
   RESET_PASSWORD_SUCCESS: "Đặt lại mật khẩu",
   SESSION_REFRESHED: "Làm mới phiên đăng nhập",
@@ -432,7 +432,7 @@ const valueLabels = {
   ADMIN_USER_MEMBERSHIPS_VIEWED: "Xem vai trò dự án của tài khoản",
   ADMIN_USER_SESSIONS_VIEWED: "Xem phiên đăng nhập của tài khoản",
   REGISTER_USER: "Đăng ký tài khoản",
-  EMAIL_VERIFICATION_REQUESTED: "Yêu cầu xác minh email",
+  EMAIL_VERIFICATION_REQUESTED: "Yêu cầu xác minh Email",
   review_comment_created: "Tạo nhận xét rà soát",
   regression_recommendation_created: "Tạo đề xuất hồi quy",
   maintenance_proposal_applied: "Áp dụng đề xuất bảo trì",
@@ -623,23 +623,23 @@ export function messageOf(reason) {
   if (reason?.code === "ADEQUACY_NO_COVERAGE_ITEMS") {
     return "Hồ sơ chưa có nghĩa vụ kiểm thử. Cập nhật hồ sơ từ Requirement trước khi gửi rà soát.";
   }
-  const automationMessages = {
-    AUTOMATION_PUBLICATION_NOT_AUTHORIZED:
+  const aiRunMessages = {
+    AI_RUN_PUBLICATION_NOT_AUTHORIZED:
       "AI không được phép tự công bố kết quả này. Người có quyền cần kiểm tra và xác nhận.",
-    AUTOMATION_EXECUTOR_UNAVAILABLE: "Chưa có người thực hiện phù hợp cho tác vụ AI này.",
-    AUTOMATION_PRINCIPAL_ROLE_CHANGED:
+    AI_RUN_EXECUTOR_UNAVAILABLE: "Chưa có người thực hiện phù hợp cho tác vụ AI này.",
+    AI_RUN_PRINCIPAL_ROLE_CHANGED:
       "Vai trò người thực hiện đã thay đổi; cần kiểm tra lại quyền dự án.",
-    AUTOMATION_PRINCIPAL_UNAVAILABLE: "Không thể xác minh quyền của người thực hiện hiện tại.",
+    AI_RUN_PRINCIPAL_UNAVAILABLE: "Không thể xác minh quyền của người thực hiện hiện tại.",
     AUTHORIZATION_EXPIRED:
       "Phiên ủy quyền của lượt chạy đã hết hạn; hãy kiểm tra quyền hiện tại rồi tiếp tục.",
     PROJECT_AUTHORIZATION_CHECK_FAILED:
       "Chưa xác minh được quyền truy cập dự án. Hãy thử lại khi dịch vụ phân quyền sẵn sàng.",
-    AUTOMATION_RETRY_REQUIRES_RECONCILIATION:
+    AI_RUN_RETRY_REQUIRES_RECONCILIATION:
       "Chưa thể tiếp tục an toàn. Hãy đối soát kết quả thao tác trước.",
-    AUTOMATION_RETRY_NOT_ALLOWED: "Lượt chạy hiện không ở trạng thái có thể tiếp tục.",
-    AUTOMATION_ACTION_OUTCOME_UNCERTAIN:
+    AI_RUN_RETRY_NOT_ALLOWED: "Lượt chạy hiện không ở trạng thái có thể tiếp tục.",
+    AI_RUN_ACTION_OUTCOME_UNCERTAIN:
       "Chưa xác định được kết quả thao tác trước; cần đối soát để tránh ghi trùng.",
-    AUTOMATION_QUEUE_UNAVAILABLE:
+    AI_RUN_QUEUE_UNAVAILABLE:
       "Hàng đợi AI tạm thời chưa sẵn sàng. Hãy thử tiếp tục lại sau khi hàng đợi hoạt động.",
     REVISION_CONFLICT:
       "Dữ liệu đã được thay đổi ở phiên khác. Hãy tải lại và đối chiếu trước khi lưu.",
@@ -716,6 +716,8 @@ export function messageOf(reason) {
       "Có tài khoản trong danh sách công suất không còn hợp lệ. Tải lại danh sách nhân sự.",
     PROJECT_NOT_FOUND: "Không tìm thấy dự án hoặc bạn không còn quyền truy cập.",
     TEST_PLAN_NOT_FOUND: "Không tìm thấy kế hoạch kiểm thử. Tải lại danh sách rồi thử lại.",
+    TEST_PLAN_SCOPE_EMPTY:
+      "Kế hoạch chưa có ca hoặc bộ kiểm thử trong phạm vi đã duyệt. Cập nhật phạm vi kế hoạch rồi tạo lần chạy, hoặc tạo lần chạy không gắn kế hoạch.",
     IMPORT_CANDIDATE_COUNT_INVALID:
       "Số yêu cầu trong bản nhập không hợp lệ. Tạo lại bản xem trước rồi thử lại.",
     IMPORT_CANDIDATE_INCOMPLETE:
@@ -835,6 +837,8 @@ export function messageOf(reason) {
       "Yêu cầu hoặc phiên bản nguồn đã đổi sau khi mở lượt phân tích. Tải lại rồi chạy lại.",
     ENTITY_NOT_FOUND: "Không tìm thấy mục cần xử lý. Tải lại dữ liệu rồi thử lại.",
     TEST_RUN_NOT_FOUND: "Không tìm thấy lượt chạy kiểm thử. Tải lại danh sách rồi thử lại.",
+    TEST_RUN_SCOPE_EMPTY:
+      "Chọn ít nhất một phiên bản ca kiểm thử hoặc một bộ kiểm thử trước khi tạo lượt chạy.",
     EXECUTION_CONFLICT:
       "Kết quả thực thi đã được cập nhật ở nơi khác. Tải lại lượt chạy trước khi ghi kết quả.",
     API_DEFINITION_INVALID:
@@ -856,7 +860,7 @@ export function messageOf(reason) {
       "Thao tác API không còn liên kết với đặc tả đã xác nhận. Tải lại dữ liệu trước khi tiếp tục.",
     API_OPERATION_EVIDENCE_TOO_LARGE:
       "Thao tác API có quá nhiều nội dung để tạo ca trong một lượt. Hãy giảm phạm vi đặc tả.",
-    API_TEST_GENERATION_REQUIRES_AUTOMATION_EVENT:
+    API_TEST_GENERATION_REQUIRES_AI_RUN_EVENT:
       "Chưa thể chạy sinh ca cho thao tác API này. Kiểm tra trạng thái xử lý rồi thử lại.",
     API_TEST_GENERATION_UNAVAILABLE:
       "AI chưa thể tạo ca từ đặc tả API lúc này. Đặc tả vẫn được giữ nguyên; hãy thử lại sau.",
@@ -938,7 +942,7 @@ export function messageOf(reason) {
     DUPLICATE_SOURCE_SETTINGS_CONFLICT:
       "Tệp này đã có trong dự án với phạm vi chia sẻ hoặc cấu hình AI khác.",
     SOURCE_EXTRACTION_INCOMPLETE:
-      "Tự động hóa đã dừng an toàn vì còn phần tài liệu chưa trích xuất đầy đủ. Xem chi tiết vị trí trong kết quả lượt chạy.",
+      "Xử lý tài liệu bằng AI đã dừng an toàn vì còn phần chưa trích xuất đầy đủ. Xem chi tiết vị trí trong kết quả lượt chạy.",
     TEST_CASE_CUSTOM_FIELD_VALUE_INVALID:
       "Một hoặc nhiều trường mở rộng chưa khớp kiểu dữ liệu hoặc lựa chọn đã cấu hình.",
     TEST_CASE_CUSTOM_FIELD_REQUIRED:
@@ -1051,7 +1055,7 @@ export function messageOf(reason) {
     EXECUTION_ASSISTANCE_SOURCE_CHANGED:
       "Kết quả kiểm thử đã thay đổi trong lúc phân tích. Hãy yêu cầu phân tích lại.",
   };
-  if (automationMessages[reason?.code]) return automationMessages[reason.code];
+  if (aiRunMessages[reason?.code]) return aiRunMessages[reason.code];
   if (
     [
       "PROJECT_PERMISSION_DENIED",

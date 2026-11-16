@@ -140,8 +140,8 @@ async def create_indexes():
     await db.planning_boards.create_index("project_id", unique=True)
     await db.planning_workflows.create_index("project_id", unique=True)
     await db.project_task_migrations.create_index("project_id", unique=True)
-    await db.ai_automation_outbox.create_index([("status", 1), ("next_attempt_at", 1)])
-    await db.ai_automation_outbox.create_index([("status", 1), ("updated_at", 1)])
+    await db.ai_run_outbox.create_index([("status", 1), ("next_attempt_at", 1)])
+    await db.ai_run_outbox.create_index([("status", 1), ("updated_at", 1)])
     await db.defect_search_index_outbox.create_index(
         [("status", 1), ("next_attempt_at", 1), ("created_at", 1)]
     )

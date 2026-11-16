@@ -1,83 +1,72 @@
-# Bản đồ prompt của AI
+# AI Prompt Map
 
-Đây là mục lục sở hữu prompt, không phải nơi chứa prompt dùng chung. Mỗi module chức năng giữ nội dung của nó; import phải trỏ trực tiếp tới module sở hữu prompt.
+Prompt text and prompt-building logic belong to the capability module that owns them. Import prompts from that module directly; this file documents ownership and call paths and is not a shared prompt library.
 
-## Luồng AI Agent do người dùng khởi chạy
+## Agent and workflow prompts
 
-| Module | Prompt/hàm sở hữu | Nơi gọi | Mục đích |
+| Module | Owned prompt or function | Main caller | Responsibility |
 | --- | --- | --- | --- |
-| `agent_planning.py` | `agent_plan_prompt`, `AGENT_PLAN`, `verified_source_fact_instruction`, `change_simulation_instruction` | `agents/runner/nodes.py` | Chọn tác vụ/công cụ theo yêu cầu người dùng hiện tại, quyền và bằng chứng; quy định cách dùng fact và mô phỏng thay đổi |
-| `agent_execution.py` | `agent_execution_prompt`, `AGENT_EXECUTION` | `agents/agent.py` | Đánh giá kết quả gọi công cụ theo yêu cầu hiện tại và ghi nhận điều đã làm/còn thiếu |
-| `requirement_templates.py` | `requirement_document_synthesis_instruction`, `REQUIREMENT_TEMPLATE_SYNTHESIS_INSTRUCTIONS`, `REQUIREMENT_TEMPLATE_REVIEW_INSTRUCTIONS` | `tools/requirement_document_workflow.py`, `prompts/testing.py` | Tổng hợp mẫu Requirement từ facts đã xác minh và rà mẫu có nguồn, không tự quyết nhập |
-| `test_generation.py` | `requirement_test_generation_instruction`, `focused_requirement_test_generation_instruction`, `retry_grounded_requirement_test_generation_instruction` | Requirement ingestion/change workflows | Tạo Test Case cho phạm vi được chọn, có căn cứ và tránh trùng |
-| `test_design.py` | `TEST_CASE_GENERATION_CONTRACT`, `TECHNIQUE_RECOMMENDATION_CONTRACT`, `AUTOMATED_TECHNIQUE_RECOMMENDATION_INSTRUCTION`, `TEST_CONDITION_GENERATION_CONTRACT`, `TEST_DESIGN_CAPABILITY_CONTRACTS` | `prompts/testing.py` qua `services/ai_automation.py`, `tools/test_design_tools.py` | Quy tắc sinh ca, gợi ý kỹ thuật, sinh điều kiện và chỉ gắn kỹ năng cần thiết khi nguồn ghi rõ; schema chỉ mô tả cấu trúc dữ liệu |
-| `quality_capabilities.py` | `SECURITY_TEST_GENERATION_CONTRACT`, `PERFORMANCE_PLAN_GENERATION_CONTRACT`, `AUTOMATION_SCRIPT_GENERATION_CONTRACT`, `CAUSAL_ANALYSIS_CONTRACT`, `STATUS_REPORT_NARRATIVE_CONTRACT`, `COMPLETION_REPORT_NARRATIVE_CONTRACT`, `LESSONS_LEARNED_CLUSTERING_CONTRACT`, `PROJECT_COMPLEXITY_ASSESSMENT_CONTRACT`, `EXECUTION_ASSISTANCE_CONTRACT`, `QUALITY_CAPABILITY_CONTRACTS` | `prompts/testing.py` qua `services/ai_automation.py` | Hợp đồng cho kiểm thử chuyên sâu, hồ sơ độ khó dự án, hỗ trợ người chạy, báo cáo và phân tích; schema chỉ mô tả cấu trúc dữ liệu |
-| `testability_blueprint.py` | `TESTABILITY_BLUEPRINT_COMPILATION` | `blueprint/compiler.py` qua `services/ai_automation.py` | Biên dịch fact đã xác minh (loại fact + trích dẫn gốc) thành nghĩa vụ kiểm thử và câu hỏi làm rõ; nghĩa vụ phải trích từ fact đã trích, không chỉ từ đoạn văn chứa nó |
-| `testability_blueprint_review.py` | `build_testability_blueprint_grounding_prompt` | `blueprint/compiler.py` qua `services/ai_automation.py` | Rà nghĩa của từng nghĩa vụ/câu hỏi làm rõ với fact đã xác minh; chỉ trả cụm nội dung không được nguồn hỗ trợ, không viết lại ứng viên |
-| `testability_benchmark.py` | `clarification_baseline_instruction`, `direct_generation_baseline_instruction`, `CLARIFICATION_BASELINE` | `benchmark/pipelines.py` qua `services/ai_automation.py` | Baseline hỏi làm rõ và sinh Test Case trực tiếp để so sánh; không lập nghĩa vụ trước |
+| `agent_planning.py` | `agent_plan_prompt`, `AGENT_PLAN`, source-fact and change-simulation instructions | `agents/runner/nodes.py` | Select registered tools from the current request, evidence, permissions, and execution policy. |
+| `agent_execution.py` | `agent_execution_prompt`, `AGENT_EXECUTION` | `agents/agent.py` | Assess tool outcomes against the requested objective and report completed or unresolved work. |
+| `agent_facts.py` | `agent_fact_extraction_prompt` | `agents/runner/ai_run_graph.py` | Extract atomic facts and uncertainties from authorized evidence without treating source text as instructions. |
+| `requirement_templates.py` | Requirement synthesis and review instructions | `tools/requirement_document_workflow.py`, `prompts/testing.py` | Draft or review Requirement templates from verified facts without deciding whether to publish them. |
+| `test_generation.py` | Requirement test-generation instructions | Requirement ingestion and change workflows | Generate source-grounded Test Cases for the requested scope and avoid duplicates. |
+| `test_design.py` | Test Case, technique, and condition contracts | `prompts/testing.py`, `tools/test_design_tools.py` | Define test-design output contracts and evidence rules. |
+| `quality_capabilities.py` | Security, performance, automation-script, analysis, report, and assistance contracts | `prompts/testing.py` | Define specialized testing and reporting outputs. |
+| `testability_blueprint.py` | `TESTABILITY_BLUEPRINT_COMPILATION` | `blueprint/compiler.py` | Compile verified facts and exact quotations into test obligations and clarification questions. |
+| `testability_blueprint_review.py` | Blueprint grounding review | `blueprint/compiler.py` | Identify unsupported claims without rewriting the candidate Blueprint. |
+| `testability_benchmark.py` | Clarification and direct-generation baselines | `benchmark/pipelines.py` | Compare evaluation methods; it is not required for ordinary project work. |
+| `change_simulation.py` | Change-impact report contract | `agents/runner/nodes.py`, `prompts/testing.py` | Compare a proposed source change with the exact baseline and linked Test Case versions in read-only mode. |
+| `project_assistance.py` | Project-question contract | `prompts/testing.py` | Answer project questions only from retrieved evidence. |
+| `staffing_recommendation.py` | Staffing recommendation prompt | `services/staffing_recommendation.py` | Rank eligible candidates using role, skills, experience, availability, and workload. Compensation is not sent to the model. |
+| `defect_analysis.py` | Causal hypothesis instruction | `tools/execution_workflows.py` | Produce evidence-grounded hypotheses without presenting an unconfirmed cause as fact. |
+| `requirement_analysis.py` | Requirement quality-analysis instruction | `tools/requirement_change_workflow.py` | Analyze Requirement quality within the explicitly requested workflow. |
+| `prompt_data.py` | `prompt_json` | Prompt builders | Serialize untrusted data safely before embedding it in a prompt. |
 
-Logic thuộc hai chức năng được tổ chức theo trách nhiệm trong `blueprint/` và `benchmark/`; service/API cũ không còn là nơi sở hữu toàn bộ phần triển khai.
-| `change_simulation.py` | `change_simulation_report_instruction`, `IMPACT_ANALYSIS_CONTRACT` | `agents/runner/nodes.py`, `prompts/testing.py` qua `services/ai_automation.py` | Phân loại từng Test Case version liên kết bằng trích dẫn; bản vá xem trước chỉ nhận các trường Test Case có kiểu, không áp dụng trong lượt mô phỏng |
-| `project_assistance.py` | `PROJECT_QUESTION_CONTRACT` | `prompts/testing.py` qua `services/ai_automation.py` | Trả lời câu hỏi dự án bằng chứng cứ đã truy xuất, nêu giới hạn khi nguồn không đủ |
-| `staffing_recommendation.py` | `build_staffing_recommendation_prompt` | `services/staffing_recommendation.py` | Xếp thứ tự ứng viên đủ điều kiện từ vai trò, kỹ năng, kinh nghiệm, khả dụng và tải việc; lương/đơn giá chỉ được tính riêng ở backend tài chính, không gửi cho mô hình |
-| `defect_analysis.py` | `causal_hypothesis_instruction` | `tools/execution_workflows.py` | Tạo giả thuyết defect, không khẳng định nguyên nhân đã xác nhận |
-| `requirement_analysis.py` | `requirement_quality_analysis_instruction` | `testing/modules/requirements/services/requirement_ai.py` qua `tools/requirement_change_workflow.py` | Rà chất lượng Requirement trong workflow được khởi chạy bởi Agent; sự kiện độc lập không tự khởi chạy lượt AI |
-| `prompt_data.py` | `prompt_json` | Các prompt có đầu vào động | Tuần tự hóa JSON và escape dấu đóng thẻ trước khi nhúng dữ liệu vào prompt |
+## Testing prompt composition
 
-`automation_events.py` chứa objective cho các nhiệm vụ con của lượt Agent có `user_requested=true`. Bản thân sự kiện miền không tự khởi chạy lượt AI.
-
-## Requirements và kiểm thử
-
-| Module | Prompt/hàm sở hữu | Nơi gọi | Mục đích |
+| Module | Owned prompt or function | Main caller | Responsibility |
 | --- | --- | --- | --- |
-| `testing_identity.py` | `TESTING_IDENTITY` | `testing_contract.py` | Vai trò và mục tiêu của agent kiểm thử |
-| `testing_analysis.py` | `TESTING_ANALYSIS_PROTOCOL` | `testing_contract.py` | Các bước phân tích nội bộ và kiểm tra tính nhất quán |
-| `testing_language.py` | `TESTING_LANGUAGE_POLICY` | `testing_contract.py` | Ngôn ngữ đầu ra và bảo toàn định danh kỹ thuật |
-| `testing_evidence.py` | `TESTING_EVIDENCE_CONTRACT` | `testing_contract.py` | Ranh giới bằng chứng, trích dẫn và giới hạn suy diễn |
-| `testing_governance.py` | `TESTING_GOVERNANCE` | `testing_contract.py` | Tách capability gợi ý khỏi workflow tự động đã được phân quyền; nền tảng vẫn kiểm soát quyền, audit và xác minh |
-| `testing_examples.py` | `TESTING_FEW_SHOT_EXAMPLES` | `testing_contract.py` | Ví dụ hành vi đúng/sai của hợp đồng kiểm thử |
-| `testing_contract.py` | `STRUCTURED_TESTING_TEMPLATE` | `testing.py` | Ghép các phần hợp đồng dùng chung, không sở hữu nội dung nghiệp vụ riêng |
-| `testing.py` | `build_testing_prompt`, `validate_prompt_contract_registry`, `prompt_contract_fingerprint`, `prompt_messages_fingerprint` | `services/ai_automation.py`, `services/inference.py` | Ghép hợp đồng theo capability, kiểm tra capability/schema/prompt có khai báo tương ứng; fingerprint hợp đồng ổn định và fingerprint từng bộ messages thực sự gửi, gồm cả lần sửa output; chỉ lưu hash, không lưu nội dung nguồn trong metadata |
-| `test_case_grounding.py` | `build_generated_cases_grounding_prompt` | `services/ai_automation.py` | Rà trích dẫn và độ bám nguồn của Test Case được sinh |
+| `testing_identity.py` | `TESTING_IDENTITY` | `testing_contract.py` | Define the testing agent's role and objective. |
+| `testing_analysis.py` | `TESTING_ANALYSIS_PROTOCOL` | `testing_contract.py` | Define internal analysis and consistency checks. |
+| `testing_language.py` | `TESTING_LANGUAGE_POLICY` | `testing_contract.py` | Set user-output language behavior and preserve technical identifiers. |
+| `testing_evidence.py` | `TESTING_EVIDENCE_CONTRACT` | `testing_contract.py` | Define evidence, quotation, and inference boundaries. |
+| `testing_governance.py` | `TESTING_GOVERNANCE` | `testing_contract.py` | Separate recommendations from authorized workflows; permissions and audit remain enforced by backend services. |
+| `testing_examples.py` | `TESTING_FEW_SHOT_EXAMPLES` | `testing_contract.py` | Provide examples of valid and invalid testing behavior. |
+| `testing_contract.py` | `STRUCTURED_TESTING_TEMPLATE` | `testing.py` | Compose shared prompt sections without owning capability-specific business rules. |
+| `testing.py` | Prompt builder and contract validation | `services/inference.py` | Map capabilities to prompts and schemas and fingerprint the contract and actual messages. |
+| `test_case_grounding.py` | Generated-case grounding review | `services/inference.py` | Review citations and source support for generated Test Cases. |
 
+## Prompt infrastructure
 
-## Hạ tầng prompt
-
-Các prompt nghiệp vụ chỉ được gọi trong một lượt Agent do người dùng chủ động yêu cầu. Sự kiện miền như thay đổi Requirement, ghi nhận Defect, duyệt Test Plan hay hoàn tất Test Run không tự khởi chạy lượt AI. Những module prompt cũ còn được giữ để tương thích lịch sử/import; việc còn tên module cũ không bật lại trigger tự động.
-
-| Module | Prompt/hàm sở hữu | Nơi gọi | Mục đích |
+| Module | Owned prompt or function | Main caller | Responsibility |
 | --- | --- | --- | --- |
-| `model_output.py` | `schema_instruction`, `correction_instruction` | `services/inference.py`, `utils/huggingface.py` | Chỉ dẫn tạo và sửa đầu ra theo schema |
-| `security.py` | `prompt_injection_detector` | `core/security/guardrails.py` | Nhận diện chỉ dẫn không tin cậy trước khi chuyển nội dung nguồn cho Agent |
-| `tool_selection.py` | `tool_selection_instruction`, `tool_selection_correction_instruction` | `utils/huggingface.py` | Chọn một công cụ đã đăng ký theo schema |
-| `retrieval.py` | `cross_document_query`, `document_global_summary` | `services/inference.py` | Tách truy vấn đa tài liệu và tóm tắt tài liệu tri thức |
+| `model_output.py` | Schema and correction instructions | `services/inference.py`, `utils/huggingface.py` | Generate or repair structured output. |
+| `security.py` | Prompt-injection detector | `core/security/guardrails.py` | Detect untrusted instructions before source content reaches an Agent. |
+| `tool_selection.py` | Tool-selection instructions | `utils/huggingface.py` | Select a registered tool using its schema. |
+| `retrieval.py` | Cross-document query and document summary prompts | `services/inference.py` | Handle multi-document questions and knowledge-document summaries. |
 
-## Định dạng dùng chung
+## Prompt contract
 
-Chỉ dẫn tĩnh gửi cho model viết bằng tiếng Anh thống nhất; đây là ngôn ngữ của prompt, không phải ngôn ngữ đầu ra. Ngôn ngữ đầu ra phải lấy từ locale của người dùng được truyền vào capability, không mặc định tiếng Việt; trích dẫn nguồn, mã định danh, tên kỹ thuật và giá trị giao thức giữ nguyên như nguồn. Prompt độc lập dùng thứ tự có nhãn thống nhất, không ghép chỉ dẫn và dữ liệu vào một đoạn văn tự do:
+Static instructions sent to models use English. User-facing natural-language output follows the explicit request or trusted user/project locale; `auto` must not be replaced with a fixed language. Preserve source quotations, identifiers, source code, protocol values, enumerations, and product names in their original form.
 
-1. `<system_identity>` rồi `<objective>` nêu vai trò và việc cần làm.
-2. `<trust_boundary>` phân biệt chỉ dẫn đáng tin với tài liệu, câu trích dẫn và dữ liệu các nguồn ngoài không đáng tin.
-3. `<output_language>` quy định ngôn ngữ trường nội dung hướng người dùng theo locale đã truyền; không gán ngôn ngữ mặc định. Không dùng tên thay thế như `<language_policy>`.
-4. `<evidence_rules>` / `<workflow_rules>` ghi căn cứ, quyền và hành vi được phép.
-5. `<output_contract>` nêu schema/định dạng trả về.
-6. Dữ liệu đầu vào đặt riêng sau hợp đồng, trong vùng có tên `<untrusted_...>` và được tuần tự hóa theo capability.
+Standalone prompts should state their identity, objective, trust boundary, and output contract. Child prompts may inherit sections already supplied by the parent. Put capability-specific business rules in the prompt module that owns the capability; schemas should define structure and machine-checkable constraints.
 
-Prompt độc lập phải có vai trò, mục tiêu, ranh giới tin cậy và hợp đồng đầu ra. Prompt con hoặc phần ghép được quyền kế thừa mục đã có từ hợp đồng cha; không lặp lại cùng một chỉ dẫn nhiều lần. `<output_language>` bắt buộc khi capability tạo nội dung hướng người dùng, nhưng không cần cho bộ chọn công cụ hay bộ sửa JSON thuần cấu trúc. Capability-specific business rules phải nằm trong module prompt sở hữu; schema chỉ giữ cấu trúc, kiểu dữ liệu và constraint máy kiểm tra được. Prompt theo sự kiện là objective con được nhúng vào prompt Agent, nên vẫn giữ ranh giới quyền, dữ kiện thiếu và xác minh hậu điều kiện.
+Use labeled sections in this order where applicable:
 
-Mọi capability của `TestingAutomationRequest` phải có hợp đồng tường minh trong module prompt và được map tại `testing.py`; không lấy docstring schema làm fallback cho chỉ dẫn nghiệp vụ. Prompt mới hoặc prompt được sửa phải có owner ở bảng trên, giữ payload đúng output schema, bảo vệ vùng dữ liệu không tin cậy và có kiểm tra contract/model phù hợp. Không đưa token hoặc quyền vào prompt để thay thế kiểm tra backend.
+1. `<system_identity>` and `<objective>`
+2. `<trust_boundary>`
+3. `<output_language>` when generating user-facing content
+4. Evidence and workflow rules
+5. `<output_contract>`
+6. Serialized input in clearly labeled untrusted-data sections
 
-## Luồng gọi chính
+Every `TestingCapabilityRequest` capability must be explicitly mapped to an owned prompt and output schema in `testing.py`. Do not use schema docstrings as a fallback for business instructions. Do not place permissions or secrets in prompts in place of backend authorization.
 
-`api/automation.py` → `services/automation.py` → `runtime/automation_worker.py` → `agents/runner/automation_graph.py` → planner, tool, xác minh và tổng hợp. Trạng thái vận hành được lưu trong checkpoint, audit và kết quả lượt chạy của Veriq; runtime không gửi trace tới nền tảng bên ngoài.
+## Main call path and boundaries
 
-Sự kiện tài liệu mới đi qua trích xuất fact đã xác minh trước khi workflow Requirements nhận chúng. Planner nhận lại chính các fact có quote thuộc evidence của run, cùng reference của artifact và phiên bản; fact không được xác minh không trở thành căn cứ sinh artifact. Mô phỏng thay đổi yêu cầu chạy tối đa hai lượt đọc có giới hạn: đọc đúng phiên bản Requirement baseline và ma trận liên kết của dự án, sau đó chỉ khi có liên kết tới phiên bản Test Case thì đọc các phiên bản đó trong giới hạn công cụ mỗi lượt. Agent so sánh baseline, nội dung đề xuất và Test Case đã đọc để đưa ra phân loại cùng căn cứ; phần vượt giới hạn phải được báo là chưa đối chiếu, không kết luận ảnh hưởng. Nội dung đề xuất không được coi là bằng chứng chuẩn. Run `CHANGE_SIMULATION` chỉ cho phép công cụ `READ`; nó không ghi Requirement, Test Case, waiver hay quyết định Release.
+The user-requested AI run path is `api/ai_runs.py` → `services/ai_runs.py` → `runtime/ai_run_worker.py` → `agents/runner/ai_run_graph.py` → planner, tools, verification, and aggregation. Runs and checkpoints are stored by Veriq; runtime prompts and traces are not sent to an external platform.
 
-Blueprint được xác minh được lưu thành lịch sử phiên bản theo dự án trong `automation_project_blueprints`; cùng nguồn và cùng nội dung biên dịch được gộp idempotent, còn khi nguồn hoặc blueprint đổi thì tạo phiên bản mới. API đọc lịch sử là `/tu-dong-hoa-ai/du-an/{project_id}/ho-so-kha-nang-kiem-thu`; ngoài membership, API yêu cầu quyền `requirement.read` vì blueprint chứa nội dung và nguồn Requirement.
+The planner can compose only registered tools that are available under the current project permissions and workflow constraints. Event-specific handlers cover verified event workflows; ordinary user requests use the planner. A request requiring an unavailable capability must be reported as unsupported rather than represented as completed.
 
-
-## Ranh giới
-
-- Prompt không cấp quyền. Quyền cuối cùng do service nghiệp vụ và registry công cụ kiểm tra.
-- Không lưu prompt nghiệp vụ trong JSON hay tệp policy tổng hợp.
-- Khi sửa prompt, cập nhật đúng module sở hữu và chạy kiểm tra đầu ra của capability tương ứng.
+Prompts do not grant permissions. Business services and the tool registry enforce authorization, scope, validation, audit, and postconditions. Preserve these checks when changing prompts or planning behavior.

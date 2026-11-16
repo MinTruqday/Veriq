@@ -4,12 +4,12 @@ from typing import Annotated
 from langchain_core.runnables import RunnableConfig
 from pydantic import Field
 
-from src.tools.automation_publication import (
+from src.tools.grounded_publication import (
     publish_grounded_test_case,
     verified_test_case_publication_readback,
 )
 from src.tools.registry import with_tool_access
-from src.tools.testing_api import AutomationOperationError, require_operation
+from src.tools.testing_api import ToolOperationError, require_operation
 
 
 @with_tool_access(
@@ -42,7 +42,7 @@ async def process_confirmed_api_operation(
     if not project_id or missing_permissions:
         return json.dumps(
             {
-                "status": "automation_blocked",
+                "status": "blocked",
                 "reason_code": "REQUIRED_PERMISSION_MISSING",
                 "missing_permissions": missing_permissions,
             },
@@ -60,7 +60,7 @@ async def process_confirmed_api_operation(
             or operation.get("project_id") != project_id
             or operation.get("revision") != expected_revision
         ):
-            raise AutomationOperationError("API_OPERATION_REVISION_STALE")
+            raise ToolOperationError("API_OPERATION_REVISION_STALE")
         return operation
 
     await current_operation()
@@ -79,7 +79,7 @@ async def process_confirmed_api_operation(
 
     if job.get("status") != "CONFIRMED":
         if job.get("status") != "PREVIEW_READY":
-            raise AutomationOperationError("API_TEST_IMPORT_PREVIEW_STATE_INVALID")
+            raise ToolOperationError("API_TEST_IMPORT_PREVIEW_STATE_INVALID")
         preview = job.get("preview") or []
         selected_indexes = [
             index
@@ -189,7 +189,7 @@ async def process_confirmed_api_operation(
                 config,
                 before_write=current_operation,
             )
-        except AutomationOperationError as error:
+        except ToolOperationError as error:
             unresolved.append(
                 {"test_case_draft_id": draft_id, "reason": error.reason_code}
             )
@@ -213,7 +213,7 @@ async def process_confirmed_api_operation(
         )
 
     if unresolved:
-        status = "automation_partial_failure"
+        status = "partial_failure"
     else:
         status = "COMPLETED"
     return json.dumps(

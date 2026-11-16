@@ -246,7 +246,7 @@ export default function ProjectNotificationsPanel({ project }) {
                   })
                 }
               />
-              Nhận qua thư điện tử
+              Nhận qua Email
             </label>
             <div className="grid grid-cols-2 gap-3">
               <label className="field-label">
@@ -312,7 +312,7 @@ export default function ProjectNotificationsPanel({ project }) {
               <legend className="field-label">Kênh gửi</legend>
               {[
                 ["in_app", "Trong ứng dụng"],
-                ["email", "Thư điện tử"],
+                ["email", "Email"],
               ].map(([channel, label]) => (
                 <label className="flex items-center gap-2 text-sm" key={channel}>
                   <input

@@ -5,6 +5,7 @@ export default function SegmentedTabs({ tabs, value, onChange, label }) {
     <HorizontalScrollCue
       className="max-w-full border-b border-border"
       viewportClassName="hide-scrollbar flex min-w-0 max-w-full flex-nowrap gap-1 overflow-x-auto overscroll-x-contain"
+      hidePartialItems
     >
       <div
         role="group"

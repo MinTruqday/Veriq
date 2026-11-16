@@ -17,51 +17,46 @@ const checkpointPhaseLabels = {
 };
 
 const checkpointReasonLabels = {
-  AUTOMATION_RESUMED_FROM_CHECKPOINT: "Đã tiếp tục từ điểm xử lý đã lưu",
-  AUTOMATION_RETRY_STARTED: "Đã bắt đầu lượt thử lại",
-  AUTOMATION_QUEUE_RETRY: "Hệ thống đang thử gửi lại lượt chạy",
-  AUTOMATION_QUEUE_UNAVAILABLE: "Không gửi được lượt chạy vào hàng đợi",
-  AUTOMATION_QUEUE_REDELIVERY: "Hệ thống đang gửi lại lượt chạy vào hàng đợi",
-  AUTOMATION_WORKER_CLAIMED: "Hệ thống đã tiếp nhận lượt chạy",
-  AUTOMATION_WORKER_FAILED: "Hệ thống gặp lỗi khi xử lý lượt chạy",
-  AUTOMATION_ACTION_OUTCOME_UNCERTAIN: "Chưa xác định được kết quả thao tác",
-  AUTOMATION_EXECUTOR_UNAVAILABLE: "Không có thành viên đủ quyền thực hiện lượt chạy",
+  AI_RUN_RESUMED_FROM_CHECKPOINT: "Đã tiếp tục từ điểm xử lý đã lưu",
+  AI_RUN_RETRY_STARTED: "Đã bắt đầu lượt thử lại",
+  AI_RUN_QUEUE_RETRY: "Hệ thống đang thử gửi lại lượt chạy",
+  AI_RUN_QUEUE_UNAVAILABLE: "Không gửi được lượt chạy vào hàng đợi",
+  AI_RUN_QUEUE_REDELIVERY: "Hệ thống đang gửi lại lượt chạy vào hàng đợi",
+  AI_RUN_WORKER_CLAIMED: "Hệ thống đã tiếp nhận lượt chạy",
+  AI_RUN_WORKER_FAILED: "Hệ thống gặp lỗi khi xử lý lượt chạy",
+  AI_RUN_ACTION_OUTCOME_UNCERTAIN: "Chưa xác định được kết quả thao tác",
+  AI_RUN_EXECUTOR_UNAVAILABLE: "Không có thành viên đủ quyền thực hiện lượt chạy",
   AI_READ_PERMISSION_REVOKED: "Quyền đọc nguồn AI đã bị thu hồi",
-  AUTOMATION_CANCELLED: "Lượt chạy đã được dừng",
+  AI_RUN_CANCELLED: "Lượt chạy đã được dừng",
   TEST_DESIGN_SOURCE_EVIDENCE_MISSING: "Không đủ bằng chứng nguồn để bàn giao thiết kế kiểm thử",
   TEST_DESIGN_HANDOFF_DISPATCH_FAILED: "Không gửi được tác vụ thiết kế kiểm thử tiếp theo",
 };
 
-const agentRunErrorMessages = {
-  AUTOMATION_ACTION_OUTCOME_UNCERTAIN:
+const aiRunErrorMessages = {
+  INSUFFICIENT_EVIDENCE:
+    "Tác vụ AI chưa đủ căn cứ để hoàn tất. Hãy xem chi tiết các bước xử lý để biết nguồn hoặc thao tác nào chưa được xác minh.",
+  AI_RUN_ACTION_OUTCOME_UNCERTAIN:
     "Chưa xác định được kết quả bước trước. Hãy kiểm tra dữ liệu trước khi tiếp tục để tránh tạo trùng.",
-  AUTOMATION_CHECKPOINT_IDENTITY_MISMATCH:
+  AI_RUN_CHECKPOINT_IDENTITY_MISMATCH:
     "Thông tin lượt chạy không còn khớp với dữ liệu hiện tại. Hệ thống đã dừng để tránh xử lý nhầm.",
-  AUTOMATION_EXECUTION_FAILED:
-    "Tác vụ AI chưa hoàn tất. Hãy xem kết quả gần nhất trước khi tiếp tục.",
-  AUTOMATION_LIMIT_REACHED:
+  AI_RUN_EXECUTION_FAILED: "Tác vụ AI chưa hoàn tất. Hãy xem kết quả gần nhất trước khi tiếp tục.",
+  AI_RUN_LIMIT_REACHED:
     "Tác vụ AI đã chạm giới hạn xử lý. Hãy kiểm tra phần việc còn lại trước khi tiếp tục.",
-  AUTOMATION_QUEUE_UNAVAILABLE:
+  AI_RUN_QUEUE_UNAVAILABLE:
     "Hệ thống chưa thể tiếp nhận lượt chạy. Lượt này được giữ lại và sẽ được thử lại khi có thể.",
-  AUTOMATION_WORKER_FAILED:
+  AI_RUN_WORKER_FAILED:
     "Hệ thống gặp lỗi khi xử lý lượt AI. Hãy xem bước gần nhất và trạng thái tiếp tục trước khi thử lại.",
-  AUTOMATION_EXECUTOR_UNAVAILABLE:
+  AI_RUN_EXECUTOR_UNAVAILABLE:
     "Không xác minh được người thực hiện có quyền cần thiết để tiếp tục lượt chạy này.",
   PROJECT_AUTHORIZATION_CHECK_FAILED:
     "Chưa xác minh được quyền dự án. Lượt chạy đang chờ kiểm tra quyền.",
   AUTHORIZATION_EXPIRED: "Phiên quyền của lượt chạy đã hết hạn; cần xác minh lại quyền hiện tại.",
 };
 
-export function agentRunErrorMessage(errorCode) {
+export function aiRunErrorMessage(errorCode) {
   return (
-    agentRunErrorMessages[errorCode] || "Tác vụ AI chưa hoàn tất; hãy xem kết quả các bước xử lý."
+    aiRunErrorMessages[errorCode] || "Tác vụ AI chưa hoàn tất; hãy xem kết quả các bước xử lý."
   );
-}
-
-export function workflowForSelectedAgentRun(runs, selectedRunId) {
-  if (!Array.isArray(runs) || !selectedRunId) return null;
-  const selected = runs.find((run) => run?.automation_run_id === selectedRunId);
-  return selected?.workflow && typeof selected.workflow === "object" ? selected.workflow : null;
 }
 
 export function agentCheckpointView(checkpoint, dateTimeOptions = {}) {
@@ -119,14 +114,14 @@ export function agentAuthorizationGuidance(run) {
     };
   }
   switch (run?.error_code) {
-    case "AUTOMATION_PRINCIPAL_ROLE_CHANGED":
+    case "AI_RUN_PRINCIPAL_ROLE_CHANGED":
       return {
         message:
           "Vai trò của người thực hiện đã thay đổi. Hãy kiểm tra lại phân công và quyền dự án.",
         action: "Thử lại sau khi kiểm tra quyền",
       };
-    case "AUTOMATION_PRINCIPAL_UNAVAILABLE":
-    case "AUTOMATION_EXECUTOR_UNAVAILABLE":
+    case "AI_RUN_PRINCIPAL_UNAVAILABLE":
+    case "AI_RUN_EXECUTOR_UNAVAILABLE":
       return {
         message:
           "Không còn người thực hiện hợp lệ cho lượt này. Hãy kiểm tra thành viên và phân công trong dự án.",
@@ -153,9 +148,9 @@ export function agentAuthorizationGuidance(run) {
   }
 }
 
-export function canResumeAgentRun(run, checkpoints, currentUserId) {
+export function canResumeAIRun(run, checkpoints, currentUserId) {
   if (!run || !currentUserId || run.requester_user_id !== currentUserId) return false;
-  if (run.error_code === "AUTOMATION_ACTION_OUTCOME_UNCERTAIN") return false;
+  if (run.error_code === "AI_RUN_ACTION_OUTCOME_UNCERTAIN") return false;
 
   const latestCheckpoint = Array.isArray(checkpoints) ? checkpoints.at(-1) : null;
   const detail = latestCheckpoint?.detail || {};
@@ -168,7 +163,7 @@ export function canResumeAgentRun(run, checkpoints, currentUserId) {
 
   if (run.status === "AWAITING_AUTHORIZATION") return true;
   if (!RETRYABLE_STATUSES.has(run.status)) return false;
-  if (run.error_code === "AUTOMATION_QUEUE_UNAVAILABLE") return true;
+  if (run.error_code === "AI_RUN_QUEUE_UNAVAILABLE") return true;
   return Boolean(latestCheckpoint?.state_snapshot);
 }
 

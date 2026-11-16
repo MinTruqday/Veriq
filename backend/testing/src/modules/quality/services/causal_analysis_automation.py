@@ -8,14 +8,14 @@ from src.core.common import audit, new_id, now
 from src.core.database import database
 from src.repositories.causal_analysis import causal_analysis_repository
 from src.modules.quality.services.causal_analysis_query import get_analysis
-from src.core.ai_automation import (
+from src.core.ai_capabilities import (
     ai_contract_metadata,
-    request_ai_automation,
-    require_ai_automation_event,
+    request_ai_capability,
+    require_ai_capability_event,
 )
 
 
-def _hypothesis_request_hash(payload, analysis, automation):
+def _hypothesis_request_hash(payload, analysis, event_context):
     request = payload.model_dump(mode="json", exclude={"idempotency_key"})
     request.update(
         {
@@ -24,14 +24,14 @@ def _hypothesis_request_hash(payload, analysis, automation):
             "problem_statement": analysis.get("problem_statement"),
             "source_event_id": analysis["source_event_id"],
             "source_event_revision": analysis["source_event_revision"],
-            "automation_run_id": automation["run_id"],
+            "ai_run_id": event_context["run_id"],
         }
     )
     canonical = json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def _verify_hypothesis_replay(existing, payload, analysis, automation, user):
+def _verify_hypothesis_replay(existing, payload, analysis, event_context, user):
     if not existing.get("created_by"):
         raise HTTPException(409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
     if existing["created_by"] != user.id:
@@ -39,20 +39,20 @@ def _verify_hypothesis_replay(existing, payload, analysis, automation, user):
     request_hash = existing.get("idempotency_request_hash")
     if not request_hash:
         raise HTTPException(409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
-    if request_hash != _hypothesis_request_hash(payload, analysis, automation):
+    if request_hash != _hypothesis_request_hash(payload, analysis, event_context):
         raise HTTPException(409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
 
 
 async def generate_hypotheses(analysis_id, payload, user):
     value = await get_analysis(analysis_id, user, "causalanalysis.update")
-    automation = require_ai_automation_event(
+    event_context = require_ai_capability_event(
         user, {"DEFECT_RECORDED", "DEFECT_CHANGED"}
     )
     if (
         not value.get("source_event_id")
-        or value.get("source_event_id") != automation["source_event_id"]
-        or value.get("source_event_trigger") != automation["trigger"]
-        or value.get("source_automation_run_id") != automation["run_id"]
+        or value.get("source_event_id") != event_context["source_event_id"]
+        or value.get("source_event_trigger") != event_context["trigger"]
+        or value.get("source_ai_run_id") != event_context["run_id"]
         or len(value.get("defect_ids") or []) != 1
     ):
         raise HTTPException(
@@ -94,7 +94,7 @@ async def generate_hypotheses(analysis_id, payload, user):
                 status_code=409,
                 detail={"code": 'IDEMPOTENCY_KEY_REUSED'},
             )
-        _verify_hypothesis_replay(existing, payload, value, automation, user)
+        _verify_hypothesis_replay(existing, payload, value, event_context, user)
         return existing
     defects = await causal_analysis_repository.list_defects(
         {"_id": {"$in": value["defect_ids"]}, "project_id": value["project_id"]},
@@ -141,7 +141,7 @@ async def generate_hypotheses(analysis_id, payload, user):
         },
         ensure_ascii=False,
     )
-    ai = await request_ai_automation(
+    ai = await request_ai_capability(
         "causal_analysis", value["project_id"], instruction, evidence
     )
     result = {
@@ -154,7 +154,7 @@ async def generate_hypotheses(analysis_id, payload, user):
         "suggestions": ai.get("suggestions", []),
         **ai_contract_metadata(ai),
         "idempotency_key": payload.idempotency_key,
-        "idempotency_request_hash": _hypothesis_request_hash(payload, value, automation),
+        "idempotency_request_hash": _hypothesis_request_hash(payload, value, event_context),
         "created_by": user.id,
         "created_at": now(),
     }
@@ -182,6 +182,6 @@ async def generate_hypotheses(analysis_id, payload, user):
             or existing.get("subject_id") != analysis_id
         ):
             raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
-        _verify_hypothesis_replay(existing, payload, value, automation, user)
+        _verify_hypothesis_replay(existing, payload, value, event_context, user)
         return existing
     return result

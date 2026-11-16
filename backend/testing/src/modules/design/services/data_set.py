@@ -5,7 +5,7 @@ from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from src.core.common import audit, get_project, get_project_entity, new_id, now, plain_text
-from src.core.ai_automation import ai_contract_metadata, request_ai_automation
+from src.core.ai_capabilities import ai_contract_metadata, request_ai_capability
 from src.core.database import database
 from src.core.sensitive_data import secret_pattern
 from src.core.source_evidence import split_source_evidence
@@ -95,7 +95,7 @@ class DataSetService:
             raise HTTPException(422, detail={"code": "TEST_DATA_EVIDENCE_REQUIRED"})
         if len(evidence) > 100:
             raise HTTPException(422, detail={"code": "TEST_DATA_EVIDENCE_LIMIT_EXCEEDED"})
-        result = await request_ai_automation(
+        result = await request_ai_capability(
             "test_data_generation", project_id, payload.instruction, evidence
         )
         if result.get("status") != "SUCCESS" or result.get("degraded_mode"):

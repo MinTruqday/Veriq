@@ -85,6 +85,12 @@ services:
     container_name: veriq_redis
     restart: always
     logging: *container-logging
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      start_period: 5s
+      retries: 6
     ports:
       - 6379:6379
     volumes:
@@ -213,11 +219,11 @@ services:
       AUTHENTICATION_URL: ${AUTHENTICATION_URL:?AUTHENTICATION_URL is required}
     depends_on:
       authentication:
-        condition: service_started
+        condition: service_healthy
       mongodb:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
     networks:
       - veriq_network
 
@@ -236,10 +242,9 @@ services:
     logging: *container-logging
     ports:
       - 8015:8000
-      - 38470-38479:38470-38479
     labels:
       - traefik.enable=true
-      - traefik.http.routers.ai.rule=PathPrefix(`/suy-luan`) || PathPrefix(`/su-kien`) || PathPrefix(`/tiep-nap`) || PathPrefix(`/tri-thuc`) || PathPrefix(`/danh-gia`) || PathPrefix(`/tac-tu`) || PathPrefix(`/tu-dong-hoa-ai`)
+      - traefik.http.routers.ai.rule=PathPrefix(`/suy-luan`) || PathPrefix(`/su-kien`) || PathPrefix(`/tiep-nap`) || PathPrefix(`/tri-thuc`) || PathPrefix(`/danh-gia`) || PathPrefix(`/tac-nhan-ai`)
       - traefik.http.services.ai.loadbalancer.server.port=8000
     environment:
       <<: [*service-environment, *object-storage-environment]
@@ -253,6 +258,9 @@ services:
       HF_INFERENCE_URL: ${HF_INFERENCE_URL:?HF_INFERENCE_URL is required}
       LLM_MODEL: ${LLM_MODEL:?LLM_MODEL is required}
       MODEL_TIMEOUT_SECONDS: ${MODEL_TIMEOUT_SECONDS:?MODEL_TIMEOUT_SECONDS is required}
+      TESTABILITY_BLUEPRINT_MAX_OUTPUT_TOKENS: ${TESTABILITY_BLUEPRINT_MAX_OUTPUT_TOKENS:-4096}
+      RERANKER_TIMEOUT_SECONDS: ${RERANKER_TIMEOUT_SECONDS:-30}
+      RERANKER_RETRY_DELAY_SECONDS: ${RERANKER_RETRY_DELAY_SECONDS:-3}
       PRIMARY_MODEL_URL: ${PRIMARY_MODEL_URL:?PRIMARY_MODEL_URL is required}
       PRIMARY_MODEL_HEALTH_URL: ${PRIMARY_MODEL_HEALTH_URL:?PRIMARY_MODEL_HEALTH_URL is required}
       FALLBACK_MODEL_URL: ${FALLBACK_MODEL_URL:-}
@@ -266,15 +274,15 @@ services:
       AI_AGENT_MAX_STEPS: ${AI_AGENT_MAX_STEPS:-8}
       AI_AGENT_MAX_TOOL_CALLS: ${AI_AGENT_MAX_TOOL_CALLS:-6}
       AI_AGENT_MAX_TOOL_ERRORS: ${AI_AGENT_MAX_TOOL_ERRORS:-2}
-      AI_AUTOMATION_MAX_RETRIES: ${AI_AUTOMATION_MAX_RETRIES:-2}
-      AI_AUTOMATION_RUN_TIMEOUT_SECONDS: ${AI_AUTOMATION_RUN_TIMEOUT_SECONDS:-900}
-      AI_AUTOMATION_TASK_TIMEOUT_SECONDS: ${AI_AUTOMATION_TASK_TIMEOUT_SECONDS:-840}
+      AI_RUN_MAX_RETRIES: ${AI_RUN_MAX_RETRIES:-2}
+      AI_RUN_TIMEOUT_SECONDS: ${AI_RUN_TIMEOUT_SECONDS:-900}
+      AI_RUN_TASK_TIMEOUT_SECONDS: ${AI_RUN_TASK_TIMEOUT_SECONDS:-840}
       AI_MESSAGE_ACK_TIMEOUT_SECONDS: ${AI_MESSAGE_ACK_TIMEOUT_SECONDS:-960}
       AI_AGENT_MAX_EVIDENCE_ITEMS: ${AI_AGENT_MAX_EVIDENCE_ITEMS:-100}
       AI_QUEUE_RETRY_BASE_SECONDS: ${AI_QUEUE_RETRY_BASE_SECONDS:-15}
       AI_QUEUE_RETRY_MAX_SECONDS: ${AI_QUEUE_RETRY_MAX_SECONDS:-300}
       AI_QUEUE_RETRY_SCAN_SECONDS: ${AI_QUEUE_RETRY_SCAN_SECONDS:-5}
-      AI_AUTOMATION_RECOVERY_BATCH_SIZE: ${AI_AUTOMATION_RECOVERY_BATCH_SIZE:-100}
+      AI_RUN_RECOVERY_BATCH_SIZE: ${AI_RUN_RECOVERY_BATCH_SIZE:-100}
       AI_DEAD_LETTER_MAX_REDRIVES: ${AI_DEAD_LETTER_MAX_REDRIVES:-3}
       DOCUMENT_MAX_INGESTION_DIAGNOSTIC_DETAILS: ${DOCUMENT_MAX_INGESTION_DIAGNOSTIC_DETAILS:-100}
       DOCUMENT_SUMMARY_INPUT_CHAR_LIMIT: ${DOCUMENT_SUMMARY_INPUT_CHAR_LIMIT:-15000}
@@ -285,11 +293,11 @@ services:
       mongodb:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
       rabbitmq:
-        condition: service_started
+        condition: service_healthy
       qdrant:
-        condition: service_started
+        condition: service_healthy
     networks:
       - veriq_network
 
@@ -326,13 +334,13 @@ services:
       mongodb:
         condition: service_healthy
       ai:
-        condition: service_started
+        condition: service_healthy
       content:
-        condition: service_started
+        condition: service_healthy
       cloud:
-        condition: service_started
+        condition: service_healthy
       worker:
-        condition: service_started
+        condition: service_healthy
     volumes:
       - ${REPORT_FONT_DIRECTORY:-./.runtime/report-fonts}:/usr/local/share/fonts/veriq-reports:ro
     networks:
@@ -343,6 +351,20 @@ services:
     container_name: veriq_qdrant
     restart: always
     logging: *container-logging
+    healthcheck:
+      test:
+        - CMD
+        - bash
+        - -lc
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/6333 &&
+          printf 'GET /readyz HTTP/1.0\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
+          IFS= read -r response <&3 &&
+          [[ "$$response" == *" 200 "* ]]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 6
     ports:
       - 6333:6333
       - 6334:6334
@@ -369,6 +391,14 @@ services:
     environment:
       <<: *service-environment
       AUTHENTICATION_DB_NAME: ${AUTHENTICATION_DB_NAME:?AUTHENTICATION_DB_NAME is required}
+      LOGIN_FAILURE_LIMIT: ${LOGIN_FAILURE_LIMIT:-5}
+      LOGIN_LOCKOUT_MINUTES: ${LOGIN_LOCKOUT_MINUTES:-15}
+      AI_INTERNAL_URL: ${AI_INTERNAL_URL:?AI_INTERNAL_URL is required}
+      AUTHENTICATION_INTERNAL_URL: ${AUTHENTICATION_INTERNAL_URL:?AUTHENTICATION_INTERNAL_URL is required}
+      CLOUD_INTERNAL_URL: ${CLOUD_INTERNAL_URL:?CLOUD_INTERNAL_URL is required}
+      CONTENT_INTERNAL_URL: ${CONTENT_INTERNAL_URL:?CONTENT_INTERNAL_URL is required}
+      TESTING_INTERNAL_URL: ${TESTING_INTERNAL_URL:?TESTING_INTERNAL_URL is required}
+      WORKER_INTERNAL_URL: ${WORKER_INTERNAL_URL:?WORKER_INTERNAL_URL is required}
       LLM_MODEL: ${LLM_MODEL:?LLM_MODEL is required}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:?EMBEDDING_MODEL is required}
       RERANKER_MODEL: ${RERANKER_MODEL:?RERANKER_MODEL is required}
@@ -385,7 +415,7 @@ services:
       mongodb:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
     networks:
       - veriq_network
   content:
@@ -419,13 +449,13 @@ services:
       DOCUMENT_INDEX_CONTRACT_VERSION: ${DOCUMENT_INDEX_CONTRACT_VERSION:-2}
     depends_on:
       authentication:
-        condition: service_started
+        condition: service_healthy
       mongodb:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
       rabbitmq:
-        condition: service_started
+        condition: service_healthy
     networks:
       - veriq_network
 
@@ -451,11 +481,11 @@ services:
       OBJECT_STORAGE_LEGACY_BUCKET: ${OBJECT_STORAGE_LEGACY_BUCKET:?OBJECT_STORAGE_LEGACY_BUCKET is required}
     depends_on:
       authentication:
-        condition: service_started
+        condition: service_healthy
       mongodb:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
     networks:
       - veriq_network
 

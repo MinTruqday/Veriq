@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Archive, ClipboardCheck, Copy, Pencil, Send, Check } from "lucide-react";
 import DeviceMatricesPanel from "../../components/DeviceMatricesPanel";
-import AgentRunPanel from "../../components/AgentRunPanel";
 import TestPlanEditor from "../../components/TestPlanEditor";
 import EnvironmentIncidentPanel from "../../components/EnvironmentIncidentPanel";
 import NonFunctionalTestPanel from "../../components/NonFunctionalTestPanel";
@@ -119,7 +118,6 @@ export default function ExecutionPage({ project, section, workspaceView }) {
   const defectCreateOperations = useRef(new Map());
   const defectCreateInFlight = useRef(new Set());
   const [runSubsection, setRunSubsection] = useState("runs");
-  const [automationSubsection, setAutomationSubsection] = useState("results");
   const [runForm, setRunForm] = useState({
     name: "",
     release: "",
@@ -138,17 +136,15 @@ export default function ExecutionPage({ project, section, workspaceView }) {
   const [attachments, setAttachments] = useState({});
   const [resumeContext, setResumeContext] = useState(null);
   const can = (permission) => project.current_permissions?.includes(permission);
+  const permissions = useMemo(
+    () => project.current_permissions || [],
+    [project.current_permissions],
+  );
   const runSubsectionTabs = [
     ...(can("testrun.read") ? [{ id: "runs", label: "Lần chạy" }] : []),
     ...(can("environmentincident.read") ? [{ id: "incidents", label: "Sự cố môi trường" }] : []),
     ...(can("nfrtest.read") ? [{ id: "nonfunctional", label: "Kiểm thử phi chức năng" }] : []),
   ];
-  const permissions = useMemo(
-    () => project.current_permissions || [],
-    [project.current_permissions],
-  );
-  const canReadAiRuns =
-    permissions.includes("automation.read") || permissions.includes("proposal.read");
   const terminalResultStatuses = project.settings?.allow_not_applicable_results
     ? ["PASS", "FAIL", "BLOCKED", "SKIPPED", "NOT_APPLICABLE"]
     : ["PASS", "FAIL", "BLOCKED", "SKIPPED"];
@@ -783,7 +779,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
       : workspaceView === "test-runs"
         ? "Lần chạy kiểm thử"
         : workspaceView === "automation"
-          ? "Tự động hóa kiểm thử"
+          ? "Kiểm thử tự động"
           : "Thực thi kiểm thử";
   if (initialLoading || initialLoadFailed) {
     return (
@@ -1300,30 +1296,14 @@ export default function ExecutionPage({ project, section, workspaceView }) {
           onError={setError}
         />
       )}
-      {workspaceView === "automation" && (
-        <div className="grid gap-5">
-          <SegmentedTabs
-            label="Khu vực tự động hóa"
-            value={automationSubsection}
-            onChange={setAutomationSubsection}
-            tabs={[
-              ...(can("automation.read")
-                ? [{ id: "results", label: "Kết quả kiểm thử tự động" }]
-                : []),
-              ...(canReadAiRuns ? [{ id: "ai", label: "Hoạt động AI" }] : []),
-            ]}
-          />
-          {automationSubsection === "results" && can("automation.read") && (
-            <JUnitResultPanel
-              project={project}
-              runs={runs}
-              tests={tests}
-              can={can}
-              onError={setError}
-            />
-          )}
-          {automationSubsection === "ai" && canReadAiRuns && <AgentRunPanel project={project} />}
-        </div>
+      {workspaceView === "automation" && can("automation.read") && (
+        <JUnitResultPanel
+          project={project}
+          runs={runs}
+          tests={tests}
+          can={can}
+          onError={setError}
+        />
       )}
       {workspaceView === "" && can("device_matrix.read") && (
         <DeviceMatricesPanel project={project} plans={plans} runs={runs} onChanged={load} />
@@ -1566,8 +1546,9 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                             </button>
                           )}
                           {item.status === "IN_REVIEW" &&
-                            item.created_by !== project.current_membership?.user_id &&
-                            item.submitted_by !== project.current_membership?.user_id &&
+                            (!project.settings?.require_independent_review ||
+                              (item.created_by !== project.current_membership?.user_id &&
+                                item.submitted_by !== project.current_membership?.user_id)) &&
                             can("testplan.approve") && (
                               <button
                                 className="apple-button inline-flex size-10 items-center justify-center p-0"

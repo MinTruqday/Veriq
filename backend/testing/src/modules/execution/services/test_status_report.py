@@ -4,15 +4,14 @@ import json
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
-from src.clients.ai_automation import emit_status_report_created
-from src.core.ai_automation import ai_contract_metadata, request_ai_automation
+from src.core.ai_capabilities import ai_contract_metadata, request_ai_capability
 from src.core.common import audit, get_project, new_id, now
 from src.core.common import idempotency_request_hash as _create_request_hash
 from src.core.common import verify_idempotency_replay as _verify_create_replay
 from src.core.database import database
 from src.core.human_decisions import (
     content_authorship_changes,
-    require_automation_publication_authority,
+    require_ai_publication_authority,
     require_independent_review,
 )
 from src.modules.execution.services.test_monitoring import effective_snapshot
@@ -33,7 +32,6 @@ from src.repositories.test_status_report import (
 )
 from src.schemas.test_status_report import status_report_hash, status_report_snapshot
 
-
 def default_recommendation(snapshot):
     status = snapshot.get("effective_quality_gate_status") or snapshot.get("quality_gate_status")
     if snapshot.get("blockers"):
@@ -44,7 +42,6 @@ def default_recommendation(snapshot):
         return "NOT_READY"
     return "AT_RISK"
 
-
 def text_document(value):
     return (
         {
@@ -54,7 +51,6 @@ def text_document(value):
         if value
         else {"type": "doc", "content": []}
     )
-
 
 def normalized_forecast(value):
     if isinstance(value, str):
@@ -67,17 +63,12 @@ def normalized_forecast(value):
         return value.model_dump()
     return value or {"expected_completion_at": None, "confidence": None, "assumptions": []}
 
-
-
-
-
-
-def _narrative_request_hash(payload, report_id, automation_run_id, user):
+def _narrative_request_hash(payload, report_id, ai_run_id, user):
     request = payload.model_dump(mode="json", exclude={"idempotency_key"})
     request.update(
         {
             "report_id": report_id,
-            "automation_run_id": automation_run_id,
+            "ai_run_id": ai_run_id,
             "actor_id": user.id,
         }
     )
@@ -89,8 +80,7 @@ def _narrative_request_hash(payload, report_id, automation_run_id, user):
     )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
-
-def _verify_narrative_replay(existing, payload, report_id, automation_run_id, user):
+def _verify_narrative_replay(existing, payload, report_id, ai_run_id, user):
     if not existing.get("created_by"):
         raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
     if existing["created_by"] != user.id:
@@ -98,16 +88,22 @@ def _verify_narrative_replay(existing, payload, report_id, automation_run_id, us
     request_hash = existing.get("idempotency_request_hash")
     if not request_hash:
         raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
-    if request_hash != _narrative_request_hash(payload, report_id, automation_run_id, user):
+    if request_hash != _narrative_request_hash(payload, report_id, ai_run_id, user):
         raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
-
 
 def generated_summaries(snapshot):
     metrics = snapshot.get("metrics") or {}
-    progress = "Đã thực thi {executed}/{planned} ca kiểm thử đạt {percent}%".format(
+    progress = (
+        "Đã ghi nhận kết quả {executed}/{planned} ca (tiến độ thực thi {percent}%): "
+        "{passed} đạt, {failed} không đạt, {blocked} bị chặn, {skipped} bỏ qua."
+    ).format(
         executed=metrics.get("executed_test_count", 0),
         planned=metrics.get("planned_test_count", 0),
         percent=metrics.get("execution_percent", 0),
+        passed=metrics.get("pass", 0),
+        failed=metrics.get("fail", 0),
+        blocked=metrics.get("blocked", 0),
+        skipped=metrics.get("skipped", 0),
     )
     coverage = (
         "Độ phủ yêu cầu {requirements}% điều kiện kiểm thử {conditions}% và rủi ro {risks}%".format(
@@ -125,7 +121,6 @@ def generated_summaries(snapshot):
     )
     return progress, coverage, defects
 
-
 async def get_report_for_user(report_id, user, permission=None):
     report = await find_report(report_id)
     if not report:
@@ -133,11 +128,9 @@ async def get_report_for_user(report_id, user, permission=None):
     await get_project(report["project_id"], user, permission or "teststatusreport.read")
     return report
 
-
 async def list_status_reports(project_id, test_plan_id, release_id, status, limit, user):
     await get_project(project_id, user, "teststatusreport.read")
     return await list_reports(project_id, test_plan_id, release_id, status, limit)
-
 
 async def generate_status_report(project_id, payload, user):
     await get_project(project_id, user, "teststatusreport.create")
@@ -255,7 +248,6 @@ async def generate_status_report(project_id, payload, user):
                     },
                     session=session,
                 )
-                await emit_status_report_created(report, user, session=session)
     except DuplicateKeyError:
         if payload.idempotency_key:
             existing = await find_report_by_idempotency(project_id, payload.idempotency_key)
@@ -264,7 +256,6 @@ async def generate_status_report(project_id, payload, user):
                 return existing
         raise
     return report
-
 
 async def update_status_report(report_id, payload, user):
     report = await get_report_for_user(report_id, user, "teststatusreport.update")
@@ -293,25 +284,24 @@ async def update_status_report(report_id, payload, user):
     )
     return updated
 
-
 async def generate_status_report_narrative(report_id, payload, user):
     report = await get_report_for_user(report_id, user, "teststatusreport.update")
     if report["status"] != "DRAFT":
         raise HTTPException(status_code=409, detail={"code": "STATUS_REPORT_IMMUTABLE"})
-    automation_run_id = getattr(user, "_ai_automation_run_id", None)
+    ai_run_id = getattr(user, "_ai_capability_run_id", None)
     expected_event_id = (
         f"status-report:{report_id}:{payload.source_event_revision}:STATUS_REPORT_CREATED"
     )
-    if automation_run_id and (
-        getattr(user, "_ai_automation_trigger", None) != payload.source_event_trigger
-        or getattr(user, "_ai_automation_source_event_id", None) != payload.source_event_id
+    if ai_run_id and (
+        getattr(user, "_ai_capability_trigger", None) != payload.source_event_trigger
+        or getattr(user, "_ai_capability_source_event_id", None) != payload.source_event_id
     ):
         raise HTTPException(
             status_code=403, detail={"code": "VERIFIED_STATUS_REPORT_EVENT_REQUIRED"}
         )
-    if payload.source_event_revision != report.get("revision") or (automation_run_id and payload.source_event_id != expected_event_id):
+    if payload.source_event_revision != report.get("revision") or (ai_run_id and payload.source_event_id != expected_event_id):
         raise HTTPException(status_code=409, detail={"code": "STATUS_REPORT_EVENT_SUPERSEDED"})
-    if not automation_run_id:
+    if not ai_run_id:
         if payload.source_event_id or payload.source_event_trigger:
             raise HTTPException(403, detail={'code': 'VERIFIED_STATUS_REPORT_EVENT_REQUIRED'})
         payload = payload.model_copy(update={'source_event_id': f'manual:status-report:{report_id}:{report["revision"]}:{user.id}'})
@@ -322,10 +312,10 @@ async def generate_status_report_narrative(report_id, payload, user):
             or existing.get("subject_id") != report_id
             or existing.get("source_event_id") != payload.source_event_id
             or existing.get("source_event_revision") != payload.source_event_revision
-            or existing.get("source_automation_run_id") != automation_run_id
+            or existing.get("source_ai_run_id") != ai_run_id
         ):
             raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
-        _verify_narrative_replay(existing, payload, report_id, automation_run_id, user)
+        _verify_narrative_replay(existing, payload, report_id, ai_run_id, user)
         return existing
     narrative_basis = {
         key: report.get(key)
@@ -357,7 +347,7 @@ async def generate_status_report_narrative(report_id, payload, user):
         }
     ]
     instruction = json.dumps({"instruction": payload.instruction}, ensure_ascii=False)
-    ai = await request_ai_automation(
+    ai = await request_ai_capability(
         "status_report_narrative",
         report["project_id"],
         instruction,
@@ -377,14 +367,14 @@ async def generate_status_report_narrative(report_id, payload, user):
         "source_event_id": payload.source_event_id,
         "source_event_revision": payload.source_event_revision,
         "source_event_trigger": payload.source_event_trigger,
-        "source_automation_run_id": automation_run_id,
+        "source_ai_run_id": ai_run_id,
         "candidate_only": True,
         "human_confirmation_required": True,
         "suggestions": ai.get("suggestions", []),
         **ai_contract_metadata(ai),
         "idempotency_key": payload.idempotency_key,
         "idempotency_request_hash": _narrative_request_hash(
-            payload, report_id, automation_run_id, user
+            payload, report_id, ai_run_id, user
         ),
         "created_by": user.id,
         "content_author_ids": [user.id],
@@ -408,12 +398,11 @@ async def generate_status_report_narrative(report_id, payload, user):
         existing = await find_ai_result(report["project_id"], payload.idempotency_key)
         if not existing:
             raise
-        _verify_narrative_replay(existing, payload, report_id, automation_run_id, user)
+        _verify_narrative_replay(existing, payload, report_id, ai_run_id, user)
         if existing.get("result_type") != "STATUS_REPORT_NARRATIVE" or existing.get("subject_id") != report_id:
             raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
         return existing
     return result
-
 
 async def latest_status_report_narrative(report_id, user):
     report = await get_report_for_user(report_id, user, "teststatusreport.read")
@@ -421,7 +410,6 @@ async def latest_status_report_narrative(report_id, user):
     if result:
         result["stale"] = result.get("source_event_revision") != report.get("revision")
     return result
-
 
 async def attach_status_report_evidence(report_id, payload, user):
     report = await get_report_for_user(report_id, user, "teststatusreport.update")
@@ -446,7 +434,6 @@ async def attach_status_report_evidence(report_id, payload, user):
         {"evidence_refs": payload.evidence_refs},
     )
     return updated
-
 
 async def transition_status_report(report_id, payload, user, transition_action):
     transition = {
@@ -484,7 +471,7 @@ async def transition_status_report(report_id, payload, user, transition_action):
     source = transition["source"]
     target = transition["target"]
     if target in {'APPROVED', 'PUBLISHED'}:
-        require_automation_publication_authority(user, transition['permission'])
+        require_ai_publication_authority(user, transition['permission'])
     report = await get_report_for_user(report_id, user, transition["permission"])
     if transition_action in {"approve", "request_changes"}:
         await require_independent_review(report, user, "TEST_STATUS_REPORT_SELF_REVIEW_FORBIDDEN")
@@ -528,7 +515,6 @@ async def transition_status_report(report_id, payload, user, transition_action):
         {"from": source, "to": target, "note": payload.note},
     )
     return updated
-
 
 async def compare_status_reports(report_id, other_report_id, user):
     left = await get_report_for_user(report_id, user)

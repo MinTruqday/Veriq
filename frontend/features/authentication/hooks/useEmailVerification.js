@@ -20,7 +20,7 @@ export function useEmailVerification() {
       const result = await verifyEmailAPI(normalizedToken);
       setVerifiedEmail(result?.email || "");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Không thể xác minh địa chỉ thư điện tử");
+      setError(reason instanceof Error ? reason.message : "Không thể xác minh Email");
     } finally {
       setSubmitting(false);
     }

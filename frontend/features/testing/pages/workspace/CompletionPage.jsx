@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import CompletionReportEditor from "../../components/CompletionReportEditor";
 import DataTable from "../../components/DataTable";
+import { criterionName } from "../../components/ExitCriteriaPanel";
 import FormalReviewPanel from "../../components/FormalReviewPanel";
 import LessonsLearnedPanel from "../../components/LessonsLearnedPanel";
 import QualityGateBadge from "../../components/QualityGateBadge";
@@ -773,7 +774,7 @@ export default function CompletionPage({ project }) {
                     }))}
                     empty="Không có điều kiện phát hành"
                     columns={[
-                      { key: "criterion", label: "Tiêu chí" },
+                      { key: "criterion", label: "Tiêu chí", render: criterionName },
                       {
                         key: "actual",
                         label: "Thực tế",

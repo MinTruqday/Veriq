@@ -69,7 +69,7 @@ export default function ProjectCompletenessReviewPanel({ project, user }) {
           .map((key) => key.slice(11)),
         stage,
         scope_description: scopeDescription,
-        output_language: preferredSummaryLocale(user?.locale, project.locale, navigator.language),
+        output_language: preferredSummaryLocale(user?.locale, project.locale),
       };
       const fingerprint = JSON.stringify({ project_id: project._id, ...request });
       if (idempotencyRef.current?.fingerprint !== fingerprint) {
@@ -115,7 +115,7 @@ export default function ProjectCompletenessReviewPanel({ project, user }) {
               minLength={5}
               value={scopeDescription}
               onChange={(event) => setScopeDescription(event.target.value)}
-              placeholder="Ví dụ: Đăng nhập bằng email và mật khẩu"
+              placeholder="Ví dụ: Đăng nhập bằng Email và mật khẩu"
             />
           </label>
         </div>
@@ -129,7 +129,7 @@ export default function ProjectCompletenessReviewPanel({ project, user }) {
                   checked={selected.has(`document:${item.id}`)}
                   onChange={() => toggle(`document:${item.id}`)}
                 />
-                {item.name}
+                {item.filename || item.name || item.id}
               </label>
             ))}
           </fieldset>

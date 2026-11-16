@@ -590,18 +590,24 @@ class QdrantPointPayload(ProjectArtifactChunkMetadata):
                 self.chunk_hash,
                 self.embedding_input_hash,
             ):
-                if len(digest) != 64 or any(
-                    character not in "0123456789abcdef" for character in digest
-                ):
+                try:
+                    valid_digest = len(digest) == 64 and bytes.fromhex(
+                        digest
+                    ).hex() == digest
+                except ValueError:
+                    valid_digest = False
+                if not valid_digest:
                     raise ValueError("qdrant_document_digest_invalid")
-            if self.index_generation and (
-                len(self.index_generation) != 64
-                or any(
-                    character not in "0123456789abcdef"
-                    for character in self.index_generation
-                )
-            ):
-                raise ValueError("qdrant_document_index_generation_invalid")
+            if self.index_generation:
+                try:
+                    valid_generation = len(self.index_generation) == 64 and (
+                        bytes.fromhex(self.index_generation).hex()
+                        == self.index_generation
+                    )
+                except ValueError:
+                    valid_generation = False
+                if not valid_generation:
+                    raise ValueError("qdrant_document_index_generation_invalid")
             if self.chunk_type == "summary":
                 if (
                     self.chunk_index != -1

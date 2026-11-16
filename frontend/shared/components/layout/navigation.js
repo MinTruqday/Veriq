@@ -67,7 +67,7 @@ export function testCaseSubsectionItems(projectId) {
       id: "ai",
       label: "Hoạt động AI",
       href: `${root}/ai`,
-      anyPermission: ["proposal.read", "automation.read"],
+      anyPermission: ["proposal.read", "requirement.read"],
       permissions: ["testcase.read"],
     },
     {
@@ -88,7 +88,7 @@ export function testCaseSubsectionItems(projectId) {
       id: "automation",
       label: "Mã kiểm thử tự động",
       href: `${root}/tu-dong-hoa`,
-      anyPermission: ["automation.read", "proposal.read"],
+      permission: "automation.read",
       permissions: ["testcase.read"],
     },
     {
@@ -278,6 +278,13 @@ export function navigationGroupsFor(pathname, planningMethod = null) {
         ],
         execution: [
           {
+            id: "execution-overview",
+            label: "Tổng quan",
+            href: `${root}/${PROJECT_SECTION_SLUGS.execution}`,
+            icon: LayoutDashboard,
+            permission: "testrun.read",
+          },
+          {
             id: "test-plans",
             label: "Kế hoạch kiểm thử",
             href: `${root}/${PROJECT_SECTION_SLUGS.testPlans}`,
@@ -293,10 +300,10 @@ export function navigationGroupsFor(pathname, planningMethod = null) {
           },
           {
             id: "automation",
-            label: "Tự động hóa",
+            label: "Mã kiểm thử tự động",
             href: `${root}/${PROJECT_SECTION_SLUGS.automation}`,
             icon: BrainCircuit,
-            anyPermission: ["automation.read", "proposal.read"],
+            permission: "automation.read",
           },
           {
             id: "defects",
@@ -350,7 +357,7 @@ export function navigationGroupsFor(pathname, planningMethod = null) {
             label: "Hoạt động AI",
             href: `${root}/${PROJECT_SECTION_SLUGS.aiReview}`,
             icon: BrainCircuit,
-            anyPermission: ["automation.read", "proposal.read"],
+            anyPermission: ["requirement.read", "proposal.read"],
           },
         ],
         resources: [

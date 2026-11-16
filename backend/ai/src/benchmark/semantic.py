@@ -1,9 +1,9 @@
 import json
 
 from src.schemas.evaluation import TestabilityBenchmarkGoldCase
-from src.schemas.inference_requests import TestingAutomationRequest, TestingEvidence
-from src.services.ai_automation import generate_ai_automation
-from src.services.automation_provenance import source_quote_spans
+from src.schemas.inference_requests import TestingCapabilityRequest, TestingEvidence
+from src.services.ai_capabilities import generate_ai_capability
+from src.services.source_provenance import source_quote_spans
 
 
 class TestabilityBenchmarkSemanticScoring:
@@ -58,13 +58,13 @@ class TestabilityBenchmarkSemanticScoring:
             ensure_ascii=False,
             sort_keys=True,
         )
-        request = TestingAutomationRequest(
+        request = TestingCapabilityRequest(
             capability="testability_benchmark_semantic_evaluation",
             project_id=f"benchmark:{dataset_id}",
             instruction=instruction,
             evidence=[TestingEvidence.model_validate(item) for item in source_evidence],
         )
-        result = await generate_ai_automation(request)
+        result = await generate_ai_capability(request)
         if result.status != "SUCCESS" or result.degraded_mode:
             return {
                 "status": "NOT_AVAILABLE",
@@ -131,8 +131,8 @@ class TestabilityBenchmarkSemanticScoring:
             "matches": raw_matches,
             "warnings": list(result.warnings),
             "interpretation": (
-                "Đánh giá ngữ nghĩa do mô hình giám khảo ước lượng trên mô tả nghĩa vụ do người biên soạn nhập; "
-                "không phải xác minh độc lập và cần được diễn giải cùng nguồn dẫn, nhãn tham chiếu và giới hạn của giám khảo."
+                "Semantic alignment is estimated by a judge model from author-supplied obligation descriptions; "
+                "it is not independent verification and must be interpreted with the cited sources, reference labels, and judge limitations."
             ),
         }
 

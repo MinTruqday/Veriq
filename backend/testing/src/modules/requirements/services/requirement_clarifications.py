@@ -6,7 +6,7 @@ from pymongo.errors import DuplicateKeyError, PyMongoError
 from src.core.common import audit, get_project_entity, new_id, now, plain_text
 from src.core.database import database
 from src.core.human_decisions import (
-    require_automation_publication_authority,
+    require_ai_publication_authority,
     require_independent_review,
 )
 from src.modules.design.services.linters import requirement_findings
@@ -160,7 +160,21 @@ async def create_clarification(requirement_version_id, payload, user):
 
 
 async def generate_clarifications(requirement_version_id, user):
-    version = await get_project_entity("requirement_versions", requirement_version_id, user, "requirement.review")
+    try:
+        version = await get_project_entity(
+            "requirement_versions", requirement_version_id, user, "requirement.create"
+        )
+    except HTTPException as error:
+        if error.status_code != 403:
+            raise
+        version = await get_project_entity(
+            "requirement_versions", requirement_version_id, user, "requirement.review"
+        )
+    else:
+        if version.get("status") != "DRAFT":
+            version = await get_project_entity(
+                "requirement_versions", requirement_version_id, user, "requirement.review"
+            )
     criteria = await requirement_repository.list_acceptance_criteria(version["_id"], None)
     findings = [
         finding
@@ -428,7 +442,7 @@ async def request_clarification_changes(clarification_id, payload, user):
 
 
 async def resolve_clarification(clarification_id, payload, user):
-    require_automation_publication_authority(user, "requirement.approve")
+    require_ai_publication_authority(user, "requirement.approve")
     clarification = await requirement_clarification_repository.find(clarification_id)
     if not clarification:
         raise HTTPException(status_code=404, detail={"code": "CLARIFICATION_NOT_FOUND"})
@@ -484,7 +498,7 @@ async def resolve_clarification(clarification_id, payload, user):
 
 
 async def decide_clarification(clarification_id, payload, user):
-    require_automation_publication_authority(user)
+    require_ai_publication_authority(user)
     clarification = await requirement_clarification_repository.find(clarification_id)
     if not clarification:
         raise HTTPException(status_code=404, detail={"code": "CLARIFICATION_NOT_FOUND"})

@@ -101,7 +101,7 @@ export default function DocumentEditor({
   const addLink = async () => {
     await ask({
       title: "Thêm hoặc sửa liên kết",
-      description: "Nhập địa chỉ web hoặc email; để trống để bỏ liên kết hiện tại",
+      description: "Nhập địa chỉ web hoặc Email; để trống để bỏ liên kết hiện tại",
       fields: [
         {
           name: "href",
@@ -119,10 +119,10 @@ export default function DocumentEditor({
         try {
           parsed = new URL(href.trim());
         } catch {
-          throw new Error("Nhập một địa chỉ HTTP, HTTPS hoặc email hợp lệ");
+          throw new Error("Nhập một địa chỉ HTTP, HTTPS hoặc Email hợp lệ");
         }
         if (!["http:", "https:", "mailto:"].includes(parsed.protocol)) {
-          throw new Error("Chỉ hỗ trợ liên kết HTTP, HTTPS hoặc email");
+          throw new Error("Chỉ hỗ trợ liên kết HTTP, HTTPS hoặc Email");
         }
         editor.chain().focus().extendMarkRange("link").setLink({ href: parsed.toString() }).run();
       },

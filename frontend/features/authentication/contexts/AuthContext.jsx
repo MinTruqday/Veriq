@@ -80,7 +80,9 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const handleSessionExpired = () => {
       const token = getToken();
-      if (!token || !clearAuth(token) || window.location.pathname === "/dang-nhap") return;
+      if (token && !clearAuth(token)) return;
+      if (!token) clearAuth();
+      if (window.location.pathname === "/dang-nhap") return;
       const requestedPath = `${window.location.pathname}${window.location.search}`;
       const next = authReturnPath(requestedPath);
       router.replace(`/dang-nhap?next=${encodeURIComponent(next)}`);

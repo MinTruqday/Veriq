@@ -7,7 +7,7 @@ from src.core.common import audit, get_project, get_project_entity, new_id, now
 from src.core.database import database
 from src.repositories.impact_analysis import impact_analysis_repository
 from src.modules.quality.services.change_analysis import classify_test_impact, semantic_candidate_score
-from src.modules.quality.services.impact_automation import (
+from src.modules.quality.services.impact_ai import (
     ai_new_test_requirements,
     apply_ai_impact_suggestions,
     request_impact_classification,

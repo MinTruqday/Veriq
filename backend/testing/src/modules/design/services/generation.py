@@ -5,7 +5,7 @@ from difflib import SequenceMatcher
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from src.core.ai_automation import request_ai_automation
+from src.core.ai_capabilities import request_ai_capability
 from src.core.common import plain_text
 from src.core.database import database
 from src.core.rich_text import text_document
@@ -75,12 +75,12 @@ def grounded_retry_instruction(instruction, result):
 
 
 async def request_grounded_test_generation(project_id, instruction, evidence):
-    result = await request_ai_automation(
+    result = await request_ai_capability(
         "test_generation", project_id, instruction, evidence
     )
     if "AI_UNGROUNDED_OUTPUT" not in (result.get("reason_codes") or []):
         return result
-    return await request_ai_automation(
+    return await request_ai_capability(
         "test_generation",
         project_id,
         grounded_retry_instruction(instruction, result),
@@ -350,7 +350,7 @@ async def generate_requirement_drafts(
         cursor = database.value.test_plans.find(
             {
                 "project_id": version["project_id"],
-                "status": "APPROVED",
+                "status": {"$in": ["DRAFT", "APPROVED"]},
                 "requirement_version_ids": version["_id"],
             },
             {
@@ -360,25 +360,43 @@ async def generate_requirement_drafts(
                 "approved_snapshot_hash": 1,
                 "baseline_hash": 1,
                 "device_matrix_id": 1,
+                "objective": 1,
+                "scope_in": 1,
+                "scope_out": 1,
+                "test_approach": 1,
+                "risks": 1,
             },
-        ).sort("updated_at", -1).limit(5)
-        for plan in await cursor.to_list(5):
-            from src.modules.execution.services.test_plan import verified_approved_plan_snapshot
+        ).sort([("status", 1), ("updated_at", -1)]).limit(10)
+        for plan in await cursor.to_list(10):
+            if plan.get("status") == "APPROVED":
+                from src.modules.execution.services.test_plan import verified_approved_plan_snapshot
 
-            try:
-                snapshot, digest = verified_approved_plan_snapshot(plan, version["project_id"])
-            except HTTPException:
-                continue
-            related_context = {
-                "type": "approved_test_plan",
-                "plan_id": plan["_id"],
-                "snapshot_hash": digest,
-                "objective": snapshot.get("objective"),
-                "scope_in": snapshot.get("scope_in", [])[:20],
-                "scope_out": snapshot.get("scope_out", [])[:20],
-                "test_approach": snapshot.get("test_approach"),
-                "risks": snapshot.get("risks", [])[:20],
-            }
+                try:
+                    snapshot, digest = verified_approved_plan_snapshot(plan, version["project_id"])
+                except HTTPException:
+                    continue
+                related_context = {
+                    "type": "approved_test_plan",
+                    "plan_id": plan["_id"],
+                    "snapshot_hash": digest,
+                    "objective": snapshot.get("objective"),
+                    "scope_in": snapshot.get("scope_in", [])[:20],
+                    "scope_out": snapshot.get("scope_out", [])[:20],
+                    "test_approach": snapshot.get("test_approach"),
+                    "risks": snapshot.get("risks", [])[:20],
+                }
+            else:
+                related_context = {
+                    "type": "current_test_plan_draft",
+                    "plan_id": plan["_id"],
+                    "revision": plan.get("revision"),
+                    "objective": plan.get("objective"),
+                    "scope_in": list(plan.get("scope_in") or [])[:20],
+                    "scope_out": list(plan.get("scope_out") or [])[:20],
+                    "test_approach": plan.get("test_approach"),
+                    "risks": list(plan.get("risks") or [])[:20],
+                    "status": "DRAFT",
+                }
             break
         existing_scenarios = await database.value.test_scenarios.find(
             {
@@ -406,14 +424,14 @@ async def generate_requirement_drafts(
         scenarios = await database.value.test_scenarios.find(
             {
                 "project_id": version["project_id"],
-                "status": "approved",
+                "status": {"$in": ["draft", "approved"]},
                 "requirement_version_ids": version["_id"],
             },
             {"_id": 1, "title": 1, "category": 1, "objective": 1, "acceptance_criterion_ids": 1},
         ).sort("updated_at", -1).limit(8).to_list(8)
         if scenarios:
             related_context = {
-                "type": "approved_test_scenarios",
+                "type": "current_test_scenarios",
                 "items": [
                     {
                         "scenario_id": item["_id"],
@@ -421,6 +439,7 @@ async def generate_requirement_drafts(
                         "category": item.get("category"),
                         "objective": item.get("objective"),
                         "acceptance_criterion_ids": item.get("acceptance_criterion_ids", []),
+                        "status": item.get("status"),
                     }
                 for item in scenarios
                 ],
@@ -585,12 +604,8 @@ async def generate_requirement_drafts(
         },
         ensure_ascii=False,
     )
-    if len(instruction) > 5000:
-        raise HTTPException(
-            422, detail={"code": 'GENERATION_INSTRUCTION_TOO_LONG'}
-        )
     result = (
-        await request_ai_automation(
+        await request_ai_capability(
             "scenario_generation", version["project_id"], instruction, evidence
         )
         if scenario

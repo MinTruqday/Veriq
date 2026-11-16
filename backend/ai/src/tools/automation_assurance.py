@@ -7,7 +7,7 @@ from langchain_core.runnables import RunnableConfig
 from pydantic import Field
 
 from src.tools.registry import with_tool_access
-from src.tools.testing_api import AutomationOperationError, require_operation
+from src.tools.testing_api import ToolOperationError, require_operation
 
 
 def _test_case_version_ids(assessment):
@@ -22,14 +22,14 @@ def _test_case_version_ids(assessment):
 
 @with_tool_access(("analysis", "test_design"), "MUTATE", "testcase.read")
 async def refresh_assurance_after_test_case_approval(
-    project_id: Annotated[str, Field(min_length=1, description="Dự án sở hữu Test Case")],
-    version_id: Annotated[str, Field(min_length=1, description="Phiên bản Test Case đã đóng băng")],
+    project_id: Annotated[str, Field(min_length=1, description="Project that owns the Test Case")],
+    version_id: Annotated[str, Field(min_length=1, description="Frozen Test Case version")],
     config: RunnableConfig = None,
 ) -> str:
     """Refresh only derived assurance snapshots linked to a verified approved Test Case."""
     configurable = (config or {}).get("configurable", {})
-    if not configurable.get("automation_run_id"):
-        return json.dumps({"status": "automation_blocked", "reason_code": "AUTOMATION_RUN_REQUIRED"})
+    if not configurable.get("ai_run_id"):
+        return json.dumps({"status": "blocked", "reason_code": "AI_RUN_REQUIRED"})
 
     event = next(
         (
@@ -44,18 +44,18 @@ async def refresh_assurance_after_test_case_approval(
     )
     if not event:
         return json.dumps(
-            {"status": "automation_blocked", "reason_code": "VERIFIED_TEST_CASE_APPROVAL_EVENT_REQUIRED"}
+            {"status": "blocked", "reason_code": "VERIFIED_TEST_CASE_APPROVAL_EVENT_REQUIRED"}
         )
 
     case_version = await require_operation(
         "GET", f"/phien-ban-ca-kiem-thu/{version_id}", config
     )
     if case_version.get("_id") != version_id or case_version.get("project_id") != project_id:
-        raise AutomationOperationError("TEST_CASE_VERSION_PROJECT_SCOPE_INVALID")
+        raise ToolOperationError("TEST_CASE_VERSION_PROJECT_SCOPE_INVALID")
     if case_version.get("status") != "ACTIVE":
         return json.dumps(
             {
-                "status": "automation_blocked",
+                "status": "blocked",
                 "reason_code": "TEST_CASE_VERSION_NOT_ACTIVE",
                 "version_id": version_id,
             },
@@ -78,7 +78,7 @@ async def refresh_assurance_after_test_case_approval(
             assessment.get("project_id") != project_id
             or assessment.get("requirement_version_id") != requirement_version_id
         ):
-            raise AutomationOperationError("ASSURANCE_REQUIREMENT_SCOPE_INVALID")
+            raise ToolOperationError("ASSURANCE_REQUIREMENT_SCOPE_INVALID")
 
         try:
             updated = await require_operation(
@@ -87,7 +87,7 @@ async def refresh_assurance_after_test_case_approval(
                 config,
                 {"expected_revision": assessment["revision"]},
             )
-        except (AutomationOperationError, KeyError) as error:
+        except (ToolOperationError, KeyError) as error:
             latest = await require_operation(
                 "GET",
                 f"/phien-ban-yeu-cau/{requirement_version_id}/do-day-du-kiem-thu",
@@ -100,7 +100,7 @@ async def refresh_assurance_after_test_case_approval(
             ):
                 updated = latest
             else:
-                raise AutomationOperationError("ASSURANCE_REFRESH_REVISION_CONFLICT") from error
+                raise ToolOperationError("ASSURANCE_REFRESH_REVISION_CONFLICT") from error
 
         readback = await require_operation(
             "GET",
@@ -113,7 +113,7 @@ async def refresh_assurance_after_test_case_approval(
             or readback.get("requirement_version_id") != requirement_version_id
             or int(readback.get("revision") or 0) < int(updated.get("revision") or 0)
         ):
-            raise AutomationOperationError("ASSURANCE_REFRESH_READBACK_INVALID")
+            raise ToolOperationError("ASSURANCE_REFRESH_READBACK_INVALID")
         mapped = version_id in _test_case_version_ids(readback)
         if not mapped:
             unmapped_requirement_versions.append(requirement_version_id)

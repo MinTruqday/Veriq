@@ -228,11 +228,7 @@ export default function DocumentReaderPage({ project, section = [] }) {
   const [searchResults, setSearchResults] = useState(null);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState("");
-  const outputLanguage = preferredSummaryLocale(
-    user?.locale,
-    project?.locale,
-    typeof navigator !== "undefined" ? navigator.language : undefined,
-  );
+  const outputLanguage = preferredSummaryLocale(user?.locale, project?.locale);
 
   const loadPage = useCallback(
     async (offset = 0, append = false, sheet = "", pageNo = null) => {

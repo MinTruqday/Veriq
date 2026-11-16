@@ -20,9 +20,7 @@ function EmailVerificationContent() {
         <InlineState
           title="Xác minh thành công"
           detail={
-            verifiedEmail
-              ? `Địa chỉ ${verifiedEmail} đã được xác minh.`
-              : "Địa chỉ thư điện tử đã được xác minh."
+            verifiedEmail ? `Email ${verifiedEmail} đã được xác minh.` : "Email đã được xác minh."
           }
         />
         <Link className="apple-button mt-5 w-full justify-center" href="/dang-nhap">
@@ -34,8 +32,8 @@ function EmailVerificationContent() {
 
   return (
     <AuthFrame
-      title="Xác minh địa chỉ thư điện tử"
-      description={email ? `Nhập mã đã gửi đến ${email}` : "Nhập mã xác minh đã nhận qua email"}
+      title="Xác minh Email"
+      description={email ? `Nhập mã đã gửi đến ${email}` : "Nhập mã xác minh đã nhận qua Email"}
       footer={
         <Link href="/dang-nhap" className="font-semibold text-brand hover:text-brand-hover">
           Quay lại đăng nhập
@@ -67,7 +65,7 @@ function EmailVerificationContent() {
           onChange={(event) => setToken(event.target.value)}
         />
         <Button type="submit" className="w-full" disabled={submitting}>
-          {submitting ? "Đang xác minh" : "Xác minh email"}
+          {submitting ? "Đang xác minh" : "Xác minh Email"}
         </Button>
       </form>
     </AuthFrame>

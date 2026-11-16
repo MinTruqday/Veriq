@@ -29,6 +29,13 @@ class Settings:
     FALLBACK_LLM_MODEL: str = os.getenv("FALLBACK_LLM_MODEL", "").strip()
     FALLBACK_MODEL_TOKEN: str = os.getenv("FALLBACK_MODEL_TOKEN", "").strip()
     MODEL_TIMEOUT_SECONDS: int = int(os.environ["MODEL_TIMEOUT_SECONDS"])
+    TESTABILITY_BLUEPRINT_MAX_OUTPUT_TOKENS: int = int(
+        os.getenv("TESTABILITY_BLUEPRINT_MAX_OUTPUT_TOKENS", "4096")
+    )
+    RERANKER_TIMEOUT_SECONDS: int = int(os.getenv("RERANKER_TIMEOUT_SECONDS", "30"))
+    RERANKER_RETRY_DELAY_SECONDS: int = int(
+        os.getenv("RERANKER_RETRY_DELAY_SECONDS", "3")
+    )
     RERANKER_MODEL: str = os.environ["RERANKER_MODEL"]
     AI_DB_NAME: str = os.environ["AI_DB_NAME"]
     AUTHENTICATION_URL: str = os.environ["AUTHENTICATION_URL"]
@@ -64,12 +71,12 @@ class Settings:
     AI_AGENT_MAX_STEPS: int = int(os.getenv("AI_AGENT_MAX_STEPS", "8"))
     AI_AGENT_MAX_TOOL_CALLS: int = int(os.getenv("AI_AGENT_MAX_TOOL_CALLS", "6"))
     AI_AGENT_MAX_TOOL_ERRORS: int = int(os.getenv("AI_AGENT_MAX_TOOL_ERRORS", "2"))
-    AI_AUTOMATION_MAX_RETRIES: int = int(os.getenv("AI_AUTOMATION_MAX_RETRIES", "2"))
-    AI_AUTOMATION_RUN_TIMEOUT_SECONDS: int = int(
-        os.getenv("AI_AUTOMATION_RUN_TIMEOUT_SECONDS", "900")
+    AI_RUN_MAX_RETRIES: int = int(os.getenv("AI_RUN_MAX_RETRIES", "2"))
+    AI_RUN_TIMEOUT_SECONDS: int = int(
+        os.getenv("AI_RUN_TIMEOUT_SECONDS", "900")
     )
-    AI_AUTOMATION_TASK_TIMEOUT_SECONDS: int = int(
-        os.getenv("AI_AUTOMATION_TASK_TIMEOUT_SECONDS", "840")
+    AI_RUN_TASK_TIMEOUT_SECONDS: int = int(
+        os.getenv("AI_RUN_TASK_TIMEOUT_SECONDS", "840")
     )
     AI_MESSAGE_ACK_TIMEOUT_SECONDS: int = int(
         os.getenv("AI_MESSAGE_ACK_TIMEOUT_SECONDS", "960")
@@ -86,8 +93,8 @@ class Settings:
     AI_QUEUE_RETRY_SCAN_SECONDS: int = int(
         os.getenv("AI_QUEUE_RETRY_SCAN_SECONDS", "5")
     )
-    AI_AUTOMATION_RECOVERY_BATCH_SIZE: int = int(
-        os.getenv("AI_AUTOMATION_RECOVERY_BATCH_SIZE", "100")
+    AI_RUN_RECOVERY_BATCH_SIZE: int = int(
+        os.getenv("AI_RUN_RECOVERY_BATCH_SIZE", "100")
     )
     AI_DEAD_LETTER_MAX_REDRIVES: int = int(
         os.getenv("AI_DEAD_LETTER_MAX_REDRIVES", "3")
@@ -136,13 +143,13 @@ if settings.AI_AGENT_MAX_TOOL_CALLS < 1:
     raise ValueError("AI_AGENT_MAX_TOOL_CALLS must be positive")
 if settings.AI_AGENT_MAX_TOOL_ERRORS < 0:
     raise ValueError("AI_AGENT_MAX_TOOL_ERRORS must not be negative")
-if settings.AI_AUTOMATION_MAX_RETRIES < 0:
-    raise ValueError("AI_AUTOMATION_MAX_RETRIES must not be negative")
-if settings.AI_AUTOMATION_TASK_TIMEOUT_SECONDS <= 0:
-    raise ValueError("AI_AUTOMATION_TASK_TIMEOUT_SECONDS must be positive")
-if settings.AI_AUTOMATION_RUN_TIMEOUT_SECONDS <= settings.AI_AUTOMATION_TASK_TIMEOUT_SECONDS:
-    raise ValueError("AI_AUTOMATION_RUN_TIMEOUT_SECONDS must exceed task timeout")
-if settings.AI_MESSAGE_ACK_TIMEOUT_SECONDS <= settings.AI_AUTOMATION_RUN_TIMEOUT_SECONDS:
+if settings.AI_RUN_MAX_RETRIES < 0:
+    raise ValueError("AI_RUN_MAX_RETRIES must not be negative")
+if settings.AI_RUN_TASK_TIMEOUT_SECONDS <= 0:
+    raise ValueError("AI_RUN_TASK_TIMEOUT_SECONDS must be positive")
+if settings.AI_RUN_TIMEOUT_SECONDS <= settings.AI_RUN_TASK_TIMEOUT_SECONDS:
+    raise ValueError("AI_RUN_TIMEOUT_SECONDS must exceed task timeout")
+if settings.AI_MESSAGE_ACK_TIMEOUT_SECONDS <= settings.AI_RUN_TIMEOUT_SECONDS:
     raise ValueError("AI_MESSAGE_ACK_TIMEOUT_SECONDS must exceed run timeout")
 if settings.AI_AGENT_MAX_EVIDENCE_ITEMS < 1:
     raise ValueError("AI_AGENT_MAX_EVIDENCE_ITEMS must be positive")
@@ -152,7 +159,7 @@ if settings.AI_QUEUE_RETRY_MAX_SECONDS < settings.AI_QUEUE_RETRY_BASE_SECONDS:
     raise ValueError("AI_QUEUE_RETRY_MAX_SECONDS must be at least the base delay")
 if settings.AI_QUEUE_RETRY_SCAN_SECONDS < 1:
     raise ValueError("AI_QUEUE_RETRY_SCAN_SECONDS must be positive")
-if not 1 <= settings.AI_AUTOMATION_RECOVERY_BATCH_SIZE <= 1000:
-    raise ValueError("AI_AUTOMATION_RECOVERY_BATCH_SIZE must be between 1 and 1000")
+if not 1 <= settings.AI_RUN_RECOVERY_BATCH_SIZE <= 1000:
+    raise ValueError("AI_RUN_RECOVERY_BATCH_SIZE must be between 1 and 1000")
 if settings.AI_DEAD_LETTER_MAX_REDRIVES < 1:
     raise ValueError("AI_DEAD_LETTER_MAX_REDRIVES must be positive")

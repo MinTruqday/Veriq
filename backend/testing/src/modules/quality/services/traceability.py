@@ -502,7 +502,11 @@ class TraceabilityService:
             50000,
             ("completed_at", -1),
         )
-        executed_version_ids = {item["test_case_version_id"] for item in terminal_results}
+        executed_version_ids = {
+            item["test_case_version_id"]
+            for item in terminal_results
+            if item.get("status") in {'PASS', 'FAIL', 'BLOCKED'}
+        }
         latest_execution = {}
         for item in terminal_results:
             latest_execution.setdefault(item["test_case_version_id"], item)

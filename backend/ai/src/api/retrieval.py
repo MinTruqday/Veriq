@@ -55,7 +55,7 @@ def _retrieval_response(docs, message):
 
 
 @router.get(
-    "/nhat-ky/truy-cap-truy-xuat", description="Truy vấn audit access của knowledge retrieval"
+    "/nhat-ky/truy-cap-truy-xuat", description="Query access audit records for knowledge retrieval"
 )
 async def list_retrieval_access_audit(
     requester_id: str | None = None,
@@ -71,7 +71,7 @@ async def list_retrieval_access_audit(
 @router.post(
     "/truy-xuat",
     response_model=APIResponse[RetrieveResponse],
-    description="Truy xuất knowledge bằng dense sparse fusion và rerank",
+    description="Retrieve knowledge with dense-sparse fusion and reranking",
 )
 async def retrieve_documents(
     req: RetrieveRequest, user: CurrentUser = Depends(get_current_user)
@@ -92,13 +92,13 @@ async def retrieve_documents(
         raise HTTPException(status_code=503, detail={"code": str(error)}) from error
     await RetrievalAuditService.record("retrieve", req.query, requester_id, is_admin, docs)
     metrics_collector.record_artifact_retrieval(docs, req.metadata_filters.artifact_type)
-    return _retrieval_response(docs, "Truy xuất tài liệu thành công")
+    return _retrieval_response(docs, "Document retrieval completed")
 
 
 @router.post(
     "/truy-xuat-lien-tai-lieu",
     response_model=APIResponse[RetrieveResponse],
-    description="Truy xuất knowledge liên tài liệu",
+    description="Retrieve knowledge across documents",
 )
 async def cross_document_retrieve(
     req: CrossDocRetrieveRequest, user: CurrentUser = Depends(get_current_user)
@@ -120,4 +120,4 @@ async def cross_document_retrieve(
         "cross_document_retrieve", req.question, requester_id, is_admin, docs
     )
     metrics_collector.record_artifact_retrieval(docs, req.metadata_filters.artifact_type)
-    return _retrieval_response(docs, "Truy xuất liên tài liệu thành công")
+    return _retrieval_response(docs, "Cross-document retrieval completed")

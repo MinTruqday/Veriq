@@ -7,7 +7,7 @@ from langchain_core.runnables import RunnableConfig
 from pydantic import Field
 
 from src.tools.registry import with_tool_access
-from src.tools.testing_api import AutomationOperationError, require_operation
+from src.tools.testing_api import ToolOperationError, require_operation
 
 
 @with_tool_access(("execution",), "MUTATE", "testcase.read", owner_domain="execution")
@@ -19,8 +19,8 @@ async def process_recorded_test_execution(
 ) -> str:
     """Record a verified failed execution against mapped assurance obligations."""
     configurable = (config or {}).get("configurable", {})
-    if not configurable.get("automation_run_id"):
-        return json.dumps({"status": "automation_blocked", "reason_code": "AUTOMATION_RUN_REQUIRED"})
+    if not configurable.get("ai_run_id"):
+        return json.dumps({"status": "blocked", "reason_code": "AI_RUN_REQUIRED"})
     source_event = next(
         (
             item
@@ -34,11 +34,11 @@ async def process_recorded_test_execution(
         None,
     )
     if not source_event:
-        return json.dumps({"status": "automation_blocked", "reason_code": "VERIFIED_TEST_RESULT_EVENT_REQUIRED"})
+        return json.dumps({"status": "blocked", "reason_code": "VERIFIED_TEST_RESULT_EVENT_REQUIRED"})
 
     result = await require_operation("GET", f"/ket-qua-kiem-thu/{result_id}", config)
     if result.get("project_id") != project_id or result.get("_id") != result_id:
-        return json.dumps({"status": "automation_blocked", "reason_code": "TEST_RESULT_PROJECT_SCOPE_INVALID"})
+        return json.dumps({"status": "blocked", "reason_code": "TEST_RESULT_PROJECT_SCOPE_INVALID"})
     if result.get("revision") != expected_revision:
         return json.dumps(
             {
@@ -114,7 +114,7 @@ async def process_recorded_test_execution(
             "GET", f"/phien-ban-yeu-cau/{requirement_version_id}/do-day-du-kiem-thu", config
         )
         if assessment.get("project_id") != project_id:
-            raise AutomationOperationError("ASSURANCE_PROJECT_SCOPE_INVALID")
+            raise ToolOperationError("ASSURANCE_PROJECT_SCOPE_INVALID")
         for item in assessment.get("coverage_items", []):
             mapped_versions = {
                 str(value.get("id"))
@@ -125,7 +125,7 @@ async def process_recorded_test_execution(
                 continue
             coverage_item_id = str(item.get("coverage_item_id") or "")
             if not coverage_item_id:
-                raise AutomationOperationError("COVERAGE_ITEM_IDENTIFIER_MISSING")
+                raise ToolOperationError("COVERAGE_ITEM_IDENTIFIER_MISSING")
             matched_coverage_item_ids.append(coverage_item_id)
             if any(
                 str(feedback.get("test_result_id") or "") == result_id
@@ -145,7 +145,7 @@ async def process_recorded_test_execution(
                     "outcome": "CAUGHT_DEFECT",
                     "test_result_id": result_id,
                     "defect_id": linked_defects[0],
-                    "note": "Đối chiếu từ kết quả FAIL đã lưu và defect được liên kết trong cùng dự án",
+                    "note": 'Đối chiếu từ kết quả FAIL đã lưu và defect được liên kết trong cùng dự án.',
                 },
             )
             readback = await require_operation(
@@ -165,7 +165,7 @@ async def process_recorded_test_execution(
                     for feedback in verified_item.get("execution_feedback", [])
                 )
             ):
-                raise AutomationOperationError("EXECUTION_FEEDBACK_READBACK_FAILED")
+                raise ToolOperationError("EXECUTION_FEEDBACK_READBACK_FAILED")
             feedback_recorded.append(coverage_item_id)
 
     return json.dumps(

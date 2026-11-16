@@ -1,9 +1,10 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ErrorState, Panel, StatusPill } from "./WorkspacePrimitives";
 import ContentOriginBadge from "../../../shared/components/common/ContentOriginBadge";
 import { messageOf, valueLabel } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
+import { RefreshCw } from "lucide-react";
 
 function CandidateList({ title, results, getCandidates, renderCandidate, empty }) {
   return (
@@ -52,10 +53,15 @@ export default function SpecializedDesignPanel({ project }) {
   const [securityResults, setSecurityResults] = useState([]);
   const [performancePlans, setPerformancePlans] = useState([]);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const pendingRef = useRef(false);
   const canReadSecurity = project.current_permissions?.includes("ai.generate_security_tests");
   const canReadPerformance = project.current_permissions?.includes("ai.generate_performance_plan");
 
   const load = useCallback(async () => {
+    if (pendingRef.current) return;
+    pendingRef.current = true;
+    setLoading(true);
     try {
       const [securityValues, performanceValues] = await Promise.all([
         canReadSecurity ? testingApi.listSecurityTestSuggestions(project._id) : Promise.resolve([]),
@@ -68,6 +74,9 @@ export default function SpecializedDesignPanel({ project }) {
       setError("");
     } catch (reason) {
       setError(messageOf(reason));
+    } finally {
+      pendingRef.current = false;
+      setLoading(false);
     }
   }, [canReadPerformance, canReadSecurity, project._id]);
 
@@ -75,43 +84,24 @@ export default function SpecializedDesignPanel({ project }) {
     void load();
   }, [load]);
 
-  useEffect(() => {
-    if (!canReadSecurity && !canReadPerformance) return undefined;
-    let active = true;
-    let pending = false;
-    const timer = window.setInterval(async () => {
-      if (document.visibilityState !== "visible" || pending) return;
-      pending = true;
-      try {
-        const [securityValues, performanceValues] = await Promise.all([
-          canReadSecurity
-            ? testingApi.listSecurityTestSuggestions(project._id)
-            : Promise.resolve([]),
-          canReadPerformance
-            ? testingApi.listPerformancePlanDrafts(project._id)
-            : Promise.resolve([]),
-        ]);
-        if (active) {
-          setSecurityResults(securityValues);
-          setPerformancePlans(performanceValues);
-          setError("");
-        }
-      } catch (reason) {
-        if (active) setError(messageOf(reason));
-      } finally {
-        pending = false;
-      }
-    }, 5000);
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-    };
-  }, [canReadPerformance, canReadSecurity, project._id]);
-
   if (!canReadSecurity && !canReadPerformance) return null;
 
   return (
-    <Panel title="Đề xuất kiểm thử chuyên sâu">
+    <Panel
+      title="Đề xuất kiểm thử chuyên sâu"
+      actions={
+        <button
+          aria-label="Tải lại đề xuất kiểm thử chuyên sâu"
+          className="icon-button h-9 w-9 shrink-0"
+          disabled={loading}
+          onClick={() => void load()}
+          title="Tải lại đề xuất kiểm thử chuyên sâu"
+          type="button"
+        >
+          <RefreshCw aria-hidden="true" className={loading ? "animate-spin" : ""} size={16} />
+        </button>
+      }
+    >
       <div className="space-y-4 p-5">
         {error && <ErrorState message={error} />}
         <div className="grid gap-6 xl:grid-cols-2">

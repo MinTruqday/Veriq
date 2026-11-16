@@ -294,7 +294,7 @@ export default function RequirementSourceDocumentsPanel({
     setStartingAiDocumentId(item._id);
     setAiActivationNotice("");
     try {
-      const outputLanguage = preferredSummaryLocale(userLocale, projectLocale, navigator.language);
+      const outputLanguage = preferredSummaryLocale(userLocale, projectLocale);
       const result = await testingApi.startRequirementDocumentAI(item._id, {
         expected_revision: item.revision,
         idempotency_key: `start-${item._id}-r${item.revision}-${outputLanguage.replace(/[^A-Za-z0-9_-]/g, "-")}`,
@@ -397,7 +397,7 @@ export default function RequirementSourceDocumentsPanel({
 
   const summarizeDocuments = async (documentIds, allReadable = false) => {
     const requestSequence = ++summaryRequestSequenceRef.current;
-    const outputLanguage = preferredSummaryLocale(userLocale, projectLocale, navigator.language);
+    const outputLanguage = preferredSummaryLocale(userLocale, projectLocale);
     setSummaryBusy(true);
     setSummaryJob(null);
     setSummaryResult(null);

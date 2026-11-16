@@ -4,7 +4,7 @@ import re
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
-from src.core.ai_automation import request_ai_automation
+from src.core.ai_capabilities import request_ai_capability
 from src.core.common import audit, get_project, get_project_entity, new_id, now, plain_text, validate_doc
 from src.core.database import database
 from src.schemas.contracts.requirements import RequirementCreate, RequirementExtractionInput, RequirementVersionCreate
@@ -302,7 +302,7 @@ async def extract_grounded_requirement_candidates(document, project_id, include_
         raise HTTPException(status_code=413, detail={"code": "REQUIREMENT_SOURCE_TOO_LARGE"})
     results = []
     for start in range(0, len(evidence), 8):
-        result = await request_ai_automation(
+        result = await request_ai_capability(
             "requirement_template_synthesis",
             project_id,
             "Extract complete source-grounded Requirement records. Preserve source identifiers exactly. "
@@ -1105,13 +1105,44 @@ async def create_requirement_import_job(project_id, payload, user):
     )
 
 
-async def create_requirement_preview_from_candidates(project_id, filename, candidates, user, template_id=None, template_version=None, template_public_view=False):
+async def create_requirement_preview_from_candidates(
+    project_id,
+    filename,
+    candidates,
+    user,
+    template_id=None,
+    template_version=None,
+    template_public_view=False,
+    source_document_id=None,
+    source_content_hash=None,
+):
     await get_project(project_id, user, 'requirement.create')
     if not candidates or len(candidates) > 500:
         raise HTTPException(status_code=422, detail={"code": "IMPORT_CANDIDATE_COUNT_INVALID"})
+    source_document = None
+    if source_document_id:
+        source_document = await requirement_document_repository.find(
+            source_document_id, project_id
+        )
+        expected_hash = source_content_hash or (source_document or {}).get("content_hash")
+        if (
+            not source_document
+            or source_document.get("status") not in {"READY", "EXTRACTED", "CONFIRMED"}
+            or not expected_hash
+            or source_document.get("content_hash") != expected_hash
+        ):
+            raise HTTPException(status_code=409, detail={"code": "IMPORT_SOURCE_CHANGED"})
+        source_content_hash = expected_hash
     if template_id:
         existing = await requirement_import_repository.find_by_template_version(project_id, template_id, template_version, template_public_view)
         if existing:
+            if source_document_id:
+                await link_template_import_to_source(
+                    existing, source_document, source_content_hash, user
+                )
+                existing = await requirement_import_repository.find(
+                    existing["_id"], project_id
+                )
             return existing
     job_id = new_id('RIMP')
     previews = prepare_requirement_candidates(job_id, candidates)
@@ -1123,6 +1154,7 @@ async def create_requirement_preview_from_candidates(project_id, filename, candi
         "template_id": template_id,
         "template_version": template_version,
         "template_public_view": template_public_view,
+        **({"source_document_id": source_document_id, "source_content_hash": source_content_hash} if source_document_id else {}),
         "status": 'PREVIEW_READY',
         "preview": previews,
         "candidate_count": len(previews),
@@ -1131,13 +1163,101 @@ async def create_requirement_preview_from_candidates(project_id, filename, candi
         "created_at": now(),
     }
     try:
-        await requirement_import_repository.insert(job)
+        if source_document_id:
+            async with await database.client.start_session() as session:
+                async with session.start_transaction():
+                    await requirement_import_repository.insert(job, session=session)
+                    marked = await requirement_import_repository.mark_document_extracted(
+                        source_document_id,
+                        project_id,
+                        job_id,
+                        now(),
+                        source_content_hash,
+                        session=session,
+                    )
+                    if not marked:
+                        raise HTTPException(status_code=409, detail={"code": "IMPORT_SOURCE_CHANGED"})
+                    await audit(
+                        user.id,
+                        'requirement_extraction_completed',
+                        'RequirementDocument',
+                        source_document_id,
+                        project_id,
+                        {"job_id": job_id, "candidate_count": len(previews)},
+                        session=session,
+                    )
+        else:
+            await requirement_import_repository.insert(job)
     except DuplicateKeyError:
         if template_id:
-            return await requirement_import_repository.find_by_template_version(project_id, template_id, template_version, template_public_view)
+            existing = await requirement_import_repository.find_by_template_version(project_id, template_id, template_version, template_public_view)
+            if existing and source_document_id:
+                await link_template_import_to_source(
+                    existing, source_document, source_content_hash, user
+                )
+                return await requirement_import_repository.find(existing["_id"], project_id)
+            return existing
         raise
-    await audit(user.id, 'requirement_import_previewed', 'RequirementImport', job_id, project_id, {"count": len(previews), "template_id": template_id})
+    if not source_document_id:
+        await audit(user.id, 'requirement_import_previewed', 'RequirementImport', job_id, project_id, {"count": len(previews), "template_id": template_id})
     return job
+
+
+async def link_template_import_to_source(job, source_document, source_content_hash, user):
+    source_document_id = str(source_document.get("_id") or "")
+    if not source_document_id:
+        raise HTTPException(status_code=409, detail={"code": "IMPORT_SOURCE_CHANGED"})
+    if job.get("source_document_id") not in {None, source_document_id}:
+        raise HTTPException(status_code=409, detail={"code": "IMPORT_SOURCE_SCOPE_CONFLICT"})
+    existing_source_job = await requirement_import_repository.find_by_source_document(
+        source_document_id
+    )
+    if existing_source_job and existing_source_job.get("_id") != job.get("_id"):
+        raise HTTPException(status_code=409, detail={"code": "IMPORT_SOURCE_ALREADY_LINKED"})
+    if not job.get("source_document_id"):
+        linked = await database.value.import_jobs.update_one(
+            {
+                "_id": job["_id"],
+                "project_id": job["project_id"],
+                "status": "PREVIEW_READY",
+                "$or": [
+                    {"source_document_id": {"$exists": False}},
+                    {"source_document_id": None},
+                ],
+            },
+            {
+                "$set": {
+                    "source_document_id": source_document_id,
+                    "source_content_hash": source_content_hash,
+                }
+            },
+        )
+        if linked.matched_count != 1:
+            raise HTTPException(status_code=409, detail={"code": "IMPORT_SOURCE_SCOPE_CONFLICT"})
+    import_status = (
+        "CONFIRMED" if job.get("status") == "CONFIRMED" else "PREVIEW_READY"
+    )
+    latest_document = await requirement_document_repository.find(
+        source_document_id, job["project_id"]
+    )
+    if (
+        latest_document
+        and latest_document.get("last_import_job_id") == job.get("_id")
+        and latest_document.get("requirement_import_status") == import_status
+        and latest_document.get("status") == "READY"
+        and latest_document.get("content_hash") == source_content_hash
+    ):
+        return
+    marked = await requirement_import_repository.mark_document_extracted(
+        source_document_id,
+        job["project_id"],
+        job["_id"],
+        now(),
+        source_content_hash,
+        import_status=import_status,
+    )
+    if not marked:
+        raise HTTPException(status_code=409, detail={"code": "IMPORT_SOURCE_CHANGED"})
 
 
 async def review_requirement_import_job(job_id, payload, user):

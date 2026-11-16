@@ -11,12 +11,14 @@ class SystemRole(str, Enum):
 
 class CurrentUser(BaseModel):
     _access_token: str = PrivateAttr(default="")
-    _ai_automation_run_id: str = PrivateAttr(default="")
-    _ai_automation_trigger: str = PrivateAttr(default="")
-    _ai_automation_source_event_id: str = PrivateAttr(default="")
-    _ai_automation_initiator_id: str = PrivateAttr(default="")
-    _ai_automation_definition_id: str = PrivateAttr(default="")
-    _ai_automation_publication_permissions: list[str] = PrivateAttr(default_factory=list)
+    _ai_capability_run_id: str = PrivateAttr(default="")
+    _ai_capability_intent: str = PrivateAttr(default="")
+    _ai_capability_source_document_ids: list[str] = PrivateAttr(default_factory=list)
+    _ai_capability_trigger: str = PrivateAttr(default="")
+    _ai_capability_source_event_id: str = PrivateAttr(default="")
+    _ai_capability_initiator_id: str = PrivateAttr(default="")
+    _ai_capability_definition_id: str = PrivateAttr(default="")
+    _ai_capability_publication_permissions: list[str] = PrivateAttr(default_factory=list)
     id: str = Field(alias="_id")
     email: str = ""
     system_role: SystemRole = SystemRole.USER

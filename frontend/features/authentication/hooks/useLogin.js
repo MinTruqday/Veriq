@@ -37,7 +37,7 @@ export function useLogin() {
   const passkeyLogin = async (email) => {
     if (submitting) return;
     if (!email.trim()) {
-      setError("Nhập email trước khi dùng Passkey");
+      setError("Nhập Email trước khi dùng Passkey");
       return;
     }
     setSubmitting(true);

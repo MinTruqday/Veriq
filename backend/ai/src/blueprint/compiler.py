@@ -2,8 +2,8 @@ import hashlib
 
 from src.core.infrastructure.configuration import settings
 from src.schemas.inference_requests import (
-    TESTING_AUTOMATION_MAX_EVIDENCE_ITEMS,
-    TestingAutomationRequest,
+    TESTABILITY_MAX_EVIDENCE_ITEMS,
+    TestingCapabilityRequest,
 )
 from src.schemas.inference_requirements import (
     TESTABILITY_BLUEPRINT_MAX_CLARIFICATIONS,
@@ -11,13 +11,18 @@ from src.schemas.inference_requirements import (
     TESTABILITY_BLUEPRINT_MAX_OBLIGATIONS,
     TESTABILITY_BLUEPRINT_MAX_WARNINGS,
 )
-from src.services.automation_provenance import source_quote_spans
-from src.services.ai_automation import generate_ai_automation
+from src.services.source_provenance import source_quote_spans
+from src.services.ai_capabilities import generate_ai_capability
 from src.blueprint.source_evidence import verified_fact_evidence
 
 
 async def compile_testability_blueprint(
-    project_id, source_facts, evidence_by_ref, allowed_document_ids, instruction=""
+    project_id,
+    source_facts,
+    evidence_by_ref,
+    allowed_document_ids,
+    instruction="",
+    output_language=None,
 ):
     try:
         evidence = verified_fact_evidence(source_facts, evidence_by_ref, allowed_document_ids)
@@ -41,16 +46,18 @@ async def compile_testability_blueprint(
         }
     batch_size = min(
         settings.AI_AGENT_MAX_EVIDENCE_ITEMS,
-        TESTING_AUTOMATION_MAX_EVIDENCE_ITEMS,
+        TESTABILITY_MAX_EVIDENCE_ITEMS,
     )
     if len(evidence) <= batch_size:
-        return await _compile_blueprint_evidence(project_id, evidence, instruction)
+        return await _compile_blueprint_evidence(
+            project_id, evidence, instruction, output_language
+        )
 
     batch_results = []
     for start in range(0, len(evidence), batch_size):
         batch_index = start // batch_size
         result = await _compile_blueprint_evidence(
-            project_id, evidence[start : start + batch_size], instruction
+            project_id, evidence[start : start + batch_size], instruction, output_language
         )
         if (
             result.get("status") != "SUCCESS"
@@ -91,7 +98,7 @@ async def compile_testability_blueprint(
                     [
                         f"BATCH_{batch_index + 1}:{code}"
                         for code in result.get("reason_codes", [])
-                    ]
+                    ],
                 ),
             }
         batch_results.append({**result, "batch_index": batch_index})
@@ -183,7 +190,9 @@ def _bounded_blueprint_warnings(warnings):
     if len(unique) <= TESTABILITY_BLUEPRINT_MAX_WARNINGS:
         return unique
     retained = unique[: TESTABILITY_BLUEPRINT_MAX_WARNINGS - 1]
-    retained.append(f"{len(unique) - len(retained)} cảnh báo bổ sung đã được gộp")
+    retained.append(
+        'Đã gộp {count} cảnh báo bổ sung.'.format(count=len(unique) - len(retained))
+    )
     return retained
 
 
@@ -196,7 +205,9 @@ def _namespaced_blueprint_key(prefix, value):
     return f"{prefix}{value[:available]}-{digest}"
 
 
-async def _compile_blueprint_evidence(project_id, evidence, instruction=""):
+async def _compile_blueprint_evidence(
+    project_id, evidence, instruction="", output_language=None
+):
     if not evidence:
         return {
             "status": "DEGRADED",
@@ -207,14 +218,15 @@ async def _compile_blueprint_evidence(project_id, evidence, instruction=""):
             "warnings": [],
         }
 
-    request = TestingAutomationRequest(
+    request = TestingCapabilityRequest(
         capability="testability_blueprint_compilation",
         project_id=project_id,
         instruction=instruction,
+        output_language=output_language or "auto",
         evidence=evidence,
     )
     try:
-        result = await generate_ai_automation(request)
+        result = await generate_ai_capability(request)
     except Exception as error:
         return {
             "status": "DEGRADED",
@@ -239,7 +251,7 @@ async def _compile_blueprint_evidence(project_id, evidence, instruction=""):
                 dict.fromkeys(
                     [
                         *(output.get("warnings") or []),
-                        "Không tạo nghĩa vụ kiểm thử hoặc câu hỏi làm rõ từ nguồn đã xác minh",
+                        'Không tạo nghĩa vụ kiểm thử hoặc câu hỏi làm rõ từ nguồn đã xác minh.',
                     ]
                 )
             ),

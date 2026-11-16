@@ -18,18 +18,14 @@ from src.core.project_settings import default_project_settings
 from src.repositories.project import project_repository
 from src.repositories.work_item import work_item_repository
 
-
 def _default_planning_settings():
     return default_project_settings()["work_item_planning"]
-
 
 def _default_completed_statuses():
     return set(_default_planning_settings().get("completed_statuses") or [])
 
-
 def _default_sprint_required_statuses():
     return set(_default_planning_settings().get("requires_sprint_statuses") or [])
-
 
 def _conflict(existing):
     raise HTTPException(
@@ -40,14 +36,11 @@ def _conflict(existing):
         },
     )
 
-
 async def _project_planning(project_id, user):
     return await get_project(project_id, user, "project.read")
 
-
 async def _require_project_editor(project_id, user):
     return await get_project(project_id, user, "project.update")
-
 
 async def _resolve_assignee(project_id, value):
     if value is None or not str(value).strip():
@@ -56,7 +49,6 @@ async def _resolve_assignee(project_id, value):
     if not await project_repository.find_member(project_id, user_id, status="ACTIVE"):
         raise HTTPException(status_code=422, detail={"code": "WORK_ITEM_ASSIGNEE_INVALID"})
     return user_id
-
 
 async def _validate_parent(project_id, item_type, parent_id):
     if not parent_id:
@@ -70,7 +62,6 @@ async def _validate_parent(project_id, item_type, parent_id):
     if item_type.value in {"INITIATIVE", "BUG"} or parent.get("item_type") not in allowed.get(item_type.value, set()):
         raise HTTPException(status_code=422, detail={"code": "WORK_ITEM_HIERARCHY_INVALID"})
 
-
 async def _validate_requirements(project_id, requirement_ids):
     if not requirement_ids:
         return
@@ -78,7 +69,6 @@ async def _validate_requirements(project_id, requirement_ids):
     found = await database.value.requirements.find({"_id": {"$in": identifiers}, "project_id": project_id}, {"_id": 1}).to_list(len(identifiers))
     if len(found) != len(identifiers):
         raise HTTPException(status_code=422, detail={"code": "WORK_ITEM_REQUIREMENT_INVALID"})
-
 
 def _validate_planned_dates(planned_start_at, planned_end_at):
     if planned_start_at and planned_end_at:
@@ -90,7 +80,6 @@ def _validate_planned_dates(planned_start_at, planned_end_at):
             ) from exc
         if not valid_range:
             raise HTTPException(status_code=422, detail={"code": "WORK_ITEM_SCHEDULE_INVALID"})
-
 
 async def _board(project_id, planning_method):
     board = await work_item_repository.find_board(project_id)
@@ -119,7 +108,6 @@ async def _board(project_id, planning_method):
             )
         raise
 
-
 def _initial_board_status(board):
     columns = board.get("columns") or []
     if not columns:
@@ -138,7 +126,6 @@ def _initial_board_status(board):
             detail={"code": "WORK_ITEM_PLANNING_BOARD_COLUMNS_INVALID"},
         )
     return status
-
 
 async def _workflow(project_id):
     workflow = await work_item_repository.find_workflow(project_id)
@@ -230,7 +217,6 @@ async def _workflow(project_id):
             return existing
         raise
 
-
 async def _validate_dependency_cycle(
     project_id, source_id, target_id, dependency_type="BLOCKS", session=None
 ):
@@ -255,7 +241,6 @@ async def _validate_dependency_cycle(
             continue
         visited.add(item_id)
         pending.extend(links.get(item_id, set()) - visited)
-
 
 class WorkItemService:
     @staticmethod
@@ -292,7 +277,6 @@ class WorkItemService:
             "revision": 1, "created_by": user.id, "created_at": timestamp, "updated_at": timestamp,
         }
         await _board(project_id, project.get("planning_method", "SCRUM"))
-        from src.clients.ai_automation import emit_work_item_changed
 
         try:
             async with await database.client.start_session() as session:
@@ -317,7 +301,6 @@ class WorkItemService:
                         user.id, "work_item_created", "WorkItem", item["_id"], project_id,
                         session=session,
                     )
-                    await emit_work_item_changed(item, user, session=session)
         except OperationFailure as exc:
             if exc.code == 112 or exc.has_error_label("TransientTransactionError"):
                 raise HTTPException(
@@ -349,7 +332,6 @@ class WorkItemService:
                 changes.get("planned_end_at", item.get("planned_end_at")),
             )
         changes["updated_at"] = now()
-        from src.clients.ai_automation import emit_work_item_changed
 
         async with await database.client.start_session() as session:
             async with session.start_transaction():
@@ -365,7 +347,6 @@ class WorkItemService:
                     user.id, "work_item_updated", "WorkItem", item_id, project_id,
                     {"changed": sorted(changes)}, session=session,
                 )
-                await emit_work_item_changed(updated, user, session=session)
         return updated
 
     @staticmethod
@@ -405,7 +386,6 @@ class WorkItemService:
         is_kanban = project.get("planning_method") == "KANBAN"
         if is_kanban:
             await _board(project_id, "KANBAN")
-        from src.clients.ai_automation import emit_work_item_changed
 
         try:
             async with await database.client.start_session() as session:
@@ -530,7 +510,6 @@ class WorkItemService:
                         {"status": payload.status, "reason": payload.reason},
                         session=session,
                     )
-                    await emit_work_item_changed(updated, user, session=session)
         except DuplicateKeyError as exc:
             raise HTTPException(
                 status_code=409,
@@ -609,11 +588,7 @@ class WorkItemService:
                         session=session,
                     )
                     await work_item_repository.create_dependency(value, session=session)
-                    from src.clients.ai_automation import emit_work_item_dependency_changed
 
-                    await emit_work_item_dependency_changed(
-                        value, source, target, user, session=session
-                    )
                     await audit(
                         user.id,
                         "work_item_dependency_created",
@@ -788,7 +763,6 @@ class WorkItemService:
     @staticmethod
     async def rank_item(project_id, item_id, payload, user):
         await _require_project_editor(project_id, user)
-        from src.clients.ai_automation import emit_work_item_changed
 
         timestamp = now()
         try:
@@ -926,7 +900,6 @@ class WorkItemService:
                             changed_items.append(updated)
 
                     for changed in changed_items:
-                        await emit_work_item_changed(changed, user, session=session)
                         if changed["_id"] != item_id:
                             await audit(
                                 user.id,
@@ -1267,7 +1240,6 @@ class WorkItemService:
         client = database.client
         if client is None:
             raise RuntimeError("Cơ sở dữ liệu chưa sẵn sàng")
-        from src.clients.ai_automation import emit_work_item_changed
 
         async def operation(session):
             lock_result = await project_repository.lock_legacy_task_catalog(
@@ -1369,8 +1341,6 @@ class WorkItemService:
                         status_code=409,
                         detail={"code": "PROJECT_TASK_MIGRATION_SOURCE_CHANGED"},
                     )
-            for document in documents:
-                await emit_work_item_changed(document, user, session=session)
             await audit(
                 user.id,
                 "project_tasks_migrated",

@@ -14,6 +14,12 @@ from src.services.email import EmailService
 
 class SessionService:
     @staticmethod
+    def _utc_datetime(value: datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    @staticmethod
     def refresh_cookie_seconds():
         return settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
 
@@ -143,12 +149,17 @@ class SessionService:
 
     @staticmethod
     async def login_user(username: str, password: str, client_ip: str):
-        is_email = "@" in username
+        normalized_username = username.strip()
+        is_email = "@" in normalized_username
         try:
             if is_email:
-                auth_cred = await IdentityRepository.get_auth_credential_by_email(username)
+                auth_cred = await IdentityRepository.get_auth_credential_by_email(
+                    normalized_username
+                )
             else:
-                auth_cred = await IdentityRepository.get_auth_credential_by_slug(username)
+                auth_cred = await IdentityRepository.get_auth_credential_by_slug(
+                    normalized_username
+                )
         except Exception:
             auth_cred = None
 
@@ -156,8 +167,8 @@ class SessionService:
             await IdentityRepository.insert_audit_log(
                 {
                     "action": "LOGIN_FAILED_UNKNOWN_ACCOUNT",
-                    "actor_email": username.lower() if is_email else "",
-                    "actor_slug": username.lower() if not is_email else "",
+                    "actor_email": normalized_username.lower() if is_email else "",
+                    "actor_slug": normalized_username.lower() if not is_email else "",
                     "ip": client_ip,
                     "timestamp": datetime.now(timezone.utc),
                 }
@@ -165,14 +176,44 @@ class SessionService:
             raise HTTPException(status_code=401, detail="Thông tin đăng nhập không chính xác")
 
         password_hash = auth_cred.get("password_hash") if auth_cred else "invalid"
+        timestamp = datetime.now(timezone.utc)
+        login_security = auth_cred.get("login_security") or {}
+        locked_until = login_security.get("locked_until")
+        if locked_until:
+            locked_until = SessionService._utc_datetime(locked_until)
 
-        if not verify_password(password, password_hash):
+        if locked_until and locked_until > timestamp:
             await IdentityRepository.insert_audit_log(
                 {
-                    "action": "LOGIN_FAILED_WRONG_PASSWORD",
+                    "action": "LOGIN_FAILED_ACCOUNT_LOCKED",
                     "actor_email": auth_cred.get("email", ""),
                     "ip": client_ip,
-                    "timestamp": datetime.now(timezone.utc),
+                    "timestamp": timestamp,
+                }
+            )
+            raise HTTPException(status_code=401, detail="Thông tin đăng nhập không chính xác")
+
+        if not verify_password(password, password_hash):
+            updated_credential = await IdentityRepository.record_failed_login(
+                str(auth_cred["_id"]),
+                timestamp,
+                settings.LOGIN_FAILURE_LIMIT,
+                settings.LOGIN_LOCKOUT_MINUTES,
+            )
+            updated_security = (updated_credential or {}).get("login_security") or {}
+            updated_lockout = updated_security.get("locked_until")
+            if updated_lockout:
+                updated_lockout = SessionService._utc_datetime(updated_lockout)
+            await IdentityRepository.insert_audit_log(
+                {
+                    "action": (
+                        "LOGIN_FAILED_ACCOUNT_LOCKED"
+                        if updated_lockout and updated_lockout > timestamp
+                        else "LOGIN_FAILED_WRONG_PASSWORD"
+                    ),
+                    "actor_email": auth_cred.get("email", ""),
+                    "ip": client_ip,
+                    "timestamp": timestamp,
                 }
             )
             logger.warning("User authentication failed due to invalid credentials provided")
@@ -190,7 +231,23 @@ class SessionService:
         session_id = str(uuid.uuid4())
         refresh_token = secrets.token_urlsafe(48)
         await IdentityRepository.cache_session(user_id_str, session_id)
-        await IdentityRepository.register_session(user_id_str, session_id, client_ip, refresh_token)
+        await IdentityRepository.register_session(
+            user_id_str, session_id, client_ip, refresh_token
+        )
+        account = await IdentityRepository.complete_successful_login(
+            user_id_str, datetime.now(timezone.utc)
+        )
+        if not account:
+            await IdentityRepository.revoke_session(user_id_str, session_id)
+            await IdentityRepository.insert_audit_log(
+                {
+                    "action": "LOGIN_FAILED_ACCOUNT_LOCKED",
+                    "actor_email": auth_cred.get("email", ""),
+                    "ip": client_ip,
+                    "timestamp": datetime.now(timezone.utc),
+                }
+            )
+            raise HTTPException(status_code=401, detail="Thông tin đăng nhập không chính xác")
         access_token = SessionService.access_token_for_user(auth_cred, session_id)
         await IdentityRepository.insert_audit_log(
             {

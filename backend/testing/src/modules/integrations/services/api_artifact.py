@@ -4,10 +4,9 @@ import json
 from fastapi import HTTPException
 
 from src.core.auth import CurrentUser
-from src.core.ai_automation import ai_contract_metadata, request_ai_automation
+from src.core.ai_capabilities import ai_contract_metadata, request_ai_capability
 from src.core.common import audit, envelope, get_project, get_project_entity, new_id, now
 from src.core.database import database
-from src.clients.ai_automation import queue_api_operation_confirmed
 from src.core.rich_text import text_document
 from src.schemas.contracts.design import TestCaseDraftCreate
 from src.schemas.test_analysis import GeneratedCase
@@ -38,8 +37,6 @@ from src.modules.design.services.test_case_transfer import (
     upload_test_import,
 )
 
-
-
 __all__ = [
     "confirm_test_import",
     "export_test_cases",
@@ -47,7 +44,6 @@ __all__ = [
     "recover_trace_links",
     "upload_test_import",
 ]
-
 
 def api_operation_source_text(operation):
     schemas = operation.get("schemas")
@@ -84,7 +80,6 @@ def api_operation_source_text(operation):
         contract["schemas"] = selected
     return json.dumps(contract, sort_keys=True, ensure_ascii=False, indent=2, default=str)
 
-
 async def list_api_artifacts(
     project_id: str,
     status: str | None,
@@ -98,7 +93,6 @@ async def list_api_artifacts(
         query, 5000, ("created_at", -1)
     )
     return envelope([public_api_import(item) for item in items])
-
 
 async def get_api_artifact(artifact_id: str, user: CurrentUser):
     artifact = await get_project_entity('api_imports', artifact_id, user, 'apiartifact.read')
@@ -117,31 +111,15 @@ async def get_api_artifact(artifact_id: str, user: CurrentUser):
         for item in previews
         if item.get("source_api_operation_id")
     }
-    event_ids = [
-        f"api-operation:{item['_id']}:r{item.get('revision', 1)}"
-        for item in operations
-    ]
-    event_rows = (
-        await database.value.ai_automation_outbox.find(
-            {"_id": {"$in": event_ids}}, {"_id": 1, "status": 1}
-        ).to_list(len(event_ids))
-        if event_ids
-        else []
-    )
-    event_by_id = {item["_id"]: item.get("status") for item in event_rows}
     for operation in operations:
         preview = preview_by_operation.get(operation["_id"])
         if preview:
             operation["test_import_preview_id"] = preview["_id"]
             operation["test_import_preview_status"] = preview.get("status")
-        operation["automation_dispatch_status"] = event_by_id.get(
-            f"api-operation:{operation['_id']}:r{operation.get('revision', 1)}"
-        )
     return envelope(
         {**public_api_import(artifact, include_preview=True), "operations": operations},
         revision=artifact.get("revision", 1),
     )
-
 
 async def import_api_artifact(
     project_id: str, payload: ImportCreate, user: CurrentUser
@@ -195,7 +173,6 @@ async def import_api_artifact(
     )
     return envelope(public_api_import(job, include_preview=True), revision=1)
 
-
 async def review_api_artifact(
     artifact_id: str, payload: APIArtifactReview, user: CurrentUser
 ):
@@ -240,7 +217,6 @@ async def review_api_artifact(
     )
     return envelope(public_api_import(updated, include_preview=True), revision=updated["revision"])
 
-
 async def confirm_api_artifact(
     artifact_id: str, payload: APIArtifactConfirm, user: CurrentUser
 ):
@@ -253,10 +229,6 @@ async def confirm_api_artifact(
             5000,
             ("path", 1),
         )
-        async with await database.client.start_session() as session:
-            async with session.start_transaction():
-                for operation in operations:
-                    await queue_api_operation_confirmed(operation, user, session)
         return envelope(
             {**public_api_import(artifact), "operations": operations}, revision=artifact["revision"]
         )
@@ -346,8 +318,6 @@ async def confirm_api_artifact(
             {"operation_count": len(persisted_operations)},
             session=session,
         )
-        for operation in persisted_operations:
-            await queue_api_operation_confirmed(operation, user, session)
         return updated_import, persisted_operations
 
     async with await database.client.start_session() as session:
@@ -362,7 +332,6 @@ async def confirm_api_artifact(
     return envelope(
         {**public_api_import(updated), "operations": persisted}, revision=updated["revision"]
     )
-
 
 async def list_api_operations(project_id: str, user: CurrentUser):
     await get_project(project_id, user, 'apiartifact.read')
@@ -389,28 +358,12 @@ async def list_api_operations(project_id: str, user: CurrentUser):
         for item in previews
         if item.get("source_api_operation_id")
     }
-    event_ids = [
-        f"api-operation:{item['_id']}:r{item.get('revision', 1)}"
-        for item in operations
-    ]
-    event_rows = (
-        await database.value.ai_automation_outbox.find(
-            {"_id": {"$in": event_ids}}, {"_id": 1, "status": 1}
-        ).to_list(len(event_ids))
-        if event_ids
-        else []
-    )
-    event_by_id = {item["_id"]: item.get("status") for item in event_rows}
     for operation in operations:
         preview = preview_by_operation.get(operation["_id"])
         if preview:
             operation["test_import_preview_id"] = preview["_id"]
             operation["test_import_preview_status"] = preview.get("status")
-        operation["automation_dispatch_status"] = event_by_id.get(
-            f"api-operation:{operation['_id']}:r{operation.get('revision', 1)}"
-        )
     return envelope(operations)
-
 
 async def get_api_operation(operation_id: str, user: CurrentUser):
     operation = await get_project_entity(
@@ -428,16 +381,15 @@ async def get_api_operation(operation_id: str, user: CurrentUser):
         raise HTTPException(status_code=409, detail={"code": "API_OPERATION_SOURCE_INVALID"})
     return envelope(operation, revision=operation.get("revision", 1))
 
-
 async def generate_api_tests(operation_id: str, user: CurrentUser):
     if (
-        not getattr(user, "_ai_automation_run_id", None)
-        or getattr(user, "_ai_automation_trigger", None)
+        not getattr(user, "_ai_capability_run_id", None)
+        or getattr(user, "_ai_capability_trigger", None)
         != "API_OPERATION_CONFIRMED"
     ):
         raise HTTPException(
             status_code=403,
-            detail={"code": "API_TEST_GENERATION_REQUIRES_AUTOMATION_EVENT"},
+            detail={"code": "API_TEST_GENERATION_REQUIRES_AI_RUN_EVENT"},
         )
     operation = await get_project_entity(
         'api_operations', operation_id, user, 'ai.generate_api_testcase'
@@ -491,7 +443,7 @@ async def generate_api_tests(operation_id: str, user: CurrentUser):
         }
         for chunk in evidence_chunks
     ]
-    ai_result = await request_ai_automation(
+    ai_result = await request_ai_capability(
         "test_generation",
         operation["project_id"],
         "Generate API test cases with concrete steps, input data, and verifiable expected results. Use only behavior, parameters, schemas, security requirements, and response codes stated in the confirmed API operation. Do not infer undocumented error behavior or limits. Include an exact source quotation for each case.",
@@ -614,11 +566,9 @@ async def generate_api_tests(operation_id: str, user: CurrentUser):
     )
     return envelope(job)
 
-
 async def get_test_import_preview(job_id: str, user: CurrentUser):
     job = await get_project_entity("test_imports", job_id, user, "testcase.import")
     return envelope(job)
-
 
 async def build_api_artifact_diff(project_id, from_artifact_id, to_artifact_id):
     artifacts = await api_artifact_repository.list_imports(
@@ -654,7 +604,6 @@ async def build_api_artifact_diff(project_id, from_artifact_id, to_artifact_id):
         ],
     }
 
-
 async def diff_api_artifacts(
     project_id: str,
     from_artifact_id: str,
@@ -663,7 +612,6 @@ async def diff_api_artifacts(
 ):
     await get_project(project_id, user, 'apiartifact.diff.read')
     return envelope(await build_api_artifact_diff(project_id, from_artifact_id, to_artifact_id))
-
 
 async def analyze_api_artifact_impact(
     project_id: str, payload: APIArtifactImpact, user: CurrentUser
@@ -744,7 +692,6 @@ async def analyze_api_artifact_impact(
         {"affected_count": len(affected), "new_test_requirement_count": len(new_test_requirements)},
     )
     return envelope(analysis, revision=1)
-
 
 async def archive_api_artifact(
     artifact_id: str, payload: APIArtifactArchive, user: CurrentUser

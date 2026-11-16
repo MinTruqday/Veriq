@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
-from src.core.ai_automation import ai_contract_metadata, request_ai_automation
+from src.core.ai_capabilities import ai_contract_metadata, request_ai_capability
 from src.core.common import audit, get_project_entity, new_id, now, plain_text
 from src.core.database import database
 from src.core.sensitive_data import redact_sensitive_text
@@ -241,7 +241,7 @@ async def _build_execution_assistance_record(
         "sensitive_values_redacted": redactions_applied,
     }
     request_id = new_id("TRC")
-    ai_result = await request_ai_automation(
+    ai_result = await request_ai_capability(
         "execution_assistance",
         project_id,
         json.dumps(context, ensure_ascii=False),

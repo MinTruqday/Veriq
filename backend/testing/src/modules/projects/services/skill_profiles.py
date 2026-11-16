@@ -6,7 +6,7 @@ from datetime import date, timedelta
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
-from src.clients.ai_automation import ai_automation_client
+from src.clients.ai_capabilities import ai_capability_client
 from src.core.common import audit, get_project, get_project_entity, load_user_identities, now, plain_text
 from src.core.database import database
 from src.core.sensitive_data import redact_sensitive_text
@@ -1216,7 +1216,7 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
             "active_case_count": candidate["active_case_count"],
             "active_run_count": candidate["active_run_count"],
         })
-    ai_result = await ai_automation_client.recommend_test_case_owners(
+    ai_result = await ai_capability_client.recommend_test_case_owners(
         output_language, required, ai_candidate_inputs, task_context
     ) if ai_candidate_inputs else {"recommendations": [], "warnings": []}
     recommendation_by_user = _map_staffing_recommendations(

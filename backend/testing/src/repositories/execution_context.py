@@ -47,12 +47,12 @@ class ExecutionContextRepository:
             **({"session": session} if session is not None else {}),
         ).sort([("approved_at", -1), ("created_at", -1)]).to_list(None)
 
-    async def list_automation_completions(self, project_id, release_id, automation_run_id, session=None):
+    async def list_automation_completions(self, project_id, release_id, ai_run_id, session=None):
         return await database.value.test_completion_reports.find(
             {
                 "project_id": project_id,
                 "release_id": release_id,
-                "automation_run_id": automation_run_id,
+                "ai_run_id": ai_run_id,
                 "status": "DRAFT",
             },
             **({"session": session} if session is not None else {}),

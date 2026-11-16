@@ -57,14 +57,21 @@ class ContentClient:
             value = item.get("active_index_generation")
             if value is None:
                 generation = None
-            elif (
-                isinstance(value, str)
-                and len(value) == 64
-                and all(character in "0123456789abcdef" for character in value)
-            ):
-                generation = value
             else:
-                raise RuntimeError("content_document_index_generation_invalid")
+                try:
+                    canonical_generation = (
+                        bytes.fromhex(value).hex() if isinstance(value, str) else ""
+                    )
+                except ValueError:
+                    canonical_generation = ""
+                if (
+                    isinstance(value, str)
+                    and len(value) == 64
+                    and canonical_generation == value
+                ):
+                    generation = value
+                else:
+                    raise RuntimeError("content_document_index_generation_invalid")
             generations[str(item["_id"])] = generation
         return generations
 

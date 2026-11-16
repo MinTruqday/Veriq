@@ -8,7 +8,6 @@ from src.modules.quality.services.defect_classification import defect_is_blockin
 from src.repositories.execution_context import execution_context_repository
 from src.schemas.contracts.execution import ReleaseReadiness, ReleaseReadinessCheck
 
-
 async def serialize_release_gate(
     project_id,
     release_ids,
@@ -40,14 +39,12 @@ async def serialize_release_gate(
                 detail={"code": "RELEASE_GATE_REVISION_CONFLICT", "release_id": release_id},
             )
 
-
 def raise_release_gate_conflict(error):
     if error.code == 112 or error.has_error_label("TransientTransactionError"):
         raise HTTPException(
             status_code=409,
             detail={"code": "RELEASE_GATE_REVISION_CONFLICT"},
         ) from error
-
 
 def defect_blocks_release(defect, *, status=None):
     current_status = str(status if status is not None else defect.get("status") or "")
@@ -60,30 +57,8 @@ def defect_blocks_release(defect, *, status=None):
         "REOPENED",
     } and defect_is_blocking(current_defect)
 
-
-
-
-
-async def recheck_release_gates_for_defect(project_id, release_ids, defect, user, session):
-    from src.clients.ai_automation import emit_release_gate_recheck
-
-    for release_id in sorted({str(value) for value in release_ids if value}):
-        release = await database.value.releases.find_one(
-            {"_id": release_id, "project_id": project_id},
-            session=session,
-        )
-        if release and release.get("status") == "ACTIVE":
-            await emit_release_gate_recheck(
-                release,
-                defect,
-                user,
-                session=session,
-                artifact_type="defect",
-            )
-
-
 async def ensure_release_completion_gate(
-    project_id: str, release_id: str, session=None, automation_run_id=None
+    project_id: str, release_id: str, session=None, ai_run_id=None
 ):
     from src.modules.execution.services.test_completion_readiness import (
         validate_completion_outcome,
@@ -91,12 +66,12 @@ async def ensure_release_completion_gate(
     )
     from src.schemas.test_completion import completion_hash, completion_snapshot
 
-    if automation_run_id:
+    if ai_run_id:
         plans = await execution_context_repository.list_approved_test_plan_scopes(
             project_id, release_id, session=session
         )
         reports = await execution_context_repository.list_automation_completions(
-            project_id, release_id, str(automation_run_id), session=session
+            project_id, release_id, str(ai_run_id), session=session
         )
         plan_ids = {item.get("_id") for item in plans if item.get("_id")}
         report_plan_ids = [item.get("test_plan_id") for item in reports]
@@ -158,12 +133,12 @@ async def ensure_release_completion_gate(
                 )
 
     for report in reports_to_validate:
-        automated = bool(automation_run_id)
+        automated = bool(ai_run_id)
         scope = report.get("scope_snapshot")
         report_snapshot = report.get("automation_gate_snapshot") if automated else report.get("approved_snapshot")
         report_hash = report.get("automation_gate_hash") if automated else report.get("approved_snapshot_hash")
         if (
-            (automated and (report.get("status") != "DRAFT" or report.get("automation_run_id") != str(automation_run_id)))
+            (automated and (report.get("status") != "DRAFT" or report.get("ai_run_id") != str(ai_run_id)))
             or not report.get("test_plan_id")
             or not report.get("monitoring_snapshot_id")
             or not isinstance((scope or {}).get("runs"), list)
@@ -247,7 +222,6 @@ async def ensure_release_completion_gate(
             },
         )
     return report
-
 
 async def ensure_release_assurance_gate(
     project_id: str, release_id: str, session=None, completion_approved_at=None
@@ -377,7 +351,6 @@ async def ensure_release_assurance_gate(
         )
     return len(requirement_version_ids)
 
-
 async def resolve_execution_context(
     project_id: str,
     user: CurrentUser,
@@ -441,13 +414,11 @@ async def resolve_execution_context(
         "environment": (environment_entity or {}).get("name") or environment,
     }
 
-
 def clean_secret_fields(item):
     result = dict(item)
     result.pop("secret_refs", None)
     result["secret_ref_names"] = sorted((item.get("secret_refs") or {}).keys())
     return result
-
 
 class ExecutionContextService:
     @staticmethod
@@ -639,7 +610,6 @@ class ExecutionContextService:
             "updated_at": timestamp,
         }
         try:
-            from src.clients.ai_automation import emit_release_changed
 
             async with await database.client.start_session() as session:
                 async with session.start_transaction():
@@ -652,7 +622,6 @@ class ExecutionContextService:
                         project_id,
                         session=session,
                     )
-                    await emit_release_changed(release, user, session=session)
         except DuplicateKeyError:
             raise HTTPException(
                 status_code=409,
@@ -674,7 +643,6 @@ class ExecutionContextService:
                 status_code=409,
                 detail={"code": 'RELEASE_STATE_INVALID'},
             )
-        from src.clients.ai_automation import emit_release_changed
 
         async with await database.client.start_session() as session:
             async with session.start_transaction():
@@ -694,7 +662,6 @@ class ExecutionContextService:
                     release["project_id"],
                     session=session,
                 )
-                await emit_release_changed(updated, user, session=session)
         return updated
 
     @staticmethod
@@ -732,7 +699,6 @@ class ExecutionContextService:
             )
         completion_gate_applied = False
         assurance_scope_size = 0
-        from src.clients.ai_automation import emit_release_changed
 
         try:
             gate_revision = release.get("gate_revision", 0)
@@ -761,7 +727,7 @@ class ExecutionContextService:
                             release["project_id"],
                             release_id,
                             session=session,
-                            automation_run_id=getattr(user, "_ai_automation_run_id", None),
+                            ai_run_id=getattr(user, "_ai_capability_run_id", None),
                         )
                         completion_gate_applied = bool(completion_report)
                         assurance_scope_size = await ensure_release_assurance_gate(
@@ -806,7 +772,6 @@ class ExecutionContextService:
                         {"reason": payload.reason, "assured_requirement_count": assurance_scope_size},
                         session=session,
                     )
-                    await emit_release_changed(updated, user, session=session)
         except HTTPException as error:
             gate_codes = {
                 'RELEASE_COMPLETION_GATE_FAILED',

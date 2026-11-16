@@ -24,6 +24,22 @@ class IndexingAttemptSupersededError(RuntimeError):
     pass
 
 
+class DocumentSourceMissingError(ValueError):
+    pass
+
+
+class DocumentStorageAccessError(PermissionError):
+    pass
+
+
+class DocumentStorageConfigurationError(PermissionError):
+    pass
+
+
+class DocumentStorageUnavailableError(RuntimeError):
+    pass
+
+
 class ConversionService:
     CHECKPOINT_CONTRACT_VERSION = 7
     INVALID_PAGE_CHECKPOINT_ERRORS = frozenset(
@@ -1089,7 +1105,7 @@ class ConversionService:
             file_url, visibility=visibility
         )
         if temporary_path is None:
-            return {"error": "File load failed"}
+            raise DocumentSourceMissingError("document_source_missing")
         normalized_ext = file_ext.lower() if file_ext.startswith(".") else f".{file_ext.lower()}"
         try:
             if normalized_ext != ".pdf":
@@ -1594,13 +1610,65 @@ class ConversionService:
             body = None
             if temporary_path.stat().st_size == 0:
                 temporary_path.unlink(missing_ok=True)
-                return None, "", ""
+                raise DocumentSourceMissingError("document_source_empty")
             return temporary_path, extension, digest.hexdigest()
-        except Exception:
-            logger.exception("File download connection error")
+        except Exception as error:
             if temporary_path is not None:
                 temporary_path.unlink(missing_ok=True)
-            return None, "", ""
+            if isinstance(error, ValueError):
+                logger.warning(
+                    "Document storage key or source is invalid error_type={}",
+                    type(error).__name__,
+                )
+                raise
+            from botocore.exceptions import BotoCoreError, ClientError
+
+            if isinstance(error, ClientError):
+                response = error.response or {}
+                error_code = str((response.get("Error") or {}).get("Code") or "")
+                status_code = (response.get("ResponseMetadata") or {}).get(
+                    "HTTPStatusCode"
+                )
+                if error_code == "NoSuchBucket":
+                    logger.error("Configured document storage bucket is missing")
+                    raise DocumentStorageConfigurationError(
+                        "document_storage_bucket_missing"
+                    ) from error
+                if error_code in {"NoSuchKey", "NoSuchVersion", "NotFound", "404"} or (
+                    status_code == 404 and error_code != "NoSuchBucket"
+                ):
+                    logger.warning("Document source object is missing from storage")
+                    raise DocumentSourceMissingError(
+                        "document_source_missing"
+                    ) from error
+                if status_code in {401, 403} or error_code in {
+                    "AccessDenied",
+                    "InvalidAccessKeyId",
+                    "SignatureDoesNotMatch",
+                }:
+                    logger.error(
+                        "Document storage access is denied error_code={}",
+                        error_code or "http_error",
+                    )
+                    raise DocumentStorageAccessError(
+                        "document_storage_access_denied"
+                    ) from error
+                logger.exception(
+                    "Document storage request failed error_code={}",
+                    error_code or "unknown",
+                )
+                raise DocumentStorageUnavailableError(
+                    "document_storage_request_failed"
+                ) from error
+            if isinstance(error, BotoCoreError):
+                logger.exception("Document storage connection failed")
+                raise DocumentStorageUnavailableError(
+                    "document_storage_connection_failed"
+                ) from error
+            logger.exception("Document storage read failed")
+            raise DocumentStorageUnavailableError(
+                "document_storage_read_failed"
+            ) from error
         finally:
             if body is not None:
                 body.close()

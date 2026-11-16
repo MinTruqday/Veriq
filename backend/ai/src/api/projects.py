@@ -14,7 +14,7 @@ router = APIRouter(dependencies=[Depends(verify_internal_token)])
 
 @router.post(
     "/du-an/{project_id}/doi-tuong",
-    description="Chỉ mục hóa artifact trong phạm vi Project",
+    description="Index an artifact within the project scope",
 )
 async def index_artifact(project_id: str, req: ProjectArtifactIndexRequest):
     return await index_project_artifact(project_id, req)
@@ -39,7 +39,7 @@ async def list_artifact_chunks(
 
 @router.post(
     "/du-an/{project_id}/tim-kiem",
-    description="Tìm evidence knowledge theo phạm vi Project",
+    description="Search project-scoped knowledge evidence",
 )
 async def search_knowledge(
     project_id: str,

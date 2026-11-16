@@ -1,3 +1,4 @@
+import hashlib
 import hmac
 from typing import Optional
 
@@ -85,6 +86,10 @@ class RateLimiting:
         if path in {"/dang-nhap", "/xac-thuc/dang-nhap"}:
             form = await request.form()
             identity = str(form.get("username") or "").strip().lower()
+        elif path == "/xac-thuc/lam-moi-phien":
+            refresh_token = request.cookies.get("veriq_refresh_token")
+            if refresh_token:
+                identity = hashlib.sha256(refresh_token.encode("utf-8")).hexdigest()
         key = f"rate_limit:{client_ip}:{path}:{identity}"
         current = await redis.get(key)
         if current is not None and int(current) >= self.calls:

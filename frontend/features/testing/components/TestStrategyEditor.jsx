@@ -73,7 +73,7 @@ export default function TestStrategyEditor({ strategy, onSave, onCancel }) {
   const setField = (key, fieldValue) => setValue((current) => ({ ...current, [key]: fieldValue }));
   return (
     <form
-      className="space-y-5 p-5"
+      className="test-design-form space-y-5 p-5"
       onSubmit={async (event) => {
         event.preventDefault();
         setError("");

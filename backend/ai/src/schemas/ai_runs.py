@@ -13,14 +13,14 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-class AutomationKind(str, Enum):
+class AIRunKind(str, Enum):
     ON_DEMAND = "ON_DEMAND"
     EVENT = "EVENT"
     SOURCE_INGESTION = "SOURCE_INGESTION"
     CHANGE_SIMULATION = "CHANGE_SIMULATION"
 
 
-class AutomationTrigger(str, Enum):
+class AIRunTrigger(str, Enum):
     MANUAL = "MANUAL"
     DOCUMENT_INGESTED = "DOCUMENT_INGESTED"
     API_OPERATION_CONFIRMED = "API_OPERATION_CONFIRMED"
@@ -39,57 +39,10 @@ class AutomationTrigger(str, Enum):
     RELEASE_CHANGED = "RELEASE_CHANGED"
 
 
-class AutomationAction(str, Enum):
-    COMPILE_BLUEPRINT = "COMPILE_BLUEPRINT"
-    CREATE_REQUIREMENT_CANDIDATES = "CREATE_REQUIREMENT_CANDIDATES"
-    CREATE_TEST_CASE_CANDIDATES = "CREATE_TEST_CASE_CANDIDATES"
-    CREATE_FINDINGS = "CREATE_FINDINGS"
-    REQUEST_CLARIFICATION = "REQUEST_CLARIFICATION"
-    PROPOSE_ASSIGNMENT = "PROPOSE_ASSIGNMENT"
-    PROPOSE_TRANSITION = "PROPOSE_TRANSITION"
-    RUN_CHANGE_SIMULATION = "RUN_CHANGE_SIMULATION"
-
-
-class AutomationEventConditions(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    minimum_evidence_count: int = Field(default=0, ge=0, le=100)
-    required_artifact_types: list[str] = Field(default_factory=list, max_length=30)
-    required_authorities: list[str] = Field(default_factory=list, max_length=30)
-    workflow_states_any_of: list[str] = Field(default_factory=list, max_length=30)
-    requester_roles: list[str] = Field(default_factory=list, max_length=100)
-    minimum_evidence_score: float | None = Field(default=None, ge=0, le=1)
-    require_versioned_evidence: bool = False
-    require_trace_link: bool = False
-
-    @field_validator(
-        "required_artifact_types",
-        "required_authorities",
-        "workflow_states_any_of",
-    )
-    @classmethod
-    def normalize_condition_values(cls, values):
-        normalized = [str(value).strip() for value in values]
-        if any(not value for value in normalized) or len(set(normalized)) != len(normalized):
-            raise ValueError("automation_condition_values_must_be_nonblank_and_unique")
-        if any(len(value) > 80 for value in normalized):
-            raise ValueError("automation_condition_value_too_long")
-        return normalized
-
-    @field_validator("requester_roles")
-    @classmethod
-    def normalize_requester_roles(cls, values):
-        normalized = [str(value).strip().upper() for value in values]
-        if any(not value or len(value) > 80 for value in normalized):
-            raise ValueError("automation_condition_roles_invalid")
-        if len(set(normalized)) != len(normalized):
-            raise ValueError("automation_condition_roles_duplicate")
-        return normalized
-
-
-class AutomationStatus(str, Enum):
+class AIRunStatus(str, Enum):
     QUEUED = "QUEUED"
     RUNNING = "RUNNING"
+    VERIFYING = "VERIFYING"
     AWAITING_AUTHORIZATION = "AWAITING_AUTHORIZATION"
     AWAITING_INPUT = "AWAITING_INPUT"
     COMPLETED = "COMPLETED"
@@ -98,7 +51,7 @@ class AutomationStatus(str, Enum):
     CANCELLED = "CANCELLED"
 
 
-class AutomationCheckpointPhase(str, Enum):
+class AIRunPhase(str, Enum):
     QUEUED = "QUEUED"
     WORKER_STARTED = "WORKER_STARTED"
     OBSERVED = "OBSERVED"
@@ -112,7 +65,7 @@ class AutomationCheckpointPhase(str, Enum):
     FINALIZED = "FINALIZED"
 
 
-class AutomationFact(BaseModel):
+class AgentFact(BaseModel):
     """Verified runtime fact; relationship metadata is copied from source evidence."""
 
     artifact_type: str
@@ -136,7 +89,7 @@ class AutomationFact(BaseModel):
     ] = "UNKNOWN"
 
 
-class ExtractedAutomationFact(BaseModel):
+class ExtractedAgentFact(BaseModel):
     """Model-claimed fact fields; source lineage is deliberately not model-authored."""
 
     model_config = ConfigDict(extra="forbid")
@@ -152,7 +105,7 @@ class ExtractedAutomationFact(BaseModel):
     source_end: int | None = Field(default=None, ge=0)
 
 
-class AutomationUncertainty(BaseModel):
+class AgentUncertainty(BaseModel):
     code: str = Field(min_length=1)
     question: str = ""
     reason: str = Field(min_length=1)
@@ -165,13 +118,13 @@ class AutomationUncertainty(BaseModel):
     answered_at: datetime | None = None
 
 
-class AutomationFactExtraction(BaseModel):
-    facts: list[ExtractedAutomationFact] = Field(default_factory=list)
-    uncertainties: list[AutomationUncertainty] = Field(default_factory=list)
+class AgentFactExtraction(BaseModel):
+    facts: list[ExtractedAgentFact] = Field(default_factory=list)
+    uncertainties: list[AgentUncertainty] = Field(default_factory=list)
 
 
-class AutomationGraphSnapshot(BaseModel):
-    completed_phase: AutomationCheckpointPhase
+class AIRunStateSnapshot(BaseModel):
+    completed_phase: AIRunPhase
     run: VeriqRunState
     evidence: list[EvidenceItem] = Field(default_factory=list)
     degraded_flags: list[str] = Field(default_factory=list)
@@ -180,9 +133,9 @@ class AutomationGraphSnapshot(BaseModel):
     tasks: list[AgentTask] = Field(default_factory=list)
     success_criteria: list[str] = Field(default_factory=list)
     results: list[AgentResult] = Field(default_factory=list)
-    source_facts: list[AutomationFact] = Field(default_factory=list)
-    uncertainties: list[AutomationUncertainty] = Field(default_factory=list)
-    automation_phases: list[str] = Field(default_factory=list)
+    source_facts: list[AgentFact] = Field(default_factory=list)
+    uncertainties: list[AgentUncertainty] = Field(default_factory=list)
+    completed_phases: list[str] = Field(default_factory=list)
     automatic: bool = False
     source_event_verified: bool = False
     planning_round: int = 0
@@ -230,60 +183,13 @@ class ChangeSimulationInput(BaseModel):
         return normalized
 
 
-class AutomationEventRequest(BaseModel):
-    event_id: str = Field(min_length=1, max_length=200)
-    project_id: str = Field(min_length=1, max_length=200)
-    requester_user_id: str = Field(min_length=1, max_length=200)
-    trigger: AutomationTrigger
-    user_requested: bool = False
-    output_language: str | None = Field(default=None, min_length=2, max_length=80)
-    parent_automation_run_id: str | None = Field(default=None, max_length=200)
-    prior_baseline_version_id: str | None = Field(default=None, max_length=200)
-    change_simulation_blocked_reason: Literal[
-        "NO_PRIOR_BASELINE",
-        "AMBIGUOUS_PRIOR_BASELINE",
-        "PRIOR_BASELINE_HISTORY_INVALID",
-        "PRIOR_BASELINE_LOOKUP_FAILED",
-        "CURRENT_VERSION_NUMBER_INVALID",
-    ] | None = None
-    change_simulation: ChangeSimulationInput | None = None
-    target_artifact_ids: list[str] = Field(default_factory=list, max_length=100)
-    evidence: list[EvidenceItem] = Field(default_factory=list, max_length=100)
-
-    @model_validator(mode="after")
-    def validate_requirement_change_simulation_scope(self):
-        has_prior_reference = self.prior_baseline_version_id is not None
-        has_blocked_reason = self.change_simulation_blocked_reason is not None
-        if has_prior_reference or has_blocked_reason:
-            if self.trigger != AutomationTrigger.REQUIREMENT_CHANGED or self.change_simulation:
-                raise ValueError("prior_baseline_reference_requires_requirement_change_event")
-            if has_prior_reference and has_blocked_reason:
-                raise ValueError("prior_baseline_reference_and_blocked_reason_conflict")
-            if has_prior_reference and self.prior_baseline_version_id in self.target_artifact_ids:
-                raise ValueError("prior_baseline_must_differ_from_changed_version")
-        if self.change_simulation is not None:
-            baseline_id = self.change_simulation.base_requirement_version_id
-            if (
-                self.trigger != AutomationTrigger.REQUIREMENT_CHANGED
-                or not self.parent_automation_run_id
-                or has_prior_reference
-                or has_blocked_reason
-                or baseline_id not in self.target_artifact_ids
-                or not any(
-                    item.artifact_type == "requirement_version"
-                    and (item.artifact_version_id or item.artifact_id) == baseline_id
-                    for item in self.evidence
-                )
-            ):
-                raise ValueError("change_simulation_child_scope_invalid")
-        return self
 
 
-class AutomationRetryRequest(BaseModel):
+class AIRunRetryRequest(BaseModel):
     expected_revision: int = Field(ge=1)
 
 
-class AutomationClarificationResponseRequest(BaseModel):
+class AIRunClarificationResponseRequest(BaseModel):
     expected_revision: int = Field(ge=1)
     uncertainty_code: str = Field(min_length=1, max_length=160)
     answer: str = Field(min_length=1, max_length=4000)
@@ -297,24 +203,24 @@ class AutomationClarificationResponseRequest(BaseModel):
         return normalized
 
 
-class AutomationCancelRequest(BaseModel):
+class AIRunCancelRequest(BaseModel):
     expected_revision: int = Field(ge=1)
 
 
-class AutomationCheckpoint(BaseModel):
+class AIRunCheckpoint(BaseModel):
     checkpoint_id: str = Field(default_factory=lambda: f"ACP-{uuid4().hex}")
-    automation_run_id: str
+    ai_run_id: str
     checkpoint_sequence: int = Field(default=0, ge=0, strict=True)
-    phase: AutomationCheckpointPhase
-    status: AutomationStatus
+    phase: AIRunPhase
+    status: AIRunStatus
     detail: dict[str, Any] = Field(default_factory=dict)
-    state_snapshot: AutomationGraphSnapshot | None = None
+    state_snapshot: AIRunStateSnapshot | None = None
     created_at: datetime = Field(default_factory=utc_now)
 
 
 class SourceFact(BaseModel):
     source_fact_id: str = Field(default_factory=lambda: f"FACT-{uuid4().hex}")
-    automation_run_id: str
+    ai_run_id: str
     project_id: str
     artifact_type: str
     artifact_id: str
@@ -376,9 +282,8 @@ class BlueprintArtifactLineage(BaseModel):
 
 class DerivationReceipt(BaseModel):
     receipt_id: str = Field(default_factory=lambda: f"DR-{uuid4().hex}")
-    automation_run_id: str
+    ai_run_id: str
     project_id: str
-    agent_run_id: str
     source_fact_ids: list[str] = Field(default_factory=list)
     transformation_steps: list[str] = Field(default_factory=list)
     steps: list[DerivationStep] = Field(default_factory=list)
@@ -405,7 +310,7 @@ class ProjectTestabilityBlueprint(BaseModel):
     blueprint_id: str = Field(default_factory=lambda: f"PTB-{uuid4().hex}")
     project_id: str = Field(min_length=1, max_length=200)
     version: int = Field(ge=1)
-    automation_run_ids: list[str] = Field(min_length=1)
+    ai_run_ids: list[str] = Field(min_length=1)
     source_fact_ids: list[str] = Field(min_length=1)
     source_revisions: list[BlueprintSourceRevision] = Field(min_length=1)
     source_digest: str = Field(min_length=64, max_length=64)
@@ -424,8 +329,8 @@ class ProjectTestabilityBlueprint(BaseModel):
         return self
 
 
-class AutomationRun(BaseModel):
-    automation_run_id: str = Field(default_factory=lambda: f"AUT-{uuid4().hex}")
+class AIRun(BaseModel):
+    ai_run_id: str = Field(default_factory=lambda: f"RUN-{uuid4().hex}")
     project_id: str
     requester_user_id: str
     requester_role: str
@@ -433,8 +338,8 @@ class AutomationRun(BaseModel):
     execution_user_id: str | None = None
     execution_role: str | None = None
     execution_permissions: list[str] = Field(default_factory=list)
-    kind: AutomationKind
-    trigger: AutomationTrigger | None = None
+    kind: AIRunKind
+    trigger: AIRunTrigger | None = None
     definition_id: str | None = None
     source_event_id: str | None = None
     source_event_verified: bool = False
@@ -445,8 +350,7 @@ class AutomationRun(BaseModel):
     evidence: list[EvidenceItem] = Field(default_factory=list)
     constraints: dict[str, Any] = Field(default_factory=dict)
     change_simulation: ChangeSimulationInput | None = None
-    status: AutomationStatus = AutomationStatus.QUEUED
-    agent_run_id: str | None = None
+    status: AIRunStatus = AIRunStatus.QUEUED
     trace_id: str | None = None
     result: dict[str, Any] | None = None
     error_code: str | None = None
@@ -459,38 +363,6 @@ class AutomationRun(BaseModel):
     updated_at: datetime = Field(default_factory=utc_now)
 
 
-class AutomationEventAcceptedResponse(BaseModel):
+class AIRunAcceptedResponse(BaseModel):
     status: Literal["accepted"] = "accepted"
-    runs: list[AutomationRun] = Field(min_length=1)
-
-
-class AutomationEventSuppressedResponse(BaseModel):
-    status: Literal["suppressed"] = "suppressed"
-    reason_code: Literal["AGENT_REQUEST_REQUIRED"]
-    runs: list[AutomationRun] = Field(default_factory=list, max_length=0)
-
-
-AutomationEventResponse = AutomationEventAcceptedResponse | AutomationEventSuppressedResponse
-
-
-class AutomationWorkflowRun(BaseModel):
-    automation_run_id: str
-    parent_automation_run_id: str | None = None
-    trigger: AutomationTrigger | None = None
-    status: AutomationStatus
-    error_code: str | None = None
-    created_at: datetime
-    updated_at: datetime
-
-
-class AutomationWorkflowSnapshot(BaseModel):
-    root_automation_run_id: str
-    status: AutomationStatus
-    terminal: bool
-    succeeded: bool
-    truncated: bool = False
-    run_count: int = Field(ge=1)
-    active_count: int = Field(ge=0)
-    blocked_count: int = Field(ge=0)
-    failed_count: int = Field(ge=0)
-    runs: list[AutomationWorkflowRun]
+    runs: list[AIRun] = Field(min_length=1)

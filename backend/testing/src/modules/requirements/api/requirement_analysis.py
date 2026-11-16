@@ -37,14 +37,14 @@ async def latest_requirement_quality_analysis(
 
 
 @router.post("/phien-ban-yeu-cau/{version_id}/ai/kiem-tra")
-async def analyze_requirement_quality_for_automation(
+async def analyze_requirement_quality_for_event_run(
     version_id: str,
     payload: RequirementAIAnalysisInput,
     _: None = Depends(require_internal_token),
     user: CurrentUser = Depends(get_current_user),
 ):
     if not payload.idempotency_key.startswith("requirement-quality-event:"):
-        raise HTTPException(status_code=404, detail={"code": "AUTOMATIC_ANALYSIS_ONLY"})
+        raise HTTPException(status_code=404, detail={"code": "AI_EVENT_ANALYSIS_ONLY"})
     return envelope(await analyze_requirement_quality(version_id, payload, user))
 
 

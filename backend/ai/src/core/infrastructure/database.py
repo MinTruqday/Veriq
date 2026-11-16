@@ -76,23 +76,14 @@ async def setup_indexes():
                 IndexModel([("project_id", ASCENDING), ("updated_at", DESCENDING)]),
                 IndexModel([("user_id", ASCENDING), ("updated_at", DESCENDING)]),
                 IndexModel([("status", ASCENDING), ("updated_at", DESCENDING)]),
-                IndexModel(
-                    [
-                        ("project_id", ASCENDING),
-                        ("requester_user_id", ASCENDING),
-                        ("constraints.parent_automation_run_id", ASCENDING),
-                        ("created_at", ASCENDING),
-                    ],
-                    name="automation_workflow_children",
-                ),
             ],
-            "automation_runs": [
+            "ai_runs": [
                 IndexModel([("project_id", ASCENDING), ("updated_at", DESCENDING)]),
                 IndexModel([("requester_user_id", ASCENDING), ("updated_at", DESCENDING)]),
                 IndexModel([("status", ASCENDING), ("updated_at", DESCENDING)]),
                 IndexModel(
                     [("status", ASCENDING), ("worker_lease_expires_at", ASCENDING)],
-                    name="automation_worker_lease_recovery_scan",
+                    name="ai_run_worker_lease_recovery_scan",
                 ),
                 IndexModel(
                     [
@@ -101,7 +92,7 @@ async def setup_indexes():
                         ("updated_at", ASCENDING),
                         ("_id", ASCENDING),
                     ],
-                    name="automation_queue_recovery_scan",
+                    name="ai_run_queue_recovery_scan",
                 ),
                 IndexModel(
                     [
@@ -109,33 +100,33 @@ async def setup_indexes():
                         ("source_event_id", ASCENDING),
                         ("status", ASCENDING),
                     ],
-                    name="automation_document_revocation_scan",
+                    name="ai_run_document_revocation_scan",
                 ),
                 IndexModel(
                     [("project_id", ASCENDING), ("source_event_id", ASCENDING)],
                     unique=True,
-                    name="one_automation_run_per_source_event",
+                    name="one_ai_run_per_source_event",
                     partialFilterExpression={
                         "source_event_id": {"$type": "string"},
                     },
                 ),
             ],
-            "automation_checkpoints": [
+            "ai_run_checkpoints": [
                 IndexModel(
                     [
-                        ("automation_run_id", ASCENDING),
+                        ("ai_run_id", ASCENDING),
                         ("checkpoint_sequence", ASCENDING),
                         ("created_at", ASCENDING),
                     ],
-                    name="automation_run_checkpoint_sequence",
+                    name="ai_run_checkpoint_sequence",
                 ),
             ],
-            "automation_source_facts": [
-                IndexModel([("automation_run_id", ASCENDING), ("created_at", ASCENDING)]),
+            "ai_run_source_facts": [
+                IndexModel([("ai_run_id", ASCENDING), ("created_at", ASCENDING)]),
                 IndexModel([("project_id", ASCENDING), ("artifact_version_id", ASCENDING)]),
             ],
-            "automation_derivation_receipts": [
-                IndexModel([("automation_run_id", ASCENDING)], unique=True),
+            "ai_run_derivation_receipts": [
+                IndexModel([("ai_run_id", ASCENDING)], unique=True),
                 IndexModel([("project_id", ASCENDING), ("created_at", DESCENDING)]),
             ],
             "dead_letter_recovery_audit": [
@@ -148,7 +139,7 @@ async def setup_indexes():
                     name="dead_letter_recovery_pending_actions",
                 ),
             ],
-            "automation_project_blueprints": [
+            "project_testability_blueprints": [
                 IndexModel(
                     [("project_id", ASCENDING), ("version", ASCENDING)],
                     unique=True,
@@ -160,9 +151,9 @@ async def setup_indexes():
                     name="one_project_blueprint_per_compilation",
                 ),
                 IndexModel(
-                    [("project_id", ASCENDING), ("automation_run_ids", ASCENDING)],
+                    [("project_id", ASCENDING), ("ai_run_ids", ASCENDING)],
                     unique=True,
-                    name="one_project_blueprint_per_automation_run",
+                    name="one_project_blueprint_per_ai_run",
                 ),
             ],
             "testability_benchmark_datasets": [

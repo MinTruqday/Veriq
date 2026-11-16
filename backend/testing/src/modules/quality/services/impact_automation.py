@@ -1,4 +1,4 @@
-from src.core.ai_automation import request_ai_automation
+from src.core.ai_capabilities import request_ai_capability
 
 
 
@@ -72,7 +72,7 @@ async def request_impact_classification(project_id, change_set, candidates):
         }
         for item in candidates[:99]
     )
-    return await request_ai_automation(
+    return await request_ai_capability(
         "impact_analysis",
         project_id,
         "",

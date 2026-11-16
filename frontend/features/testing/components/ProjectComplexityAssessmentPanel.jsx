@@ -243,11 +243,7 @@ export default function ProjectComplexityAssessmentPanel({ project }) {
     try {
       const documentIds = [...selectedDocumentIds].sort();
       const requirementVersionIds = [...selectedRequirementVersionIds].sort();
-      const outputLanguage = preferredSummaryLocale(
-        user?.locale,
-        project.locale,
-        navigator.language,
-      );
+      const outputLanguage = preferredSummaryLocale(user?.locale, project.locale);
       const fingerprint = JSON.stringify({
         instruction,
         document_ids: documentIds,

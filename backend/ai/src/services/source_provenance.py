@@ -11,10 +11,12 @@ def is_source_fact_evidence(item) -> bool:
         return False
     artifact_type = str(item.get("artifact_type") or "").strip().casefold()
     authority = str(item.get("authority") or "").strip().casefold()
-    return artifact_type != "automation_clarification" and authority not in {
-        "user_clarification",
-        "user_answer",
-    }
+    source = str(item.get("source") or "").strip().casefold()
+    return (
+        artifact_type not in {"ai_run_clarification", "longtermmemory"}
+        and source not in {"memory", "agent_memory"}
+        and authority not in {"user_clarification", "user_answer"}
+    )
 
 
 def verified_release_gate_control_evidence(state) -> list[dict]:
@@ -348,17 +350,17 @@ def _verified_facts_by_reference(
     source_facts: Iterable,
     *,
     project_id: str | None = None,
-    automation_run_id: str | None = None,
+    ai_run_id: str | None = None,
 ) -> dict[str, list]:
     """Index facts only when their full source identity is present and unambiguous."""
     facts_by_reference: dict[str, list] = {}
     identities_by_reference: dict[str, set[tuple[str, str, str]]] = {}
     for fact in source_facts:
         fact_project_id = str(getattr(fact, "project_id", "") or "")
-        fact_run_id = str(getattr(fact, "automation_run_id", "") or "")
+        fact_run_id = str(getattr(fact, "ai_run_id", "") or "")
         if project_id is not None and fact_project_id != str(project_id):
             continue
-        if automation_run_id is not None and fact_run_id != str(automation_run_id):
+        if ai_run_id is not None and fact_run_id != str(ai_run_id):
             continue
         artifact_type = str(getattr(fact, "artifact_type", "") or "")
         artifact_id = str(getattr(fact, "artifact_id", "") or "")
@@ -420,7 +422,7 @@ def verified_blueprint_snapshot(
     source_facts: Iterable,
     *,
     project_id: str | None = None,
-    automation_run_id: str | None = None,
+    ai_run_id: str | None = None,
 ) -> dict | None:
     """Keep a blueprint in the receipt only when each claim resolves to a verified source fact."""
     if not isinstance(blueprint, dict):
@@ -482,7 +484,7 @@ def verified_blueprint_snapshot(
     ):
         return None
     facts_by_reference = _verified_facts_by_reference(
-        source_facts, project_id=project_id, automation_run_id=automation_run_id
+        source_facts, project_id=project_id, ai_run_id=ai_run_id
     )
 
     refs = set(evidence_refs)
@@ -536,7 +538,7 @@ def verified_blueprint_from_observations(
     source_facts: Iterable,
     *,
     project_id: str | None = None,
-    automation_run_id: str | None = None,
+    ai_run_id: str | None = None,
 ) -> tuple[dict | None, int]:
     """Persist any compiler blueprint whose claims resolve to verified source facts.
 
@@ -560,7 +562,7 @@ def verified_blueprint_from_observations(
             candidate,
             source_facts,
             project_id=project_id,
-            automation_run_id=automation_run_id,
+            ai_run_id=ai_run_id,
         )
         operation_verified = (
             observation.get("status") == "COMPLETED"
@@ -579,14 +581,14 @@ def verified_blueprint_claim_lineage(
     source_facts: Iterable,
     *,
     project_id: str | None = None,
-    automation_run_id: str | None = None,
+    ai_run_id: str | None = None,
 ) -> list[dict] | None:
     """Map every accepted blueprint claim to the verified fact quotes that support it."""
     if blueprint is None:
         return []
 
     facts_by_reference = _verified_facts_by_reference(
-        source_facts, project_id=project_id, automation_run_id=automation_run_id
+        source_facts, project_id=project_id, ai_run_id=ai_run_id
     )
     lineage = []
     claims = [

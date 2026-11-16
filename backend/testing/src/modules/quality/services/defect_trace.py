@@ -11,21 +11,21 @@ from src.repositories.defect import defect_repository
 from src.modules.quality.services.defect_authorization import require_defect_editor_assignment
 
 
-def _create_request_hash(payload, defect_id, automation_run_id):
+def _create_request_hash(payload, defect_id, ai_run_id):
     request = payload.model_dump(mode="json", exclude={"idempotency_key"})
     request["defect_id"] = defect_id
-    request["automation_run_id"] = automation_run_id
+    request["ai_run_id"] = ai_run_id
     canonical = json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def _verify_suggestion_replay(existing, payload, defect_id, user, automation_run_id):
+def _verify_suggestion_replay(existing, payload, defect_id, user, ai_run_id):
     if existing.get("created_by") != user.id:
         raise HTTPException(status_code=403, detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH"})
     request_hash = existing.get("idempotency_request_hash")
     if not request_hash:
         raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
-    if request_hash != _create_request_hash(payload, defect_id, automation_run_id):
+    if request_hash != _create_request_hash(payload, defect_id, ai_run_id):
         raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
 
 
@@ -33,12 +33,12 @@ async def suggest_defect_trace_record(project_id, defect_id, payload, user):
     defect = await get_project_entity("defects", defect_id, user, "ai.suggest_bug_trace")
     if defect["project_id"] != project_id:
         raise HTTPException(status_code=422, detail={"code": "PROJECT_MISMATCH"})
-    run_id = str(getattr(user, "_ai_automation_run_id", "") or "")
+    run_id = str(getattr(user, "_ai_capability_run_id", "") or "")
     if run_id:
-        from src.clients.ai_automation import agent_run_allows_bug_trace
+        from src.clients.ai_capabilities import ai_run_allows_bug_trace
 
         try:
-            admitted = await agent_run_allows_bug_trace(run_id, project_id, user.id)
+            admitted = await ai_run_allows_bug_trace(run_id, project_id, user.id)
         except Exception as error:
             raise HTTPException(503, detail={"code": "AI_AGENT_STATUS_UNAVAILABLE"}) from error
         if not admitted:
@@ -65,7 +65,7 @@ async def suggest_defect_trace_record(project_id, defect_id, payload, user):
             payload,
             defect_id,
             user,
-            str(getattr(user, "_ai_automation_run_id", "")),
+            str(getattr(user, "_ai_capability_run_id", "")),
         )
         if (
             existing.get("subject_id") != defect_id
@@ -86,9 +86,9 @@ async def suggest_defect_trace_record(project_id, defect_id, payload, user):
         "source_event_id": payload.source_event_id,
         "source_event_revision": payload.source_event_revision,
         "source_event_trigger": payload.source_event_trigger,
-        "automation_run_id": str(getattr(user, "_ai_automation_run_id", "")),
+        "ai_run_id": str(getattr(user, "_ai_capability_run_id", "")),
         "idempotency_request_hash": _create_request_hash(
-            payload, defect_id, str(getattr(user, "_ai_automation_run_id", ""))
+            payload, defect_id, str(getattr(user, "_ai_capability_run_id", ""))
         ),
         "status": "SUCCESS",
         "candidate_only": True,
@@ -137,7 +137,7 @@ async def suggest_defect_trace_record(project_id, defect_id, payload, user):
             payload,
             defect_id,
             user,
-            str(getattr(user, "_ai_automation_run_id", "")),
+            str(getattr(user, "_ai_capability_run_id", "")),
         )
         if (
             existing.get("subject_id") != defect_id

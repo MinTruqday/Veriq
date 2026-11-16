@@ -1,4 +1,4 @@
-from src.tools.testing_api import AutomationOperationError, require_operation
+from src.tools.testing_api import ToolOperationError, require_operation
 
 TEST_CASE_PUBLICATION_TIMEOUT_SECONDS = 90
 
@@ -157,8 +157,9 @@ async def publish_grounded_requirement(
     """Publish a Requirement after the Testing service's deterministic gates pass."""
     requirement_id = str(requirement.get("_id") or "")
     version_id = str(version.get("_id") or "")
+    output_language = ((config or {}).get("configurable") or {}).get("output_language")
     if not requirement_id or not version_id:
-        raise AutomationOperationError("REQUIREMENT_PUBLICATION_SCOPE_INVALID")
+        raise ToolOperationError("REQUIREMENT_PUBLICATION_SCOPE_INVALID")
 
     async def verify_current_version():
         current_requirement = await require_operation(
@@ -172,7 +173,7 @@ async def publish_grounded_requirement(
             or version.get("requirement_id") != requirement_id
             or version.get("project_id") != project_id
         ):
-            raise AutomationOperationError("REQUIREMENT_VERSION_SUPERSEDED")
+            raise ToolOperationError("REQUIREMENT_VERSION_SUPERSEDED")
         return current_requirement
 
     await verify_current_version()
@@ -187,11 +188,11 @@ async def publish_grounded_requirement(
             config,
             {
                 "expected_revision": version["revision"],
-                "review_note": "AI tự động kiểm tra nguồn, cấu trúc và tiêu chí trước khi đưa vào sử dụng",
+                "review_note": 'AI đã kiểm tra nguồn, cấu trúc và tiêu chí trước khi gửi rà soát.',
             },
         )
     if version.get("status") != "IN_REVIEW":
-        raise AutomationOperationError("REQUIREMENT_STATE_NOT_AUTOMATABLE")
+        raise ToolOperationError("REQUIREMENT_STATE_NOT_AUTOMATABLE")
     if before_write is not None:
         await before_write()
     version = await require_operation(
@@ -200,7 +201,7 @@ async def publish_grounded_requirement(
         config,
         {
             "expected_revision": version["revision"],
-            "review_note": "Tự động công bố sau khi kiểm tra nguồn, câu hỏi làm rõ và chất lượng đều đạt",
+            "review_note": 'Nguồn, câu hỏi làm rõ và kiểm tra chất lượng đã đạt trước khi công bố.',
         },
     )
     current_requirement = await verify_current_version()
@@ -216,9 +217,10 @@ async def publish_grounded_requirement(
 
 async def publish_grounded_test_case(project_id, draft, config, before_write=None):
     """Freeze an AI-created draft after independent source and quality checks."""
+    output_language = ((config or {}).get("configurable") or {}).get("output_language")
     draft_status = draft.get("status", "DRAFT")
     if draft_status == "APPROVED" and not draft.get("frozen_version_id"):
-        raise AutomationOperationError("TEST_CASE_APPROVAL_INCOMPLETE")
+        raise ToolOperationError("TEST_CASE_APPROVAL_INCOMPLETE")
     if draft_status in {"IN_REVIEW", "APPROVED"}:
         reviewed = draft
     elif draft_status == "DRAFT":
@@ -230,11 +232,11 @@ async def publish_grounded_test_case(project_id, draft, config, before_write=Non
             config,
             {
                 "expected_revision": draft["revision"],
-                "review_note": "AI tự động rà nguồn, trùng lặp và chất lượng trước khi công bố",
+                "review_note": 'AI đã kiểm tra nguồn, nội dung trùng lặp và chất lượng trước khi gửi rà soát.',
             },
         )
     else:
-        raise AutomationOperationError("TEST_CASE_DRAFT_STATE_NOT_RESUMABLE")
+        raise ToolOperationError("TEST_CASE_DRAFT_STATE_NOT_RESUMABLE")
     expected_review_status = "APPROVED" if draft_status == "APPROVED" else "IN_REVIEW"
     if reviewed.get("status") != expected_review_status:
         raise RuntimeError("TEST_CASE_REVIEW_READBACK_INVALID")
@@ -254,8 +256,8 @@ async def publish_grounded_test_case(project_id, draft, config, before_write=Non
         config,
         {
             "expected_revision": reviewed["revision"],
-            "change_reason": "Tự động công bố ca kiểm thử đã qua kiểm tra nguồn và chất lượng",
-            "review_note": "Tự động công bố theo chính sách luồng AI của dự án",
+            "change_reason": 'Ca kiểm thử đã qua kiểm tra nguồn và chất lượng trước khi công bố.',
+            "review_note": 'Đã đạt kiểm tra nguồn và chất lượng theo chính sách tự động hóa của dự án.',
         },
         timeout=TEST_CASE_PUBLICATION_TIMEOUT_SECONDS,
     )

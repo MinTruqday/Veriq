@@ -352,6 +352,12 @@ class TestabilityBenchmarkRequest(BaseModel):
 class TestabilityBlueprintBenchmarkRequest(BaseModel):
     project_id: str = Field(min_length=1, max_length=200)
     requester_user_id: str = Field(min_length=1, max_length=200)
+    output_language: str = Field(
+        default="auto",
+        min_length=2,
+        max_length=35,
+        pattern=r"^(?:auto|[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*)$",
+    )
     sources: list[TestabilityBenchmarkSource] = Field(min_length=1, max_length=20)
     blueprint: dict
 
@@ -478,8 +484,8 @@ class TestabilityBenchmarkRepeatedReport(BaseModel):
     )
     execution_status: Literal["COMPLETE", "PARTIAL"]
     interpretation: str = (
-        "Thống kê mô tả độ biến thiên giữa các lần chạy; không tự chứng minh khác biệt có ý nghĩa "
-        "thống kê hoặc chất lượng của đáp án chuẩn."
+        "Descriptive statistics of variation between runs; do not establish statistical significance "
+        "or validate the reference answers."
     )
     benchmark_design: dict = Field(default_factory=dict)
 

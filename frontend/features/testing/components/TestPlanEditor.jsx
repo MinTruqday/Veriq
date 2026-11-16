@@ -301,13 +301,17 @@ export default function TestPlanEditor({
   };
   return (
     <form
-      className="space-y-5 p-5"
+      className="test-design-form space-y-5 p-5"
       onSubmit={async (event) => {
         event.preventDefault();
         if (readOnly) return;
         if (savingRef.current) return;
         setError("");
         try {
+          if (!(value.test_types || []).length) {
+            setError("Chọn ít nhất một loại kiểm thử.");
+            return;
+          }
           const effortAllocations = value.estimation.effort_allocations || [];
           if (effortAllocations.some((item) => !item.user_id)) {
             setError("Chọn thành viên cho từng dòng phân bổ giờ.");
@@ -677,6 +681,7 @@ export default function TestPlanEditor({
                 className="apple-input mt-2"
                 value={value.test_level}
                 onChange={(event) => setField("test_level", event.target.value)}
+                aria-label="Cấp kiểm thử"
                 required
                 disabled={!selectedStrategy?.test_levels?.length && !value.test_level}
               >

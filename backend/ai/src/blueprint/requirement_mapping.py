@@ -1,7 +1,7 @@
 import hashlib
 import json
 
-from src.services.automation_provenance import source_quote_spans
+from src.services.source_provenance import source_quote_spans
 from src.blueprint.source_evidence import requirement_version_source_text
 
 

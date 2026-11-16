@@ -1,7 +1,7 @@
 import re
 
 from src.clients.project_knowledge import search_project_with_status
-from src.core.ai_automation import ai_contract_metadata, request_ai_automation
+from src.core.ai_capabilities import ai_contract_metadata, request_ai_capability
 from src.core.common import get_project, load_user_identities, now
 from src.repositories.analytics import analytics_repository
 from src.schemas.contracts.utility import SearchInput
@@ -461,7 +461,7 @@ class AnalyticsService:
                 },
                 {"status": missing["status"], "degraded_mode": missing["degraded_mode"]},
             )
-        result = await request_ai_automation(
+        result = await request_ai_capability(
             "project_question", project_id, payload.question, evidence, request_id=trace_id
         )
         contract = ai_contract_metadata(result)

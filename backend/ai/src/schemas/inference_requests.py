@@ -3,14 +3,15 @@ from typing import Annotated, Any, List, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-TESTING_AUTOMATION_MAX_EVIDENCE_ITEMS = 100
+TESTABILITY_MAX_EVIDENCE_ITEMS = 100
+TESTING_EVIDENCE_TEXT_MAX_LENGTH = 4000
 
 
-class TestingAutomationStatus(str, Enum):
+class TestingCapabilityStatus(str, Enum):
     SUCCESS = "SUCCESS"
     DEGRADED = "DEGRADED"
 
-class TestingAutomationDegradedMode(str, Enum):
+class TestingAIDegradedMode(str, Enum):
     OUTPUT = "DEGRADED_OUTPUT"
     PROVIDER = "DEGRADED_AI"
 
@@ -60,7 +61,7 @@ class TestingEvidence(BaseModel):
     authority: str | None = Field(default=None, min_length=1, max_length=100)
     relationship_paths: list[list[str]] = Field(default_factory=list, max_length=100)
     verified_facts: list[VerifiedSourceFactCitation] = Field(default_factory=list, max_length=500)
-    text: str = Field(min_length=1, max_length=4000)
+    text: str = Field(min_length=1, max_length=TESTING_EVIDENCE_TEXT_MAX_LENGTH)
 
     @field_validator("relationship_paths")
     @classmethod
@@ -83,24 +84,24 @@ class TestingEvidence(BaseModel):
             raise ValueError("testing_evidence_identifier_required")
         return self
 
-class TestingAutomationRequest(BaseModel):
+class TestingCapabilityRequest(BaseModel):
     capability: str = Field(min_length=1, max_length=100, description="Testing capability to perform")
     project_id: str = Field(
         min_length=1, max_length=128, description="Project identifier that bounds the operation"
     )
     instruction: str = Field(
-        default="", max_length=5000, description="Additional user business instruction"
+        default="", max_length=20000, description="Additional user business instruction"
     )
     output_language: str | None = Field(
         default=None,
         min_length=2,
         max_length=35,
-        pattern=r"^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$",
+        pattern=r"^(?:auto|[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*)$",
         description="Trusted user or project locale for generated natural-language fields",
     )
     evidence: List[TestingEvidence] = Field(
         min_length=1,
-        max_length=TESTING_AUTOMATION_MAX_EVIDENCE_ITEMS,
+        max_length=TESTABILITY_MAX_EVIDENCE_ITEMS,
         description="Artifact evidence already bounded to the project",
     )
 
@@ -111,7 +112,7 @@ class TestingAutomationRequest(BaseModel):
         output_schema(self.capability)
         return self
 
-class TestingAutomationResult(BaseModel):
+class TestingCapabilityResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     capability: str = Field(description="Executed testing capability")
@@ -119,6 +120,11 @@ class TestingAutomationResult(BaseModel):
         default_factory=list,
         max_length=100,
         description="Proposals that remain pending review",
+    )
+    recommendations: List[dict[str, Any]] = Field(
+        default_factory=list,
+        max_length=100,
+        description="Evidence-grounded Requirement quality recommendations",
     )
     new_test_candidates: List[dict[str, Any]] = Field(
         default_factory=list,
@@ -158,10 +164,10 @@ class TestingAutomationResult(BaseModel):
     warnings: List[str] = Field(
         default_factory=list, max_length=50, description="Evidence limitation and conflict warnings"
     )
-    status: TestingAutomationStatus = Field(
-        default=TestingAutomationStatus.SUCCESS, description="AI capability operating status"
+    status: TestingCapabilityStatus = Field(
+        default=TestingCapabilityStatus.SUCCESS, description="AI capability operating status"
     )
-    degraded_mode: TestingAutomationDegradedMode | None = Field(
+    degraded_mode: TestingAIDegradedMode | None = Field(
         default=None, description="Fallback mode when the provider or retrieval is unavailable"
     )
     provider: str = Field(min_length=1, max_length=100, description="Provider that produced the result")

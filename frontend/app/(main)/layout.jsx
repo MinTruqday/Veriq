@@ -5,6 +5,7 @@ import AppShell from "@/shared/components/layout/AppShell";
 export default function MainLayout({ children }) {
   const pathname = usePathname();
   const isPublic = pathname.startsWith("/dieu-khoan") || pathname.startsWith("/tro-giup");
+  if (isPublic) return children;
   return (
     <Suspense
       fallback={
@@ -14,7 +15,7 @@ export default function MainLayout({ children }) {
         </div>
       }
     >
-      <AppShell requireAuth={!isPublic}>{children}</AppShell>
+      <AppShell requireAuth>{children}</AppShell>
     </Suspense>
   );
 }

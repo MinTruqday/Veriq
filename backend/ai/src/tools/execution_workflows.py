@@ -22,23 +22,23 @@ async def process_recorded_defect(
     """Create an idempotent defect-analysis record, generate hypotheses, and verify the saved record"""
     configurable = (config or {}).get("configurable", {})
     execution_user_id = configurable.get("user_id")
-    automation_run_id = configurable.get("automation_run_id")
+    ai_run_id = configurable.get("ai_run_id")
     permissions = set(configurable.get("permissions", []))
-    if not execution_user_id or not automation_run_id:
+    if not execution_user_id or not ai_run_id:
         return json.dumps(
-            {"status": "automation_blocked", "reason_code": "AUTOMATION_IDENTITY_REQUIRED"}
+            {"status": "blocked", "reason_code": "AI_RUN_IDENTITY_REQUIRED"}
         )
     if "causalanalysis.update" not in permissions:
         return json.dumps(
             {
-                "status": "automation_blocked",
+                "status": "blocked",
                 "reason_code": "CAUSAL_ANALYSIS_UPDATE_PERMISSION_REQUIRED",
             }
         )
     event_trigger = configurable.get("event_trigger") or configurable.get("trigger")
     if event_trigger not in {"DEFECT_RECORDED", "DEFECT_CHANGED"}:
         return json.dumps(
-            {"status": "automation_blocked", "reason_code": "VERIFIED_DEFECT_EVENT_REQUIRED"}
+            {"status": "blocked", "reason_code": "VERIFIED_DEFECT_EVENT_REQUIRED"}
         )
     source = next(
         (
@@ -55,18 +55,18 @@ async def process_recorded_defect(
     )
     if not source or not str(source.get("text") or "").strip():
         return json.dumps(
-            {"status": "automation_blocked", "reason_code": "DEFECT_SOURCE_EVIDENCE_REQUIRED"}
+            {"status": "blocked", "reason_code": "DEFECT_SOURCE_EVIDENCE_REQUIRED"}
         )
     evidence_ref = str(source.get("artifact_version_id") or source.get("artifact_id"))
     expected_event_id = f"defect:{defect_id}:{source_event_revision}"
     if source_event_id != expected_event_id:
         return json.dumps(
-            {"status": "automation_blocked", "reason_code": "DEFECT_EVENT_IDENTITY_MISMATCH"}
+            {"status": "blocked", "reason_code": "DEFECT_EVENT_IDENTITY_MISMATCH"}
         )
     current_defect = parse(await call("GET", f"/du-an/{project_id}/loi/{defect_id}", config))
     if not current_defect or current_defect.get("project_id") != project_id:
         return json.dumps(
-            {"status": "automation_blocked", "reason_code": "DEFECT_PROJECT_SCOPE_INVALID"}
+            {"status": "blocked", "reason_code": "DEFECT_PROJECT_SCOPE_INVALID"}
         )
     if current_defect.get("revision") != source_event_revision:
         return json.dumps(
@@ -86,7 +86,7 @@ async def process_recorded_defect(
             },
             ensure_ascii=False,
         )
-    idempotency_key = f"ai-automation-{automation_run_id}"
+    idempotency_key = f"ai-automation-{ai_run_id}"
     analysis = parse(
         await call(
             "POST",
@@ -106,7 +106,7 @@ async def process_recorded_defect(
     )
     if not analysis or not analysis.get("_id"):
         return json.dumps(
-            {"status": "automation_partial_failure", "reason_code": "CAUSAL_ANALYSIS_CREATE_FAILED"}
+            {"status": "partial_failure", "reason_code": "CAUSAL_ANALYSIS_CREATE_FAILED"}
         )
     analysis_id = str(analysis["_id"])
     hypotheses = parse(
@@ -121,7 +121,7 @@ async def process_recorded_defect(
     if not hypotheses or hypotheses.get("status") == "qa_operation_failed":
         return json.dumps(
             {
-                "status": "automation_partial_failure",
+                "status": "partial_failure",
                 "analysis_id": analysis_id,
                 "reason_code": "CAUSAL_HYPOTHESES_FAILED",
             }
@@ -135,11 +135,11 @@ async def process_recorded_defect(
         or readback.get("source_event_id") != source_event_id
         or readback.get("source_event_revision") != source_event_revision
         or readback.get("source_event_trigger") != event_trigger
-        or readback.get("source_automation_run_id") != automation_run_id
+        or readback.get("source_ai_run_id") != ai_run_id
     ):
         return json.dumps(
             {
-                "status": "automation_partial_failure",
+                "status": "partial_failure",
                 "analysis_id": analysis_id,
                 "reason_code": "CAUSAL_ANALYSIS_READBACK_FAILED",
             }
@@ -152,7 +152,7 @@ async def process_recorded_defect(
                 f"/du-an/{project_id}/ai/loi/{defect_id}/goi-y-truy-vet",
                 config,
                 {
-                    "idempotency_key": f"ai-automation-{automation_run_id}-bug-trace",
+                    "idempotency_key": f"ai-automation-{ai_run_id}-bug-trace",
                     "source_event_id": source_event_id,
                     "source_event_revision": source_event_revision,
                     "source_event_trigger": event_trigger,
@@ -170,7 +170,7 @@ async def process_recorded_defect(
         ):
             return json.dumps(
                 {
-                    "status": "automation_partial_failure",
+                    "status": "partial_failure",
                     "analysis_id": analysis_id,
                     "reason_code": "DEFECT_TRACE_SUGGESTION_READBACK_FAILED",
                 }
@@ -223,19 +223,19 @@ async def process_created_status_report(
 ) -> str:
     """Create a traceable narrative candidate for a newly created status report."""
     configurable = (config or {}).get("configurable", {})
-    automation_run_id = configurable.get("automation_run_id")
+    ai_run_id = configurable.get("ai_run_id")
     permissions = set(configurable.get("permissions", []))
     event_trigger = configurable.get("event_trigger") or configurable.get("trigger")
-    if not automation_run_id or "teststatusreport.update" not in permissions:
+    if not ai_run_id or "teststatusreport.update" not in permissions:
         return json.dumps(
             {
-                "status": "automation_blocked",
-                "reason_code": "STATUS_REPORT_AUTOMATION_PERMISSION_REQUIRED",
+                "status": "blocked",
+                "reason_code": "STATUS_REPORT_AI_RUN_PERMISSION_REQUIRED",
             }
         )
     if event_trigger != "STATUS_REPORT_CREATED":
         return json.dumps(
-            {"status": "automation_blocked", "reason_code": "VERIFIED_STATUS_REPORT_EVENT_REQUIRED"}
+            {"status": "blocked", "reason_code": "VERIFIED_STATUS_REPORT_EVENT_REQUIRED"}
         )
     source = next(
         (
@@ -252,12 +252,12 @@ async def process_created_status_report(
     expected_event_id = f"status-report:{report_id}:{source_event_revision}:STATUS_REPORT_CREATED"
     if not source or source_event_id != expected_event_id:
         return json.dumps(
-            {"status": "automation_blocked", "reason_code": "STATUS_REPORT_EVENT_SOURCE_INVALID"}
+            {"status": "blocked", "reason_code": "STATUS_REPORT_EVENT_SOURCE_INVALID"}
         )
     report = parse(await call("GET", f"/bao-cao-trang-thai/{report_id}", config))
     if not report or report.get("project_id") != project_id:
         return json.dumps(
-            {"status": "automation_blocked", "reason_code": "STATUS_REPORT_PROJECT_SCOPE_INVALID"}
+            {"status": "blocked", "reason_code": "STATUS_REPORT_PROJECT_SCOPE_INVALID"}
         )
     if report.get("revision") != source_event_revision:
         return json.dumps(
@@ -273,7 +273,7 @@ async def process_created_status_report(
         )
     if report.get("status") != "DRAFT":
         return json.dumps(
-            {"status": "automation_blocked", "reason_code": "STATUS_REPORT_NOT_DRAFT"}
+            {"status": "blocked", "reason_code": "STATUS_REPORT_NOT_DRAFT"}
         )
     suffix = hashlib.sha256(source_event_id.encode("utf-8")).hexdigest()
     idempotency_key = f"ai-status-report-{suffix}"
@@ -299,12 +299,12 @@ async def process_created_status_report(
         or result.get("source_event_id") != source_event_id
         or result.get("source_event_revision") != source_event_revision
         or result.get("source_event_trigger") != event_trigger
-        or result.get("source_automation_run_id") != automation_run_id
+        or result.get("source_ai_run_id") != ai_run_id
         or result.get("idempotency_key") != idempotency_key
     ):
         return json.dumps(
             {
-                "status": "automation_partial_failure",
+                "status": "partial_failure",
                 "reason_code": "STATUS_REPORT_NARRATIVE_READBACK_INVALID",
             }
         )
@@ -343,20 +343,20 @@ async def process_created_test_completion_report(
 ) -> str:
     """Create traceable narrative and lessons candidates for a completion report."""
     configurable = (config or {}).get("configurable", {})
-    automation_run_id = configurable.get("automation_run_id")
+    ai_run_id = configurable.get("ai_run_id")
     permissions = set(configurable.get("permissions", []))
     event_trigger = configurable.get("event_trigger") or configurable.get("trigger")
-    if not automation_run_id or "testcompletion.update" not in permissions:
+    if not ai_run_id or "testcompletion.update" not in permissions:
         return json.dumps(
             {
-                "status": "automation_blocked",
-                "reason_code": "COMPLETION_AUTOMATION_PERMISSION_REQUIRED",
+                "status": "blocked",
+                "reason_code": "COMPLETION_AI_RUN_PERMISSION_REQUIRED",
             }
         )
     if event_trigger != "TEST_COMPLETION_REPORT_CREATED":
         return json.dumps(
             {
-                "status": "automation_blocked",
+                "status": "blocked",
                 "reason_code": "VERIFIED_COMPLETION_REPORT_EVENT_REQUIRED",
             }
         )
@@ -378,7 +378,7 @@ async def process_created_test_completion_report(
     if not source or source_event_id != expected_event_id:
         return json.dumps(
             {
-                "status": "automation_blocked",
+                "status": "blocked",
                 "reason_code": "COMPLETION_REPORT_EVENT_SOURCE_INVALID",
             }
         )
@@ -386,7 +386,7 @@ async def process_created_test_completion_report(
     if not report or report.get("project_id") != project_id:
         return json.dumps(
             {
-                "status": "automation_blocked",
+                "status": "blocked",
                 "reason_code": "COMPLETION_REPORT_PROJECT_SCOPE_INVALID",
             }
         )
@@ -404,7 +404,7 @@ async def process_created_test_completion_report(
         )
     if report.get("status") != "DRAFT":
         return json.dumps(
-            {"status": "automation_blocked", "reason_code": "COMPLETION_REPORT_NOT_DRAFT"}
+            {"status": "blocked", "reason_code": "COMPLETION_REPORT_NOT_DRAFT"}
         )
     suffix = hashlib.sha256(source_event_id.encode("utf-8")).hexdigest()
     outputs = [
@@ -412,7 +412,7 @@ async def process_created_test_completion_report(
             "COMPLETION_REPORT_NARRATIVE",
             "/ai/ban-nhap",
             "completion-report-narrative",
-            "Bản diễn giải dựa trên số liệu và nguồn của báo cáo.",
+            "Draft a report narrative from the supplied metrics and source evidence.",
         )
     ]
     if report.get("lessons_learned"):
@@ -421,7 +421,7 @@ async def process_created_test_completion_report(
                 "LESSONS_LEARNED_CLUSTERING",
                 "/ai/gom-bai-hoc",
                 "completion-lessons",
-                "Gom nhóm bài học, giữ chỉ số bài học nguồn.",
+                "Cluster lessons learned while preserving their source identifiers.",
             )
         )
     readbacks = []
@@ -449,12 +449,12 @@ async def process_created_test_completion_report(
             or result.get("source_event_id") != source_event_id
             or result.get("source_event_revision") != source_event_revision
             or result.get("source_event_trigger") != event_trigger
-            or result.get("source_automation_run_id") != automation_run_id
+            or result.get("source_ai_run_id") != ai_run_id
             or result.get("idempotency_key") != idempotency_key
         ):
             return json.dumps(
                 {
-                    "status": "automation_partial_failure",
+                    "status": "partial_failure",
                     "reason_code": "COMPLETION_AI_READBACK_INVALID",
                 }
             )
@@ -493,12 +493,12 @@ async def process_approved_test_plan(
 ) -> str:
     """Create an idempotent Test Run from an approved immutable Test Plan and verify the run"""
     configurable = (config or {}).get("configurable", {})
-    automation_run_id = configurable.get("automation_run_id")
+    ai_run_id = configurable.get("ai_run_id")
     permissions = set(configurable.get("permissions", []))
     expected_event_id = f"test-plan:{test_plan_id}:{expected_revision}:TEST_PLAN_APPROVED"
-    if not automation_run_id:
+    if not ai_run_id:
         return json.dumps(
-            {"status": "automation_blocked", "reason_code": "AUTOMATION_RUN_REQUIRED"}
+            {"status": "blocked", "reason_code": "AI_RUN_REQUIRED"}
         )
     plan_source = next(
         (
@@ -514,12 +514,12 @@ async def process_approved_test_plan(
     )
     if not plan_source or source_event_id != expected_event_id:
         return json.dumps(
-            {"status": "automation_blocked", "reason_code": "TEST_PLAN_EVENT_EVIDENCE_REQUIRED"}
+            {"status": "blocked", "reason_code": "TEST_PLAN_EVENT_EVIDENCE_REQUIRED"}
         )
     plan = parse(await call("GET", f"/ke-hoach-kiem-thu/{test_plan_id}", config))
     if not plan or plan.get("project_id") != project_id:
         return json.dumps(
-            {"status": "automation_blocked", "reason_code": "TEST_PLAN_PROJECT_SCOPE_INVALID"}
+            {"status": "blocked", "reason_code": "TEST_PLAN_PROJECT_SCOPE_INVALID"}
         )
     if plan.get("revision") != expected_revision:
         return json.dumps(
@@ -541,23 +541,23 @@ async def process_approved_test_plan(
         )
     if plan.get("status") != "APPROVED":
         return json.dumps(
-            {"status": "automation_blocked", "reason_code": "APPROVED_TEST_PLAN_REQUIRED"}
+            {"status": "blocked", "reason_code": "APPROVED_TEST_PLAN_REQUIRED"}
         )
     expected_snapshot_hash = str(plan.get("approved_snapshot_hash") or "")
     if not expected_snapshot_hash:
         return json.dumps(
-            {"status": "automation_blocked", "reason_code": "APPROVED_TEST_PLAN_SNAPSHOT_HASH_REQUIRED"}
+            {"status": "blocked", "reason_code": "APPROVED_TEST_PLAN_SNAPSHOT_HASH_REQUIRED"}
         )
     snapshot = plan.get("approved_snapshot") or plan
     version_ids = list(dict.fromkeys(snapshot.get("test_case_version_ids") or []))
     if not version_ids:
         return json.dumps(
-            {"status": "automation_blocked", "reason_code": "APPROVED_TEST_PLAN_SCOPE_EMPTY"}
+            {"status": "blocked", "reason_code": "APPROVED_TEST_PLAN_SCOPE_EMPTY"}
         )
     if "testrun.execute" not in permissions:
         return json.dumps(
             {
-                "status": "automation_blocked",
+                "status": "blocked",
                 "reason_code": "TEST_RUN_EXECUTION_PERMISSION_REQUIRED",
             }
         )
@@ -566,7 +566,7 @@ async def process_approved_test_plan(
         test_plan_id,
         plan,
         snapshot,
-        automation_run_id,
+        ai_run_id,
         expected_snapshot_hash,
         config,
     )
@@ -582,7 +582,7 @@ async def process_approved_performance_configuration(
 ) -> str:
     """Generate a performance-plan draft from one verified approved configuration event."""
     configurable = (config or {}).get("configurable", {})
-    automation_run_id = configurable.get("automation_run_id")
+    ai_run_id = configurable.get("ai_run_id")
     event_trigger = configurable.get("event_trigger") or configurable.get("trigger")
     expected_event_id = (
         f"performance-configuration:{plan_id}:{source_event_revision}:"
@@ -601,13 +601,13 @@ async def process_approved_performance_configuration(
         None,
     )
     if (
-        not automation_run_id
+        not ai_run_id
         or event_trigger != "PERFORMANCE_CONFIGURATION_APPROVED"
         or source_event_id != expected_event_id
         or not source
     ):
         return json.dumps(
-            {"status": "automation_blocked", "reason_code": "VERIFIED_PERFORMANCE_CONFIGURATION_EVENT_REQUIRED"}
+            {"status": "blocked", "reason_code": "VERIFIED_PERFORMANCE_CONFIGURATION_EVENT_REQUIRED"}
         )
     approved_plan = parse(await call("GET", f"/ke-hoach-phi-chuc-nang/{plan_id}", config))
     if (
@@ -618,7 +618,7 @@ async def process_approved_performance_configuration(
         or approved_plan.get("revision") != source_event_revision
     ):
         return json.dumps(
-            {"status": "automation_blocked", "reason_code": "APPROVED_PERFORMANCE_CONFIGURATION_CHANGED"}
+            {"status": "blocked", "reason_code": "APPROVED_PERFORMANCE_CONFIGURATION_CHANGED"}
         )
     result = parse(
         await call(
@@ -636,7 +636,7 @@ async def process_approved_performance_configuration(
         return json.dumps(
             {"status": "failed", "reason_code": "PERFORMANCE_CONFIGURATION_RESPONSE_INVALID"}
         )
-    if result.get("status") == "automation_waiting_for_input":
+    if result.get("status") == "awaiting_input":
         return json.dumps(result, ensure_ascii=False)
     draft = result.get("draft")
     try:
@@ -751,24 +751,28 @@ async def _start_test_run_from_approved_plan(
     test_plan_id: str,
     plan: dict,
     snapshot: dict,
-    automation_run_id: str,
+    ai_run_id: str,
     expected_snapshot_hash: str,
     config: RunnableConfig,
 ) -> str:
     configurable = (config or {}).get("configurable", {})
+    output_language = configurable.get("output_language")
     permissions = set(configurable.get("permissions", []))
     if "testrun.create" not in permissions or "testrun.execute" not in permissions:
         return json.dumps(
-            {"status": "automation_blocked", "reason_code": "TEST_RUN_PERMISSION_REQUIRED"}
+            {"status": "blocked", "reason_code": "TEST_RUN_PERMISSION_REQUIRED"}
         )
     version_ids = list(dict.fromkeys(snapshot.get("test_case_version_ids") or []))
     if not version_ids:
         return json.dumps(
-            {"status": "automation_blocked", "reason_code": "APPROVED_TEST_PLAN_SCOPE_EMPTY"}
+            {"status": "blocked", "reason_code": "APPROVED_TEST_PLAN_SCOPE_EMPTY"}
         )
     payload = {
         "project_id": project_id,
-        "name": f"{plan.get('name') or test_plan_id} - lần chạy tự động",
+        "name": (
+            f"{plan.get('name') or test_plan_id} - "
+            f"{'lần chạy tự động'}"
+        ),
         "test_plan_id": test_plan_id,
         "test_case_version_ids": version_ids,
         "assignment_strategy": "PROFILE_EVIDENCE",
@@ -778,19 +782,19 @@ async def _start_test_run_from_approved_plan(
         "release_id": snapshot.get("release_id"),
         "build": snapshot.get("build") or "",
         "build_id": snapshot.get("build_id"),
-        "idempotency_key": f"ai-automation-{automation_run_id}",
+        "idempotency_key": f"ai-automation-{ai_run_id}",
         "expected_test_plan_snapshot_hash": expected_snapshot_hash,
     }
     run = parse(await call("POST", f"/du-an/{project_id}/lan-chay-kiem-thu", config, payload))
     if not run or not run.get("_id"):
         return json.dumps(
-            {"status": "automation_partial_failure", "reason_code": "TEST_RUN_CREATE_FAILED"}
+            {"status": "partial_failure", "reason_code": "TEST_RUN_CREATE_FAILED"}
         )
     run_id = str(run["_id"])
     if not _valid_confirmed_assignment_snapshot(run, version_ids):
         return json.dumps(
             {
-                "status": "automation_partial_failure",
+                "status": "partial_failure",
                 "test_run_id": run_id,
                 "reason_code": "TEST_RUN_ASSIGNMENT_SNAPSHOT_INVALID",
             }
@@ -800,7 +804,7 @@ async def _start_test_run_from_approved_plan(
     if unassigned_reasons and not assignments:
         return json.dumps(
             {
-                "status": "automation_blocked",
+                "status": "blocked",
                 "test_run_id": run_id,
                 "reason_code": "TEST_RUN_HAS_UNASSIGNED_CASES",
                 "unassigned_assignment_reasons": unassigned_reasons,
@@ -813,7 +817,7 @@ async def _start_test_run_from_approved_plan(
         if not started or started.get("status") != "IN_PROGRESS":
             return json.dumps(
                 {
-                    "status": "automation_partial_failure",
+                    "status": "partial_failure",
                     "test_run_id": run_id,
                     "reason_code": "TEST_RUN_START_FAILED",
                 }
@@ -831,7 +835,7 @@ async def _start_test_run_from_approved_plan(
     ):
         return json.dumps(
             {
-                "status": "automation_partial_failure",
+                "status": "partial_failure",
                 "test_run_id": run_id,
                 "reason_code": "TEST_RUN_READBACK_MISMATCH",
             }
@@ -877,9 +881,9 @@ async def process_changed_test_plan(
     ],
     config: RunnableConfig = None,
 ) -> str:
-    """Validate and lock a changed plan under scoped automation authority, then start its run."""
+    """Validate and lock a changed plan under the authorized AI run, then start execution."""
     configurable = (config or {}).get("configurable", {})
-    automation_run_id = configurable.get("automation_run_id")
+    ai_run_id = configurable.get("ai_run_id")
     permissions = set(configurable.get("permissions", []))
     event_evidence = next(
         (
@@ -892,25 +896,25 @@ async def process_changed_test_plan(
         ),
         None,
     )
-    if not automation_run_id or not event_evidence:
+    if not ai_run_id or not event_evidence:
         return json.dumps(
-            {"status": "automation_blocked", "reason_code": "VERIFIED_TEST_PLAN_EVENT_REQUIRED"}
+            {"status": "blocked", "reason_code": "VERIFIED_TEST_PLAN_EVENT_REQUIRED"}
         )
     if event_evidence.get("artifact_revision") != expected_revision:
         return json.dumps(
-            {"status": "automation_blocked", "reason_code": "TEST_PLAN_EVENT_REVISION_MISMATCH"}
+            {"status": "blocked", "reason_code": "TEST_PLAN_EVENT_REVISION_MISMATCH"}
         )
     if "testplan.approve" not in permissions:
         return json.dumps(
             {
-                "status": "automation_blocked",
+                "status": "blocked",
                 "reason_code": "TEST_PLAN_APPROVAL_PERMISSION_REQUIRED",
             }
         )
     plan = parse(await call("GET", f"/ke-hoach-kiem-thu/{test_plan_id}", config))
     if not plan or plan.get("project_id") != project_id:
         return json.dumps(
-            {"status": "automation_blocked", "reason_code": "TEST_PLAN_PROJECT_SCOPE_INVALID"}
+            {"status": "blocked", "reason_code": "TEST_PLAN_PROJECT_SCOPE_INVALID"}
         )
     if plan.get("revision") != expected_revision:
         return json.dumps(
@@ -934,11 +938,11 @@ async def process_changed_test_plan(
     if status != "APPROVED":
         if status not in {"DRAFT", "IN_REVIEW"}:
             return json.dumps(
-                {"status": "automation_blocked", "reason_code": "TEST_PLAN_NOT_APPROVABLE"}
+                {"status": "blocked", "reason_code": "TEST_PLAN_NOT_APPROVABLE"}
             )
         if not plan.get("test_case_version_ids"):
             return json.dumps(
-                {"status": "automation_blocked", "reason_code": "TEST_PLAN_TEST_CASE_SCOPE_EMPTY"}
+                {"status": "blocked", "reason_code": "TEST_PLAN_TEST_CASE_SCOPE_EMPTY"}
             )
         validation = parse(
             await call("POST", f"/ke-hoach-kiem-thu/{test_plan_id}/kiem-tra", config)
@@ -946,7 +950,7 @@ async def process_changed_test_plan(
         if not validation or validation.get("ready_for_approval") is not True:
             return json.dumps(
                 {
-                    "status": "automation_blocked",
+                    "status": "blocked",
                     "reason_code": "TEST_PLAN_INCOMPLETE",
                     "findings": (validation or {}).get("findings", []),
                 },
@@ -959,14 +963,14 @@ async def process_changed_test_plan(
                 config,
                 {
                     "expected_revision": plan.get("revision"),
-                    "review_note": "Tự động khóa phạm vi sau khi kiểm tra đủ điều kiện và quyền sự kiện.",
+                    "review_note": 'Phạm vi và quyền của sự kiện đã vượt qua các kiểm tra bắt buộc.',
                 },
             )
         )
         if not plan or plan.get("status") != "APPROVED":
             return json.dumps(
                 {
-                    "status": "automation_partial_failure",
+                    "status": "partial_failure",
                     "reason_code": "TEST_PLAN_APPROVAL_READBACK_MISMATCH",
                 }
             )
@@ -981,7 +985,7 @@ async def process_changed_test_plan(
     ):
         return json.dumps(
             {
-                "status": "automation_partial_failure",
+                "status": "partial_failure",
                 "reason_code": "TEST_PLAN_APPROVAL_READBACK_MISMATCH",
             }
         )
@@ -992,7 +996,7 @@ async def process_changed_test_plan(
             test_plan_id,
             readback,
             snapshot,
-            automation_run_id,
+            ai_run_id,
             str(readback["approved_snapshot_hash"]),
             config,
         )
@@ -1000,7 +1004,7 @@ async def process_changed_test_plan(
     if not result or result.get("status") != "completed":
         return json.dumps(
             result
-            or {"status": "automation_partial_failure", "reason_code": "TEST_RUN_RESULT_INVALID"},
+            or {"status": "partial_failure", "reason_code": "TEST_RUN_RESULT_INVALID"},
             ensure_ascii=False,
             default=str,
         )
@@ -1021,7 +1025,7 @@ async def process_changed_release(
 ) -> str:
     """Close an active Release only after its authoritative completion and assurance gates pass."""
     configurable = (config or {}).get("configurable", {})
-    automation_run_id = configurable.get("automation_run_id")
+    ai_run_id = configurable.get("ai_run_id")
     permissions = set(configurable.get("permissions", []))
     source = next(
         (
@@ -1035,29 +1039,29 @@ async def process_changed_release(
         ),
         None,
     )
-    if not automation_run_id or not source:
+    if not ai_run_id or not source:
         return json.dumps(
-            {"status": "automation_blocked", "reason_code": "VERIFIED_RELEASE_GATE_RECHECK_EVENT_REQUIRED"}
+            {"status": "blocked", "reason_code": "VERIFIED_RELEASE_GATE_RECHECK_EVENT_REQUIRED"}
         )
     if not str(configurable.get("source_event_id") or "").startswith(
         f"release-gate:{release_id}:"
     ):
         return json.dumps(
-            {"status": "automation_blocked", "reason_code": "RELEASE_GATE_EVENT_ID_INVALID"}
+            {"status": "blocked", "reason_code": "RELEASE_GATE_EVENT_ID_INVALID"}
         )
     if source.get("artifact_revision") != expected_revision:
         return json.dumps(
-            {"status": "automation_blocked", "reason_code": "RELEASE_EVENT_REVISION_MISMATCH"}
+            {"status": "blocked", "reason_code": "RELEASE_EVENT_REVISION_MISMATCH"}
         )
     if "release.close" not in permissions:
         return json.dumps(
-            {"status": "automation_blocked", "reason_code": "RELEASE_CLOSE_PERMISSION_REQUIRED"}
+            {"status": "blocked", "reason_code": "RELEASE_CLOSE_PERMISSION_REQUIRED"}
         )
 
     release = parse(await call("GET", f"/ban-phat-hanh/{release_id}", config))
     if not release or release.get("_id") != release_id or release.get("project_id") != project_id:
         return json.dumps(
-            {"status": "automation_blocked", "reason_code": "RELEASE_PROJECT_SCOPE_INVALID"}
+            {"status": "blocked", "reason_code": "RELEASE_PROJECT_SCOPE_INVALID"}
         )
     if release.get("revision") != expected_revision:
         return json.dumps(
@@ -1112,7 +1116,7 @@ async def process_changed_release(
     if not isinstance(release.get("revision"), int) or release["revision"] < 1:
         return json.dumps(
             {
-                "status": "automation_blocked",
+                "status": "blocked",
                 "reason_code": "RELEASE_REVISION_REQUIRED",
                 "release_id": release_id,
                 "verification": {
@@ -1138,7 +1142,7 @@ async def process_changed_release(
     if not isinstance(plans, list) or not plans:
         return json.dumps(
             {
-                "status": "automation_blocked",
+                "status": "blocked",
                 "reason_code": "APPROVED_RELEASE_TEST_PLAN_REQUIRED",
                 "release_id": release_id,
             },
@@ -1159,7 +1163,7 @@ async def process_changed_release(
         ):
             return json.dumps(
                 {
-                    "status": "automation_blocked",
+                    "status": "blocked",
                     "reason_code": "APPROVED_RELEASE_TEST_PLAN_SNAPSHOT_INVALID",
                     "test_plan_id": plan_id or None,
                 },
@@ -1169,13 +1173,13 @@ async def process_changed_release(
         if not build_id:
             return json.dumps(
                 {
-                    "status": "automation_blocked",
+                    "status": "blocked",
                     "reason_code": "RELEASE_COMPLETION_BUILD_REQUIRED",
                     "test_plan_id": plan_id,
                 },
                 ensure_ascii=False,
             )
-        suffix = hashlib.sha256(f"{automation_run_id}:{plan_id}".encode("utf-8")).hexdigest()
+        suffix = hashlib.sha256(f"{ai_run_id}:{plan_id}".encode("utf-8")).hexdigest()
         monitoring = parse(
             await call(
                 "POST",
@@ -1196,7 +1200,7 @@ async def process_changed_release(
             error = monitoring.get("error") if isinstance(monitoring, dict) else None
             return json.dumps(
                 {
-                    "status": "automation_blocked",
+                    "status": "blocked",
                     "reason_code": str(
                         (error or {}).get("code")
                         or (monitoring or {}).get("status")
@@ -1226,12 +1230,12 @@ async def process_changed_release(
             or report.get("test_plan_id") != plan_id
             or report.get("monitoring_snapshot_id") != monitoring["_id"]
             or report.get("status") != "DRAFT"
-            or report.get("automation_run_id") != automation_run_id
+            or report.get("ai_run_id") != ai_run_id
         ):
             error = report.get("error") if isinstance(report, dict) else None
             return json.dumps(
                 {
-                    "status": "automation_blocked",
+                    "status": "blocked",
                     "reason_code": str(
                         (error or {}).get("code")
                         or (report or {}).get("status")
@@ -1250,7 +1254,7 @@ async def process_changed_release(
             config,
             {
                 "expected_revision": release["revision"],
-                "reason": "Tự động đóng sau khi dịch vụ xác minh điều kiện hoàn tất và hồ sơ đảm bảo Release.",
+                "reason": 'Điều kiện hoàn tất và hồ sơ bảo đảm Release đã được xác minh.',
             },
         )
     )
@@ -1258,7 +1262,7 @@ async def process_changed_release(
         error = close_response.get("error") or {}
         return json.dumps(
             {
-                "status": "automation_blocked",
+                "status": "blocked",
                 "reason_code": str(error.get("code") or "RELEASE_CLOSE_GATE_FAILED"),
                 "release_id": release_id,
                 "release_status": release.get("status"),
@@ -1275,7 +1279,7 @@ async def process_changed_release(
     if not closed or closed.get("status") != "CLOSED" or closed.get("project_id") != project_id:
         return json.dumps(
             {
-                "status": "automation_partial_failure",
+                "status": "partial_failure",
                 "reason_code": "RELEASE_CLOSE_READBACK_INVALID",
                 "release_id": release_id,
             }
@@ -1291,7 +1295,7 @@ async def process_changed_release(
     ):
         return json.dumps(
             {
-                "status": "automation_partial_failure",
+                "status": "partial_failure",
                 "reason_code": "RELEASE_CLOSE_READBACK_INVALID",
                 "release_id": release_id,
             }

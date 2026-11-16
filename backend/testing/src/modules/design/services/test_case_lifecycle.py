@@ -2,7 +2,7 @@ import hashlib
 
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
-from src.core.human_decisions import require_automation_publication_authority
+from src.core.human_decisions import require_ai_publication_authority
 from src.core.human_decisions import require_independent_review
 from src.modules.design.services.design_authorization import require_assigned_design_draft
 
@@ -18,7 +18,6 @@ from src.modules.design.services.test_case_records import (
 from src.modules.design.services.test_case_custom_fields import validate_test_case_custom_values
 from src.core.project_settings import resolve_testcase_duplicate_threshold
 
-
 def trace_is_missing_for_approval(draft, project_settings):
     trace_sources = (
         "requirement_version_ids",
@@ -30,9 +29,6 @@ def trace_is_missing_for_approval(draft, project_settings):
     return project_settings.get("trace_before_testcase_approve", False) and not any(
         draft.get(field) for field in trace_sources
     )
-
-
-
 
 async def lint_test_case_draft_record(draft_id, user, project_id=None):
     draft = await require_assigned_design_draft('test_case_drafts', draft_id, user, 'testcase.lint')
@@ -51,7 +47,7 @@ async def lint_test_case_draft_record(draft_id, user, project_id=None):
         "model": {
             "provider": 'deterministic',
             "model": 'test_case_quality',
-            "prompt_version": 'ai_automation',
+            "prompt_version": 'ai_capability',
             "tool_schema_version": '1',
             "retrieval_version": 'project_evidence',
         },
@@ -69,7 +65,6 @@ async def lint_test_case_draft_record(draft_id, user, project_id=None):
     )
     return result
 
-
 async def get_latest_test_case_draft_lint(draft_id, user):
     draft = await get_project_entity(
         "test_case_drafts", draft_id, user, "testcase.read"
@@ -83,7 +78,6 @@ async def get_latest_test_case_draft_lint(draft_id, user):
         **result,
         "is_stale": result.get("artifact_revision") != draft.get("revision"),
     }
-
 
 async def submit_test_case_review_record(project_id, draft_id, payload, user):
     draft = await require_assigned_design_draft('test_case_drafts', draft_id, user, 'testcase.submit_review')
@@ -146,7 +140,6 @@ async def submit_test_case_review_record(project_id, draft_id, payload, user):
     )
     return draft
 
-
 async def request_test_case_changes_record(project_id, draft_id, payload, user):
     draft = await get_project_entity('test_case_drafts', draft_id, user, 'testcase.review')
     if draft["project_id"] != project_id:
@@ -187,9 +180,8 @@ async def request_test_case_changes_record(project_id, draft_id, payload, user):
     )
     return draft
 
-
 async def approve_test_case_draft_record(draft_id, payload, user):
-    require_automation_publication_authority(user, "testcase.approve")
+    require_ai_publication_authority(user, "testcase.approve")
     draft = await get_project_entity('test_case_drafts', draft_id, user, 'testcase.approve')
     if draft["status"] == 'APPROVED' and draft.get(
         "frozen_version_id"
@@ -241,7 +233,6 @@ async def approve_test_case_draft_record(draft_id, payload, user):
         )
     if draft.get("origin") == "ai_generated" and not draft.get("evidence_refs"):
         raise HTTPException(409, detail={"code": "TEST_CASE_SOURCE_REVIEW_REQUIRED", "message": "Ca đã được sửa; cần đối chiếu lại nguồn trước khi duyệt."})
-    from src.clients.ai_automation import queue_test_case_approved
     from src.modules.design.services.test_case_review import (
         assert_sources_current_in_session,
         validate_test_case_publication_uniqueness,
@@ -362,7 +353,6 @@ async def approve_test_case_draft_record(draft_id, payload, user):
             {"draft_id": draft_id},
             session=session,
         )
-        await queue_test_case_approved(version, user, session)
         return test_case, version
 
     try:
@@ -377,7 +367,6 @@ async def approve_test_case_draft_record(draft_id, payload, user):
         "status": 'SUCCESS' if ready else 'DEGRADED',
         "degraded_mode": None if ready else 'DEGRADED_DERIVED_DATA',
     }
-
 
 async def approved_test_case_result(draft, user):
     version = await test_design_repository.find_case_version(
@@ -408,7 +397,6 @@ async def approved_test_case_result(draft, user):
         "status": 'SUCCESS' if ready else 'DEGRADED',
         "degraded_mode": None if ready else 'DEGRADED_DERIVED_DATA',
     }
-
 
 async def finalize_test_case_derivatives(draft, version, user):
     trace_ready = version.get("trace_status") == 'READY'
@@ -522,7 +510,6 @@ async def finalize_test_case_derivatives(draft, version, user):
     version.update(derived_status)
     return trace_ready and indexed and audit_ready and adequacy_ready
 
-
 def build_test_case_version(draft, test_case_id, version_number, parent_version_id, payload, user, timestamp):
     return {
         "_id": new_id('TCV'),
@@ -607,7 +594,6 @@ def build_test_case_version(draft, test_case_id, version_number, parent_version_
         "approved_by": user.id,
         "created_at": timestamp,
     }
-
 
 async def create_suggested_trace_records(draft, version, user):
     sources = [

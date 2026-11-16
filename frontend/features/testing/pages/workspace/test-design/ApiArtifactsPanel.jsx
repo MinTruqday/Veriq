@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Panel, StatusPill } from "../../../components/WorkspacePrimitives";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import { messageOf } from "../../../lib/testing";
-import { agentRunErrorMessage } from "../../../lib/agentRun.logic";
+import { aiRunErrorMessage } from "../../../lib/aiRun.logic";
 import { testingApi } from "../../../services/testing.service";
 
 export default function ApiArtifactsPanel({
@@ -32,26 +32,26 @@ export default function ApiArtifactsPanel({
   const impactBusyRef = useRef(false);
   const [comparisonBusy, setComparisonBusy] = useState(false);
   const comparisonBusyRef = useRef(false);
-  const [agentRuns, setAgentRuns] = useState([]);
-  const [agentRunsError, setAgentRunsError] = useState("");
+  const [aiRuns, setAIRuns] = useState([]);
+  const [aiRunsError, setAIRunsError] = useState("");
   const confirmed = artifacts.filter((item) => item.status === "CONFIRMED");
-  const canReadAgentRuns = can("automation.read") || can("proposal.read");
+  const canReadAIRuns = can("requirement.read") || can("proposal.read");
 
   useEffect(() => {
-    if (!canReadAgentRuns || !confirmed.length) return undefined;
+    if (!canReadAIRuns || !confirmed.length) return undefined;
     let active = true;
     let pending = false;
     const refreshRuns = async () => {
       if (pending) return;
       pending = true;
       try {
-        const runs = await testingApi.listAgentRuns(projectId);
+        const runs = await testingApi.listAIRuns(projectId);
         if (active) {
-          setAgentRuns(runs || []);
-          setAgentRunsError("");
+          setAIRuns(runs || []);
+          setAIRunsError("");
         }
       } catch (reason) {
-        if (active) setAgentRunsError(messageOf(reason));
+        if (active) setAIRunsError(messageOf(reason));
       } finally {
         pending = false;
       }
@@ -60,11 +60,11 @@ export default function ApiArtifactsPanel({
     return () => {
       active = false;
     };
-  }, [canReadAgentRuns, confirmed.length, projectId]);
+  }, [canReadAIRuns, confirmed.length, projectId]);
 
-  const agentRunFor = (operation) => {
+  const aiRunFor = (operation) => {
     const eventId = `api-operation:${operation._id}:r${operation.revision}`;
-    return agentRuns.find(
+    return aiRuns.find(
       (run) =>
         run.trigger === "API_OPERATION_CONFIRMED" &&
         (run.source_event_id === eventId ||
@@ -204,9 +204,9 @@ export default function ApiArtifactsPanel({
   const refreshAgentState = async () => {
     try {
       await reload();
-      if (canReadAgentRuns) {
-        setAgentRuns(await testingApi.listAgentRuns(projectId));
-        setAgentRunsError("");
+      if (canReadAIRuns) {
+        setAIRuns(await testingApi.listAIRuns(projectId));
+        setAIRunsError("");
       }
     } catch (reason) {
       onError(messageOf(reason));
@@ -505,7 +505,7 @@ export default function ApiArtifactsPanel({
         <section className="space-y-3 border-t border-border pt-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="font-semibold">Thao tác API đã xác nhận</h3>
-            {canReadAgentRuns && confirmed.length > 0 && (
+            {canReadAIRuns && confirmed.length > 0 && (
               <button
                 className="secondary-button"
                 type="button"
@@ -518,7 +518,7 @@ export default function ApiArtifactsPanel({
           {operations.length ? (
             <div className="divide-y divide-border border-b border-border">
               {operations.map((item) => {
-                const run = agentRunFor(item);
+                const run = aiRunFor(item);
                 return (
                   <article
                     className="grid min-w-0 gap-3 py-4 lg:grid-cols-[minmax(0,1fr)_minmax(17rem,0.7fr)] lg:gap-6"
@@ -559,7 +559,7 @@ export default function ApiArtifactsPanel({
                               {run.result?.summary && <ContentOriginBadge origin="ai_generated" />}
                               <span className="break-words">
                                 {run.error_code
-                                  ? agentRunErrorMessage(run.error_code)
+                                  ? aiRunErrorMessage(run.error_code)
                                   : run.result.summary}
                               </span>
                             </div>
@@ -572,19 +572,10 @@ export default function ApiArtifactsPanel({
                           </a>
                         </>
                       ) : (
-                        <p>
-                          {item.automation_dispatch_status === "PENDING" ||
-                          item.automation_dispatch_status === "DISPATCHING"
-                            ? "Đang gửi yêu cầu đến AI"
-                            : item.automation_dispatch_status === "DELIVERED"
-                              ? "Đã gửi yêu cầu đến AI"
-                              : item.automation_dispatch_status === "SUPPRESSED"
-                                ? "Chưa gửi yêu cầu đến AI"
-                                : "Chưa có lượt AI"}
-                        </p>
+                        <p>Chưa có lượt AI</p>
                       )}
-                      {agentRunsError && canReadAgentRuns && (
-                        <p role="status">Chưa tải được trạng thái AI: {agentRunsError}</p>
+                      {aiRunsError && canReadAIRuns && (
+                        <p role="status">Chưa tải được trạng thái AI: {aiRunsError}</p>
                       )}
                     </div>
                   </article>

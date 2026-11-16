@@ -6,7 +6,7 @@ from src.modules.quality.services.defect_classification import (
 )
 from src.repositories.test_monitoring import test_monitoring_repository
 
-TERMINAL_RESULT_STATUSES = set(['PASS', 'FAIL', 'BLOCKED', 'SKIPPED', 'NOT_APPLICABLE'])
+EXECUTED_RESULT_STATUSES = {'PASS', 'FAIL', 'BLOCKED'}
 OPEN_DEFECT_STATUSES = set(['NEW', 'CONFIRMED', 'IN_PROGRESS', 'READY_FOR_RETEST', 'REOPENED'])
 
 
@@ -119,7 +119,7 @@ def build_metrics(plan, sources, snapshot_at):
         for status in ['NOT_RUN', 'IN_PROGRESS', 'PASS', 'FAIL', 'BLOCKED', 'SKIPPED', 'NOT_APPLICABLE']
     }
     planned_test_count = len(results)
-    executed_test_count = sum(counts[status] for status in TERMINAL_RESULT_STATUSES)
+    executed_test_count = sum(counts[status] for status in EXECUTED_RESULT_STATUSES)
     decisive = sum(counts[status] for status in ['PASS', 'FAIL', 'BLOCKED'])
     versions = sources["versions"]
     covered_requirements = {

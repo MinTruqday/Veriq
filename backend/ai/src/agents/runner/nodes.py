@@ -5,19 +5,10 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from src.agents.agent import execute_task
-from src.agents.runner.automation_planning import (
+from src.agents.runner.planning import (
     available_tools,
-    direct_approved_plan_task,
     direct_capability_task,
     direct_change_simulation_task,
-    direct_changed_plan_task,
-    direct_defect_event_task,
-    direct_document_ingestion_task,
-    direct_event_observation_task,
-    direct_performance_configuration_task,
-    direct_recorded_test_execution_task,
-    direct_requirement_change_task,
-    direct_test_case_change_impact_task,
     observed_draft_identifiers,
     observed_identifiers,
     simulation_baseline_trace_links,
@@ -36,27 +27,24 @@ from src.prompts.agent_planning import (
     verified_source_fact_instruction,
 )
 from src.prompts.change_simulation import change_simulation_report_instruction
-from src.repositories.automation import automation_repository
+from src.repositories.ai_runs import ai_run_repository
 from src.runtime.limits import limits
 from src.runtime.output import normalize_narrative, normalize_narratives
 from src.schemas.agent import (
     AgentPlan,
     AgentProposal,
     AgentResult,
-    AgentRunStatus,
+    AIRunExecutionStatus,
     AgentTask,
     AgentTaskStatus,
     EvidenceItem,
     ToolExecutionStatus,
     VeriqRunState,
 )
-from src.schemas.automation import (
-    AutomationAction,
-    AutomationCheckpoint,
-    AutomationCheckpointPhase,
-    AutomationEventConditions,
-    AutomationGraphSnapshot,
-    AutomationStatus,
+from src.schemas.ai_runs import (
+    AIRunCheckpoint,
+    AIRunPhase,
+    AIRunStateSnapshot,
 )
 from src.schemas.inference_change_simulation import ChangeSimulationReportOutput
 from src.services.change_simulation import (
@@ -71,94 +59,6 @@ from src.tools.registry import registered_tools, tool_access
 
 def state_run(state):
     return VeriqRunState(**state["run"])
-
-
-def automation_action_limits(actions):
-    if actions is None:
-        return None, None
-    if not actions:
-        return set(), set()
-    action_limits = {
-        AutomationAction.COMPILE_BLUEPRINT: ({"requirement"}, {"MUTATE"}),
-        AutomationAction.CREATE_REQUIREMENT_CANDIDATES: ({"requirement"}, {"MUTATE"}),
-        AutomationAction.CREATE_TEST_CASE_CANDIDATES: (
-            {"test_design"},
-            {"PROPOSE", "MUTATE"},
-        ),
-        AutomationAction.CREATE_FINDINGS: ({"analysis"}, {"PROPOSE"}),
-        AutomationAction.REQUEST_CLARIFICATION: ({"requirement"}, {"MUTATE"}),
-        AutomationAction.PROPOSE_ASSIGNMENT: ({"execution"}, {"PROPOSE"}),
-        AutomationAction.PROPOSE_TRANSITION: ({"execution"}, {"PROPOSE"}),
-        AutomationAction.RUN_CHANGE_SIMULATION: ({"analysis"}, {"READ", "PROPOSE"}),
-    }
-    domains = set()
-    tool_actions = set()
-    for value in actions:
-        try:
-            action = AutomationAction(value)
-        except ValueError:
-            return set(), set()
-        action_domains, action_tool_actions = action_limits[action]
-        domains.update(action_domains)
-        tool_actions.update(action_tool_actions)
-    return domains, tool_actions
-
-
-def unmet_automation_conditions(
-    conditions, evidence, requester_role, target_artifact_ids=None
-):
-    if not conditions:
-        return []
-    value = AutomationEventConditions.model_validate(conditions)
-    items = [item for item in evidence if isinstance(item, dict)]
-    unmet = []
-    if len(items) < value.minimum_evidence_count:
-        unmet.append("AUTOMATION_CONDITION_EVIDENCE_COUNT_NOT_MET")
-    artifact_types = {str(item.get("artifact_type") or "") for item in items}
-    if not set(value.required_artifact_types).issubset(artifact_types):
-        unmet.append("AUTOMATION_CONDITION_ARTIFACT_TYPE_MISSING")
-    authorities = {str(item.get("authority") or "") for item in items}
-    if not set(value.required_authorities).issubset(authorities):
-        unmet.append("AUTOMATION_CONDITION_AUTHORITY_MISSING")
-    target_ids = {
-        str(value).strip()
-        for value in target_artifact_ids or []
-        if str(value).strip()
-    }
-    state_evidence = items
-    if target_ids:
-        state_evidence = [
-            item
-            for item in items
-            if target_ids.intersection(
-                {
-                    str(item.get("artifact_id") or ""),
-                    str(item.get("artifact_version_id") or ""),
-                }
-            )
-        ]
-    workflow_states = {
-        str(item.get("artifact_status") or "") for item in state_evidence
-    }
-    if value.workflow_states_any_of and not set(value.workflow_states_any_of).intersection(
-        workflow_states
-    ):
-        unmet.append("AUTOMATION_CONDITION_WORKFLOW_STATE_NOT_MET")
-    if value.requester_roles and requester_role not in value.requester_roles:
-        unmet.append("AUTOMATION_CONDITION_REQUESTER_ROLE_NOT_ALLOWED")
-    if value.minimum_evidence_score is not None and not any(
-        float(item.get("score") or 0) >= value.minimum_evidence_score for item in items
-    ):
-        unmet.append("AUTOMATION_CONDITION_EVIDENCE_SCORE_NOT_MET")
-    if value.require_versioned_evidence and not any(
-        item.get("artifact_version_id") for item in items
-    ):
-        unmet.append("AUTOMATION_CONDITION_VERSIONED_EVIDENCE_REQUIRED")
-    if value.require_trace_link and not any(
-        item.get("relationship_path") or item.get("relationship") for item in items
-    ):
-        unmet.append("AUTOMATION_CONDITION_TRACE_LINK_REQUIRED")
-    return unmet
 
 
 def evidence_for_references(evidence, references):
@@ -273,7 +173,7 @@ async def load_context(state):
             run.objective,
             run.user_id,
             state.get("token"),
-            automation_run_id=run.run_id if state.get("automatic") else None,
+            ai_run_id=run.run_id if state.get("automatic") else None,
         )
         verified_refs = {
             item.artifact_version_id or item.artifact_id for item in retrieved.items
@@ -313,73 +213,22 @@ async def plan(state):
     run = state_run(state)
     constraints = state.get("constraints") or {}
     simulation = bool(constraints.get("change_simulation"))
-    action_domains, action_types = automation_action_limits(
-        constraints.get("automation_actions")
-    )
     evidence_refs = [
         item.get("artifact_version_id") or item.get("artifact_id")
         for item in state.get("evidence", [])
     ]
-    condition_failures = unmet_automation_conditions(
-        constraints.get("automation_conditions"),
-        state.get("evidence", []),
-        str(constraints.get("requester_role") or run.role),
-        state.get("target_artifact_ids", []),
-    )
-    if condition_failures:
-        result = AgentResult(
-            task_id=f"AUTOMATION-CONDITION-{run.run_id}",
-            status=AgentTaskStatus.INSUFFICIENT_EVIDENCE,
-            summary="Yêu cầu chưa được người dùng khởi chạy; Agent không thực hiện hành động",
-            evidence_refs=[value for value in evidence_refs if value],
-            reason_codes=condition_failures,
-        )
-        run.status = AgentRunStatus.RUNNING
-        return {
-            "run": run.model_dump(mode="python"),
-            "tasks": [],
-            "success_criteria": [],
-            "results": [*state.get("results", []), result.model_dump(mode="python")],
-        }
     direct_task = None
     if simulation:
         direct_task = direct_change_simulation_task(run, state, evidence_refs)
-    if not simulation:
-        direct_task = direct_document_ingestion_task(run, state, evidence_refs)
-    if not simulation and not direct_task:
-        direct_task = direct_requirement_change_task(run, state, evidence_refs)
-    if not simulation and not direct_task:
-        direct_task = direct_recorded_test_execution_task(run, state, evidence_refs)
-    if not simulation and not direct_task:
-        direct_task = direct_defect_event_task(run, state, evidence_refs)
-    if not simulation and not direct_task:
-        direct_task = direct_performance_configuration_task(run, state, evidence_refs)
-    if not simulation and not direct_task:
-        direct_task = direct_approved_plan_task(run, state, evidence_refs)
-    if not simulation and not direct_task:
-        direct_task = direct_changed_plan_task(run, state, evidence_refs)
-    if not simulation and not direct_task:
-        direct_task = direct_test_case_change_impact_task(run, state, evidence_refs)
-    if not simulation and not direct_task:
-        direct_task = direct_event_observation_task(run, state, evidence_refs)
     if not simulation and not direct_task:
         direct_task = (
-            direct_capability_task(run, evidence_refs)
+            direct_capability_task(run, state, evidence_refs)
             if run.intent and not run.completed_tasks
             else None
         )
-        if direct_task and action_domains is not None and (
-            direct_task.domain not in action_domains
-            or any(
-                (access := tool_access(registered_tools().get(call.tool_name))) is None
-                or access.action not in action_types
-                for call in direct_task.tool_calls
-            )
-        ):
-            direct_task = None
     if direct_task:
         run.execution_plan = [direct_task.model_dump(mode="json")]
-        run.status = AgentRunStatus.RUNNING
+        run.status = AIRunExecutionStatus.RUNNING
         run.current_step = 1
         return {
             "run": run.model_dump(mode="python"),
@@ -395,15 +244,6 @@ async def plan(state):
             "quote": item.get("quote"),
             "fact_kind": item.get("fact_kind"),
             "relationship_path": list(item.get("relationship_path") or []),
-            "source_start": item.get("source_start"),
-            "source_end": item.get("source_end"),
-            "source_chunk_id": item.get("source_chunk_id"),
-            "source_chunk_index": item.get("source_chunk_index"),
-            "source_chunk_type": item.get("source_chunk_type"),
-            "source_page_numbers": list(item.get("source_page_numbers") or []),
-            "source_spans": list(item.get("source_spans") or []),
-            "source_hash": item.get("source_hash"),
-            "source_offset_basis": item.get("source_offset_basis", "UNKNOWN"),
         }
         for item in state.get("source_facts", [])
         if item.get("quote")
@@ -435,19 +275,11 @@ async def plan(state):
                 "task_id": task.get("task_id"),
                 "domain": task.get("domain"),
                 "objective": str(task.get("objective") or "")[:1200],
-                "event_trigger": task_constraints.get("event_trigger"),
                 "stage": task_constraints.get("change_simulation_stage"),
                 "workflow_terminal": task_constraints.get("workflow_terminal"),
                 "status": result.get("status"),
                 "summary": str(result.get("summary") or "")[:1200],
             }
-        )
-    allowed_tool_actions = action_types
-    if simulation:
-        allowed_tool_actions = (
-            {"READ"}
-            if action_types is None
-            else action_types.intersection({"READ"})
         )
     prompt = agent_plan_prompt(
         run.project_id,
@@ -457,12 +289,8 @@ async def plan(state):
         state.get("target_artifact_ids", []),
         available_tools(
             run.permissions,
-            run.intent
-            if not simulation and (not state.get("automatic") or not run.completed_tasks)
-            else "",
             compact=True,
-            domains=action_domains,
-            actions=allowed_tool_actions,
+            actions={"READ"} if simulation else None,
         ),
         evidence_refs,
         {
@@ -504,7 +332,7 @@ async def plan(state):
         )
     except Exception:
         run.intent = run.intent or "project_question"
-        run.status = AgentRunStatus.RUNNING
+        run.status = AIRunExecutionStatus.RUNNING
         if not run.completed_tasks:
             run.current_step = 1
         run.observations.append(
@@ -513,7 +341,7 @@ async def plan(state):
         result = AgentResult(
             task_id=f"PLAN-{run.run_id}",
             status=AgentTaskStatus.INSUFFICIENT_EVIDENCE,
-            summary="Nhà cung cấp AI hiện không khả dụng nên chưa thể lập kế hoạch xử lý",
+            summary='Nhà cung cấp AI hiện không khả dụng nên chưa thể lập kế hoạch xử lý.',
             evidence_refs=evidence_refs,
             reason_codes=["AI_PROVIDER_UNAVAILABLE"],
             warnings=["AI_PROVIDER_UNAVAILABLE"],
@@ -548,59 +376,52 @@ async def plan(state):
             [state.get("evidence", []), run.observations]
         ),
     )
-    rejected_automation_action = action_domains is not None and any(
-        task.domain not in action_domains
-        or any(
-            (access := tool_access(registered_tools().get(call.tool_name))) is None
-            or access.action not in action_types
-            for call in task.tool_calls
-        )
-        for task in planned_tasks
-    )
-    tasks = [] if rejected_automation_action else planned_tasks
-    tasks = [task for task in tasks if task.tool_calls]
+    tasks = [task for task in planned_tasks if task.tool_calls]
     results = list(state.get("results", []))
-    if rejected_automation_action:
-        results.append(
-            AgentResult(
-                task_id=f"AUTOMATION-ACTION-{run.run_id}",
-                status=AgentTaskStatus.FAILED,
-                summary="Kế hoạch có hành động ngoài phạm vi yêu cầu của người dùng; Agent không thực hiện phần đó",
-                evidence_refs=evidence_refs,
-                reason_codes=["AUTOMATION_ACTION_OUTSIDE_DEFINITION"],
-            ).model_dump(mode="python")
-        )
-    if not tasks and not rejected_automation_action:
+    if not tasks:
         prior_results = [AgentResult(**item) for item in results]
-        observed_automatic_event = (
+        completed_user_request = (
             bool(state.get("automatic"))
             and bool(run.completed_tasks)
             and bool(prior_results)
             and all(item.status == AgentTaskStatus.COMPLETED for item in prior_results)
         )
-        if observed_automatic_event:
+        if completed_user_request:
             results.append(
                 AgentResult(
                     task_id=f"PLAN-{run.run_id}",
                     status=AgentTaskStatus.COMPLETED,
-                    summary="Đã hoàn tất các hành động có căn cứ; không còn hành động tiếp theo hợp lệ trong phạm vi quyền hiện tại",
+                    summary='Các hành động có căn cứ đã hoàn tất. Không còn hành động tiếp theo phù hợp với quyền hiện tại.',
                     evidence_refs=evidence_refs,
                     warnings=["NO_FURTHER_ACTION_SUPPORTED"],
                 ).model_dump(mode="python")
             )
         else:
+            capability_unavailable = not generated.tasks
             results.append(
                 AgentResult(
                     task_id=f"PLAN-{run.run_id}",
-                    status=AgentTaskStatus.FAILED,
-                    summary="Kế hoạch chưa có thao tác hợp lệ để thực hiện",
+                    status=(
+                        AgentTaskStatus.INSUFFICIENT_EVIDENCE
+                        if capability_unavailable
+                        else AgentTaskStatus.FAILED
+                    ),
+                    summary=('Yêu cầu nằm ngoài các khả năng hiện được cung cấp cho dự án. Hệ thống chưa thực hiện hành động nào.' if capability_unavailable else 'Kế hoạch tạo ra không vượt qua kiểm tra khả năng, bằng chứng hoặc quyền. Hệ thống chưa thực hiện hành động nào.'),
                     evidence_refs=evidence_refs,
-                    reason_codes=["VALIDATION_FAILED"],
-                    warnings=["NO_VALID_AUTOMATION_ACTION"],
+                    reason_codes=[
+                        "CAPABILITY_NOT_AVAILABLE"
+                        if capability_unavailable
+                        else "PLAN_VALIDATION_FAILED"
+                    ],
+                    warnings=[
+                        "NO_SUPPORTED_CAPABILITY"
+                        if capability_unavailable
+                        else "PLAN_VALIDATION_FAILED"
+                    ],
                 ).model_dump(mode="python")
             )
     run.execution_plan.extend(task.model_dump(mode="json") for task in tasks)
-    run.status = AgentRunStatus.RUNNING
+    run.status = AIRunExecutionStatus.RUNNING
     if not run.completed_tasks:
         run.current_step = 1
     return {
@@ -632,7 +453,7 @@ async def execute_agent(state):
         result = AgentResult(
             task_id=task.task_id,
             status=AgentTaskStatus.FAILED,
-            summary="Mô phỏng thay đổi chỉ cho phép đọc bằng chứng, không thực hiện thao tác ghi",
+            summary='Mô phỏng thay đổi chỉ đọc bằng chứng và không thực hiện thao tác ghi.',
             evidence_refs=list(task.evidence_refs),
             reason_codes=["CHANGE_SIMULATION_MUTATION_BLOCKED"],
         )
@@ -669,20 +490,20 @@ async def execute_agent(state):
         checkpoint_state = {
             **state,
             "run": run.model_dump(mode="python"),
-            "completed_phase": AutomationCheckpointPhase.ACTION_STARTED,
+            "completed_phase": AIRunPhase.ACTION_STARTED,
         }
         snapshot = {
             key: value
             for key, value in checkpoint_state.items()
-            if key in AutomationGraphSnapshot.model_fields
+            if key in AIRunStateSnapshot.model_fields
             and key != "completed_phase"
         }
-        snapshot["completed_phase"] = AutomationCheckpointPhase.ACTION_STARTED
-        checkpoint_saved = await automation_repository.save_checkpoint(
-            AutomationCheckpoint(
-                automation_run_id=run.run_id,
-                phase=AutomationCheckpointPhase.ACTION_STARTED,
-                status=AutomationStatus.RUNNING,
+        snapshot["completed_phase"] = AIRunPhase.ACTION_STARTED
+        checkpoint_saved = await ai_run_repository.save_checkpoint(
+            AIRunCheckpoint(
+                ai_run_id=run.run_id,
+                phase=AIRunPhase.ACTION_STARTED,
+                status=AIRunExecutionStatus.RUNNING,
                 detail={
                     "task_id": task.task_id,
                     "tool_name": tool_name,
@@ -693,12 +514,12 @@ async def execute_agent(state):
                         json.dumps(arguments, sort_keys=True, default=str).encode("utf-8")
                     ).hexdigest(),
                 },
-                state_snapshot=AutomationGraphSnapshot.model_validate(snapshot),
+                state_snapshot=AIRunStateSnapshot.model_validate(snapshot),
             ),
             expected_worker_revision=state.get("worker_revision"),
         )
         if not checkpoint_saved:
-            raise RuntimeError("AUTOMATION_WORKER_FENCE_LOST")
+            raise RuntimeError("AI_RUN_WORKER_FENCE_LOST")
 
     tool_call_batch_id = uuid4().hex
     result, observations = await execute_task(
@@ -706,7 +527,7 @@ async def execute_agent(state):
         task_evidence,
         run.permissions,
         state["token"],
-        automation_run_id=run.run_id,
+        ai_run_id=run.run_id,
         automatic=bool(state.get("automatic")),
         checkpoint_action=checkpoint_action if state.get("automatic") else None,
         request_constraints=state.get("constraints"),
@@ -737,7 +558,7 @@ async def execute_agent(state):
         )
     ):
         result.status = AgentTaskStatus.COMPLETED
-        result.summary = "Đã quan sát nguồn; tiếp tục lần theo bằng chứng liên quan"
+        result.summary = 'Đã rà soát nguồn; tiếp tục xử lý với các bằng chứng liên quan.'
         result.reason_codes = []
         result.warnings = []
         if (
@@ -747,10 +568,7 @@ async def execute_agent(state):
             simulation = (state.get("constraints") or {}).get("change_simulation_input") or {}
             baseline_version_id = str(simulation.get("base_requirement_version_id") or "")
             if not simulation_linked_test_case_version_ids(observations, baseline_version_id):
-                result.summary = (
-                    "Đã đọc phiên bản Requirement baseline và ma trận truy vết; "
-                    "không tìm thấy phiên bản Test Case đang liên kết để đối chiếu với nội dung đề xuất"
-                )
+                result.summary = 'Đã đọc Requirement baseline và liên kết truy vết nhưng chưa có phiên bản Test Case liên kết để đối chiếu.'
     for observation_index, observation in enumerate(observations):
         if observation.get("status") != ToolExecutionStatus.COMPLETED:
             continue
@@ -814,7 +632,7 @@ async def execute_agent(state):
         run.evidence_refs = list(dict.fromkeys([*run.evidence_refs, *verified_tool_refs]))
     if tool_output_rejected:
         result.status = AgentTaskStatus.INSUFFICIENT_EVIDENCE
-        result.summary = "Kết quả công cụ chưa vượt qua kiểm tra an toàn nên agent không dùng nội dung đó làm căn cứ"
+        result.summary = 'Kết quả công cụ không vượt qua kiểm tra an toàn nên không được dùng làm căn cứ.'
         result.evidence_refs = list(verified_tool_refs)
         result.reason_codes = list(
             dict.fromkeys([*result.reason_codes, "TOOL_OUTPUT_REJECTED"])
@@ -879,14 +697,6 @@ def route_after_agent(state):
     if (latest_completed_task.get("constraints") or {}).get("workflow_terminal") is True:
         return "finalize"
     if (
-        (latest_completed_task.get("constraints") or {}).get("event_trigger") == "TEST_CASE_CHANGED"
-        and not (
-            (change_context := test_case_change_context(run, state.get("evidence", [])))["has_comparison"]
-            and change_context["has_source_link"]
-        )
-    ):
-        return "finalize"
-    if (
         state.get("automatic")
         and len(run.completed_tasks) < limits.agent_steps
         and state.get("planning_round", 0) < limits.agent_steps
@@ -920,6 +730,38 @@ async def aggregate(state):
     run = state_run(state)
     results = [AgentResult(**item) for item in state.get("results", [])]
     summary = " ".join(item.summary for item in results)
+    answer_task_ids = {
+        str(item.get("task_id") or "")
+        for item in run.observations
+        if item.get("tool_name") == "project_question"
+        and item.get("status") == ToolExecutionStatus.COMPLETED
+        and item.get("task_id")
+    }
+    if answer_task_ids:
+        read_task_ids = {
+            str(item.get("task_id") or "")
+            for item in run.observations
+            if item.get("task_id")
+            and (access := tool_access(registered_tools().get(item.get("tool_name"))))
+            and access.action == "READ"
+        }
+        selected_results = [
+            item
+            for item in results
+            if item.task_id in answer_task_ids
+            or (
+                item.task_id not in read_task_ids
+                and not item.task_id.startswith("PLAN-")
+            )
+            or item.status != AgentTaskStatus.COMPLETED
+            or item.reason_codes
+            or item.proposals
+        ]
+        selected_summaries = [
+            item.summary for item in selected_results if item.summary.strip()
+        ]
+        if selected_summaries:
+            summary = " ".join(selected_summaries)
     warnings = list(
         dict.fromkeys(
             [
@@ -936,44 +778,16 @@ async def aggregate(state):
             if observation.get("status") == ToolExecutionStatus.COMPLETED
             and observation.get("tool_name")
         }
-        draft = tool_results.get("get_test_case_draft", {})
-        lint = tool_results.get("lint_testcase", {})
-        duplicates = tool_results.get("find_near_duplicates")
-        traceability = tool_results.get("get_traceability_links", {})
         impact = tool_results.get("impact_analysis", {})
-        parts = []
-        if lint:
-            parts.append(
-                "Kiểm tra bản nháp: "
-                + ("hợp lệ" if lint.get("valid") is True else "còn phát hiện cần xử lý")
-                + f" ({len(lint.get('findings') or [])} phát hiện)"
-            )
-        if draft:
-            parts.append(f"Trạng thái Test Case đọc lại: {draft.get('status') or 'không có'}")
-        if isinstance(duplicates, list):
-            parts.append(f"Số cặp Test Case gần trùng trong dự án: {len(duplicates)}")
-        links = traceability.get("trace_links") or []
-        if traceability:
-            confirmed = sum(link.get("status") == "CONFIRMED" for link in links)
-            suggested = sum(link.get("status") == "SUGGESTED" for link in links)
-            parts.append(
-                f"Liên kết truy vết đọc được: {confirmed} đã xác nhận, {suggested} đang đề xuất"
-            )
         if impact:
-            parts.append(f"Phân tích ảnh hưởng: {impact.get('status') or 'đã chạy'}")
             warnings.extend(impact.get("warnings") or [])
         change_context = test_case_change_context(run, state.get("evidence", []))
         if change_context["event_kind"] == "TEST_CASE_CREATED":
-            parts.append("Đây là bản nháp mới nên chưa có phiên bản trước để kết luận ảnh hưởng thay đổi")
             warnings.append("TEST_CASE_CREATED_WITHOUT_CHANGE_BASELINE")
         elif not change_context["has_comparison"]:
-            parts.append("Không kết luận tác động vì chưa xác minh được bản trước và bản hiện tại cùng revision")
             warnings.append("TEST_CASE_CHANGE_BASELINE_UNAVAILABLE")
         elif not change_context["has_source_link"]:
-            parts.append("Không có liên kết Requirement hoặc nguồn dẫn để phân tích ảnh hưởng ngoài bản nháp")
             warnings.append("TEST_CASE_CHANGE_SOURCE_LINK_UNAVAILABLE")
-        if parts:
-            summary = ". ".join(parts) + "."
         impact_observations = [
             item for item in run.observations
             if item.get("status") == ToolExecutionStatus.COMPLETED
@@ -998,35 +812,7 @@ async def aggregate(state):
                 for item in parent_reads
                 if isinstance(item, dict)
             }
-            trace_links = (
-                trace_result.get("trace_links")
-                or trace_result.get("items")
-                or trace_result.get("data", {}).get("trace_links", [])
-                if isinstance(trace_result, dict)
-                else []
-            )
             parent_version_id = str(current_draft.get("parent_version_id") or "")
-            exact_links = [
-                link for link in trace_links
-                if isinstance(link, dict)
-                and link.get("target_type") == "test_case_version"
-                and str(link.get("target_id") or "") == parent_version_id
-                and (not link.get("project_id") or link.get("project_id") == run.project_id)
-            ]
-            trace_status = (
-                f"{len(exact_links)} liên kết truy vết đến đúng phiên bản cha"
-                if trace_result is not None
-                else "chưa đọc được ma trận truy vết"
-            )
-            parent_status = (
-                "đã đọc lại phiên bản cha"
-                if parent_version_id in linked_version_ids
-                else "không xác minh được phiên bản cha"
-            )
-            summary = (
-                f"Đã rà soát thay đổi Test Case: {parent_status}; {trace_status}. "
-                "Đây là kết quả phân tích tác động, không tự sửa nội dung hoặc phiên bản đã đóng băng."
-            )
             if parent_version_id and parent_version_id not in linked_version_ids:
                 warnings.append("TEST_CASE_PARENT_VERSION_READBACK_UNAVAILABLE")
             if trace_result is None:
@@ -1046,21 +832,8 @@ async def aggregate(state):
                 context = json.loads(context)
             except (TypeError, ValueError):
                 context = None
-        if isinstance(context, dict) and context.get("status") == "completed":
-            linked_requirements = context.get("linked_requirements") or []
-            linked_cases = context.get("linked_test_cases") or []
-            work_item = context.get("work_item") or {}
-            summary = (
-                f"Đã rà soát Work Item {work_item.get('key') or work_item.get('_id') or ''}: "
-                f"đọc được {len(linked_requirements)} Requirement và {len(linked_cases)} Test Case "
-                "liên kết. Luồng này chỉ báo cáo tác động quan sát được, không tự tạo hoặc sửa "
-                "artifact từ thay đổi Work Item."
-            )
-        elif isinstance(context, dict):
-            summary = (
-                "Chưa thể xác minh phạm vi ảnh hưởng của Work Item; "
-                f"lý do: {context.get('reason_code') or 'thiếu dữ liệu liên kết'}"
-            )
+        if isinstance(context, dict) and context.get("status") != "completed":
+            warnings.append("WORK_ITEM_IMPACT_CONTEXT_UNAVAILABLE")
     if trigger == "RELEASE_CHANGED":
         release_result = next(
             (
@@ -1076,14 +849,10 @@ async def aggregate(state):
                 release_result = json.loads(release_result)
             except (TypeError, ValueError):
                 release_result = None
-        if isinstance(release_result, dict):
-            release_status = release_result.get("release_status") or "chưa xác định"
-            if release_result.get("status") == "completed" and release_status == "CLOSED":
-                summary = "Release đã đạt các cổng kiểm tra nghiệp vụ và được đóng; trạng thái CLOSED đã được đọc lại xác minh."
-            elif release_result.get("status") == "automation_blocked":
-                summary = f"Release được giữ nguyên vì cổng nghiệp vụ hoặc quyền chưa đạt: {release_result.get('reason_code') or 'không rõ lý do'}."
-            else:
-                summary = f"Release hiện ở trạng thái {release_status}; chưa đóng vì chưa ở trạng thái ACTIVE hoặc chưa đủ điều kiện."
+        if isinstance(release_result, dict) and release_result.get("status") != "completed":
+            warnings.append(
+                str(release_result.get("reason_code") or "RELEASE_PROCESSING_INCOMPLETE")
+            )
     coverage = next(
         (
             observation.get("result") or {}
@@ -1094,20 +863,7 @@ async def aggregate(state):
         None,
     )
     if coverage is not None:
-        metric_labels = (
-            ("requirement_coverage", "Requirement"),
-            ("acceptance_criterion_coverage", "tiêu chí chấp nhận"),
-            ("test_condition_coverage", "điều kiện kiểm thử"),
-            ("execution_coverage", "thực thi"),
-        )
-        reported_metrics = [
-            f"{label}: {coverage[field]}%"
-            for field, label in metric_labels
-            if coverage.get(field) is not None
-        ]
-        if reported_metrics:
-            summary = "Số liệu truy vết được công cụ trả về: " + "; ".join(reported_metrics) + "."
-            warnings.append("COVERAGE_METRICS_ARE_SCOPE_SNAPSHOT_NOT_QUALITY_CLAIMS")
+        warnings.append("COVERAGE_METRICS_ARE_SCOPE_SNAPSHOT_NOT_QUALITY_CLAIMS")
     change_simulation_report = None
     if (state.get("constraints") or {}).get("change_simulation"):
         simulation_input = (state.get("constraints") or {}).get("change_simulation_input") or {}
@@ -1125,13 +881,6 @@ async def aggregate(state):
             discovery_scope, revalidated_scope, revalidated_scope is not None
         )
         suggested_count = sum(link.get("status") == "SUGGESTED" for link in trace_links)
-        confirmed_count = sum(link.get("status") == "CONFIRMED" for link in trace_links)
-        linked_case_count = len(
-            simulation_linked_test_case_version_ids(
-                run.observations,
-                baseline_version_id,
-            )
-        )
         observed_version_ids = {
             str(item.get("source_version_id"))
             for item in run.observations
@@ -1142,14 +891,6 @@ async def aggregate(state):
             and isinstance(item.get("result"), dict)
             and str(item["result"].get("_id") or "") == str(item["source_version_id"])
         }
-        read_case_count = len(observed_version_ids)
-        if trace_links:
-            trace_summary = (
-                f"Phạm vi truy vết của baseline gồm {confirmed_count} liên kết đã xác nhận, "
-                f"{suggested_count} liên kết đề xuất và {linked_case_count} phiên bản Test Case được liên kết; "
-                f"đã đọc nội dung {read_case_count} phiên bản trong lượt mô phỏng"
-            )
-            summary = f"{summary.rstrip('. ')}. {trace_summary}." if summary else f"{trace_summary}."
         linked_version_ids = simulation_linked_test_case_version_ids(
             run.observations,
             baseline_version_id,
@@ -1157,10 +898,6 @@ async def aggregate(state):
         omitted_count = len(set(linked_version_ids) - observed_version_ids)
         if omitted_count:
             warnings.append("SIMULATION_LINKED_TEST_CASE_READ_LIMIT_REACHED")
-            summary = (
-                f"{summary.rstrip('. ')}. Còn {omitted_count} phiên bản Test Case được liên kết "
-                "chưa được đọc do giới hạn số công cụ mỗi lượt."
-            )
         if suggested_count:
             warnings.append("SUGGESTED_TRACE_LINKS_NOT_CONFIRMED")
         if not scope_unchanged:
@@ -1175,11 +912,11 @@ async def aggregate(state):
             unresolved_reasons = []
             if read_scope_incomplete:
                 unresolved_reasons.append(
-                    "Chưa đọc đủ các phiên bản Test Case trong phạm vi truy vết; không phân loại phần còn thiếu."
+                    'Chưa đọc đủ phiên bản Test Case được liên kết nên không phân loại các mục chưa đọc.'
                 )
             if not scope_unchanged:
                 unresolved_reasons.append(
-                    "Phạm vi liên kết đã thay đổi hoặc chưa được xác minh lại; cần chạy mô phỏng mới."
+                    'Phạm vi truy vết đã thay đổi hoặc chưa được xác minh lại; cần chạy mô phỏng mới trước khi sử dụng kết quả phân loại.'
                 )
             change_simulation_report = {
                 "capability": "change_simulation_report",
@@ -1192,10 +929,6 @@ async def aggregate(state):
                 ])),
                 "verified": False,
             }
-            summary = (
-                f"{summary.rstrip('. ')}. Không phân loại Test Case vì lượt mô phỏng "
-                "chưa có đủ dữ liệu hoặc phạm vi chưa được xác minh; cần chạy lại sau khi xử lý nguyên nhân."
-            )
         else:
             try:
                 simulation = state.get("constraints", {}).get("change_simulation_input") or {}
@@ -1231,6 +964,7 @@ async def aggregate(state):
                                 source_payload["baseline"],
                                 proposed_text,
                                 batch_sources,
+                                (state.get("constraints") or {}).get("output_language"),
                             ),
                             ChangeSimulationReportOutput,
                             max_tokens=min(5000, 800 + 900 * len(version_batch)),
@@ -1271,23 +1005,10 @@ async def aggregate(state):
                     run.observations,
                     state.get("evidence", []),
                 )
-                counts = {}
-                for classification in change_simulation_report["classifications"]:
-                    status = classification["classification"]
-                    counts[status] = counts.get(status, 0) + 1
-                breakdown = ", ".join(f"{name}: {count}" for name, count in sorted(counts.items()))
                 if linked_version_ids:
-                    summary += (
-                        f". Báo cáo phân loại đã kiểm chứng trích dẫn cho {len(linked_version_ids)} "
-                        f"phiên bản Test Case{': ' + breakdown if breakdown else ''}"
-                    )
+                    warnings.append("CHANGE_SIMULATION_CLASSIFIED_LINKED_TEST_CASES")
                 else:
                     warnings.append("CHANGE_SIMULATION_NO_CONFIRMED_LINKED_TEST_CASES")
-                    summary = (
-                        f"{summary.rstrip('. ')}. Baseline không có Test Case version liên kết đã xác nhận; "
-                        "không có ca để phân loại. Kết quả chỉ xác nhận phạm vi truy vết đã được đọc lại, "
-                        "không kết luận rằng thay đổi không ảnh hưởng đến kiểm thử."
-                    )
                 if change_simulation_report["unresolved"]:
                     warnings.append("CHANGE_SIMULATION_HAS_UNRESOLVED_EVIDENCE_GAPS")
                 warnings.extend(change_simulation_report["warnings"])
@@ -1322,7 +1043,7 @@ async def aggregate(state):
         proposal.evidence_refs = list(run.evidence_refs)
     run.proposal = proposal.model_dump(mode="json")
     run.evidence_refs = list(dict.fromkeys([*run.evidence_refs, *proposal.evidence_refs]))
-    run.status = AgentRunStatus.VERIFYING
+    run.status = AIRunExecutionStatus.VERIFYING
     run.current_step += 1
     return {"run": run.model_dump(mode="python")}
 
@@ -1376,16 +1097,16 @@ async def verify(state):
         code for item in results for code in [*item.reason_codes, *item.warnings]
     }
     if "AI_PROVIDER_UNAVAILABLE" in reason_codes:
-        run.status = AgentRunStatus.FAILED
+        run.status = AIRunExecutionStatus.FAILED
         run.error_code = "AI_PROVIDER_UNAVAILABLE"
     elif {"CLARIFICATION_REQUIRED", "USER_DECISION_REQUIRED"} & reason_codes:
-        run.status = AgentRunStatus.FAILED
-        run.error_code = "AUTOMATION_WAITING_FOR_INPUT"
+        run.status = AIRunExecutionStatus.FAILED
+        run.error_code = "AI_RUN_WAITING_FOR_INPUT"
     elif verified:
-        run.status = AgentRunStatus.COMPLETED
+        run.status = AIRunExecutionStatus.COMPLETED
         run.error_code = None
     else:
-        run.status = AgentRunStatus.FAILED
+        run.status = AIRunExecutionStatus.FAILED
         run.error_code = (
             "CHANGE_SIMULATION_REPORT_INCOMPLETE"
             if simulation_required and not simulation_report_ok

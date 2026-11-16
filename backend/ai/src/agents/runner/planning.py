@@ -1,20 +1,11 @@
-from src.agents.runner.automation_event_tasks import (
-    direct_approved_plan_task,
+from src.agents.runner.request_tasks import (
     direct_capability_task,
     direct_change_simulation_task,
-    direct_changed_plan_task,
-    direct_defect_event_task,
-    direct_document_ingestion_task,
-    direct_event_observation_task,
-    direct_performance_configuration_task,
-    direct_recorded_test_execution_task,
-    direct_requirement_change_task,
-    direct_test_case_change_impact_task,
     simulation_baseline_trace_links,
     simulation_baseline_trace_snapshot,
     simulation_linked_test_case_version_ids,
 )
-from src.agents.runner.automation_validation import (
+from src.agents.runner.agent_validation import (
     bounded_tasks,
     mutation_fingerprint,
     observed_draft_identifiers,
@@ -24,22 +15,13 @@ from src.agents.runner.automation_validation import (
     validated_tasks,
     verified_tool_call_records,
 )
-from src.tools.registry import registered_tools, requires_human_decision, tool_access
+from src.tools.registry import agent_available_tools, tool_access
 
 __all__ = [
     "available_tools",
     "bounded_tasks",
-    "direct_approved_plan_task",
     "direct_capability_task",
     "direct_change_simulation_task",
-    "direct_changed_plan_task",
-    "direct_defect_event_task",
-    "direct_document_ingestion_task",
-    "direct_event_observation_task",
-    "direct_performance_configuration_task",
-    "direct_recorded_test_execution_task",
-    "direct_requirement_change_task",
-    "direct_test_case_change_impact_task",
     "mutation_fingerprint",
     "observed_draft_identifiers",
     "observed_identifiers",
@@ -53,24 +35,14 @@ __all__ = [
 ]
 
 
-def available_tools(permissions, intent="", compact=False, actions=None, domains=None):
+def available_tools(permissions, compact=False, actions=None, domains=None):
     values = []
-    tools = registered_tools()
-    intent_tool_exists = bool(intent and tool_access(tools.get(intent)))
+    tools = agent_available_tools(permissions)
     allowed_domains = set(domains) if domains is not None else None
     for tool in tools.values():
         access = tool_access(tool)
-        if (
-            access
-            and access.permission in permissions
-            and not requires_human_decision(access.permission)
-            and (access.action != "MUTATE" or access.draft_only)
-            and (actions is None or access.action in actions)
-            and (
-                allowed_domains is None
-                or bool(set(access.domains).intersection(allowed_domains))
-            )
-            and (not intent_tool_exists or access.name == intent)
+        if access and (actions is None or access.action in actions) and (
+            allowed_domains is None or bool(set(access.domains).intersection(allowed_domains))
         ):
             schema = tool.args_schema.model_json_schema()
             arguments = schema

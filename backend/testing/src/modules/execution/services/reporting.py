@@ -10,7 +10,7 @@ from src.core.common import audit, get_project, new_id, now
 from src.core.database import database
 from src.core.human_decisions import (
     content_authorship_changes,
-    require_automation_publication_authority,
+    require_ai_publication_authority,
     require_independent_review,
 )
 from src.modules.execution.services.report_document import validate_report_document
@@ -386,7 +386,7 @@ async def patch_report_assignments(report_id, payload, user):
 async def transition_report(report_id, payload, user):
     action = payload.action
     if action in {"SUBMIT", "REQUEST_CHANGES", "APPROVE", "PUBLISH"}:
-        require_automation_publication_authority(user, f"workreport.{action.lower()}")
+        require_ai_publication_authority(user, f"workreport.{action.lower()}")
     permission = "review" if action in {"APPROVE", "REQUEST_CHANGES"} else "publish" if action == "PUBLISH" else "write"
     report = await report_for_user(report_id, user, permission)
     existing = await repository.find("report_actions", {"report_id": report_id, "actor_id": user.id, "idempotency_key": payload.idempotency_key})

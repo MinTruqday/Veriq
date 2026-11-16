@@ -188,7 +188,7 @@ export default function ProjectsPage() {
         ...form,
         key: form.key.trim().toUpperCase(),
         name: form.name.trim(),
-        locale: user?.locale || navigator.language,
+        locale: user?.locale || "vi",
         timezone: user?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
         planned_start_at: form.planned_start_at
           ? new Date(`${form.planned_start_at}T00:00:00.000Z`).toISOString()
@@ -413,7 +413,13 @@ export default function ProjectsPage() {
                     </span>
                     <strong className="mt-1 block text-[14px]">{invitation.project?.name}</strong>
                     <small className="text-ink-muted">
-                      Vai trò được mời {valueLabel(invitation.project_role)}
+                      Vai trò được mời{" "}
+                      {(invitation.project_roles?.length
+                        ? invitation.project_roles
+                        : [invitation.project_role].filter(Boolean)
+                      )
+                        .map(valueLabel)
+                        .join(", ")}
                     </small>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -442,36 +448,38 @@ export default function ProjectsPage() {
       )}
       <Panel title="Danh sách dự án">
         <form
-          className="grid min-w-0 gap-3 border-b border-border p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end xl:grid-cols-[minmax(260px,1fr)_auto_minmax(170px,220px)_minmax(170px,210px)] xl:items-center"
+          className="grid min-w-0 grid-cols-1 gap-3 border-b border-border p-4 md:grid-cols-2 xl:grid-cols-[minmax(300px,1fr)_minmax(170px,220px)_minmax(170px,210px)] xl:items-center"
           onSubmit={(event) => {
             event.preventDefault();
             setProjectPage(1);
             void load(query, status);
           }}
         >
-          <label className="relative block min-w-0">
-            <span className="sr-only">Tìm dự án</span>
-            <Search
-              aria-hidden="true"
-              className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-ink-faint"
-              size={16}
-            />
-            <input
+          <div className="flex min-w-0 gap-3 md:col-span-2 xl:col-span-1">
+            <label className="relative block min-w-0 flex-1">
+              <span className="sr-only">Tìm dự án</span>
+              <Search
+                aria-hidden="true"
+                className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-ink-faint"
+                size={16}
+              />
+              <input
+                aria-label="Tìm dự án"
+                className="apple-input h-10 w-full py-0 pl-10"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Tìm theo mã hoặc tên dự án"
+              />
+            </label>
+            <button
               aria-label="Tìm dự án"
-              className="apple-input h-10 w-full py-0 pl-10"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Tìm theo mã hoặc tên dự án"
-            />
-          </label>
-          <button
-            aria-label="Tìm dự án"
-            className="icon-button h-10 w-10 shrink-0"
-            title="Tìm dự án"
-            type="submit"
-          >
-            <Search aria-hidden="true" size={16} />
-          </button>
+              className="icon-button h-10 w-10 shrink-0"
+              title="Tìm dự án"
+              type="submit"
+            >
+              <Search aria-hidden="true" size={16} />
+            </button>
+          </div>
           <select
             aria-label="Trạng thái dự án"
             className="apple-input h-10 w-full"

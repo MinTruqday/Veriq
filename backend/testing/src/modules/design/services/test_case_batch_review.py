@@ -4,9 +4,8 @@ from pymongo.errors import DuplicateKeyError
 from src.core.common import get_project, new_id, now
 from src.core.database import database
 from src.core.project_settings import resolve_testcase_duplicate_threshold
-from src.core.human_decisions import require_automation_publication_authority
+from src.core.human_decisions import require_ai_publication_authority
 from src.core.human_decisions import require_independent_review
-from src.clients.ai_automation import queue_test_case_approved
 from src.modules.design.services.linters import duplicate_score, has_verifiable_steps, lint_test_case
 from src.modules.design.services.test_case_custom_fields import validate_test_case_custom_values
 from src.modules.design.services.test_case_lifecycle import build_test_case_version, finalize_test_case_derivatives
@@ -20,9 +19,8 @@ from src.modules.design.services.test_case_review import (
 from src.repositories.test_design import test_design_repository
 from src.schemas.contracts.design import TestCaseFreezeInput
 
-
 async def accept_test_case_group(project_id, payload, user):
-    require_automation_publication_authority(user)
+    require_ai_publication_authority(user)
     await get_project(project_id, user, "testcase.approve")
     batch_id = "TCBATCH-" + fingerprint([project_id, payload.operation_id])
     body_hash = fingerprint(payload.model_dump())
@@ -173,7 +171,6 @@ async def accept_test_case_group(project_id, payload, user):
             transitioned = await database.value.test_case_drafts.update_one({"_id": draft["_id"], "project_id": project_id, "revision": draft["revision"], "status": "IN_REVIEW"}, {"$set": {"status": "APPROVED", "frozen_version_id": version["_id"], "approved_by": user.id, "approved_at": timestamp, "approval_batch_id": batch_id}, "$inc": {"revision": 1}}, session=session)
             if transitioned.matched_count != 1:
                 raise HTTPException(409, detail={"code": "REVISION_CONFLICT", "draft_id": draft["_id"]})
-            await queue_test_case_approved(version, user, session)
             published.append((draft, version))
         result = {"batch_id": batch_id, "count": len(published), "draft_ids": [draft["_id"] for draft, _ in published], "version_ids": [version["_id"] for _, version in published], "idempotent": False}
         await database.value.audit_events.insert_one({"_id": batch_id, "project_id": project_id, "actor_id": user.id, "action": "test_case_group_approved", "entity_type": "TestCaseApprovalGroup", "entity_id": batch_id, "created_at": timestamp, "details": {"request_hash": body_hash, "review_note": payload.review_note, "selected_items": [item.model_dump() for item in payload.items], "result": result}}, session=session)
@@ -208,7 +205,6 @@ async def accept_test_case_group(project_id, payload, user):
         except Exception:
             pending.append(version["_id"])
     return {**result, "derived_pending_version_ids": sorted(set(pending))}
-
 
 async def _existing_batch_result(
     existing, user, body_hash, project_id, expected_draft_ids
@@ -253,7 +249,6 @@ async def _existing_batch_result(
     await _verify_batch_publication_links(project_id, draft_ids, version_ids)
     return {**await _result_with_derived_state(result), "idempotent": True}
 
-
 async def _retry_batch_derived_state(result, project_id, user):
     draft_ids = result.get("draft_ids") or []
     version_ids = result.get("version_ids") or []
@@ -280,7 +275,6 @@ async def _retry_batch_derived_state(result, project_id, user):
         **result,
         "derived_pending_version_ids": sorted(set(pending)),
     }
-
 
 async def _verify_batch_publication_links(project_id, draft_ids, version_ids, session=None):
     if (
@@ -337,7 +331,6 @@ async def _verify_batch_publication_links(project_id, draft_ids, version_ids, se
             or approved_draft.get("test_case_key") != published_case.get("test_case_key")
         ):
             raise HTTPException(409, detail={"code": "TEST_CASE_APPROVAL_INCOMPLETE"})
-
 
 async def _result_with_derived_state(result):
     version_ids = list(

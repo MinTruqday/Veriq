@@ -113,7 +113,7 @@ def document_error(error: Exception):
 @indexing_router.post(
     "/chuyen-doi",
     response_model=APIResponse[dict],
-    description="Chuyển đổi attachment thành nội dung có cấu trúc",
+    description="Convert an attachment into structured content",
 )
 async def convert_attachment(req: AttachmentConversionRequest):
     try:
@@ -128,13 +128,13 @@ async def convert_attachment(req: AttachmentConversionRequest):
         )
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
-    return APIResponse(data=result, message="Chuyển đổi tài liệu thành công")
+    return APIResponse(data=result, message="Attachment conversion completed")
 
 
 @indexing_router.delete(
     "/chuyen-doi/checkpoints",
     response_model=APIResponse[dict],
-    description="Dọn checkpoint chuyển đổi sau khi dịch vụ nguồn đã lưu kết quả",
+    description="Delete conversion checkpoints after the source service persists the result",
 )
 async def clear_conversion_checkpoints(req: ConversionCheckpointCleanupRequest):
     from src.repositories.document_ingestion_checkpoint import (
@@ -144,12 +144,12 @@ async def clear_conversion_checkpoints(req: ConversionCheckpointCleanupRequest):
     await document_ingestion_checkpoint_repository.delete_source_version(
         req.document_id, req.project_id, req.owner_id, req.source_hash
     )
-    return APIResponse(data={"deleted": True}, message="Đã dọn checkpoint chuyển đổi")
+    return APIResponse(data={"deleted": True}, message="Conversion checkpoints deleted")
 
 
 @indexing_router.get(
     "/tai-lieu/{document_id}/anh-nguon",
-    description="Đọc ảnh nguồn riêng tư sau khi dịch vụ Testing đã kiểm tra quyền tài liệu",
+    description="Read a private source image after the Testing service verifies document access",
 )
 async def read_document_picture_asset(
     document_id: str,
@@ -179,17 +179,17 @@ async def read_document_picture_asset(
 
 @indexing_router.post(
     "/kiem-thu/goi-y-phan-cong",
-    description="Xếp hạng người thực hiện từ dữ liệu năng lực, khả dụng và tải công việc",
+    description="Rank assignees by capability evidence, availability, and workload",
 )
 async def staffing_recommendation(req: StaffingRecommendationRequest):
     result = await recommend_staffing(req)
-    return APIResponse(data=result, message="Đã tạo đề xuất phân công có căn cứ")
+    return APIResponse(data=result, message="Evidence-based staffing recommendations generated")
 
 
 @indexing_router.delete(
     "/tai-lieu/{document_id}",
     response_model=APIResponse[dict],
-    description="Xóa chỉ mục knowledge của tài liệu",
+    description="Delete a document's knowledge index",
 )
 async def delete_document(
     document_id: str,
@@ -205,4 +205,4 @@ async def delete_document(
         result = await remove_document_data(document_id, resolved_id, resolved_admin)
     except Exception as error:
         raise document_error(error)
-    return APIResponse(data=result, message="Xóa chỉ mục tài liệu thành công")
+    return APIResponse(data=result, message="Document index deleted")

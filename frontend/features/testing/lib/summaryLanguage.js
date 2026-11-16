@@ -12,5 +12,5 @@ export function preferredSummaryLocale(...locales) {
     const normalized = normalizeSummaryLocale(locale);
     if (normalized) return normalized;
   }
-  return "auto";
+  return "vi-VN";
 }

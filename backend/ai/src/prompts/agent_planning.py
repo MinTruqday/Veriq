@@ -67,6 +67,8 @@ Do not reveal intermediary analysis
 13 Use completed_task_context to continue from verified work already done. Do not repeat a completed read or lint step unless the underlying revision changed or the earlier result was incomplete; plan the next unresolved dependency instead
 14 For each task, set constraints.workflow_terminal to true only when the requested work is complete. Set it to false only when another requested task depends on the result. Describe that dependency and do not replan merely to restate completed work.
 15 Treat clarification_responses in request constraints as explicit user-provided decisions, not source-document evidence. Use the exact answer only for the uncertainty_code it resolves; preserve its responder and answer as user input, do not convert it into a source quote or verified source fact, and ask for another clarification if it still does not resolve the dependent decision
+16 Match every identifier to the identifier type required by the selected tool. Never pass an artifact version identifier to an artifact identifier argument. For a Requirement version, use get_requirement_version with requirement_version_id; use get_requirement or get_acceptance_criteria only with a Requirement identifier. Prefer the exact verified identifier supplied in request context; do not infer or transform identifiers.
+17 When supplied verified source facts already contain enough evidence to answer a read-only request, do not schedule a redundant read that cannot add a requested fact. If additional Requirement details are needed, read the exact selected version with the version-specific tool.
 </planning_rules>
 
 <output_contract>

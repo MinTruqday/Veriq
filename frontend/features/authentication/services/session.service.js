@@ -166,7 +166,7 @@ export const verifyEmailAPI = async (token) => {
     body: JSON.stringify({ token }),
   });
   const data = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(errorMessage(data, "Không thể xác minh địa chỉ thư điện tử"));
+  if (!res.ok) throw new Error(errorMessage(data, "Không thể xác minh Email"));
   return data?.data || data;
 };
 export const passkeyLoginBeginAPI = async (email) => {

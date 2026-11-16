@@ -1,10 +1,4 @@
-import {
-  agentWorkflowRequest,
-  agentRequest,
-  downloadTestingFile,
-  listQuery,
-  testingRequest,
-} from "./testing.transport";
+import { aiRunRequest, downloadTestingFile, listQuery, testingRequest } from "./testing.transport";
 
 export const projectTestingApi = {
   listCapacityPeriods: () => testingRequest("/quan-tri/cong-suat"),
@@ -16,25 +10,25 @@ export const projectTestingApi = {
   getProjectCapabilities: () => testingRequest("/du-an/kha-nang"),
   listEffectiveAccess: (projectId) =>
     testingRequest(`/du-an/${encodeURIComponent(projectId)}/quyen-hieu-luc`),
-  listAgentCapabilities: (projectId) =>
-    agentRequest(`/du-an/${encodeURIComponent(projectId)}/nang-luc`),
-  createAgentRun: (payload) =>
-    agentRequest("/luot-chay", { method: "POST", body: JSON.stringify(payload) }),
-  getAgentRun: (runId) => agentWorkflowRequest(`/luot-chay/${runId}`),
-  getAgentRunEvidence: (runId) => agentWorkflowRequest(`/luot-chay/${runId}/bang-chung`),
-  listAgentRuns: (projectId) => agentWorkflowRequest(`/du-an/${projectId}/luot-chay`),
-  resumeAgentRun: (runId, payload) =>
-    agentWorkflowRequest(`/luot-chay/${runId}/uy-quyen-lai`, {
+  listAIRunCapabilities: (projectId) =>
+    aiRunRequest(`/du-an/${encodeURIComponent(projectId)}/nang-luc`),
+  createAIRun: (payload) =>
+    aiRunRequest("/luot-chay", { method: "POST", body: JSON.stringify(payload) }),
+  getAIRun: (runId) => aiRunRequest(`/luot-chay/${runId}`),
+  getAIRunEvidence: (runId) => aiRunRequest(`/luot-chay/${runId}/bang-chung`),
+  listAIRuns: (projectId) => aiRunRequest(`/du-an/${projectId}/luot-chay`),
+  resumeAIRun: (runId, payload) =>
+    aiRunRequest(`/luot-chay/${runId}/uy-quyen-lai`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),
   answerAgentClarification: (runId, payload) =>
-    agentWorkflowRequest(`/luot-chay/${runId}/tra-loi-lam-ro`, {
+    aiRunRequest(`/luot-chay/${runId}/tra-loi-lam-ro`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),
-  cancelAgentRun: (runId, payload) =>
-    agentWorkflowRequest(`/luot-chay/${runId}/huy`, {
+  cancelAIRun: (runId, payload) =>
+    aiRunRequest(`/luot-chay/${runId}/huy`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),

@@ -3,8 +3,8 @@ import re
 import unicodedata
 from urllib.parse import urlencode
 
-from src.tools.automation_publication import publish_grounded_test_case
-from src.tools.testing_api import AutomationOperationError, require_operation
+from src.tools.grounded_publication import publish_grounded_test_case
+from src.tools.testing_api import ToolOperationError, require_operation
 
 
 def compilable_document_ids(documents, event_document_id):
@@ -58,20 +58,20 @@ async def list_resumable_ai_test_case_drafts(project_id, requirement_version_id,
             config,
         )
         if not isinstance(response, (list, dict)):
-            raise AutomationOperationError("AI_TEST_CASE_DRAFT_READBACK_INVALID")
+            raise ToolOperationError("AI_TEST_CASE_DRAFT_READBACK_INVALID")
         items = response_items(response)
         if isinstance(response, dict) and not isinstance(response.get("items"), list):
-            raise AutomationOperationError("AI_TEST_CASE_DRAFT_READBACK_INVALID")
+            raise ToolOperationError("AI_TEST_CASE_DRAFT_READBACK_INVALID")
         for draft in items:
             if not isinstance(draft, dict) or not draft.get("_id"):
-                raise AutomationOperationError("AI_TEST_CASE_DRAFT_READBACK_INVALID")
+                raise ToolOperationError("AI_TEST_CASE_DRAFT_READBACK_INVALID")
             if (
                 draft.get("project_id") != project_id
                 or requirement_version_id
                 not in (draft.get("requirement_version_ids") or [])
                 or draft.get("status") != status
             ):
-                raise AutomationOperationError("AI_TEST_CASE_DRAFT_SCOPE_INVALID")
+                raise ToolOperationError("AI_TEST_CASE_DRAFT_SCOPE_INVALID")
             if draft.get("origin") != "ai_generated":
                 continue
             previous = drafts_by_id.get(str(draft["_id"]))
@@ -79,7 +79,7 @@ async def list_resumable_ai_test_case_drafts(project_id, requirement_version_id,
                 previous.get("status") != draft.get("status")
                 or previous.get("revision") != draft.get("revision")
             ):
-                raise AutomationOperationError(
+                raise ToolOperationError(
                     "AI_TEST_CASE_DRAFT_STATE_CHANGED_DURING_READ"
                 )
             drafts_by_id[str(draft["_id"])] = draft
@@ -91,7 +91,7 @@ async def list_resumable_ai_test_case_drafts(project_id, requirement_version_id,
 
 async def list_all_test_case_records(project_id, requirement_id, config, page_size=500):
     if not isinstance(page_size, int) or isinstance(page_size, bool) or page_size < 1:
-        raise AutomationOperationError("REQUIREMENT_TEST_CASE_PAGINATION_INVALID")
+        raise ToolOperationError("REQUIREMENT_TEST_CASE_PAGINATION_INVALID")
     page = 1
     total = None
     total_pages = None
@@ -109,16 +109,16 @@ async def list_all_test_case_records(project_id, requirement_id, config, page_si
         for item in items:
             identifier = str(item.get("_id") or "")
             if not identifier:
-                raise AutomationOperationError("REQUIREMENT_TEST_CASE_PAGINATION_INVALID")
+                raise ToolOperationError("REQUIREMENT_TEST_CASE_PAGINATION_INVALID")
             if item.get("project_id") != project_id:
-                raise AutomationOperationError("REQUIREMENT_TEST_CASE_SCOPE_INVALID")
+                raise ToolOperationError("REQUIREMENT_TEST_CASE_SCOPE_INVALID")
             if identifier in seen_ids:
-                raise AutomationOperationError("REQUIREMENT_TEST_CASE_PAGINATION_DUPLICATE")
+                raise ToolOperationError("REQUIREMENT_TEST_CASE_PAGINATION_DUPLICATE")
             seen_ids.add(identifier)
             records.append(item)
 
         if not isinstance(response, dict):
-            raise AutomationOperationError("REQUIREMENT_TEST_CASE_PAGINATION_INVALID")
+            raise ToolOperationError("REQUIREMENT_TEST_CASE_PAGINATION_INVALID")
 
         try:
             reported_total = int(response["total"])
@@ -126,7 +126,7 @@ async def list_all_test_case_records(project_id, requirement_id, config, page_si
             reported_page = int(response["page"])
             reported_page_size = int(response["page_size"])
         except (KeyError, TypeError, ValueError) as error:
-            raise AutomationOperationError(
+            raise ToolOperationError(
                 "REQUIREMENT_TEST_CASE_PAGINATION_INVALID"
             ) from error
         if (
@@ -135,32 +135,32 @@ async def list_all_test_case_records(project_id, requirement_id, config, page_si
             or reported_page != page
             or reported_page_size != page_size
         ):
-            raise AutomationOperationError("REQUIREMENT_TEST_CASE_PAGINATION_INVALID")
+            raise ToolOperationError("REQUIREMENT_TEST_CASE_PAGINATION_INVALID")
         if total is not None and reported_total != total:
-            raise AutomationOperationError(
+            raise ToolOperationError(
                 "REQUIREMENT_TEST_CASE_SCOPE_CHANGED_DURING_READ"
             )
         if total_pages is not None and reported_pages != total_pages:
-            raise AutomationOperationError(
+            raise ToolOperationError(
                 "REQUIREMENT_TEST_CASE_SCOPE_CHANGED_DURING_READ"
             )
         total = reported_total
         total_pages = reported_pages
         reported_fingerprint = response.get("scope_fingerprint")
         if not isinstance(reported_fingerprint, str) or not reported_fingerprint:
-            raise AutomationOperationError("REQUIREMENT_TEST_CASE_SCOPE_FINGERPRINT_MISSING")
+            raise ToolOperationError("REQUIREMENT_TEST_CASE_SCOPE_FINGERPRINT_MISSING")
         if scope_fingerprint is not None and reported_fingerprint != scope_fingerprint:
-            raise AutomationOperationError("REQUIREMENT_TEST_CASE_SCOPE_CHANGED_DURING_READ")
+            raise ToolOperationError("REQUIREMENT_TEST_CASE_SCOPE_CHANGED_DURING_READ")
         scope_fingerprint = reported_fingerprint
         expected_items = min(page_size, max(0, reported_total - (page - 1) * page_size))
         if len(items) != expected_items:
-            raise AutomationOperationError("REQUIREMENT_TEST_CASE_PAGINATION_INCOMPLETE")
+            raise ToolOperationError("REQUIREMENT_TEST_CASE_PAGINATION_INCOMPLETE")
         if reported_pages == 0:
             break
         page += 1
 
     if total is not None and len(records) != total:
-        raise AutomationOperationError("REQUIREMENT_TEST_CASE_PAGINATION_INCOMPLETE")
+        raise ToolOperationError("REQUIREMENT_TEST_CASE_PAGINATION_INCOMPLETE")
     return records
 
 async def carry_forward_unchanged_requirement_tests(
@@ -254,7 +254,7 @@ async def carry_forward_unchanged_requirement_tests(
                 config,
                 {
                     "expected_current_version_id": current_version_id,
-                    "change_reason": "Giữ nguyên ca đã được AI phân loại còn hiệu lực và cập nhật trace sang Requirement version mới",
+                    "change_reason": 'Giữ nguyên ca đã được AI phân loại còn hiệu lực và cập nhật trace sang Requirement version mới.',
                 },
             )
             draft = await require_operation(
@@ -292,7 +292,7 @@ async def resolve_answered_clarifications(version, config):
     )
     items = response_items(clarifications)
     permissions = set((config or {}).get("configurable", {}).get("permissions", []))
-    if (config or {}).get("configurable", {}).get("automation_run_id") or "requirement.approve" not in permissions:
+    if (config or {}).get("configurable", {}).get("ai_run_id") or "requirement.approve" not in permissions:
         return [item for item in items if item.get("status") in {"OPEN", "ANSWERED"}]
 
     source_parts = [str(version.get("plain_text_projection") or "")]
@@ -335,7 +335,7 @@ async def resolve_answered_clarifications(version, config):
                     "evidence_quote": answer,
                 },
             )
-        except AutomationOperationError:
+        except ToolOperationError:
             latest = response_items(
                 await require_operation(
                     "GET", f"/phien-ban-yeu-cau/{version['_id']}/phieu-lam-ro", config
@@ -415,8 +415,8 @@ async def plan_clarification_priority(version, clarifications, config):
     for priority, item in enumerate(ranked, start=1):
         item["priority"] = priority
         if not item["unlock_count"]:
-            item["priority_basis"] = "Không có liên kết nguồn chính xác với Nghĩa vụ còn mở; không khẳng định số mục được mở khóa"
+            item["priority_basis"] = 'Không có liên kết nguồn chính xác với Nghĩa vụ còn mở; không khẳng định số mục được mở khóa.'
         else:
-            item["priority_basis"] = "Số Nghĩa vụ còn mở được liên kết qua mã nguồn hoặc trích dẫn chính xác"
+            item["priority_basis"] = 'Số Nghĩa vụ còn mở được liên kết qua mã nguồn hoặc trích dẫn chính xác.'
     return ranked
 

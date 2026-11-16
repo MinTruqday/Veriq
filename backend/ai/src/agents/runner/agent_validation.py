@@ -217,14 +217,34 @@ def validated_tasks(
         task = planned if isinstance(planned, PlannedTask) else PlannedTask(**planned)
         calls = []
         for call in task.tool_calls[: limits.tool_calls_per_task]:
-            tool = tool_values.get(call.tool_name)
+            tool_name = call.tool_name
+            arguments = dict(call.arguments)
+            requirement_id = arguments.get("requirement_id")
+            if (
+                tool_name == "get_requirement"
+                and isinstance(requirement_id, str)
+                and requirement_id.startswith("REQV-")
+                and set(arguments) == {"requirement_id"}
+            ):
+                version_tool = tool_values.get("get_requirement_version")
+                version_access = tool_access(version_tool)
+                if (
+                    not version_tool
+                    or not version_access
+                    or version_access.permission not in run.permissions
+                    or task.domain not in version_access.domains
+                ):
+                    continue
+                tool_name = version_access.name
+                arguments = {"requirement_version_id": requirement_id}
+
+            tool = tool_values.get(tool_name)
             access = tool_access(tool)
             if (
                 not access
                 or task.domain not in access.domains
             ):
                 continue
-            arguments = dict(call.arguments)
             schema = tool.args_schema.model_json_schema()
             properties = schema.get("properties", {})
             if "project_id" in properties:
@@ -290,7 +310,7 @@ def validated_tasks(
                 if fingerprint in completed_proposals:
                     continue
                 completed_proposals.add(fingerprint)
-            calls.append(ToolCall(tool_name=call.tool_name, arguments=normalized))
+            calls.append(ToolCall(tool_name=tool_name, arguments=normalized))
             if access.action == "MUTATE":
                 completed_mutations.add(fingerprint)
         validated.append(

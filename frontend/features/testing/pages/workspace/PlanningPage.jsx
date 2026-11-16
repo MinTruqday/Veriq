@@ -190,7 +190,7 @@ function sortWorkItems(items, sort) {
 
 const PRIORITY_BADGE_CLASS = "border-border bg-surface-quiet text-ink";
 
-function PriorityMark({ value, prefix = "" }) {
+function PriorityMark({ value }) {
   const rawValue = String(value || "").trim();
   const label = rawValue ? valueLabel(rawValue) : "Chưa đặt mức ưu tiên";
   const normalizedValue = rawValue.toUpperCase();
@@ -208,7 +208,6 @@ function PriorityMark({ value, prefix = "" }) {
       title={`Mức ưu tiên: ${label}`}
     >
       {PriorityIcon && <PriorityIcon aria-hidden="true" size={14} />}
-      {prefix}
       {label}
     </span>
   );
@@ -321,7 +320,9 @@ export default function PlanningPage({ project, section }) {
             : tab === "roadmap"
               ? "Lộ trình"
               : "Lập kế hoạch";
-  const memberRoles = [project.current_membership?.project_role].filter(Boolean);
+  const memberRoles =
+    project.current_membership?.project_roles ||
+    [project.current_membership?.project_role].filter(Boolean);
   const canManagePlanning = (project.current_permissions || []).includes("project.update");
   const currentUserId = project.current_membership?.user_id;
   const canReadProjectMembers = (project.current_permissions || []).includes(
@@ -842,100 +843,130 @@ export default function PlanningPage({ project, section }) {
         <section aria-label="Lọc và xem công việc" className="min-w-0 space-y-4">
           {filterableTabs && (
             <div
-              aria-label="Bộ lọc lập kế hoạch"
               className={
-                tab === "list"
-                  ? "grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(16rem,1.25fr)_repeat(3,minmax(10rem,0.75fr))]"
-                  : "grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(16rem,1.25fr)_repeat(2,minmax(10rem,0.75fr))]"
+                tab === "list" || tab === "backlog"
+                  ? "rounded-xl border border-border bg-surface p-4 shadow-sm md:p-5"
+                  : ""
               }
             >
-              <SearchField
-                ariaLabel="Tìm công việc trong lập kế hoạch"
-                disabled={loading}
-                label="Tìm công việc"
-                onChange={(event) =>
-                  updatePlanningFilters((current) => ({ ...current, query: event.target.value }))
+              <div
+                aria-label="Bộ lọc lập kế hoạch"
+                className={
+                  tab === "list"
+                    ? "grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(16rem,1.25fr)_repeat(3,minmax(10rem,0.75fr))]"
+                    : "grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(16rem,1.25fr)_repeat(2,minmax(10rem,0.75fr))]"
                 }
-                placeholder="Mã, tên hoặc mô tả"
-                value={planningFilters.query}
-              />
-              <label className="field-label">
-                Trạng thái
-                <select
-                  aria-label="Lọc trạng thái lập kế hoạch"
-                  className="apple-input mt-2"
+              >
+                <SearchField
+                  ariaLabel="Tìm công việc trong lập kế hoạch"
                   disabled={loading}
-                  value={planningFilters.status}
+                  label="Tìm công việc"
                   onChange={(event) =>
-                    updatePlanningFilters((current) => ({ ...current, status: event.target.value }))
+                    updatePlanningFilters((current) => ({ ...current, query: event.target.value }))
                   }
-                >
-                  <option value="">Tất cả trạng thái</option>
-                  {(boardValue?.workflow?.statuses || []).map((status) => (
-                    <option key={status.key} value={status.key}>
-                      {status.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="field-label">
-                Loại công việc
-                <select
-                  aria-label="Lọc loại công việc lập kế hoạch"
-                  className="apple-input mt-2"
-                  disabled={loading}
-                  value={planningFilters.type}
-                  onChange={(event) =>
-                    updatePlanningFilters((current) => ({ ...current, type: event.target.value }))
-                  }
-                >
-                  <option value="">Tất cả loại</option>
-                  {typeOptions.map((type) => (
-                    <option key={type} value={type}>
-                      {valueLabel(type)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {tab === "list" && (
+                  placeholder="Mã, tên hoặc mô tả"
+                  value={planningFilters.query}
+                />
                 <label className="field-label">
-                  Sắp xếp
+                  Trạng thái
                   <select
-                    aria-label="Sắp xếp công việc"
+                    aria-label="Lọc trạng thái lập kế hoạch"
                     className="apple-input mt-2"
                     disabled={loading}
-                    value={planningFilters.sort}
+                    value={planningFilters.status}
                     onChange={(event) =>
-                      updatePlanningFilters((current) => ({ ...current, sort: event.target.value }))
+                      updatePlanningFilters((current) => ({
+                        ...current,
+                        status: event.target.value,
+                      }))
                     }
                   >
-                    <option value="rank">Thứ tự hiện tại</option>
-                    <option value="due">Hạn gần nhất</option>
-                    <option value="updated">Cập nhật gần nhất</option>
-                    <option value="title">Tên A–Z</option>
+                    <option value="">Tất cả trạng thái</option>
+                    {(boardValue?.workflow?.statuses || []).map((status) => (
+                      <option key={status.key} value={status.key}>
+                        {status.name}
+                      </option>
+                    ))}
                   </select>
                 </label>
-              )}
-              <div className="flex min-w-0 flex-wrap items-center gap-3 sm:col-span-2 xl:col-span-full">
-                <button
-                  className="secondary-button whitespace-nowrap"
-                  type="button"
-                  onClick={() => updatePlanningFilters(emptyPlanningFilters())}
-                  disabled={
-                    loading ||
-                    (!planningFilters.query &&
-                      !planningFilters.status &&
-                      !planningFilters.type &&
-                      planningFilters.sort === "rank")
-                  }
-                >
-                  Xóa lọc
-                </button>
-                <span className="text-xs text-ink-muted" aria-live="polite">
-                  Hiển thị {filteredItems.length}/{filterScopeItems.length} công việc
-                </span>
+                <label className="field-label">
+                  Loại công việc
+                  <select
+                    aria-label="Lọc loại công việc lập kế hoạch"
+                    className="apple-input mt-2"
+                    disabled={loading}
+                    value={planningFilters.type}
+                    onChange={(event) =>
+                      updatePlanningFilters((current) => ({ ...current, type: event.target.value }))
+                    }
+                  >
+                    <option value="">Tất cả loại</option>
+                    {typeOptions.map((type) => (
+                      <option key={type} value={type}>
+                        {valueLabel(type)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {tab === "list" && (
+                  <label className="field-label">
+                    Sắp xếp
+                    <select
+                      aria-label="Sắp xếp công việc"
+                      className="apple-input mt-2"
+                      disabled={loading}
+                      value={planningFilters.sort}
+                      onChange={(event) =>
+                        updatePlanningFilters((current) => ({
+                          ...current,
+                          sort: event.target.value,
+                        }))
+                      }
+                    >
+                      <option value="rank">Thứ tự hiện tại</option>
+                      <option value="due">Hạn gần nhất</option>
+                      <option value="updated">Cập nhật gần nhất</option>
+                      <option value="title">Tên A–Z</option>
+                    </select>
+                  </label>
+                )}
+                <div className="flex min-w-0 flex-wrap items-center gap-3 sm:col-span-2 xl:col-span-full">
+                  <button
+                    className="secondary-button whitespace-nowrap"
+                    type="button"
+                    onClick={() => updatePlanningFilters(emptyPlanningFilters())}
+                    disabled={
+                      loading ||
+                      (!planningFilters.query &&
+                        !planningFilters.status &&
+                        !planningFilters.type &&
+                        planningFilters.sort === "rank")
+                    }
+                  >
+                    Xóa lọc
+                  </button>
+                  <span className="text-xs text-ink-muted" aria-live="polite">
+                    Hiển thị {filteredItems.length}/{filterScopeItems.length} công việc
+                  </span>
+                </div>
               </div>
             </div>
+          )}
+          {tab === "list" && (
+            <WorkItemList
+              items={listItems}
+              allItems={items}
+              formatCalendarDate={formatCalendarDate}
+              memberLabels={memberLabels}
+              canReadProjectMembers={canReadProjectMembers}
+              totalCount={items.length}
+              statuses={boardValue?.workflow?.statuses || []}
+              transitions={boardValue?.workflow?.transitions || []}
+              canEdit={canManagePlanning}
+              canTransitionItem={canTransitionItem}
+              onEdit={editItem}
+              onTransition={transition}
+            />
           )}
         </section>
       )}
@@ -954,24 +985,6 @@ export default function PlanningPage({ project, section }) {
           onAddDependency={addDependency}
           onEdit={editItem}
         />
-      )}
-      {tab === "list" && (
-        <div className="min-w-0">
-          <WorkItemList
-            items={listItems}
-            allItems={items}
-            formatCalendarDate={formatCalendarDate}
-            memberLabels={memberLabels}
-            canReadProjectMembers={canReadProjectMembers}
-            totalCount={items.length}
-            statuses={boardValue?.workflow?.statuses || []}
-            transitions={boardValue?.workflow?.transitions || []}
-            canEdit={canManagePlanning}
-            canTransitionItem={canTransitionItem}
-            onEdit={editItem}
-            onTransition={transition}
-          />
-        </div>
       )}
       {tab === "board" && (
         <Board
@@ -1572,7 +1585,7 @@ function Backlog({
   const parentTitles = new Map((allItems || []).map((item) => [item._id, item.title]));
   if (!items.length) {
     return (
-      <div className="border-y border-border py-10">
+      <div className="flex min-h-44 items-center justify-center rounded-xl border border-border bg-surface px-4 py-8 shadow-sm">
         <EmptyState>
           {totalCount ? "Không có công việc khớp bộ lọc" : "Chưa có công việc trong danh sách chờ"}
         </EmptyState>
@@ -1583,7 +1596,7 @@ function Backlog({
   return (
     <ol
       aria-label="Thứ tự công việc trong danh sách chờ"
-      className="divide-y divide-border border-y border-border"
+      className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface shadow-sm"
     >
       {items.map((item, index) => {
         const relatedDependencies = dependencies.filter(
@@ -1604,7 +1617,7 @@ function Backlog({
               setDraggedId("");
             }}
             className={
-              "grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-4 py-4 transition-colors hover:bg-surface-quiet/35 " +
+              "grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-4 px-4 py-4 transition-colors hover:bg-surface-quiet/35 md:px-5 " +
               (draggedId === item._id ? "opacity-55" : "")
             }
           >
@@ -1627,7 +1640,7 @@ function Backlog({
                         PRIORITY_BADGE_CLASS
                       }
                     >
-                      <PriorityMark value={item.priority} prefix="Ưu tiên" />
+                      <PriorityMark value={item.priority} />
                     </span>
                   </span>
                   {canRank && (
@@ -1734,11 +1747,9 @@ function Backlog({
                   </dd>
                 </div>
                 {item.estimate != null && (
-                  <div className="flex min-w-0 items-baseline gap-1.5">
-                    <dt className="shrink-0 text-[13px] font-semibold text-ink-muted">
-                      Ước lượng:
-                    </dt>
-                    <dd className="min-w-0 break-words text-sm font-semibold text-ink">
+                  <div className="min-w-0">
+                    <dt className="text-[13px] font-semibold text-ink-muted">Ước lượng:</dt>
+                    <dd className="mt-1 break-words text-sm font-semibold text-ink">
                       {item.estimate}
                     </dd>
                   </div>
@@ -1805,8 +1816,8 @@ function WorkItemList({
 
   if (!items.length) {
     return (
-      <div className="border-y border-border py-10">
-        <EmptyState>
+      <div className="flex min-h-44 items-center justify-center rounded-xl border border-border bg-surface px-4 py-8 shadow-sm">
+        <EmptyState compact>
           {totalCount ? "Không có công việc khớp bộ lọc" : "Chưa có công việc trong dự án"}
         </EmptyState>
       </div>
@@ -1968,9 +1979,9 @@ function WorkItemList({
             </dd>
           </div>
           {selectedItem.estimate != null && (
-            <div className="flex min-w-0 items-baseline gap-1.5 border-t border-border py-2.5">
-              <dt className="shrink-0 text-[13px] font-semibold text-ink-muted">Ước lượng:</dt>
-              <dd className="min-w-0 break-words text-sm font-semibold text-ink">
+            <div className="min-w-0 border-t border-border py-2.5">
+              <dt className="text-[13px] font-semibold text-ink-muted">Ước lượng:</dt>
+              <dd className="mt-1 break-words text-sm font-semibold text-ink">
                 {selectedItem.estimate}
               </dd>
             </div>
@@ -2486,11 +2497,9 @@ function Board({
                                   </dd>
                                 </div>
                                 {item.estimate != null && (
-                                  <div className="flex min-w-0 items-baseline gap-1.5">
-                                    <dt className="shrink-0 font-semibold text-ink-muted">
-                                      Ước lượng:
-                                    </dt>
-                                    <dd className="min-w-0 break-words font-semibold text-ink">
+                                  <div className="min-w-0">
+                                    <dt className="font-semibold text-ink-muted">Ước lượng:</dt>
+                                    <dd className="mt-1 break-words font-semibold text-ink">
                                       {item.estimate}
                                     </dd>
                                   </div>

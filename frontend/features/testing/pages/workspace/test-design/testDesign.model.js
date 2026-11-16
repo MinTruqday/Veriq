@@ -220,6 +220,7 @@ export function buildTestCaseDraftChanges(snapshot, draft) {
     test_condition_ids: snapshot.testConditionIds,
     requirement_version_ids: snapshot.requirementVersionIds,
     acceptance_criterion_ids: snapshot.acceptanceCriterionIds,
+    scenario_id: snapshot.scenarioId || null,
     coverage_item_ids: snapshot.coverageItemIds,
     repository_node_id: snapshot.repositoryNodeId,
     bdd: snapshot.bdd,
@@ -235,7 +236,9 @@ export function buildTestCaseDraftChanges(snapshot, draft) {
           ? {}
           : field === "owner_id" || field === "bdd"
             ? ""
-            : "manual";
+            : field === "scenario_id"
+              ? null
+              : "manual";
     }
     if (field === "owner_id") previous = previous || "";
     if (field === "bdd") previous = previous || null;

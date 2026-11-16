@@ -9,6 +9,7 @@ export default function HorizontalScrollCue({
   viewportClassName = "",
   ariaLabel,
   scrollLabel = "vùng nội dung",
+  hidePartialItems = false,
 }) {
   const viewportRef = useRef(null);
   const [edges, setEdges] = useState({ overflow: false, start: true, end: true });
@@ -22,7 +23,18 @@ export default function HorizontalScrollCue({
       start: element.scrollLeft <= 4,
       end: element.scrollLeft >= maxScroll - 4,
     });
-  }, []);
+    if (hidePartialItems) {
+      const viewport = element.getBoundingClientRect();
+      const items = element.firstElementChild?.children || [];
+      Array.from(items).forEach((item) => {
+        const rect = item.getBoundingClientRect();
+        const intersects = rect.right > viewport.left && rect.left < viewport.right;
+        const fullyVisible = rect.left >= viewport.left - 1 && rect.right <= viewport.right + 1;
+        item.style.visibility =
+          intersects && !fullyVisible && rect.width <= viewport.width ? "hidden" : "";
+      });
+    }
+  }, [hidePartialItems]);
 
   useEffect(() => {
     const element = viewportRef.current;
@@ -66,13 +78,15 @@ export default function HorizontalScrollCue({
           <ChevronLeft aria-hidden="true" size={16} />
         </button>
       )}
-      <div
-        className={viewportClassName}
-        ref={viewportRef}
-        onScroll={updateEdges}
-        tabIndex={edges.overflow ? 0 : undefined}
-      >
-        {children}
+      <div className="relative min-w-0">
+        <div
+          className={viewportClassName}
+          ref={viewportRef}
+          onScroll={updateEdges}
+          tabIndex={edges.overflow ? 0 : undefined}
+        >
+          {children}
+        </div>
       </div>
       {edges.overflow && !edges.end && (
         <button

@@ -339,8 +339,13 @@ async def exchange_internal_document(req: dict):
             or set(source_snapshot) != INDEX_SOURCE_SNAPSHOT_FIELDS
         ):
             raise HTTPException(status_code=422, detail="Ảnh chụp nguồn lập chỉ mục không hợp lệ")
-        if len(index_generation) != 64 or any(
-            character not in "0123456789abcdef" for character in index_generation
+        try:
+            canonical_index_generation = bytes.fromhex(index_generation).hex()
+        except ValueError:
+            canonical_index_generation = ""
+        if (
+            len(index_generation) != 64
+            or canonical_index_generation != index_generation
         ):
             raise HTTPException(status_code=422, detail="Mã thế hệ chỉ mục không hợp lệ")
         if (

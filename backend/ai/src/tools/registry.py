@@ -60,6 +60,18 @@ def requires_human_decision(permission: str) -> bool:
     }
 
 
+def agent_available_tools(permissions):
+    allowed_permissions = set(permissions or [])
+    return {
+        name: value
+        for name, value in registered_tools().items()
+        if (access := tool_access(value))
+        and access.permission in allowed_permissions
+        and not requires_human_decision(access.permission)
+        and (access.action != "MUTATE" or access.draft_only)
+    }
+
+
 @lru_cache(maxsize=1)
 def registered_tools():
     from src.tools import tools
@@ -116,7 +128,7 @@ def resolved_value(reference, task, arguments, result):
 
 
 async def verify_application(
-    task, tool_name, arguments, outcome, token, automation_run_id=None
+    task, tool_name, arguments, outcome, token, ai_run_id=None
 ):
     access = tool_access(registered_tools().get(tool_name))
     specification = access.verification if access else None
@@ -124,7 +136,7 @@ async def verify_application(
     if not specification:
         if (
             isinstance(result, dict)
-            and result.get("status") == "automation_partial_failure"
+            and result.get("status") == "partial_failure"
             and result.get("reason_code") == "SOURCE_EXTRACTION_INCOMPLETE"
             and result.get("safe_no_mutation") is True
         ):
@@ -166,24 +178,24 @@ async def verify_application(
         "project_id": task.project_id,
         "run_id": task.run_id,
     }
-    if automation_run_id:
-        from src.repositories.automation import automation_repository
-        from src.schemas.automation import AutomationStatus
+    if ai_run_id:
+        from src.repositories.ai_runs import ai_run_repository
+        from src.schemas.ai_runs import AIRunStatus
 
-        active_run = await automation_repository.get_run(automation_run_id)
+        active_run = await ai_run_repository.get_run(ai_run_id)
         if not active_run:
             return {
                 "status": ToolExecutionStatus.DENIED,
-                "reason_code": "AUTOMATION_RUN_NOT_FOUND",
+                "reason_code": "AI_RUN_NOT_FOUND",
                 "tool_name": tool_name,
             }
-        if active_run.status != AutomationStatus.RUNNING:
+        if active_run.status != AIRunStatus.RUNNING:
             return {
                 "status": ToolExecutionStatus.DENIED,
-                "reason_code": "AUTOMATION_RUN_NOT_ACTIVE",
+                "reason_code": "AI_RUN_NOT_ACTIVE",
                 "tool_name": tool_name,
             }
-        configurable["automation_run_id"] = automation_run_id
+        configurable["ai_run_id"] = ai_run_id
     config = RunnableConfig(configurable=configurable)
     readback = parse(
         await call(
@@ -222,7 +234,7 @@ async def invoke_tool(
     permissions: list[str],
     token: str,
     evidence: list[dict] | None = None,
-    automation_run_id: str | None = None,
+    ai_run_id: str | None = None,
 ):
     decision = authorize_tool(task, tool_name, permissions)
     if not decision.allowed:
@@ -269,33 +281,33 @@ async def invoke_tool(
                 else {}
             ),
         }
-    if automation_run_id:
-        configurable["automation_run_id"] = automation_run_id
+    if ai_run_id:
+        configurable["ai_run_id"] = ai_run_id
     config = RunnableConfig(configurable=configurable)
     started = time.monotonic()
     try:
-        if automation_run_id:
+        if ai_run_id:
             import jwt
 
             from src.core.infrastructure.configuration import settings
-            from src.repositories.automation import automation_repository
-            from src.schemas.automation import AutomationStatus
+            from src.repositories.ai_runs import ai_run_repository
+            from src.schemas.ai_runs import AIRunStatus
 
             try:
-                active_run = await automation_repository.get_run(automation_run_id)
+                active_run = await ai_run_repository.get_run(ai_run_id)
             except Exception:
                 return {
                     "status": ToolExecutionStatus.DENIED,
-                    "reason_code": "AUTOMATION_RUN_STATE_UNAVAILABLE",
+                    "reason_code": "AI_RUN_STATE_UNAVAILABLE",
                     "tool_name": tool_name,
                 }
-            if not active_run or active_run.status != AutomationStatus.RUNNING:
+            if not active_run or active_run.status != AIRunStatus.RUNNING:
                 return {
                     "status": ToolExecutionStatus.DENIED,
                     "reason_code": (
-                        "AUTOMATION_RUN_NOT_FOUND"
+                        "AI_RUN_NOT_FOUND"
                         if not active_run
-                        else "AUTOMATION_RUN_NOT_ACTIVE"
+                        else "AI_RUN_NOT_ACTIVE"
                     ),
                     "tool_name": tool_name,
                 }
@@ -305,6 +317,10 @@ async def invoke_tool(
                 )
                 or []
             )
+            if active_run.intent == "process_ingested_requirement_document":
+                configurable["allow_test_case_generation"] = True
+                configurable["allow_test_design_handoff"] = False
+                configurable["testability_mode"] = "BLUEPRINT_BENCHMARK"
             source_event_verified = bool(
                 getattr(active_run, "source_event_verified", False)
             )
@@ -325,7 +341,7 @@ async def invoke_tool(
                     settings.SECRET_KEY,
                     algorithms=["HS256"],
                 )
-                worker_revision = token_payload.get("ai_automation_worker_revision")
+                worker_revision = token_payload.get("ai_capability_worker_revision")
             except jwt.PyJWTError:
                 worker_revision = None
             if (
@@ -335,7 +351,7 @@ async def invoke_tool(
             ):
                 return {
                     "status": ToolExecutionStatus.DENIED,
-                    "reason_code": "AUTOMATION_WORKER_FENCE_LOST",
+                    "reason_code": "AI_RUN_WORKER_FENCE_LOST",
                     "tool_name": tool_name,
                 }
         result = await tool.ainvoke(arguments, config=config)
@@ -350,7 +366,7 @@ async def invoke_tool(
             "authentication_required",
             "invalid_payload",
             "qa_operation_failed",
-            "automation_blocked",
+            "blocked",
             "degraded",
             "failed",
             "insufficient_evidence",
@@ -363,7 +379,7 @@ async def invoke_tool(
         )
         waiting_for_input = (
             isinstance(parsed, dict)
-            and result_status == "automation_waiting_for_input"
+            and result_status == "awaiting_input"
         )
         if (
             isinstance(parsed, dict)

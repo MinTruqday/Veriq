@@ -55,6 +55,6 @@ async def generate_performance_plan_from_approved_configuration(
     value = await DesignSuggestionService.generate_performance_from_approved_configuration(
         project_id, payload, user
     )
-    if value.get("status") == "automation_waiting_for_input":
+    if value.get("status") == "awaiting_input":
         return envelope(value)
     return envelope(value, revision=(value.get("draft") or {}).get("revision"))

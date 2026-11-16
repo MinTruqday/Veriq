@@ -329,9 +329,9 @@ class TestabilityBenchmarkExecution:
                 if all(case.expected_obligation_meanings for case in cases)
                 else "caller_supplied_answer_key_without_complete_semantic_labels"
             ),
-            "interpretation": "Mô tả kết quả trên bộ dữ liệu và đáp án tham chiếu đã cung cấp; không tự chứng minh tính đúng tổng quát.",
-            "self_review_comparison": "Blueprint trước và sau Self-review được tạo từ cùng một lần compile, cùng source facts, task instruction và gold case.",
-            "semantic_obligation_metric": "Đánh giá bởi mô hình giám khảo dựa trên mô tả nghĩa vụ do người biên soạn nhập; không phải xác minh độc lập.",
+            "interpretation": "Describes results on the supplied dataset and reference answers; does not establish general correctness.",
+            "self_review_comparison": "The Blueprint before and after Self-review use the same compilation, source facts, task instruction, and gold case.",
+            "semantic_obligation_metric": "Estimated by a judge model from author-supplied obligation descriptions; this is not independent verification.",
         }
         report.pipeline_metadata = {
             "provider": model_metadata().get("provider"),
@@ -378,8 +378,8 @@ class TestabilityBenchmarkExecution:
             "requested_case_count": len(comparisons),
             "cases": comparisons,
             "interpretation": (
-                "Mô hình giám khảo ước lượng tương đương ngữ nghĩa với nhãn do người biên soạn nhập; "
-                "không phải đánh giá độc lập và không được diễn giải như độ chính xác tuyệt đối."
+                "A judge model estimates semantic alignment with author-supplied labels; "
+                "this is not an independent evaluation or an absolute accuracy measure."
             ),
         }
         for side in ("before_self_review", "after_self_review"):

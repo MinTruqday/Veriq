@@ -89,7 +89,6 @@ const lineageSensitiveFields = new Set([
   "acceptance_criterion_ids",
   "data_set_version_ids",
   "test_condition_ids",
-  "scenario_id",
   "coverage_item_ids",
   "bdd",
 ]);
@@ -628,7 +627,11 @@ function FieldEditor({
               {[member.user?.full_name, member.user?.email, member.user_label].find(
                 (label) => label && label !== member.user_id,
               ) || "Thành viên dự án"}
-              {member.project_role ? ` · ${valueLabel(member.project_role)}` : ""}
+              {member.project_roles?.length
+                ? ` · ${member.project_roles.map(valueLabel).join(", ")}`
+                : member.project_role
+                  ? ` · ${valueLabel(member.project_role)}`
+                  : ""}
             </option>
           ))}
       </select>

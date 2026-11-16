@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
-import AgentRunPanel from "../../components/AgentRunPanel";
+import AIRunPanel from "../../components/AIRunPanel";
 import ProjectComplexityAssessmentPanel from "../../components/ProjectComplexityAssessmentPanel";
 import ProjectCompletenessReviewPanel from "../../components/ProjectCompletenessReviewPanel";
 import DataTable from "../../components/DataTable";
@@ -64,7 +64,7 @@ export default function DashboardPage({ project }) {
   const can = (permission) => permissions.includes(permission);
   const canReadAnalytics = can("analytics.read");
   const canReadCoverage = can("coverage.read");
-  const canReadAgentRuns = can("proposal.read") || can("automation.read");
+  const canReadAIRuns = can("proposal.read") || can("requirement.read");
   const canReadKnowledge = can("knowledge.read");
   useEffect(() => {
     let active = true;
@@ -133,7 +133,7 @@ export default function DashboardPage({ project }) {
     Boolean(dashboard && (can("testcase.read") || can("testrun.read") || can("impact.read"))) ||
     hasDetailedCoverage;
   const hasDashboardLeftColumn =
-    canReadAgentRuns || Boolean(dashboard && can("requirement.read") && can("impact.read"));
+    canReadAIRuns || Boolean(dashboard && can("requirement.read") && can("impact.read"));
   const hasDashboardRightColumn = Boolean(dashboard && (can("defect.read") || can("testrun.read")));
   return (
     <WorkspacePage
@@ -301,7 +301,7 @@ export default function DashboardPage({ project }) {
             <div
               className={`grid min-w-0 content-start gap-5 ${hasDashboardLeftColumn ? "" : "hidden"}`}
             >
-              {canReadAgentRuns && <AgentRunPanel project={project} compact />}
+              {canReadAIRuns && <AIRunPanel project={project} compact />}
               {dashboard && can("requirement.read") && can("impact.read") && (
                 <Panel title="Thay đổi gần đây">
                   {dashboard.recent_changes?.length > 0 ? (

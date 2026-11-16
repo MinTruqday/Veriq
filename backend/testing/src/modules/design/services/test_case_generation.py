@@ -1,13 +1,14 @@
 from fastapi import HTTPException
 
 from src.core.common import get_project, get_project_entity, plain_text
+from src.core.database import database
 from src.core.rich_text import text_document
 from src.core.project_settings import resolve_testcase_duplicate_threshold
 from src.repositories.analysis import analysis_repository
 from src.repositories.test_design import test_design_repository
-from src.core.ai_automation import (
+from src.core.ai_capabilities import (
     ai_contract_metadata,
-    request_ai_automation,
+    request_ai_capability,
 )
 from src.modules.design.services.generation import (
     generate_requirement_drafts,
@@ -15,7 +16,7 @@ from src.modules.design.services.generation import (
     select_generation_criteria,
 )
 from src.modules.design.services.linters import duplicate_score
-from src.modules.design.services.test_case_records import active_suite_signature, comparison_cases, project_test_text, require_current_baselined_version
+from src.modules.design.services.test_case_records import active_suite_signature, comparison_cases, project_test_text, require_current_baselined_version, require_current_design_source
 from src.modules.design.services.test_evidence import requirement_test_evidence_matches
 
 
@@ -25,7 +26,7 @@ async def generate_test_case_draft_records(version_id, payload, user):
     version = await get_project_entity(
         "requirement_versions", version_id, user, "ai.generate_testcase"
     )
-    await require_current_baselined_version(version)
+    await require_current_design_source(version, user)
     await get_project(version["project_id"], user, "testcase.create")
     all_criteria = await analysis_repository.list_acceptance_criteria(version_id)
     criteria = select_generation_criteria(all_criteria, payload.acceptance_criterion_ids)
@@ -42,7 +43,7 @@ async def generate_test_case_draft_records(version_id, payload, user):
     )
     if not current_versions:
         raise HTTPException(409, detail={"code": "TEST_DESIGN_REQUIREMENT_CHANGED", "message": "Yêu cầu đã thay đổi trong lúc AI tạo ca  Hãy tạo lại bản xem trước"})
-    await require_current_baselined_version(current_versions[0])
+    await require_current_design_source(current_versions[0], user)
     current_criteria = await analysis_repository.list_acceptance_criteria(version_id)
     current_criteria = select_generation_criteria(
         current_criteria, payload.acceptance_criterion_ids
@@ -63,8 +64,16 @@ async def generate_test_case_draft_records(version_id, payload, user):
     suite_signature = active_suite_signature(related, [version_id])
     if payload.challenge_hypotheses and suite_signature != payload.challenge_suite_signature:
         raise HTTPException(409, detail={"code": "TEST_DESIGN_PREVIEW_STALE", "message": "Bộ ca đang hiệu lực đã thay đổi trong lúc AI tạo ca  Hãy nhận gợi ý mới"})
-    await require_current_baselined_version(version)
+    await require_current_design_source(version, user)
     criterion_ids = {item["_id"] for item in criteria}
+    scenario_candidates = await database.value.test_scenarios.find(
+        {
+            "project_id": version["project_id"],
+            "requirement_version_ids": version_id,
+            "status": {"$in": ["draft", "approved"]},
+        },
+        {"_id": 1, "acceptance_criterion_ids": 1},
+    ).to_list(500)
     from src.modules.design.services.test_adequacy import _sources
     coverage_by_criterion = {
         item["source_id"]: item["coverage_item_id"]
@@ -80,6 +89,24 @@ async def generate_test_case_draft_records(version_id, payload, user):
     )
     items = []
     for index, (draft, generated) in enumerate(zip(drafts, result["suggestions"])):
+        draft_criterion_ids = set(draft.acceptance_criterion_ids or [])
+        candidate_scenarios = [
+            (
+                len(draft_criterion_ids.intersection(item.get("acceptance_criterion_ids") or [])),
+                item,
+            )
+            for item in scenario_candidates
+            if draft_criterion_ids.intersection(item.get("acceptance_criterion_ids") or [])
+        ]
+        if candidate_scenarios:
+            highest_overlap = max(score for score, _ in candidate_scenarios)
+            matching_scenarios = [
+                item for score, item in candidate_scenarios if score == highest_overlap
+            ]
+            if len(matching_scenarios) == 1:
+                draft = draft.model_copy(
+                    update={"scenario_id": matching_scenarios[0]["_id"]}
+                )
         draft = draft.model_copy(update={
             "coverage_item_ids": [
                 coverage_by_criterion[criterion_id]
@@ -190,7 +217,7 @@ async def recommend_test_design_techniques(version_id, payload, user):
             "artifact_version_id": item["_id"],
             "text": project_test_text(item),
         })
-    result = await request_ai_automation(
+    result = await request_ai_capability(
         "technique_recommendation", version["project_id"], payload.instruction, evidence
     )
     if result.get("status") != "SUCCESS" or result.get("degraded_mode"):

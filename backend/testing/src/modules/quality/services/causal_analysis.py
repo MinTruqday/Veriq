@@ -18,14 +18,14 @@ from src.modules.quality.services.causal_analysis_query import (
 from src.repositories.causal_analysis import causal_analysis_repository
 
 
-def _create_request_hash(payload, source_automation_run_id):
+def _create_request_hash(payload, source_ai_run_id):
     request = payload.model_dump(mode="json", exclude={"idempotency_key"})
-    request["source_automation_run_id"] = source_automation_run_id
+    request["source_ai_run_id"] = source_ai_run_id
     canonical = json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def _verify_create_replay(existing, payload, user, source_automation_run_id):
+def _verify_create_replay(existing, payload, user, source_ai_run_id):
     created_by = existing.get("created_by")
     if not created_by:
         raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
@@ -34,7 +34,7 @@ def _verify_create_replay(existing, payload, user, source_automation_run_id):
     request_hash = existing.get("idempotency_request_hash")
     if not request_hash:
         raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
-    if request_hash != _create_request_hash(payload, source_automation_run_id):
+    if request_hash != _create_request_hash(payload, source_ai_run_id):
         raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
 
 
@@ -48,13 +48,13 @@ async def create_analysis(project_id, payload, user):
         if len(defects) != len(defect_ids):
             raise HTTPException(status_code=422, detail={"code": "DEFECT_NOT_IN_PROJECT"})
     source_event = payload.source_event_id is not None
-    source_automation_run_id = None
+    source_ai_run_id = None
     if source_event:
-        source_automation_run_id = getattr(user, "_ai_automation_run_id", None)
+        source_ai_run_id = getattr(user, "_ai_capability_run_id", None)
         if (
-            not source_automation_run_id
-            or getattr(user, "_ai_automation_trigger", None) != payload.source_event_trigger
-            or getattr(user, "_ai_automation_source_event_id", None) != payload.source_event_id
+            not source_ai_run_id
+            or getattr(user, "_ai_capability_trigger", None) != payload.source_event_trigger
+            or getattr(user, "_ai_capability_source_event_id", None) != payload.source_event_id
             or len(defect_ids) != 1
         ):
             raise HTTPException(status_code=403, detail={"code": "VERIFIED_DEFECT_EVENT_REQUIRED"})
@@ -72,13 +72,13 @@ async def create_analysis(project_id, payload, user):
             project_id, payload.idempotency_key
         )
         if existing:
-            _verify_create_replay(existing, payload, user, source_automation_run_id)
+            _verify_create_replay(existing, payload, user, source_ai_run_id)
             if (
                 set(existing.get("defect_ids", [])) != set(defect_ids)
                 or existing.get("source_event_id") != payload.source_event_id
                 or existing.get("source_event_revision") != payload.source_event_revision
                 or existing.get("source_event_trigger") != payload.source_event_trigger
-                or existing.get("source_automation_run_id") != source_automation_run_id
+                or existing.get("source_ai_run_id") != source_ai_run_id
             ):
                 raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
             return existing
@@ -90,9 +90,9 @@ async def create_analysis(project_id, payload, user):
         "analysis_key": identifier,
         "project_id": project_id,
         **data,
-        "source_automation_run_id": source_automation_run_id,
+        "source_ai_run_id": source_ai_run_id,
         "idempotency_request_hash": (
-            _create_request_hash(payload, source_automation_run_id)
+            _create_request_hash(payload, source_ai_run_id)
             if payload.idempotency_key
             else None
         ),
@@ -129,13 +129,13 @@ async def create_analysis(project_id, payload, user):
                 project_id, payload.idempotency_key
             )
             if existing:
-                _verify_create_replay(existing, payload, user, source_automation_run_id)
+                _verify_create_replay(existing, payload, user, source_ai_run_id)
                 if (
                     set(existing.get("defect_ids", [])) != set(defect_ids)
                     or existing.get("source_event_id") != payload.source_event_id
                     or existing.get("source_event_revision") != payload.source_event_revision
                     or existing.get("source_event_trigger") != payload.source_event_trigger
-                    or existing.get("source_automation_run_id") != source_automation_run_id
+                    or existing.get("source_ai_run_id") != source_ai_run_id
                 ):
                     raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
                 return existing

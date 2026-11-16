@@ -177,7 +177,7 @@ class RequirementTemplateSynthesis(BaseModel):
     product_types: list[str] = Field(min_length=1, max_length=100)
     source_document_ids: list[str] = Field(default_factory=list, max_length=100)
     source_template_ids: list[str] = Field(default_factory=list, max_length=20)
-    instruction: str = Field(default="", max_length=5000)
+    instruction: str = Field(default="", max_length=20000)
     output_language: str = Field(default="auto", min_length=2, max_length=80)
 
     @field_validator("product_types")

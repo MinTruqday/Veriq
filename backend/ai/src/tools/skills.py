@@ -1,15 +1,81 @@
 import json
+from typing import Any
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import StructuredTool
 
 from src.schemas.agent import TestingSkillInput
-from src.schemas.inference_requests import TestingAutomationRequest
-from src.services.ai_automation import generate_ai_automation
+from src.schemas.inference_requests import (
+    TESTING_EVIDENCE_TEXT_MAX_LENGTH,
+    TestingCapabilityRequest,
+)
+from src.services.ai_capabilities import generate_ai_capability
+
+
+def _compact_evidence_value(value: Any, string_limit: int, list_limit: int):
+    if isinstance(value, str):
+        return value if len(value) <= string_limit else f"{value[:string_limit]}…"
+    if isinstance(value, list):
+        items = [
+            _compact_evidence_value(item, string_limit, list_limit)
+            for item in value[:list_limit]
+        ]
+        return (
+            {"items": items, "omitted_count": len(value) - len(items)}
+            if len(value) > list_limit
+            else items
+        )
+    if isinstance(value, dict):
+        return {
+            key: _compact_evidence_value(item, string_limit, list_limit)
+            for key, item in value.items()
+        }
+    return value
+
+
+def _bounded_evidence(evidence):
+    bounded = []
+    compacted_prefix = "[COMPACTED FOR REQUEST SIZE; OMITTED CONTENT IS NOT EVIDENCE]\n"
+    truncated_suffix = "\n[TRUNCATED FOR REQUEST SIZE; OMITTED CONTENT IS NOT EVIDENCE]"
+    for item in evidence:
+        value = item.model_dump(mode="python") if hasattr(item, "model_dump") else dict(item)
+        text = str(value.get("text") or "")
+        if len(text) > TESTING_EVIDENCE_TEXT_MAX_LENGTH:
+            try:
+                parsed = json.loads(text)
+            except (TypeError, json.JSONDecodeError):
+                value["text"] = (
+                    text[: TESTING_EVIDENCE_TEXT_MAX_LENGTH - len(truncated_suffix)]
+                    + truncated_suffix
+                )
+            else:
+                compacted = None
+                for string_limit, list_limit in ((300, 3), (150, 2), (80, 1)):
+                    candidate = compacted_prefix + json.dumps(
+                        _compact_evidence_value(parsed, string_limit, list_limit),
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                        default=str,
+                    )
+                    if len(candidate) <= TESTING_EVIDENCE_TEXT_MAX_LENGTH:
+                        compacted = candidate
+                        break
+                value["text"] = compacted or (
+                    compacted_prefix
+                    + text[
+                        : TESTING_EVIDENCE_TEXT_MAX_LENGTH
+                        - len(compacted_prefix)
+                        - len(truncated_suffix)
+                    ]
+                    + truncated_suffix
+                )
+        bounded.append(value)
+    return bounded
 
 
 async def execute_skill(capability, project_id, instruction, config):
-    evidence = (config or {}).get("configurable", {}).get("evidence", [])
+    configurable = (config or {}).get("configurable", {})
+    evidence = configurable.get("evidence", [])
     if not evidence:
         return json.dumps(
             {
@@ -18,9 +84,26 @@ async def execute_skill(capability, project_id, instruction, config):
                 "reason_codes": ["INSUFFICIENT_EVIDENCE"],
             }
         )
-    result = await generate_ai_automation(
-        TestingAutomationRequest(
-            capability=capability, project_id=project_id, instruction=instruction, evidence=evidence
+    if capability == "completion_report_narrative" and not any(
+        getattr(item, "artifact_type", None) == "test_completion_report"
+        or isinstance(item, dict)
+        and item.get("artifact_type") == "test_completion_report"
+        for item in evidence
+    ):
+        return json.dumps(
+            {
+                "status": "INSUFFICIENT_EVIDENCE",
+                "capability": capability,
+                "reason_codes": ["COMPLETION_REPORT_EVIDENCE_REQUIRED"],
+            }
+        )
+    result = await generate_ai_capability(
+        TestingCapabilityRequest(
+            capability=capability,
+            project_id=project_id,
+            instruction=instruction,
+            output_language=configurable.get("output_language"),
+            evidence=_bounded_evidence(evidence),
         )
     )
     return result.model_dump_json()

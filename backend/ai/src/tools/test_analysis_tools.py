@@ -19,7 +19,7 @@ async def generate_test_conditions_for_requirement_baseline(
 ) -> str:
     """Generate source-grounded test-condition candidates for a Requirement baseline."""
     configurable = (config or {}).get("configurable", {})
-    automation_run_id = str(configurable.get("automation_run_id") or "")
+    ai_run_id = str(configurable.get("ai_run_id") or "")
     evidence = next(
         (
             item
@@ -37,13 +37,13 @@ async def generate_test_conditions_for_requirement_baseline(
         f"requirement-version:{requirement_version_id}:"
         f"{source_event_revision}:BASELINED"
     )
-    if not automation_run_id:
+    if not ai_run_id:
         return json.dumps(
-            {"status": "automation_blocked", "reason_code": "VERIFIED_AUTOMATION_RUN_REQUIRED"}
+            {"status": "blocked", "reason_code": "VERIFIED_AI_RUN_REQUIRED"}
         )
     if not evidence or source_event_id != expected_event_id:
         return json.dumps(
-            {"status": "automation_blocked", "reason_code": "BASELINED_REQUIREMENT_EVENT_EVIDENCE_REQUIRED"}
+            {"status": "blocked", "reason_code": "BASELINED_REQUIREMENT_EVENT_EVIDENCE_REQUIRED"}
         )
     idempotency_key = "test-condition-baseline:" + hashlib.sha256(
         f"{source_event_id}:{requirement_version_id}".encode("utf-8")
@@ -70,7 +70,7 @@ async def generate_test_conditions_for_requirement_baseline(
     )
     if not isinstance(result, dict) or not result.get("_id"):
         return json.dumps(
-            {"status": "automation_partial_failure", "reason_code": "TEST_CONDITION_RESULT_CREATE_FAILED"}
+            {"status": "partial_failure", "reason_code": "TEST_CONDITION_RESULT_CREATE_FAILED"}
         )
     stored = parse(
         await call(
@@ -97,7 +97,7 @@ async def generate_test_conditions_for_requirement_baseline(
         )
     ):
         return json.dumps(
-            {"status": "automation_partial_failure", "reason_code": "TEST_CONDITION_RESULT_READBACK_INVALID"}
+            {"status": "partial_failure", "reason_code": "TEST_CONDITION_RESULT_READBACK_INVALID"}
         )
     return json.dumps(
         {

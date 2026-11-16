@@ -3,18 +3,14 @@ from dataclasses import dataclass
 from fastapi import HTTPException
 
 from src.core.auth import CurrentUser
-from src.core.human_decisions import require_automation_publication_authority
+from src.core.human_decisions import require_ai_publication_authority
 from src.core.human_decisions import require_independent_review
 from src.core.common import audit, get_project_entity, now
 from src.core.database import database
-from src.clients.ai_automation import queue_requirement_changed
 from src.repositories.requirement import requirement_repository
 from src.repositories.requirement_clarification import requirement_clarification_repository
 from src.modules.design.services.linters import requirement_findings
 from src.modules.requirements.services.requirement_indexing import index_requirement_version
-
-
-
 
 @dataclass(frozen=True)
 class RequirementBaselineResult:
@@ -32,7 +28,6 @@ class RequirementBaselineResult:
     @property
     def degraded_mode(self):
         return None if self.indexed else 'DEGRADED_VECTOR'
-
 
 async def submit_requirement_for_review(
     project_id: str,
@@ -128,7 +123,6 @@ async def submit_requirement_for_review(
             )
     version = await requirement_repository.find_version(version["_id"], project_id)
     return version
-
 
 async def return_requirement_for_changes(
     project_id: str,
@@ -226,7 +220,6 @@ async def return_requirement_for_changes(
     version = await requirement_repository.find_version(version["_id"], project_id)
     return version
 
-
 async def reopen_requirement_for_editing(
     project_id: str,
     requirement_id: str,
@@ -302,14 +295,13 @@ async def reopen_requirement_for_editing(
             )
     return await requirement_repository.find_version(version["_id"], project_id)
 
-
 async def technical_review_requirement(
     version_id: str,
     expected_revision: int,
     review_note: str,
     user: CurrentUser,
 ):
-    require_automation_publication_authority(user, "requirement.review")
+    require_ai_publication_authority(user, "requirement.review")
     version = await get_project_entity(
         "requirement_versions", version_id, user, "requirement.review"
     )
@@ -350,14 +342,13 @@ async def technical_review_requirement(
             )
     return await requirement_repository.find_version(version_id, version["project_id"])
 
-
 async def baseline_requirement(
     version_id: str,
     expected_revision: int,
     review_note: str,
     user: CurrentUser,
 ):
-    require_automation_publication_authority(user, "requirement.approve")
+    require_ai_publication_authority(user, "requirement.approve")
     version = await get_project_entity(
         'requirement_versions',
         version_id,
@@ -454,7 +445,6 @@ async def baseline_requirement(
                     version["project_id"],
                     session=session,
                 )
-                await queue_requirement_changed(version, user, session)
     if already_baselined:
         indexed = version.get("index_status") == 'READY'
         if not indexed:
@@ -464,7 +454,6 @@ async def baseline_requirement(
     indexed = await index_requirement_version(version)
     version = await requirement_repository.find_version(version_id)
     return RequirementBaselineResult(version, indexed)
-
 
 async def make_requirement_obsolete(
     requirement_id: str,
@@ -547,7 +536,6 @@ async def make_requirement_obsolete(
         expected_current_version_id, requirement["project_id"]
     )
     return {**updated, "current_version": current_version}
-
 
 async def restore_obsolete_requirement(
     requirement_id: str,

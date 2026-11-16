@@ -243,7 +243,7 @@ export default function ChangesPage({ project }) {
       {error && <ErrorState message={error} />}
       {can("changeset.read") && (
         <div
-          className={`mx-auto grid w-full min-w-0 max-w-7xl gap-5 lg:items-start ${sets.length || selected ? "lg:grid-cols-[minmax(20rem,0.8fr)_minmax(0,1.2fr)]" : "lg:grid-cols-1"}`}
+          className={`grid w-full min-w-0 gap-5 lg:items-start ${sets.length || selected ? "lg:grid-cols-[minmax(20rem,0.8fr)_minmax(0,1.2fr)]" : "lg:grid-cols-1"}`}
         >
           <div className="min-w-0 lg:sticky lg:top-4">
             <Panel title="Lịch sử thay đổi yêu cầu">
@@ -620,7 +620,7 @@ export default function ChangesPage({ project }) {
           </div>
         </div>
       )}
-      {(can("automation.read") || can("proposal.read")) && (
+      {(can("requirement.read") || can("proposal.read")) && (
         <Panel className="mt-5" title="Nhật ký AI">
           <div className="flex flex-wrap items-center justify-between gap-3 p-4">
             <p className="text-sm text-ink-muted">

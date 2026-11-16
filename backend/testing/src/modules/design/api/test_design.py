@@ -51,7 +51,7 @@ from src.modules.design.services.test_case_lifecycle import (
     request_test_case_changes_record,
     submit_test_case_review_record,
 )
-from src.modules.design.services.test_case_automation import (
+from src.modules.design.services.test_case_generation import (
     compare_test_case_draft_batch,
     find_duplicate_test_case_records,
     generate_test_case_draft_records,

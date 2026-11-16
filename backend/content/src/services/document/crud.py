@@ -181,8 +181,8 @@ class DocumentCrudService:
         try:
             await notification_client.send(
                 target_user_id=user_id,
-                title="Document successfully updated",
-                body="The specified document content has been successfully synchronized and updated",
+                title="Đã cập nhật tài liệu",
+                body="Nội dung tài liệu đã được đồng bộ và cập nhật thành công.",
                 notification_type="DOCUMENT_UPDATE",
             )
         except Exception:

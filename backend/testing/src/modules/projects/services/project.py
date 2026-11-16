@@ -517,7 +517,8 @@ class ProjectService:
     @staticmethod
     async def add_member(project_id, payload, user, invited=False):
         await get_project(project_id, user, 'project.members.manage')
-        if payload.project_role not in access_policy().get("role_permissions", {}):
+        roles = payload.project_roles or ([payload.project_role] if payload.project_role else [])
+        if not roles or set(roles) - set(access_policy().get("role_permissions", {})):
             raise HTTPException(422, detail={"code": "PROJECT_ROLE_UNAVAILABLE"})
         member_user_id = await resolve_user_reference(payload.user_id)
         timestamp = now()
@@ -525,8 +526,8 @@ class ProjectService:
             "_id": new_id('PM'),
             "project_id": project_id,
             "user_id": member_user_id,
-            "project_role": payload.project_role,
-            "project_roles": [payload.project_role],
+            "project_role": roles[0] if len(roles) == 1 else None,
+            "project_roles": roles,
             "status": 'INVITED' if invited else 'ACTIVE',
             "membership_revision": 1,
             **({"invited_by": user.id, "invited_at": timestamp} if invited else {}),
@@ -549,7 +550,7 @@ class ProjectService:
             'ProjectMember',
             membership["_id"],
             project_id,
-            {"user_id": member_user_id, "project_role": payload.project_role},
+            {"user_id": member_user_id, "project_roles": roles},
         )
         return membership
 
@@ -708,9 +709,12 @@ class ProjectService:
     @staticmethod
     async def update_member(project_id, member_user_id, payload, user):
         await get_project(project_id, user, 'project.members.manage')
+        roles = payload.project_roles
+        if roles is None and payload.project_role is not None:
+            roles = [payload.project_role]
         if (
-            payload.project_role is not None
-            and payload.project_role not in access_policy().get("role_permissions", {})
+            roles is not None
+            and (not roles or set(roles) - set(access_policy().get("role_permissions", {})))
         ):
             raise HTTPException(422, detail={"code": "PROJECT_ROLE_UNAVAILABLE"})
         previous = await project_repository.find_member(project_id, member_user_id)
@@ -727,8 +731,9 @@ class ProjectService:
                 },
             )
         changes = {key: value for key, value in payload.model_dump().items() if value is not None and key != "expected_revision"}
-        if "project_role" in changes and "project_roles" not in changes:
-            changes["project_roles"] = [changes["project_role"]]
+        if roles is not None:
+            changes["project_roles"] = roles
+            changes["project_role"] = roles[0] if len(roles) == 1 else None
         changes["updated_at"] = now()
         membership = await project_repository.update_member(
             project_id, member_user_id, payload.expected_revision, changes

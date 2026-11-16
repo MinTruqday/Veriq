@@ -49,6 +49,18 @@ function notificationGroup(value, today, configuredTimeZone) {
   if (dayDifference < 7) return "7 ngày qua";
   return "Trước đó";
 }
+function notificationContent(item) {
+  if (item.type === "DOCUMENT_UPDATE") {
+    return {
+      title: "Đã cập nhật tài liệu",
+      body: "Nội dung tài liệu đã được đồng bộ và cập nhật thành công.",
+    };
+  }
+  return {
+    title: item.title || "Thông báo",
+    body: item.message || item.body || "Không có nội dung",
+  };
+}
 export default function AnnouncementsPage() {
   const { user } = useAuth();
   const [filter, setFilter] = useState("all");
@@ -138,6 +150,7 @@ export default function AnnouncementsPage() {
               <div className="overflow-hidden rounded-panel border border-border bg-surface">
                 {group.entries.map((item) => {
                   const id = item._id || item.id || "";
+                  const content = notificationContent(item);
                   return (
                     <article
                       key={id}
@@ -147,7 +160,7 @@ export default function AnnouncementsPage() {
                         <div className="min-w-0">
                           <div className="flex min-w-0 flex-wrap items-center gap-2">
                             <h2 className="min-w-0 break-words text-[15px] font-semibold text-ink">
-                              {item.title || "Thông báo"}
+                              {content.title}
                             </h2>
                             {!item.is_read && (
                               <span className="rounded-full bg-brand px-2 py-0.5 text-[11px] font-semibold text-white">
@@ -156,7 +169,7 @@ export default function AnnouncementsPage() {
                             )}
                           </div>
                           <p className="mt-1 max-w-[72ch] break-words text-[14px] leading-relaxed text-ink-muted">
-                            {item.message || item.body || "Không có nội dung"}
+                            {content.body}
                           </p>
                           <div className="mt-3 flex flex-wrap items-center gap-4 text-[13px]">
                             {item.link && (

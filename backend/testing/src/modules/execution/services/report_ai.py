@@ -1,6 +1,6 @@
 import json
 
-from src.core.ai_automation import request_ai_automation
+from src.core.ai_capabilities import request_ai_capability
 from src.core.common import get_project, new_id, now
 from src.core.human_decisions import content_authorship_changes
 from src.modules.execution.services.report_document import document_text, resolve_report_fields
@@ -45,7 +45,7 @@ async def draft_report(report_id, request, user):
         fail("REPORT_AI_SOURCE_TOO_LARGE", 422)
     evidence = [{"artifact_type": "work_report", "artifact_id": report_id, "artifact_version_id": f"{report_id}:r{report['revision']}:source{index}", "project_id": report["project_id"], "source": "database", "authority": "PROJECT_REFERENCE", "score": 1, "text": text} for index, text in enumerate(groups)]
     try:
-        result = await request_ai_automation("work_report_narrative", report["project_id"], json.dumps({"mode": request.mode, "user_instruction": request.instruction}, ensure_ascii=False), evidence, request_id=request.idempotency_key, output_language=request.output_language)
+        result = await request_ai_capability("work_report_narrative", report["project_id"], json.dumps({"mode": request.mode, "user_instruction": request.instruction}, ensure_ascii=False), evidence, request_id=request.idempotency_key, output_language=request.output_language)
         current = await report_for_user(report_id, user)
         if current["revision"] != report["revision"]:
             fail("REPORT_AI_PROPOSAL_STALE")

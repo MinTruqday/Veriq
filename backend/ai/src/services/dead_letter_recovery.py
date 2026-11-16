@@ -8,15 +8,15 @@ import aio_pika
 
 from src.core.infrastructure.mongo import mongo
 from src.core.infrastructure.mq import mq
-from src.repositories.automation import automation_repository
+from src.repositories.ai_runs import ai_run_repository
 from src.runtime.limits import limits
 from src.runtime.queue_names import (
-    AUTOMATION_QUEUE,
+    AI_RUN_QUEUE,
     DEAD_LETTER_QUEUE,
     DOCUMENT_INGESTION_QUEUE,
     RECOVERABLE_QUEUES,
 )
-from src.schemas.automation import AutomationStatus
+from src.schemas.ai_runs import AIRunStatus
 from src.schemas.queue_recovery import DeadLetterRecoveryAudit
 
 
@@ -38,7 +38,7 @@ def _origin_queue(headers):
 
 
 def _payload_identity(payload):
-    for field in ("event_id", "automation_run_id"):
+    for field in ("event_id", "ai_run_id"):
         value = payload.get(field)
         if isinstance(value, str) and value.strip():
             return field, value.strip()
@@ -121,16 +121,16 @@ class DeadLetterRecovery:
                     origin_queue == DOCUMENT_INGESTION_QUEUE
                     and identity_type != "event_id"
                 ) or (
-                    origin_queue == AUTOMATION_QUEUE
-                    and identity_type != "automation_run_id"
+                    origin_queue == AI_RUN_QUEUE
+                    and identity_type != "ai_run_id"
                 ):
                     blocked_reason = "QUEUE_IDENTITY_MISMATCH"
-                elif origin_queue == AUTOMATION_QUEUE:
-                    run = await automation_repository.get_run(identity)
+                elif origin_queue == AI_RUN_QUEUE:
+                    run = await ai_run_repository.get_run(identity)
                     if run is None:
-                        blocked_reason = "AUTOMATION_RUN_NOT_FOUND"
-                    elif run.status != AutomationStatus.QUEUED:
-                        blocked_reason = "AUTOMATION_RUN_NOT_QUEUED"
+                        blocked_reason = "AI_RUN_NOT_FOUND"
+                    elif run.status != AIRunStatus.QUEUED:
+                        blocked_reason = "AI_RUN_NOT_QUEUED"
                 elif origin_queue == DOCUMENT_INGESTION_QUEUE:
                     if not str(payload.get("document_id") or "").strip():
                         blocked_reason = "DOCUMENT_ID_MISSING"

@@ -12,10 +12,10 @@ from uuid import uuid4
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
-from src.clients.ai_automation import (
+from src.clients.ai_capabilities import (
     cancel_document_ingestion_runs,
     cancel_pending_document_ingestion,
-    emit_document_ingested,
+    queue_user_requested_document_ingestion,
 )
 from src.clients.document_conversion import (
     clear_requirement_conversion_checkpoints,
@@ -26,7 +26,7 @@ from src.clients.project_knowledge import (
     remove_artifact,
 )
 from src.clients.storage import storage_client
-from src.core.auth import ai_automation_context
+from src.core.auth import ai_capability_context
 from src.core.common import audit, get_project, get_project_entity, new_id, now
 from src.core.configuration import settings
 from src.core.database import database
@@ -36,7 +36,7 @@ from src.modules.requirements.services.requirement_import import (
     supported_requirement_formats,
 )
 from src.modules.requirements.services.requirement_workflow import serialized_content
-from src.repositories.ai_automation_access import ai_automation_access_repository
+from src.repositories.ai_run_access import ai_run_access_repository
 from src.repositories.common import common_repository
 from src.repositories.requirement_document import requirement_document_repository
 from src.repositories.requirement_source_block import requirement_source_block_repository
@@ -89,13 +89,20 @@ async def queue_document_ingestion(document, user, idempotency_key, output_langu
                 {"source_version": document.get("source_version"), "revision": document.get("revision")},
                 session=session,
             )
-            event_id = await emit_document_ingested(
+            event_id = await queue_user_requested_document_ingestion(
                 document,
                 user,
                 session=session,
                 idempotency_key=idempotency_key,
                 output_language=output_language,
             )
+    from src.clients.ai_capabilities import dispatch_requested_document_import
+
+    if not await dispatch_requested_document_import(event_id):
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "AI_DOCUMENT_IMPORT_REQUEST_UNAVAILABLE"},
+        )
     return event_id
 
 
@@ -104,11 +111,11 @@ async def open_requirement_document_source_if_current(document_id, project_id):
     current = await requirement_document_repository.find(document_id, project_id)
     if not current or not _requirement_document_source_is_eligible(current):
         return False, current
-    if not await ai_automation_access_repository.allow_source(source_key):
+    if not await ai_run_access_repository.allow_source(source_key):
         return False, current
     latest = await requirement_document_repository.find(document_id, project_id)
     if not latest or not _requirement_document_source_is_eligible(latest):
-        await ai_automation_access_repository.revoke_and_wait(source_key)
+        await ai_run_access_repository.revoke_and_wait(source_key)
         return False, latest
     return True, latest
 
@@ -134,7 +141,7 @@ async def open_requirement_document_indexing_source_if_current(document_id, proj
         or current.get("access_update_pending")
     ):
         return False, current
-    if not await ai_automation_access_repository.allow_source(source_key):
+    if not await ai_run_access_repository.allow_source(source_key):
         return False, current
     latest = await requirement_document_repository.find(document_id, project_id)
     if (
@@ -144,7 +151,7 @@ async def open_requirement_document_indexing_source_if_current(document_id, proj
         or latest.get("index_status") == "REVOKE_PENDING"
         or latest.get("access_update_pending")
     ):
-        await ai_automation_access_repository.revoke_and_wait(source_key)
+        await ai_run_access_repository.revoke_and_wait(source_key)
         return False, latest
     return True, latest
 
@@ -153,7 +160,7 @@ async def finish_requirement_document_ai_revocation(document):
     document_id = document["_id"]
     project_id = document["project_id"]
     source_key = f"source:{document_id}"
-    if not await ai_automation_access_repository.revoke_and_wait(source_key):
+    if not await ai_run_access_repository.revoke_and_wait(source_key):
         return False
     try:
         await cancel_pending_document_ingestion(
@@ -309,12 +316,12 @@ async def finish_requirement_document_archive_cleanup(document):
         )
 
     try:
-        if not await ai_automation_access_repository.revoke_and_wait(
+        if not await ai_run_access_repository.revoke_and_wait(
             f"source:{document_id}"
         ):
             raise HTTPException(
                 status_code=503,
-                detail={"code": "AI_AUTOMATION_REQUESTS_STILL_ACTIVE"},
+                detail={"code": "AI_RUNS_STILL_ACTIVE"},
             )
         try:
             await cancel_pending_document_ingestion(
@@ -328,7 +335,7 @@ async def finish_requirement_document_archive_cleanup(document):
             )
             raise HTTPException(
                 status_code=503,
-                detail={"code": "DOCUMENT_AUTOMATION_CANCELLATION_PENDING"},
+                detail={"code": "DOCUMENT_AI_RUN_CANCELLATION_PENDING"},
             ) from error
         if not await remove_artifact(project_id, document_id):
             raise HTTPException(
@@ -435,11 +442,11 @@ async def require_document_access(document, user, permission):
 def can_read_requirement_document(document, user):
     if user.is_system_admin or document.get("created_by") == user.id:
         return True
-    automation = ai_automation_context.get()
+    run_context = ai_capability_context.get()
     if (
-        automation
-        and automation.get("principal_id") == user.id
-        and automation.get("initiator_id") == document.get("created_by")
+        run_context
+        and run_context.get("principal_id") == user.id
+        and run_context.get("initiator_id") == document.get("created_by")
         and document.get("ai_enabled") is True
     ):
         return True
@@ -459,15 +466,15 @@ def requirement_document_read_query(user):
         {"visibility": "project"},
         {"visibility": "shared", "shared_with": user.id},
     ]
-    automation = ai_automation_context.get()
+    run_context = ai_capability_context.get()
     if (
-        automation
-        and automation.get("principal_id") == user.id
-        and automation.get("initiator_id")
+        run_context
+        and run_context.get("principal_id") == user.id
+        and run_context.get("initiator_id")
     ):
         readable_scopes.append(
             {
-                "created_by": automation["initiator_id"],
+                "created_by": run_context["initiator_id"],
                 "ai_enabled": True,
             }
         )
@@ -1028,7 +1035,7 @@ async def index_requirement_document(document, _stale_retries=0):
     source_key = f"source:{document['_id']}"
     lease_id = str(uuid4())
     try:
-        admitted = await ai_automation_access_repository.acquire(source_key, lease_id)
+        admitted = await ai_run_access_repository.acquire(source_key, lease_id)
     except Exception:
         logger.exception(
             "Failed to acquire requirement document indexing lease document=%s",
@@ -1052,7 +1059,7 @@ async def index_requirement_document(document, _stale_retries=0):
         return await _index_requirement_document_locked(current, _stale_retries)
     finally:
         try:
-            await ai_automation_access_repository.release(source_key, lease_id)
+            await ai_run_access_repository.release(source_key, lease_id)
         except Exception:
             logger.exception(
                 "Failed to release requirement document indexing lease document=%s",
@@ -1973,7 +1980,7 @@ async def update_requirement_document_access(document_id, payload, user):
         )
 
     try:
-        source_drained = await ai_automation_access_repository.revoke_and_wait(
+        source_drained = await ai_run_access_repository.revoke_and_wait(
             f"source:{document_id}"
         )
         if not source_drained:
@@ -1987,7 +1994,7 @@ async def update_requirement_document_access(document_id, payload, user):
             )
             raise HTTPException(
                 status_code=503,
-                detail={"code": "AI_AUTOMATION_REQUESTS_STILL_ACTIVE"},
+                detail={"code": "AI_RUNS_STILL_ACTIVE"},
             )
         removed = await remove_artifact(document["project_id"], document_id)
         if not removed:
@@ -2172,7 +2179,7 @@ async def update_requirement_document_ai_read(document_id, payload, user):
                     status_code=409,
                     detail={"code": "REVISION_CONFLICT"},
                 )
-        source_drained = await ai_automation_access_repository.revoke_and_wait(
+        source_drained = await ai_run_access_repository.revoke_and_wait(
             f"source:{document_id}"
         )
         if not source_drained:
@@ -2190,7 +2197,7 @@ async def update_requirement_document_ai_read(document_id, payload, user):
                 )
             raise HTTPException(
                 status_code=503,
-                detail={"code": "AI_AUTOMATION_REQUESTS_STILL_ACTIVE"},
+                detail={"code": "AI_RUNS_STILL_ACTIVE"},
             )
         removed = await remove_artifact(document["project_id"], document_id)
         if not removed:
@@ -2365,7 +2372,7 @@ async def start_requirement_document_ai_processing(document_id, payload, user):
     source_key = f"source:{document_id}"
     lease_id = str(uuid4())
     try:
-        admitted = await ai_automation_access_repository.acquire(source_key, lease_id)
+        admitted = await ai_run_access_repository.acquire(source_key, lease_id)
     except Exception as error:
         logger.exception(
             "Failed to acquire document AI ingestion lease document=%s",
@@ -2403,7 +2410,7 @@ async def start_requirement_document_ai_processing(document_id, payload, user):
         )
     finally:
         try:
-            await ai_automation_access_repository.release(source_key, lease_id)
+            await ai_run_access_repository.release(source_key, lease_id)
         except Exception:
             logger.exception(
                 "Failed to release document AI ingestion lease document=%s",

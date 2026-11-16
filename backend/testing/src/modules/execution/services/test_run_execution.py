@@ -25,7 +25,6 @@ from src.modules.execution.services.execution_state import (
 )
 from src.clients.project_knowledge import index_artifact
 
-
 def _idempotency_fingerprint(payload):
     request = payload.model_dump(
         mode="json", exclude={"idempotency_key", "expected_revision"}
@@ -34,7 +33,6 @@ def _idempotency_fingerprint(payload):
         request, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-
 
 def _stored_result_matches_request(result, payload):
     fingerprint = _idempotency_fingerprint(payload)
@@ -49,7 +47,6 @@ def _stored_result_matches_request(result, payload):
     )
     return persisted == requested
 
-
 def _verify_idempotency_replay(existing, payload, *, entity, actor_id, actor_field):
     if existing.get(actor_field) != actor_id:
         raise HTTPException(
@@ -62,7 +59,6 @@ def _verify_idempotency_replay(existing, payload, *, entity, actor_id, actor_fie
             detail={"code": "IDEMPOTENCY_KEY_REUSED", "entity": entity},
         )
 
-
 def _verify_result_replay_actor(result, actor_id):
     executor_id = result.get("executed_by") or result.get("executor_id")
     if executor_id != actor_id:
@@ -70,7 +66,6 @@ def _verify_result_replay_actor(result, actor_id):
             status_code=403,
             detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH", "entity": "TEST_RESULT"},
         )
-
 
 def _verify_resume_replay(existing, payload, actor_id):
     if existing.get("resumed_by") != actor_id:
@@ -86,10 +81,6 @@ def _verify_resume_replay(existing, payload, actor_id):
             status_code=409,
             detail={"code": "IDEMPOTENCY_KEY_REUSED", "entity": "TEST_RUN_RESUME"},
         )
-
-
-
-
 
 async def start_test_run_record(run_id, user):
     
@@ -140,7 +131,6 @@ async def start_test_run_record(run_id, user):
     async with await database.client.start_session() as session:
         updated = await session.with_transaction(persist_start)
     return updated
-
 
 async def resume_test_run_record(project_id, run_id, payload, user):
     
@@ -249,7 +239,6 @@ async def resume_test_run_record(project_id, run_id, payload, user):
         updated["revision"],
     )
 
-
 async def record_test_result_entry(run_id, test_case_version_id, payload, user):
     
     run = await get_project_entity(
@@ -302,16 +291,6 @@ async def record_test_result_entry(run_id, test_case_version_id, payload, user):
             "created_at": timestamp,
             "updated_at": timestamp,
         }
-    release = None
-    if run.get("release_id"):
-        release = await execution_context_repository.find_release(
-            run["project_id"], run["release_id"]
-        )
-    from src.clients.ai_automation import (
-        emit_release_gate_recheck,
-        emit_test_execution_recorded,
-    )
-
     async def persist_result(session):
         nonlocal result
         if existing:
@@ -348,9 +327,6 @@ async def record_test_result_entry(run_id, test_case_version_id, payload, user):
             {"status": payload.status},
             session=session,
         )
-        await emit_test_execution_recorded(result, user, session=session)
-        if release and release.get("status") == "ACTIVE":
-            await emit_release_gate_recheck(release, result, user, session=session)
         return result
 
     try:
@@ -397,7 +373,6 @@ async def record_test_result_entry(run_id, test_case_version_id, payload, user):
         test_case_version_id=test_case_version_id,
     )
     return result
-
 
 async def update_test_execution_record(project_id, execution_id, payload, user):
     
@@ -464,11 +439,6 @@ async def update_test_execution_record(project_id, execution_id, payload, user):
         "updated_by": user.id,
         "created_at": now(),
     }
-    release = None
-    if run.get("release_id"):
-        release = await execution_context_repository.find_release(project_id, run["release_id"])
-    from src.clients.ai_automation import emit_release_gate_recheck, emit_test_execution_recorded
-
     try:
         async with await database.client.start_session() as session:
             async with session.start_transaction():
@@ -503,9 +473,6 @@ async def update_test_execution_record(project_id, execution_id, payload, user):
                     {"status": payload.status},
                     session=session,
                 )
-                await emit_test_execution_recorded(updated, user, session=session)
-                if release and release.get("status") == "ACTIVE":
-                    await emit_release_gate_recheck(release, updated, user, session=session)
     except DuplicateKeyError:
         event = await test_run_repository.find_execution_update(
             execution_id, payload.idempotency_key
@@ -524,7 +491,6 @@ async def update_test_execution_record(project_id, execution_id, payload, user):
             "update": event,
         }
     return {"execution": updated, "update": event}
-
 
 async def correct_test_result_record(result_id, payload, user):
     
@@ -562,13 +528,6 @@ async def correct_test_result_record(result_id, payload, user):
         "created_at": now(),
     }
     timestamp = now()
-    release = None
-    if run and run.get("release_id"):
-        release = await execution_context_repository.find_release(
-            result["project_id"], run["release_id"]
-        )
-    from src.clients.ai_automation import emit_release_gate_recheck, emit_test_execution_recorded
-
     try:
         async with await database.client.start_session() as session:
             async with session.start_transaction():
@@ -596,9 +555,6 @@ async def correct_test_result_record(result_id, payload, user):
                     {"from": result.get("status"), "to": payload.status, "correction_id": event["_id"]},
                     session=session,
                 )
-                await emit_test_execution_recorded(corrected, user, session=session)
-                if release and release.get("status") == "ACTIVE":
-                    await emit_release_gate_recheck(release, corrected, user, session=session)
     except DuplicateKeyError:
         event = await test_run_repository.find_correction(result_id, payload.idempotency_key)
         if not event:
@@ -618,7 +574,6 @@ async def correct_test_result_record(result_id, payload, user):
         "result": corrected,
         "correction": event,
     }
-
 
 async def complete_test_run_record(run_id, user):
     
@@ -671,7 +626,6 @@ async def complete_test_run_record(run_id, user):
         {"completed": result_count, "total": total_count, "partial_completion": partial_completion},
     )
     return updated
-
 
 async def abort_test_run_record(run_id, reason, user):
     

@@ -1,4 +1,3 @@
-import asyncio
 import hashlib
 import json
 import re
@@ -18,17 +17,17 @@ from src.agents.runner.nodes import (
 )
 from src.core.infrastructure.configuration import settings
 from src.core.security.guardrails import guardrails_engine
-from src.prompts.automation import automation_fact_extraction_prompt
-from src.repositories.automation import automation_repository
-from src.schemas.agent import AgentResult, AgentTaskStatus
-from src.schemas.automation import (
-    AutomationCheckpoint,
-    AutomationCheckpointPhase,
-    AutomationFactExtraction,
-    AutomationGraphSnapshot,
-    AutomationStatus,
+from src.prompts.agent_facts import agent_fact_extraction_prompt
+from src.repositories.ai_runs import ai_run_repository
+from src.schemas.agent import AIRunExecutionStatus, AgentResult, AgentTaskStatus
+from src.schemas.ai_runs import (
+    AIRunCheckpoint,
+    AIRunPhase,
+    AgentFactExtraction,
+    AIRunStateSnapshot,
+    AIRunStatus,
 )
-from src.services.automation_provenance import (
+from src.services.source_provenance import (
     is_source_fact_evidence,
     source_location_metadata,
     source_quote_spans,
@@ -38,7 +37,7 @@ from src.services.automation_provenance import (
 from src.services.inference import structured
 
 
-class AutomationGraphState(TypedDict, total=False):
+class AgentExecutionState(TypedDict, total=False):
     automatic: bool
     run: dict[str, Any]
     token: str
@@ -51,7 +50,7 @@ class AutomationGraphState(TypedDict, total=False):
     results: list[dict[str, Any]]
     source_facts: list[dict[str, Any]]
     uncertainties: list[dict[str, Any]]
-    automation_phases: list[str]
+    completed_phases: list[str]
     source_event_verified: bool
     planning_round: int
     resume_after_phase: str
@@ -59,8 +58,8 @@ class AutomationGraphState(TypedDict, total=False):
     task_instruction: str
 
 
-def phase(state: AutomationGraphState, name: str) -> list[str]:
-    return [*state.get("automation_phases", []), name]
+def phase(state: AgentExecutionState, name: str) -> list[str]:
+    return [*state.get("completed_phases", []), name]
 
 
 def distinct_uncertainty_codes(uncertainties):
@@ -132,67 +131,63 @@ def safety_inspection_evidence(evidence, release_control_ids):
     ]
 
 
-async def resume_dispatch(state: AutomationGraphState):
-    return {}
-
-
-def route_resume(state: AutomationGraphState):
+def route_resume(state: AgentExecutionState):
     completed = state.get("resume_after_phase")
-    if completed == AutomationCheckpointPhase.OBSERVED.value:
+    if completed == AIRunPhase.OBSERVED.value:
         return "extract_source_facts"
-    if completed == AutomationCheckpointPhase.FACTS_EXTRACTED.value:
+    if completed == AIRunPhase.FACTS_EXTRACTED.value:
         return "assess_uncertainty"
-    if completed == AutomationCheckpointPhase.UNCERTAINTY_ASSESSED.value:
+    if completed == AIRunPhase.UNCERTAINTY_ASSESSED.value:
         return "create_action_plan"
-    if completed == AutomationCheckpointPhase.PLAN_CREATED.value:
-        return "execute_action" if state.get("tasks") else "finalize_automation"
-    if completed == AutomationCheckpointPhase.ACTION_STARTED.value:
+    if completed == AIRunPhase.PLAN_CREATED.value:
+        return "execute_action" if state.get("tasks") else "finalize_run"
+    if completed == AIRunPhase.ACTION_STARTED.value:
         return "execute_action"
-    if completed == AutomationCheckpointPhase.ACTIONS_EXECUTED.value:
+    if completed == AIRunPhase.ACTIONS_EXECUTED.value:
         return "execute_action"
-    if completed == AutomationCheckpointPhase.FINALIZED.value:
+    if completed == AIRunPhase.FINALIZED.value:
         return "aggregate"
     if completed in {
-        AutomationCheckpointPhase.ACTIONS_VERIFIED.value,
-        AutomationCheckpointPhase.GRAPH_COMPLETED.value,
+        AIRunPhase.ACTIONS_VERIFIED.value,
+        AIRunPhase.GRAPH_COMPLETED.value,
     }:
         return "end"
     return "observe_sources"
 
 
-async def record_phase(state: AutomationGraphState, name: str, detail=None, status=None):
+async def record_phase(state: AgentExecutionState, name: str, detail=None, status=None):
     snapshot_state = state.get("checkpoint_state") or state
     run = snapshot_state.get("run") or {}
     if not run.get("run_id"):
         return
-    snapshot = AutomationGraphSnapshot.model_validate(
+    snapshot = AIRunStateSnapshot.model_validate(
         {
             key: value
             for key, value in snapshot_state.items()
-            if key in AutomationGraphSnapshot.model_fields and key != "completed_phase"
+            if key in AIRunStateSnapshot.model_fields and key != "completed_phase"
         }
         | {"completed_phase": name}
     )
-    checkpoint_saved = await automation_repository.save_checkpoint(
-        AutomationCheckpoint(
-            automation_run_id=run["run_id"],
-            phase=AutomationCheckpointPhase(name),
-            status=status or AutomationStatus.RUNNING,
+    checkpoint_saved = await ai_run_repository.save_checkpoint(
+        AIRunCheckpoint(
+            ai_run_id=run["run_id"],
+            phase=AIRunPhase(name),
+            status=status or AIRunStatus.RUNNING,
             detail=detail or {},
             state_snapshot=snapshot,
         ),
         expected_worker_revision=state.get("worker_revision"),
     )
     if not checkpoint_saved:
-        raise RuntimeError("AUTOMATION_WORKER_FENCE_LOST")
+        raise RuntimeError("AI_RUN_WORKER_FENCE_LOST")
 
 
-async def observe_sources(state: AutomationGraphState):
+async def observe_sources(state: AgentExecutionState):
     values = await load_context(state)
     checkpoint_state = {**state, **values}
     await record_phase(
         {**state, "checkpoint_state": checkpoint_state},
-        AutomationCheckpointPhase.OBSERVED.value,
+        AIRunPhase.OBSERVED.value,
         {
             "evidence_count": len(values.get("evidence", [])),
             "degraded_flags": values.get("degraded_flags", []),
@@ -200,7 +195,7 @@ async def observe_sources(state: AutomationGraphState):
     )
     return {
         **values,
-        "automation_phases": phase(state, "OBSERVED"),
+        "completed_phases": phase(state, "OBSERVED"),
     }
 
 
@@ -313,7 +308,11 @@ def complete_source_segments(facts, evidence):
     return output
 
 
-async def extract_source_facts(state: AutomationGraphState):
+async def extract_source_facts(state: AgentExecutionState):
+    run = state.get("run") or {}
+    document_ingestion_intent = (
+        run.get("intent") == "process_ingested_requirement_document"
+    )
     evidence = [
         item for item in state.get("evidence", [])
         if str(item.get("text") or "").strip() and item.get("artifact_id")
@@ -325,6 +324,7 @@ async def extract_source_facts(state: AutomationGraphState):
     facts = []
     uncertainties = []
     degraded_flags = list(state.get("degraded_flags", []))
+    output_language = (state.get("constraints") or {}).get("output_language")
     if safety_evidence:
         try:
             inspected = await guardrails_engine.async_inspect_input(
@@ -335,19 +335,34 @@ async def extract_source_facts(state: AutomationGraphState):
             uncertainties.append(
                 {
                     "code": "SOURCE_SAFETY_CHECK_UNAVAILABLE",
-                    "question": "Có thể tiếp tục sau khi dịch vụ kiểm tra an toàn nguồn hoạt động lại không?",
-                    "reason": "Không xác minh được độ an toàn của nguồn nên không thể chuyển nguồn cho AI",
+                    "question": 'Có thể tiếp tục sau khi dịch vụ kiểm tra an toàn nguồn hoạt động lại không?',
+                    "reason": 'Không xác minh được độ an toàn của nguồn nên nội dung chưa được chuyển cho AI.',
                     "evidence_refs": [],
                     "blocking": True,
                     "response_allowed": False,
                 }
             )
         if inspected is not None and not inspected.get("is_safe", False):
+            safety_check_unavailable = (
+                inspected.get("threat_category") == "classifier_unavailable"
+            )
             uncertainties.append(
                 {
-                    "code": "SOURCE_INJECTION_REJECTED",
-                    "question": "Có thể rà soát tài liệu nguồn và gửi lại sau khi loại bỏ chỉ dẫn không liên quan không?",
-                    "reason": "Nguồn bị chặn bởi cơ chế kiểm tra an toàn",
+                    "code": (
+                        "SOURCE_SAFETY_CHECK_UNAVAILABLE"
+                        if safety_check_unavailable
+                        else "SOURCE_INJECTION_REJECTED"
+                    ),
+                    "question": (
+                        'Có thể tiếp tục sau khi dịch vụ kiểm tra an toàn nguồn hoạt động lại không?'
+                        if safety_check_unavailable
+                        else 'Có thể rà soát tài liệu nguồn và gửi lại sau khi loại bỏ chỉ dẫn không liên quan không?'
+                    ),
+                    "reason": (
+                        'Không xác minh được độ an toàn của nguồn nên nội dung chưa được chuyển cho AI.'
+                        if safety_check_unavailable
+                        else 'Nguồn đã bị chặn bởi cơ chế kiểm tra an toàn.'
+                    ),
                     "evidence_refs": [],
                     "blocking": True,
                     "response_allowed": False,
@@ -356,12 +371,14 @@ async def extract_source_facts(state: AutomationGraphState):
         elif inspected is not None:
             if source_evidence:
                 try:
-                    extraction_prompt = automation_fact_extraction_prompt(
-                        source_evidence, state.get("task_instruction", "")
+                    extraction_prompt = agent_fact_extraction_prompt(
+                        source_evidence,
+                        state.get("task_instruction", ""),
+                        (state.get("constraints") or {}).get("output_language"),
                     )
                     extraction = await structured(
                         extraction_prompt,
-                        AutomationFactExtraction,
+                        AgentFactExtraction,
                         max_tokens=1200,
                         timeout_seconds=settings.MODEL_TIMEOUT_SECONDS,
                         provider_schema=False,
@@ -389,19 +406,19 @@ async def extract_source_facts(state: AutomationGraphState):
                         uncertainties.append(
                             {
                                 "code": "FACT_EXTRACTION_UNAVAILABLE",
-                                "question": "Có thể tiếp tục sau khi dịch vụ phân tích nguồn hoạt động lại không?",
-                                "reason": "Không trích xuất được facts và cũng không có đoạn nguồn đủ điều kiện làm căn cứ",
+                                "question": 'Có thể tiếp tục sau khi dịch vụ phân tích nguồn hoạt động lại không?',
+                                "reason": 'Không trích xuất được dữ kiện và cũng không có đoạn nguồn đủ điều kiện làm căn cứ.',
                                 "evidence_refs": [],
                                 "blocking": True,
                                 "response_allowed": False,
                             }
                         )
-            elif not release_controls:
+            elif not release_controls and not document_ingestion_intent:
                 uncertainties.append(
                     {
                         "code": "NO_PERMITTED_SOURCE_EVIDENCE",
-                        "question": "Có tài liệu hoặc Requirement được phép AI đọc để làm căn cứ không?",
-                        "reason": "Câu trả lời làm rõ của người dùng không thay thế tài liệu hoặc Requirement có nguồn",
+                        "question": 'Tài liệu hoặc Requirement nào trong dự án được phép dùng làm căn cứ cho AI?',
+                        "reason": 'Câu trả lời làm rõ không thay thế được tài liệu hoặc Requirement có nguồn được phép.',
                         "evidence_refs": [],
                         "blocking": True,
                         "response_allowed": False,
@@ -410,23 +427,24 @@ async def extract_source_facts(state: AutomationGraphState):
             if (
                 not facts
                 and not release_controls
+                and not document_ingestion_intent
                 and not any(item.get("blocking") for item in uncertainties)
             ):
                 uncertainties.append(
                     {
                         "code": "NO_VERIFIABLE_SOURCE_FACTS",
-                        "question": "Có thể cung cấp hoặc xác nhận đoạn nguồn làm căn cứ cho yêu cầu này không?",
-                        "reason": "Không có trích dẫn khớp nguyên văn với tài liệu được phép đọc",
+                        "question": 'Có thể cung cấp hoặc xác nhận đoạn nguồn làm căn cứ cho yêu cầu này không?',
+                        "reason": 'Không có trích dẫn khớp nguyên văn với nguồn được phép đọc.',
                         "evidence_refs": [],
                         "blocking": True,
                     }
                 )
-    elif not release_controls:
+    elif not release_controls and not document_ingestion_intent:
         uncertainties.append(
             {
                 "code": "NO_PERMITTED_SOURCE_EVIDENCE",
-                "question": "Có tài liệu hoặc Requirement được phép AI đọc để làm căn cứ không?",
-                "reason": "Không có nguồn dự án được phép đọc trong sự kiện này",
+                "question": 'Tài liệu hoặc Requirement nào trong dự án được phép dùng làm căn cứ cho AI?',
+                "reason": 'Câu trả lời làm rõ không thay thế được tài liệu hoặc Requirement có nguồn được phép.',
                 "evidence_refs": [],
                 "blocking": True,
                 "response_allowed": False,
@@ -437,22 +455,26 @@ async def extract_source_facts(state: AutomationGraphState):
         "degraded_flags": degraded_flags,
         "source_facts": facts,
         "uncertainties": uncertainties,
-        "automation_phases": phase(state, "FACTS_EXTRACTED"),
+        "completed_phases": phase(state, "FACTS_EXTRACTED"),
     }
     await record_phase(
         {**state, "checkpoint_state": checkpoint_state},
-        AutomationCheckpointPhase.FACTS_EXTRACTED.value,
+        AIRunPhase.FACTS_EXTRACTED.value,
         {"source_fact_count": len(facts)},
     )
     return {
         "degraded_flags": degraded_flags,
         "source_facts": facts,
         "uncertainties": uncertainties,
-        "automation_phases": phase(state, "FACTS_EXTRACTED"),
+        "completed_phases": phase(state, "FACTS_EXTRACTED"),
     }
 
 
-async def assess_uncertainty(state: AutomationGraphState):
+async def assess_uncertainty(state: AgentExecutionState):
+    run = state.get("run") or {}
+    document_ingestion_intent = (
+        run.get("intent") == "process_ingested_requirement_document"
+    )
     uncertainties = list(state.get("uncertainties", []))
     clarification_responses = {
         str(item.get("uncertainty_code") or ""): item
@@ -475,7 +497,8 @@ async def assess_uncertainty(state: AutomationGraphState):
         for item in uncertainties
     ]
     if (
-        not state.get("source_facts")
+        not document_ingestion_intent
+        and not state.get("source_facts")
         and not verified_release_gate_control_evidence(state)
         and not any(
         item.get("blocking") for item in uncertainties
@@ -484,8 +507,8 @@ async def assess_uncertainty(state: AutomationGraphState):
         uncertainties.append(
             {
                 "code": "CLARIFICATION_REQUIRED",
-                "question": "Nguồn nào trong dự án cần được xác nhận trước khi tiếp tục?",
-                "reason": "Không có facts nào được trích dẫn và kiểm chứng từ nguồn được phép đọc",
+                "question": 'Nguồn nào trong dự án cần được xác nhận trước khi tiếp tục?',
+                "reason": 'Không có dữ kiện nào được trích dẫn và xác minh từ nguồn được phép đọc.',
                 "evidence_refs": [],
                 "blocking": True,
             }
@@ -494,17 +517,17 @@ async def assess_uncertainty(state: AutomationGraphState):
         uncertainties.append(
             {
                 "code": str(flag),
-                "question": "Có thể bổ sung hoặc xác nhận nguồn còn thiếu để hoàn tất đối chiếu không?",
-                "reason": "Việc truy xuất bằng chứng chưa đầy đủ; các nguồn có thẩm quyền đã lấy được vẫn có thể sử dụng",
+                "question": 'Có thể bổ sung hoặc xác nhận nguồn còn thiếu để hoàn tất đối chiếu không?',
+                "reason": 'Việc truy xuất bằng chứng chưa đầy đủ; các nguồn có thẩm quyền đã lấy được vẫn có thể sử dụng.',
                 "evidence_refs": [],
                 "blocking": False,
             }
         )
     uncertainties = distinct_uncertainty_codes(uncertainties)
-    checkpoint_state = {**state, "uncertainties": uncertainties, "automation_phases": phase(state, "UNCERTAINTY_ASSESSED")}
+    checkpoint_state = {**state, "uncertainties": uncertainties, "completed_phases": phase(state, "UNCERTAINTY_ASSESSED")}
     await record_phase(
         {**state, "checkpoint_state": checkpoint_state},
-        AutomationCheckpointPhase.UNCERTAINTY_ASSESSED.value,
+        AIRunPhase.UNCERTAINTY_ASSESSED.value,
         {
             "uncertainty_count": len(uncertainties),
             "blocking_count": sum(bool(item.get("blocking")) for item in uncertainties),
@@ -512,20 +535,20 @@ async def assess_uncertainty(state: AutomationGraphState):
     )
     return {
         "uncertainties": uncertainties,
-        "automation_phases": phase(state, "UNCERTAINTY_ASSESSED"),
+        "completed_phases": phase(state, "UNCERTAINTY_ASSESSED"),
     }
 
 
-async def create_action_plan(state: AutomationGraphState):
+async def create_action_plan(state: AgentExecutionState):
     blocking_uncertainties = [
         item for item in state.get("uncertainties", []) if item.get("blocking")
     ]
     if blocking_uncertainties:
         run = dict(state["run"])
         result = AgentResult(
-            task_id=f"AUTOMATION-PLAN-{run['run_id']}",
+            task_id=f"RUN-PLAN-{run['run_id']}",
             status=AgentTaskStatus.INSUFFICIENT_EVIDENCE,
-            summary="Chưa thể tiếp tục tự động xử lý vì bằng chứng nguồn đang thiếu hoặc chưa đầy đủ",
+            summary='Chưa thể tiếp tục xử lý vì bằng chứng nguồn được phép đang thiếu hoặc chưa đầy đủ.',
             evidence_refs=run.get("evidence_refs", []),
             reason_codes=[item["code"] for item in blocking_uncertainties],
             warnings=["SOURCE_EVIDENCE_REQUIRED"],
@@ -536,11 +559,11 @@ async def create_action_plan(state: AutomationGraphState):
             "planning_round": 1,
             "success_criteria": [],
             "results": [result.model_dump(mode="python")],
-            "automation_phases": phase(state, "PLAN_CREATED"),
+            "completed_phases": phase(state, "PLAN_CREATED"),
         }
         await record_phase(
             {**state, "checkpoint_state": checkpoint_state},
-            AutomationCheckpointPhase.PLAN_CREATED.value,
+            AIRunPhase.PLAN_CREATED.value,
             {"task_count": 0, "blocked": True},
         )
         return {
@@ -548,7 +571,7 @@ async def create_action_plan(state: AutomationGraphState):
             "planning_round": 1,
             "success_criteria": [],
             "results": [result.model_dump(mode="python")],
-            "automation_phases": phase(state, "PLAN_CREATED"),
+            "completed_phases": phase(state, "PLAN_CREATED"),
         }
     planning_state = dict(state)
     if state.get("degraded_flags"):
@@ -562,112 +585,116 @@ async def create_action_plan(state: AutomationGraphState):
         **state,
         **values,
         "planning_round": state.get("planning_round", 0) + 1,
-        "automation_phases": phase(state, "PLAN_CREATED"),
+        "completed_phases": phase(state, "PLAN_CREATED"),
     }
     await record_phase(
         {**state, "checkpoint_state": checkpoint_state},
-        AutomationCheckpointPhase.PLAN_CREATED.value,
+        AIRunPhase.PLAN_CREATED.value,
         {"task_count": len(values.get("tasks", [])), "planning_round": state.get("planning_round", 0) + 1},
     )
     return {
         **values,
         "planning_round": state.get("planning_round", 0) + 1,
-        "automation_phases": phase(state, "PLAN_CREATED"),
+        "completed_phases": phase(state, "PLAN_CREATED"),
     }
 
 
-async def replan_after_observation(state: AutomationGraphState):
+async def replan_after_observation(state: AgentExecutionState):
     values = await plan(state)
     checkpoint_state = {
         **state,
         **values,
         "planning_round": state.get("planning_round", 0) + 1,
-        "automation_phases": phase(state, "PLAN_CREATED"),
+        "completed_phases": phase(state, "PLAN_CREATED"),
     }
     await record_phase(
         {**state, "checkpoint_state": checkpoint_state},
-        AutomationCheckpointPhase.PLAN_CREATED.value,
+        AIRunPhase.PLAN_CREATED.value,
         {"task_count": len(values.get("tasks", [])), "planning_round": state.get("planning_round", 0) + 1},
     )
     return {
         **values,
         "planning_round": state.get("planning_round", 0) + 1,
-        "automation_phases": phase(state, "PLAN_CREATED"),
+        "completed_phases": phase(state, "PLAN_CREATED"),
     }
 
 
-def route_after_plan(state: AutomationGraphState):
+def route_after_plan(state: AgentExecutionState):
     return "execute" if state.get("tasks") else "finalize"
 
 
-async def execute_action(state: AutomationGraphState):
+async def execute_action(state: AgentExecutionState):
     values = await execute_agent(state)
-    checkpoint_state = {**state, **values, "automation_phases": phase(state, "ACTIONS_EXECUTED")}
+    checkpoint_state = {**state, **values, "completed_phases": phase(state, "ACTIONS_EXECUTED")}
     results = values.get("results", [])
     await record_phase(
         {**state, "checkpoint_state": checkpoint_state},
-        AutomationCheckpointPhase.ACTIONS_EXECUTED.value,
+        AIRunPhase.ACTIONS_EXECUTED.value,
         {
             "completed_task_count": len((values.get("run") or {}).get("completed_tasks", [])),
             "latest_task_status": (results[-1].get("status") if results else None),
         },
     )
-    return {**values, "automation_phases": phase(state, "ACTIONS_EXECUTED")}
+    return {**values, "completed_phases": phase(state, "ACTIONS_EXECUTED")}
 
 
-async def finalize_automation(state: AutomationGraphState):
+async def finalize_run(state: AgentExecutionState):
     values = await finalize(state)
     await record_phase(
         {**state, "checkpoint_state": {**state, **values}},
-        AutomationCheckpointPhase.FINALIZED.value,
+        AIRunPhase.FINALIZED.value,
         {"goal_complete": bool((values.get("run") or {}).get("proposal"))},
     )
-    return {**values, "automation_phases": phase(state, "FINALIZED")}
+    return {**values, "completed_phases": phase(state, "FINALIZED")}
 
 
-async def verify_automation(state: AutomationGraphState):
+async def verify_run(state: AgentExecutionState):
     values = await verify(state)
-    checkpoint_state = {**state, **values, "automation_phases": phase(state, "ACTIONS_VERIFIED")}
+    checkpoint_state = {**state, **values, "completed_phases": phase(state, "ACTIONS_VERIFIED")}
     verified_run = values.get("run") or {}
     terminal_status = (
-        AutomationStatus.COMPLETED
+        AIRunExecutionStatus.COMPLETED
         if verified_run.get("status") == "COMPLETED"
-        else AutomationStatus.FAILED
+        else AIRunExecutionStatus.FAILED
     )
     await record_phase(
         {**state, "checkpoint_state": checkpoint_state},
-        AutomationCheckpointPhase.ACTIONS_VERIFIED.value,
+        AIRunPhase.ACTIONS_VERIFIED.value,
         {"verified": bool((verified_run.get("proposal") or {}).get("verification", {}).get("verified"))},
         terminal_status,
     )
     await record_phase(
-        {**state, "checkpoint_state": {**checkpoint_state, "automation_phases": [*phase(state, "ACTIONS_VERIFIED"), "GRAPH_COMPLETED"]}},
-        AutomationCheckpointPhase.GRAPH_COMPLETED.value,
-        {"agent_run_id": verified_run.get("run_id")},
+        {**state, "checkpoint_state": {**checkpoint_state, "completed_phases": [*phase(state, "ACTIONS_VERIFIED"), "GRAPH_COMPLETED"]}},
+        AIRunPhase.GRAPH_COMPLETED.value,
+        {"ai_run_id": verified_run.get("run_id")},
         terminal_status,
     )
     return {
         **values,
-        "automation_phases": [
+        "completed_phases": [
             *phase(state, "ACTIONS_VERIFIED"),
             "GRAPH_COMPLETED",
         ],
     }
 
 
-workflow = StateGraph(AutomationGraphState)
-workflow.add_node("resume_dispatch", resume_dispatch)
-workflow.add_node("observe_sources", observe_sources)
-workflow.add_node("extract_source_facts", extract_source_facts)
-workflow.add_node("assess_uncertainty", assess_uncertainty)
-workflow.add_node("create_action_plan", create_action_plan)
-workflow.add_node("replan_after_observation", replan_after_observation)
-workflow.add_node("execute_action", execute_action)
-workflow.add_node("finalize_automation", finalize_automation)
-workflow.add_node("aggregate", aggregate)
-workflow.add_node("verify_automation", verify_automation)
-workflow.set_entry_point("resume_dispatch")
-workflow.add_conditional_edges(
+async def resume_dispatch(state: AgentExecutionState):
+    return {}
+
+
+ai_run_graph_builder = StateGraph(AgentExecutionState)
+ai_run_graph_builder.add_node("resume_dispatch", resume_dispatch)
+ai_run_graph_builder.add_node("observe_sources", observe_sources)
+ai_run_graph_builder.add_node("extract_source_facts", extract_source_facts)
+ai_run_graph_builder.add_node("assess_uncertainty", assess_uncertainty)
+ai_run_graph_builder.add_node("create_action_plan", create_action_plan)
+ai_run_graph_builder.add_node("replan_after_observation", replan_after_observation)
+ai_run_graph_builder.add_node("execute_action", execute_action)
+ai_run_graph_builder.add_node("finalize_run", finalize_run)
+ai_run_graph_builder.add_node("aggregate", aggregate)
+ai_run_graph_builder.add_node("verify_run", verify_run)
+ai_run_graph_builder.set_entry_point("resume_dispatch")
+ai_run_graph_builder.add_conditional_edges(
     "resume_dispatch",
     route_resume,
     {
@@ -676,38 +703,45 @@ workflow.add_conditional_edges(
         "assess_uncertainty": "assess_uncertainty",
         "create_action_plan": "create_action_plan",
         "execute_action": "execute_action",
-        "finalize_automation": "finalize_automation",
+        "finalize_run": "finalize_run",
         "aggregate": "aggregate",
         "end": END,
     },
 )
-workflow.add_edge("observe_sources", "extract_source_facts")
-workflow.add_edge("extract_source_facts", "assess_uncertainty")
-workflow.add_edge("assess_uncertainty", "create_action_plan")
-workflow.add_conditional_edges(
+ai_run_graph_builder.add_edge("observe_sources", "extract_source_facts")
+ai_run_graph_builder.add_edge("extract_source_facts", "assess_uncertainty")
+ai_run_graph_builder.add_edge("assess_uncertainty", "create_action_plan")
+ai_run_graph_builder.add_conditional_edges(
     "create_action_plan",
     route_after_plan,
-    {"execute": "execute_action", "finalize": "finalize_automation"},
+    {"execute": "execute_action", "finalize": "finalize_run"},
 )
-workflow.add_conditional_edges(
+ai_run_graph_builder.add_conditional_edges(
     "execute_action",
     route_after_agent,
     {
         "execute": "execute_action",
         "replan": "replan_after_observation",
-        "finalize": "finalize_automation",
+        "finalize": "finalize_run",
     },
 )
-workflow.add_conditional_edges(
+ai_run_graph_builder.add_conditional_edges(
     "replan_after_observation",
     route_after_plan,
-    {"execute": "execute_action", "finalize": "finalize_automation"},
+    {"execute": "execute_action", "finalize": "finalize_run"},
 )
-workflow.add_edge("finalize_automation", "aggregate")
-workflow.add_conditional_edges(
+ai_run_graph_builder.add_edge("finalize_run", "aggregate")
+ai_run_graph_builder.add_conditional_edges(
     "aggregate",
     route_after_aggregate,
-    {"end": END, "verify": "verify_automation"},
+    {"verify": "verify_run", "end": END},
 )
-workflow.add_edge("verify_automation", END)
-automation_workflow = workflow.compile()
+ai_run_graph_builder.add_edge("verify_run", END)
+ai_run_graph = ai_run_graph_builder.compile()
+
+
+async def run_ai_run_graph(initial_state: AgentExecutionState) -> AgentExecutionState:
+    return await ai_run_graph.ainvoke(
+        initial_state,
+        config={"recursion_limit": settings.AI_AGENT_MAX_STEPS * 6 + 24},
+    )

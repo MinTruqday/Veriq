@@ -5,7 +5,7 @@ import json
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
-from src.core.auth import ai_automation_context
+from src.core.auth import ai_capability_context
 from src.core.common import audit, get_project, get_project_entity, new_id, now, plain_text, resolve_user_reference
 from src.core.database import database
 from src.core.human_decisions import require_independent_review
@@ -21,15 +21,15 @@ def _item_id(requirement_version_id, source_type, source_id, quote):
     return f"COV-{sha256(value).hexdigest()[:20]}"
 
 
-async def _require_review_permission(project_id, user, *, allow_execution_feedback_automation=False):
-    automation = ai_automation_context.get()
+async def _require_review_permission(project_id, user, *, allow_execution_feedback_ai_run=False):
+    run_context = ai_capability_context.get()
     if (
-        allow_execution_feedback_automation
-        and isinstance(automation, dict)
-        and automation.get("principal_id") == user.id
-        and automation.get("publication_project_id") == project_id
+        allow_execution_feedback_ai_run
+        and isinstance(run_context, dict)
+        and run_context.get("principal_id") == user.id
+        and run_context.get("publication_project_id") == project_id
         and "testadequacy.execution_feedback.record"
-        in set(automation.get("publication_permissions") or [])
+        in set(run_context.get("publication_permissions") or [])
     ):
         return
     await get_project(project_id, user, "testcase.review")
@@ -668,7 +668,7 @@ async def add_execution_feedback(assessment_id, coverage_item_id, payload, user)
     await _require_review_permission(
         assessment["project_id"],
         user,
-        allow_execution_feedback_automation=True,
+        allow_execution_feedback_ai_run=True,
     )
     case = await test_design_repository.find_case_version(payload.test_case_version_id, assessment["project_id"])
     if not case:

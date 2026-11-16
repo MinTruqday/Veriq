@@ -12,7 +12,7 @@ from fastapi import HTTPException
 from openpyxl import load_workbook
 from pymongo.errors import DuplicateKeyError
 
-from src.clients.ai_automation import ai_automation_client
+from src.clients.ai_capabilities import ai_capability_client
 from src.clients.document_conversion import read_requirement_source_image
 from src.clients.worker import WorkerClientError, worker_client
 from src.core.common import get_project
@@ -24,7 +24,7 @@ from src.modules.requirements.services.requirement_documents import (
 )
 from src.repositories.requirement_document import requirement_document_repository
 from src.repositories.requirement_source_block import requirement_source_block_repository
-from src.repositories.ai_automation_access import ai_automation_access_repository
+from src.repositories.ai_run_access import ai_run_access_repository
 
 
 SUMMARY_INPUT_LIMIT = 12000
@@ -503,7 +503,7 @@ async def _summarize_with_source_access(text, output_language, documents, user):
             await asyncio.sleep(15)
             for scope_key, lease_id in leases:
                 try:
-                    alive = await ai_automation_access_repository.heartbeat(
+                    alive = await ai_run_access_repository.heartbeat(
                         scope_key, lease_id
                     )
                 except Exception:
@@ -522,7 +522,7 @@ async def _summarize_with_source_access(text, output_language, documents, user):
             await _assert_summary_source_current(document, user)
             scope_key = f"source:{document['_id']}"
             lease_id = str(uuid4())
-            admitted = await ai_automation_access_repository.acquire(
+            admitted = await ai_run_access_repository.acquire(
                 scope_key, lease_id
             )
             if not admitted:
@@ -533,7 +533,7 @@ async def _summarize_with_source_access(text, output_language, documents, user):
         for document in documents:
             await _assert_summary_source_current(document, user)
         summary_task = asyncio.create_task(
-            ai_automation_client.summarize_knowledge_text(text, output_language)
+            ai_capability_client.summarize_knowledge_text(text, output_language)
         )
         lease_lost_task = asyncio.create_task(lease_lost.wait())
         completed, _ = await asyncio.wait(
@@ -568,7 +568,7 @@ async def _summarize_with_source_access(text, output_language, documents, user):
                 pass
         for scope_key, lease_id in reversed(leases):
             try:
-                await ai_automation_access_repository.release(scope_key, lease_id)
+                await ai_run_access_repository.release(scope_key, lease_id)
             except Exception:
                 logger.exception(
                     "Failed to release summary source lease scope=%s", scope_key

@@ -2,7 +2,6 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
 
-from src.clients.ai_automation import queue_requirement_changed
 from src.core.common import (
     audit,
     get_project,
@@ -28,7 +27,6 @@ from src.repositories.requirement_clarification import requirement_clarification
 from src.repositories.requirement_template import requirement_template_repository
 from src.repositories.test_adequacy import test_adequacy_repository
 from src.schemas.contracts.requirements import RequirementCreate
-
 
 async def persist_acceptance_criteria(version, values, session=None):
     criteria = []
@@ -57,7 +55,6 @@ async def persist_acceptance_criteria(version, values, session=None):
     version["acceptance_criterion_ids"] = criterion_ids
     version["acceptance_criteria"] = criteria
     return version
-
 
 async def validate_requirement_custom_values(project_id, requirement):
     values = requirement.custom_values or {}
@@ -96,7 +93,6 @@ async def validate_requirement_custom_values(project_id, requirement):
             raise HTTPException(
                 status_code=422, detail={"code": "CUSTOM_FIELD_INVALID", "field": field["key"]}
             )
-
 
 async def create_requirement_record(project_id, payload, user, origin="manual", session=None):
     await get_project(project_id, user, "requirement.create")
@@ -159,7 +155,6 @@ async def create_requirement_record(project_id, payload, user, origin="manual", 
         await requirement_repository.insert_requirement(requirement, session=active_session)
         await requirement_repository.insert_version(version, session=active_session)
         await persist_acceptance_criteria(version, payload.acceptance_criteria, active_session)
-        await queue_requirement_changed(version, user, active_session)
         await audit(
             user.id,
             "requirement_created",
@@ -181,7 +176,6 @@ async def create_requirement_record(project_id, payload, user, origin="manual", 
     if session is None:
         await index_requirement_version(version)
     return {**requirement, "current_version": version}
-
 
 async def list_requirement_records(
     project_id,
@@ -302,13 +296,11 @@ async def list_requirement_records(
                 )
     return page_payload(page_items, page, page_size, total)
 
-
 async def get_requirement_record(requirement_id, user):
     requirement = await get_project_entity("requirements", requirement_id, user, "requirement.read")
     version = await requirement_repository.find_version(requirement["current_version_id"])
     criteria = await requirement_repository.list_acceptance_criteria(version["_id"], None)
     return {**requirement, "current_version": {**version, "acceptance_criteria": criteria}}
-
 
 async def update_requirement_draft_record(project_id, requirement_id, payload, user, session=None):
     requirement = await get_project_entity(
@@ -441,7 +433,6 @@ async def update_requirement_draft_record(project_id, requirement_id, payload, u
             )
             if not identity_updated:
                 raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
-        await queue_requirement_changed(updated_version, user, active_session)
         await audit(
             user.id,
             "requirement_draft_updated",
@@ -458,7 +449,6 @@ async def update_requirement_draft_record(project_id, requirement_id, payload, u
             async with active_session.start_transaction():
                 await persist(active_session)
     return {**requirement, **parent_changes, "current_version": updated_version}
-
 
 async def create_requirement_version_record(requirement_id, payload, user, session=None):
     requirement = await get_project_entity(
@@ -528,7 +518,6 @@ async def create_requirement_version_record(requirement_id, payload, user, sessi
         )
         if not activated:
             raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
-        await queue_requirement_changed(version, user, active_session)
         from src.modules.design.services.test_adequacy import (
             supersede_requirement_assessments,
         )
@@ -561,11 +550,9 @@ async def create_requirement_version_record(requirement_id, payload, user, sessi
         await persist(session)
     return version
 
-
 async def list_requirement_version_records(requirement_id, user):
     await get_project_entity("requirements", requirement_id, user, "requirement.version.read")
     return await requirement_repository.list_versions(requirement_id, 500)
-
 
 async def get_requirement_version_record(version_id, user):
     version = await get_project_entity(

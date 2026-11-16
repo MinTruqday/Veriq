@@ -11,10 +11,13 @@ from src.core.infrastructure.configuration import settings
 from src.core.infrastructure.mq import mq
 from src.runtime.limits import limits
 from src.runtime.queue_names import DOCUMENT_INGESTION_QUEUE
+from src.services.conversion import DocumentStorageUnavailableError
 from src.services.ingestion import index_document, remove_document
 
 
 def _retryable_ingestion_error(error: Exception) -> bool:
+    if isinstance(error, DocumentStorageUnavailableError):
+        return True
     if isinstance(error, (ValueError, PermissionError)):
         return False
     if isinstance(error, HTTPException):

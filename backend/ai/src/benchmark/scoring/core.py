@@ -28,7 +28,7 @@ class TestabilityBenchmarkCoreScoring:
                 "interval_method": "paired_case_percentile_bootstrap",
                 "confidence_level": 0.95,
                 "resamples": cls.PAIRED_BOOTSTRAP_RESAMPLES,
-                "scope": "Biến động khi lấy mẫu lại các ca trong chính bộ dữ liệu này; không đo biến động giữa các lần gọi mô hình.",
+                "scope": "Variation from resampling cases within this dataset; does not measure variation between model calls.",
             }
 
         seed = int.from_bytes(
@@ -61,7 +61,7 @@ class TestabilityBenchmarkCoreScoring:
             "interval_method": "paired_case_percentile_bootstrap",
             "confidence_level": 0.95,
             "resamples": cls.PAIRED_BOOTSTRAP_RESAMPLES,
-            "scope": "Biến động khi lấy mẫu lại các ca trong chính bộ dữ liệu này; không đo biến động giữa các lần gọi mô hình và không xác nhận answer key.",
+            "scope": "Variation from resampling cases within this dataset; does not measure variation between model calls or validate the answer key.",
         }
 
     @staticmethod

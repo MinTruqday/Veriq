@@ -123,12 +123,7 @@ export default function WorkReportsPanel({ project }) {
   const [allowDownload, setAllowDownload] = useState(false);
   const [start, setStart] = useState(dayInput());
   const [end, setEnd] = useState(dayInput());
-  const outputLanguage = () =>
-    preferredSummaryLocale(
-      user?.locale,
-      project.locale,
-      typeof navigator === "undefined" ? "" : navigator.language,
-    );
+  const outputLanguage = () => preferredSummaryLocale(user?.locale, project.locale);
   const [templateDoc, setTemplateDoc] = useState(blank);
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [replyTo, setReplyTo] = useState(null);

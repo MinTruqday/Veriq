@@ -106,6 +106,8 @@ def prepare_requirement_candidates(job_id, candidates):
     prepared = []
     for index, value in enumerate(candidates):
         candidate = dict(value)
+        candidate_type = str(candidate.get("type") or "").strip()
+        candidate["type"] = candidate_type or "Chưa phân loại"
         candidate["quality_issues"] = candidate_quality_issues(candidate)
         candidate["candidate_id"] = candidate.get("candidate_id") or (
             f"{job_id}{'-CAND-'}{index + 1}"

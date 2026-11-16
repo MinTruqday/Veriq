@@ -7,10 +7,10 @@ from pymongo.errors import DuplicateKeyError
 from src.core.common import audit, get_project, new_id, now
 from src.core.database import database
 from src.repositories.test_design import test_design_repository
-from src.core.ai_automation import (
+from src.core.ai_capabilities import (
     ai_contract_metadata,
-    request_ai_automation,
-    require_ai_automation_event,
+    request_ai_capability,
+    require_ai_capability_event,
 )
 from src.modules.quality.services.non_functional_test import get_plan as get_non_functional_plan
 from src.modules.design.services.generation import validated_suggestions
@@ -141,13 +141,13 @@ class DesignSuggestionService:
 
     @staticmethod
     async def generate_security(project_id, payload, user):
-        automation = require_ai_automation_event(user, {"REQUIREMENT_CHANGED"})
+        event_context = require_ai_capability_event(user, {"REQUIREMENT_CHANGED"})
         await get_project(project_id, user, "ai.generate_security_tests")
         versions, evidence = await requirement_evidence(project_id, payload.requirement_version_ids)
         if (
             not payload.source_event_id
             or payload.source_event_revision is None
-            or payload.source_event_id != automation["source_event_id"]
+            or payload.source_event_id != event_context["source_event_id"]
             or len(versions) != 1
         ):
             raise HTTPException(403, detail={"code": "VERIFIED_REQUIREMENT_EVENT_REQUIRED"})
@@ -186,7 +186,7 @@ class DesignSuggestionService:
                 raise HTTPException(409, detail={"code": "SECURITY_SUGGESTION_EVENT_KEY_CONFLICT"})
             _verify_generation_replay(existing, payload, source_context, user)
             return existing, {}
-        ai_result = await request_ai_automation(
+        ai_result = await request_ai_capability(
             "security_test_generation",
             project_id,
             json.dumps({"categories": payload.categories}, ensure_ascii=False),
@@ -310,10 +310,10 @@ class DesignSuggestionService:
 
     @staticmethod
     async def generate_performance(project_id, payload, user, source_configuration=None):
-        automation = require_ai_automation_event(user, {"PERFORMANCE_CONFIGURATION_APPROVED"})
+        event_context = require_ai_capability_event(user, {"PERFORMANCE_CONFIGURATION_APPROVED"})
         if (
             not source_configuration
-            or source_configuration.get("event_id") != automation["source_event_id"]
+            or source_configuration.get("event_id") != event_context["source_event_id"]
         ):
             raise HTTPException(status_code=403, detail={"code": "VERIFIED_PERFORMANCE_CONFIGURATION_EVENT_REQUIRED"})
         await get_project(project_id, user, "ai.generate_performance_plan")
@@ -333,7 +333,7 @@ class DesignSuggestionService:
             _verify_generation_replay(existing, payload, source_context, user)
             return existing, {}
         versions, evidence = await requirement_evidence(project_id, payload.requirement_version_ids)
-        ai_result = await request_ai_automation(
+        ai_result = await request_ai_capability(
             "performance_plan_generation",
             project_id,
             json.dumps(
@@ -474,10 +474,10 @@ class DesignSuggestionService:
     @staticmethod
     async def generate_performance_from_approved_configuration(project_id, payload, user):
         if (
-            not getattr(user, "_ai_automation_run_id", "")
-            or getattr(user, "_ai_automation_trigger", "")
+            not getattr(user, "_ai_capability_run_id", "")
+            or getattr(user, "_ai_capability_trigger", "")
             != "PERFORMANCE_CONFIGURATION_APPROVED"
-            or getattr(user, "_ai_automation_source_event_id", "")
+            or getattr(user, "_ai_capability_source_event_id", "")
             != payload.source_event_id
         ):
             raise HTTPException(
@@ -509,7 +509,7 @@ class DesignSuggestionService:
         inputs, missing = approved_performance_configuration_inputs(plan)
         if missing:
             return {
-                "status": "automation_waiting_for_input",
+                "status": "awaiting_input",
                 "reason_code": "CLARIFICATION_REQUIRED",
                 "source_configuration_id": payload.plan_id,
                 "source_event_id": payload.source_event_id,
@@ -527,7 +527,7 @@ class DesignSuggestionService:
         )
         if not versions:
             return {
-                "status": "automation_waiting_for_input",
+                "status": "awaiting_input",
                 "reason_code": "CLARIFICATION_REQUIRED",
                 "source_configuration_id": payload.plan_id,
                 "source_event_id": payload.source_event_id,

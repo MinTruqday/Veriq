@@ -65,7 +65,7 @@ export default function HomePage() {
           <h1 className="max-w-none text-balance text-[44px] font-semibold leading-[1.02] tracking-[-0.055em] sm:text-[58px] lg:text-[66px]">
             Quản lý yêu cầu và kiểm thử
           </h1>
-          <p className="mt-5 max-w-[62ch] text-[16px] leading-7 text-ink-muted">
+          <p className="mt-5 max-w-3xl text-[16px] leading-7 text-ink-muted">
             Tập trung yêu cầu, ca kiểm thử, kết quả chạy và ảnh hưởng thay đổi trong cùng dự án.
           </p>
           <div className="mt-9 flex flex-wrap gap-3">

@@ -5,7 +5,7 @@ import re
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from src.core.ai_automation import ai_contract_metadata, request_ai_automation
+from src.core.ai_capabilities import ai_contract_metadata, request_ai_capability
 from src.core.common import (
     audit,
     get_project,
@@ -19,7 +19,7 @@ from src.core.common import (
 from src.core.database import database
 from src.core.human_decisions import (
     content_authorship_changes,
-    require_automation_publication_authority,
+    require_ai_publication_authority,
     require_independent_review,
 )
 from src.core.source_evidence import split_source_evidence
@@ -52,7 +52,6 @@ PLAN_SNAPSHOT_FIELDS = (
     'device_matrix_id', 'device_profile_keys', 'device_matrix_snapshot',
 )
 
-
 def plan_snapshot(plan):
     return {
         **{field: plan.get(field) for field in PLAN_SNAPSHOT_FIELDS},
@@ -63,13 +62,11 @@ def plan_snapshot(plan):
         },
     }
 
-
 def plan_snapshot_hash(plan):
     canonical = json.dumps(
         plan_snapshot(plan), ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
     )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-
 
 async def _validate_assignment_capacity(plan, plan_id, session):
     from src.modules.projects.services.skill_profiles import (
@@ -88,7 +85,6 @@ async def _validate_assignment_capacity(plan, plan_id, session):
         exclude_plan_id=plan_id,
     )
 
-
 def _legacy_plan_snapshot_hash(snapshot):
     canonical_snapshot = {
         field: snapshot.get(field) for field in LEGACY_PLAN_SNAPSHOT_FIELDS
@@ -101,7 +97,6 @@ def _legacy_plan_snapshot_hash(snapshot):
         default=str,
     )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-
 
 def verified_approved_plan_snapshot(plan, project_id):
     """Return the immutable approved scope only when its stored digest matches."""
@@ -155,7 +150,6 @@ def verified_approved_plan_snapshot(plan, project_id):
         )
     return snapshot, digest
 
-
 def plan_completeness(plan, settings=None):
     settings = settings or {}
     
@@ -201,7 +195,6 @@ def plan_completeness(plan, settings=None):
     ]
     return {"ready_for_approval": not findings, "findings": findings}
 
-
 async def validate_effort_allocation_members(project_id, estimation, session=None):
     allocation_ids = {
         item.user_id for item in (estimation.effort_allocations or [])
@@ -221,14 +214,12 @@ async def validate_effort_allocation_members(project_id, estimation, session=Non
             detail={"code": "TEST_PLAN_EFFORT_MEMBER_NOT_ACTIVE", "user_ids": unknown},
         )
 
-
 async def validate_plan_data_owner(project_id, data_plan):
     if not data_plan.owner_id:
         return
     members = await project_repository.list_members(project_id)
     if not any(item.get('user_id') == data_plan.owner_id and item.get('status') == 'ACTIVE' for item in members):
         raise HTTPException(422, detail={'code': 'TEST_PLAN_DATA_OWNER_NOT_ACTIVE'})
-
 
 async def validate_plan_scope(project_id, requirement_version_ids, test_suite_ids, test_case_version_ids):
     requirement_ids = list(dict.fromkeys(requirement_version_ids or []))
@@ -277,7 +268,6 @@ async def validate_plan_scope(project_id, requirement_version_ids, test_suite_id
         "test_suite_snapshots": suite_snapshots,
     }
 
-
 async def resolve_strategy_binding(project_id, strategy_version_id, auto_bind=False):
     
     strategy = None
@@ -310,7 +300,6 @@ async def resolve_strategy_binding(project_id, strategy_version_id, auto_bind=Fa
         "strategy_version": strategy["version"],
         "strategy_snapshot_hash": strategy["snapshot_hash"],
     }
-
 
 async def create_test_plan_record(payload, project_id, user):
     
@@ -368,7 +357,6 @@ async def create_test_plan_record(payload, project_id, user):
         "created_at": timestamp,
         "updated_at": timestamp,
     }
-    from src.clients.ai_automation import emit_test_plan_changed
 
     async with await database.client.start_session() as session:
         async with session.start_transaction():
@@ -394,9 +382,7 @@ async def create_test_plan_record(payload, project_id, user):
                 payload.project_id,
                 session=session,
             )
-            await emit_test_plan_changed(plan, user, session=session)
     return plan
-
 
 async def list_test_plan_records(
     project_id,
@@ -434,16 +420,13 @@ async def list_test_plan_records(
         query, sort_field, direction, 500
     )
 
-
 async def get_test_plan_record(plan_id, user, permission="testplan.read"):
     return await get_project_entity("test_plans", plan_id, user, permission)
-
 
 async def validate_test_plan_record(plan_id, user):
     plan = await get_test_plan_record(plan_id, user, "testplan.read")
     settings = await test_plan_repository.find_project_settings(plan["project_id"])
     return plan_completeness(plan, settings)
-
 
 async def update_test_plan_record(plan_id, payload, user):
     
@@ -498,7 +481,6 @@ async def update_test_plan_record(plan_id, payload, user):
             validation_data[field] = plan[field]
     TestPlanCreate.model_validate(validation_data)
     changes = content_authorship_changes(plan, user, changes)
-    from src.clients.ai_automation import emit_test_plan_changed
 
     async with await database.client.start_session() as session:
         async with session.start_transaction():
@@ -534,16 +516,13 @@ async def update_test_plan_record(plan_id, payload, user):
                 plan["project_id"],
                 session=session,
             )
-            await emit_test_plan_changed(updated, user, session=session)
     return updated
-
 
 async def submit_test_plan_record(plan_id, payload, user):
     
     plan = await get_test_plan_record(plan_id, user, "testplan.submit_review")
     if plan.get("status") != 'DRAFT':
         raise HTTPException(status_code=409, detail={"code": 'INVALID_STATE_TRANSITION'})
-    from src.clients.ai_automation import emit_test_plan_changed
 
     async with await database.client.start_session() as session:
         async with session.start_transaction():
@@ -569,12 +548,10 @@ async def submit_test_plan_record(plan_id, payload, user):
                 plan["project_id"],
                 session=session,
             )
-            await emit_test_plan_changed(updated, user, session=session)
     return updated
 
-
 async def approve_test_plan_record(plan_id, payload, user):
-    require_automation_publication_authority(user, 'testplan.approve')
+    require_ai_publication_authority(user, 'testplan.approve')
     
     plan = await get_test_plan_record(plan_id, user, "testplan.approve")
     if plan.get("status") != 'IN_REVIEW':
@@ -610,7 +587,6 @@ async def approve_test_plan_record(plan_id, payload, user):
         "note": payload.review_note,
         "at": timestamp,
     }
-    from src.clients.ai_automation import emit_test_plan_approved
 
     async with await database.client.start_session() as session:
         async with session.start_transaction():
@@ -641,9 +617,7 @@ async def approve_test_plan_record(plan_id, payload, user):
                 plan["project_id"],
                 session=session,
             )
-            await emit_test_plan_approved(updated, user, session=session)
     return updated
-
 
 async def request_test_plan_revision(plan_id, payload, user):
     plan = await get_test_plan_record(plan_id, user, 'testplan.review')
@@ -664,11 +638,9 @@ async def request_test_plan_revision(plan_id, payload, user):
             await audit(user.id, 'test_plan_changes_requested', 'TestPlan', plan_id, plan['project_id'], session=session)
     return updated
 
-
 async def archive_test_plan_record(plan_id, payload, user):
     
     plan = await get_test_plan_record(plan_id, user, "testplan.archive")
-    from src.clients.ai_automation import emit_test_plan_changed
 
     async with await database.client.start_session() as session:
         async with session.start_transaction():
@@ -693,9 +665,7 @@ async def archive_test_plan_record(plan_id, payload, user):
                 plan["project_id"],
                 session=session,
             )
-            await emit_test_plan_changed(updated, user, session=session)
     return updated
-
 
 async def clone_test_plan_record(plan_id, user):
     
@@ -728,7 +698,6 @@ async def clone_test_plan_record(plan_id, user):
     ):
         cloned.pop(field, None)
     cloned["approval_history"] = []
-    from src.clients.ai_automation import emit_test_plan_changed
 
     async with await database.client.start_session() as session:
         async with session.start_transaction():
@@ -742,9 +711,7 @@ async def clone_test_plan_record(plan_id, user):
                 {"source_plan_id": plan_id},
                 session=session,
             )
-            await emit_test_plan_changed(cloned, user, session=session)
     return cloned
-
 
 def validate_test_plan_ai_field_grounding(proposal, source_text):
     fields = (
@@ -789,21 +756,25 @@ def validate_test_plan_ai_field_grounding(proposal, source_text):
     ]
     return list(dict.fromkeys(unsupported_fields))
 
-
 async def generate_test_plan_draft_suggestion(project_id, payload, user):
+    from src.modules.design.services.test_case_records import require_current_design_source
+
     await get_project(project_id, user, "testplan.create")
     requirement_ids = list(dict.fromkeys(payload.requirement_version_ids))
     if len(requirement_ids) != len(payload.requirement_version_ids):
         raise HTTPException(422, detail={"code": "DUPLICATE_REQUIREMENT_VERSION"})
+    allowed_statuses = ["BASELINED"]
+    if getattr(user, "_ai_capability_intent", "") == "process_ingested_requirement_document":
+        allowed_statuses.append("DRAFT")
     versions = await database.value.requirement_versions.find({
         "project_id": project_id,
         "_id": {"$in": requirement_ids},
-        "status": "BASELINED",
+        "status": {"$in": allowed_statuses},
     }).to_list(len(requirement_ids))
     if len(versions) != len(requirement_ids):
         raise HTTPException(422, detail={"code": "TEST_PLAN_REQUIREMENT_NOT_BASELINED"})
     for version in versions:
-        await require_current_baselined_version(version)
+        await require_current_design_source(version, user)
     criteria = await database.value.acceptance_criteria.find({
         "project_id": project_id,
         "requirement_version_id": {"$in": requirement_ids},
@@ -921,7 +892,7 @@ async def generate_test_plan_draft_suggestion(project_id, payload, user):
             "If sources disagree and none explicitly establishes which value governs, report the conflict and ask for clarification; do not silently choose a side or assume the Test Plan is wrong.",
         ],
     }, ensure_ascii=False)
-    result = await request_ai_automation(
+    result = await request_ai_capability(
         "test_plan_draft_generation", project_id, ai_instruction, evidence
     )
     if result.get("status") != "SUCCESS" or result.get("degraded_mode"):
@@ -969,12 +940,12 @@ async def generate_test_plan_draft_suggestion(project_id, payload, user):
     latest_versions = await database.value.requirement_versions.find({
         "project_id": project_id,
         "_id": {"$in": requirement_ids},
-        "status": "BASELINED",
+        "status": {"$in": allowed_statuses},
     }).to_list(len(requirement_ids))
     if len(latest_versions) != len(requirement_ids):
         raise HTTPException(409, detail={"code": "TEST_PLAN_SOURCE_CHANGED", "retryable": True})
     for version in latest_versions:
-        await require_current_baselined_version(version)
+        await require_current_design_source(version, user)
     latest_criteria = await database.value.acceptance_criteria.find({
         "project_id": project_id,
         "requirement_version_id": {"$in": requirement_ids},
@@ -998,6 +969,7 @@ async def generate_test_plan_draft_suggestion(project_id, payload, user):
         "project_id": project_id,
         "requirement_version_ids": requirement_ids,
         "saved_blueprint_refs": [item["blueprint_result_id"] for item in saved_blueprints],
+        "blueprint_assessments": saved_blueprints,
         "suggestion": proposal,
         "evidence": [
             {"artifact_type": item["artifact_type"], "artifact_version_id": item["artifact_version_id"]}

@@ -24,7 +24,7 @@ const percentageCriteria = new Set([
   "CONDITION_COVERAGE_MIN",
 ]);
 
-function criterionName(item) {
+export function criterionName(item) {
   if (item.criterion && item.criterion !== item.type) return item.criterion;
   return criterionLabels[item.type] || item.criterion || "Tiêu chí tùy chỉnh";
 }

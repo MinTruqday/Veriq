@@ -215,7 +215,7 @@ export default function RiskModelEditor({ value, onChange }) {
               type="number"
               min={key === "maximum_score" ? "0.000001" : "0"}
               max="1"
-              step="0.01"
+              step={key === "maximum_score" ? "any" : "0.01"}
               value={riskModel.ranking_weights?.[key] ?? ""}
               onChange={(event) => {
                 const nextValue = event.target.value;

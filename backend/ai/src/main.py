@@ -7,8 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from loguru import logger
 
-from src.api.agents import router as agents_router
-from src.api.automation import router as automation_router
+from src.api.ai_runs import router as ai_runs_router
 from src.api.embedding import router as embedding_router
 from src.api.indexing import indexing_router
 from src.api.indexing import router as ingest
@@ -73,8 +72,7 @@ app.add_middleware(
     allow_private_network=True,
 )
 app.include_router(inference)
-app.include_router(agents_router)
-app.include_router(automation_router)
+app.include_router(ai_runs_router)
 app.include_router(ingest)
 app.include_router(retrieval_router, prefix="/tri-thuc")
 app.include_router(embedding_router, prefix="/tri-thuc/bieu-dien-vector")
@@ -161,12 +159,12 @@ async def startup_event():
     except Exception:
         logger.exception("AI retrieval capability startup error")
     try:
-        from src.runtime.automation_worker import automation_worker
+        from src.runtime.ai_run_worker import ai_run_worker
 
-        await automation_worker.start()
-        logger.info("AI automation worker started")
+        await ai_run_worker.start()
+        logger.info("AI run worker started")
     except Exception:
-        logger.exception("AI automation worker startup error")
+        logger.exception("AI run worker startup error")
     try:
         from src.runtime.document_ingestion_worker import document_ingestion_worker
 
@@ -216,11 +214,11 @@ async def shutdown_event():
     except Exception:
         logger.exception("Background task shutdown failed")
     try:
-        from src.runtime.automation_worker import automation_worker
+        from src.runtime.ai_run_worker import ai_run_worker
 
-        await automation_worker.stop()
+        await ai_run_worker.stop()
     except Exception:
-        logger.exception("AI automation worker shutdown failed")
+        logger.exception("AI run worker shutdown failed")
     try:
         from src.core.infrastructure.redis import redis
 

@@ -3,15 +3,15 @@ import json
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
-from src.core.ai_automation import ai_contract_metadata, request_ai_automation
+from src.core.ai_capabilities import ai_contract_metadata, request_ai_capability
 from src.core.common import audit, get_project_entity, new_id, now
 from src.repositories.test_completion import find_ai_result, insert_ai_result
 
 
 async def completion_ai_result(report, payload, user, capability, result_type):
-    run_id = str(getattr(user, "_ai_automation_run_id", "") or "")
-    trigger = str(getattr(user, "_ai_automation_trigger", "") or "")
-    source_event_id = str(getattr(user, "_ai_automation_source_event_id", "") or "")
+    run_id = str(getattr(user, "_ai_capability_run_id", "") or "")
+    trigger = str(getattr(user, "_ai_capability_trigger", "") or "")
+    source_event_id = str(getattr(user, "_ai_capability_source_event_id", "") or "")
     expected_event_id = (
         f"completion-report:{report['_id']}:{payload.source_event_revision}:"
         "TEST_COMPLETION_REPORT_CREATED"
@@ -39,7 +39,7 @@ async def completion_ai_result(report, payload, user, capability, result_type):
             or existing.get("source_event_id") != source_event_id
             or existing.get("source_event_revision") != payload.source_event_revision
             or existing.get("source_event_trigger") != trigger
-            or existing.get("source_automation_run_id") != run_id
+            or existing.get("source_ai_run_id") != run_id
         ):
             raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
         return existing
@@ -72,7 +72,7 @@ async def completion_ai_result(report, payload, user, capability, result_type):
         }
     ]
     instruction = json.dumps({"user_instruction": payload.instruction}, ensure_ascii=False)
-    ai = await request_ai_automation(capability, report["project_id"], instruction, evidence)
+    ai = await request_ai_capability(capability, report["project_id"], instruction, evidence)
     if ai.get('status') != 'SUCCESS' or ai.get('degraded_mode'):
         raise HTTPException(502, detail={'code': 'COMPLETION_AI_UNAVAILABLE'})
     current = await get_project_entity('test_completion_reports', report['_id'], user, 'testcompletion.update')
@@ -91,7 +91,7 @@ async def completion_ai_result(report, payload, user, capability, result_type):
         "source_event_id": source_event_id,
         "source_event_revision": payload.source_event_revision,
         "source_event_trigger": trigger,
-        "source_automation_run_id": run_id,
+        "source_ai_run_id": run_id,
         "created_by": user.id,
         "created_at": now(),
     }
@@ -106,7 +106,7 @@ async def completion_ai_result(report, payload, user, capability, result_type):
             or replay.get("source_event_id") != source_event_id
             or replay.get("source_event_revision") != payload.source_event_revision
             or replay.get("source_event_trigger") != trigger
-            or replay.get("source_automation_run_id") != run_id
+            or replay.get("source_ai_run_id") != run_id
         ):
             raise HTTPException(
                 status_code=409, detail={"code": "COMPLETION_AI_IDEMPOTENCY_CONFLICT"}

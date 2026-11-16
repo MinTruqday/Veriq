@@ -18,7 +18,7 @@ import ReviewCommentsPanel from "../../components/ReviewCommentsPanel";
 import TestCaseTemplatesPanel from "../../components/TestCaseTemplatesPanel";
 import SpecializedDesignPanel from "../../components/SpecializedDesignPanel";
 import AutomationScriptsPanel from "../../components/AutomationScriptsPanel";
-import AgentRunPanel from "../../components/AgentRunPanel";
+import AIRunPanel from "../../components/AIRunPanel";
 import CollaborationPanel from "../../components/CollaborationPanel";
 import {
   ErrorState,
@@ -117,6 +117,12 @@ export default function TestDesignPage({ project, workspaceView }) {
   const dateTimeOptions = useDateTimeOptions(project);
   const formatDate = (value) => formatDateValue(value, dateTimeOptions);
   const currentUserId = project.current_membership?.user_id;
+  const independentReviewRequired = Boolean(project?.settings?.require_independent_review);
+  const canReviewDraft = (item) =>
+    !independentReviewRequired ||
+    (item.created_by !== currentUserId &&
+      item.review_submitted_by !== currentUserId &&
+      !(item.content_author_ids || []).includes(currentUserId));
   const { ask, dialog } = useActionDialog();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -155,14 +161,14 @@ export default function TestDesignPage({ project, workspaceView }) {
     status: "",
     sort: "-updated_at",
   });
-  const [agentRuns, setAgentRuns] = useState([]);
-  const [agentRunsError, setAgentRunsError] = useState("");
-  const [agentRunsLoading, setAgentRunsLoading] = useState(false);
-  const handleAgentRunsStateChange = useCallback(
+  const [aiRuns, setAIRuns] = useState([]);
+  const [aiRunsError, setAIRunsError] = useState("");
+  const [aiRunsLoading, setAIRunsLoading] = useState(false);
+  const handleAIRunsStateChange = useCallback(
     ({ runs, error: nextError, loading: nextLoading }) => {
-      setAgentRuns(runs);
-      setAgentRunsError(nextError);
-      setAgentRunsLoading(nextLoading);
+      setAIRuns(runs);
+      setAIRunsError(nextError);
+      setAIRunsLoading(nextLoading);
     },
     [],
   );
@@ -242,7 +248,7 @@ export default function TestDesignPage({ project, workspaceView }) {
   const isCaseWorkspace = workspaceView === "" || workspaceView === "cases";
   const showCases = access.showCases;
   const showAdequacy = isCaseWorkspace && caseTab === "adequacy";
-  const showAgentRuns = isCaseWorkspace && caseTab === "agent-runs";
+  const showAIRuns = isCaseWorkspace && caseTab === "agent-runs";
   const showScenarios = isCaseWorkspace && caseTab === "scenarios";
   const showTemplates = isCaseWorkspace && caseTab === "templates";
   const showAutomation = isCaseWorkspace && caseTab === "automation";
@@ -325,7 +331,7 @@ export default function TestDesignPage({ project, workspaceView }) {
         memberResult,
       ] = await Promise.all([
         (showCases ||
-          showAgentRuns ||
+          showAIRuns ||
           showScenarios ||
           showAdequacy ||
           workspaceView === "test-data") &&
@@ -455,7 +461,7 @@ export default function TestDesignPage({ project, workspaceView }) {
     project._id,
     scenarioFilters,
     showAdequacy,
-    showAgentRuns,
+    showAIRuns,
     showApi,
     showCases,
     showScenarios,
@@ -483,8 +489,8 @@ export default function TestDesignPage({ project, workspaceView }) {
       active = false;
     };
   }, [canReadTestCases, linkedCaseId, showCases]);
-  const canReadAgentRuns =
-    permissions.includes("automation.read") || permissions.includes("proposal.read");
+  const canReadAIRuns =
+    permissions.includes("requirement.read") || permissions.includes("proposal.read");
   const selectedRequirementRecord = requirements.find(
     (item) => item.current_version_id === selectedRequirement,
   );
@@ -506,8 +512,8 @@ export default function TestDesignPage({ project, workspaceView }) {
         `${item.requirement_key} · ${item.current_version?.title || "Yêu cầu"}`,
       ]),
   );
-  const requirementAgentRun = selectedRequirement
-    ? agentRuns.find(
+  const requirementAIRun = selectedRequirement
+    ? aiRuns.find(
         (run) => run.trigger === "MANUAL" && run.target_artifact_ids?.includes(selectedRequirement),
       ) || null
     : null;
@@ -547,6 +553,7 @@ export default function TestDesignPage({ project, workspaceView }) {
       test_kind: selectedDraft.test_kind || "",
       expected_impact: selectedDraft.expected_impact || UNASSESSED_VALUE,
       assessment_reason: selectedDraft.assessment_reason || "",
+      scenarioId: selectedDraft.scenario_id || "",
       requirementVersionIds: selectedDraft.requirement_version_ids || [],
       acceptanceCriterionIds: selectedDraft.acceptance_criterion_ids || [],
       coverageItemIds: selectedDraft.coverage_item_ids || [],
@@ -1282,12 +1289,12 @@ export default function TestDesignPage({ project, workspaceView }) {
           canSubmit={can("testcase.submit_review")}
         />
       )}
-      {showAgentRuns && canReadAgentRuns && (
+      {showAIRuns && canReadAIRuns && (
         <div id="agent-run-details">
-          <AgentRunPanel
+          <AIRunPanel
             project={project}
             showPanelHeading={false}
-            onRunsStateChange={handleAgentRunsStateChange}
+            onRunsStateChange={handleAIRunsStateChange}
             targetArtifactIds={selectedRequirement ? [selectedRequirement] : []}
             targetArtifactLabels={requirementLabels}
             contextContent={
@@ -1323,21 +1330,21 @@ export default function TestDesignPage({ project, workspaceView }) {
                           {selectedRequirementRecord?.current_version?.title || "Yêu cầu"}
                         </p>
                       </div>
-                      {agentRunsLoading ? (
+                      {aiRunsLoading ? (
                         <p className="border-t border-border pt-3 text-ink-muted">
                           Đang tải hoạt động liên quan…
                         </p>
-                      ) : agentRunsError ? (
+                      ) : aiRunsError ? (
                         <p className="border-t border-border pt-3 text-danger" role="status">
-                          {agentRunsError}
+                          {aiRunsError}
                         </p>
-                      ) : requirementAgentRun ? (
+                      ) : requirementAIRun ? (
                         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
                           <span className="text-ink-muted">
                             Lượt do người dùng bắt đầu gần nhất ·{" "}
-                            {formatDate(requirementAgentRun.created_at)}
+                            {formatDate(requirementAIRun.created_at)}
                           </span>
-                          <StatusPill value={requirementAgentRun.status} />
+                          <StatusPill value={requirementAIRun.status} />
                         </div>
                       ) : (
                         <p className="border-t border-border pt-3 text-ink-muted">
@@ -1375,10 +1382,7 @@ export default function TestDesignPage({ project, workspaceView }) {
               <div className="space-y-4 p-4 sm:p-5">
                 {can("testcase.approve") &&
                   actionableDrafts.some(
-                    (item) =>
-                      item.status === "IN_REVIEW" &&
-                      item.created_by !== currentUserId &&
-                      item.review_submitted_by !== currentUserId,
+                    (item) => item.status === "IN_REVIEW" && canReviewDraft(item),
                   ) && (
                     <div className="space-y-3">
                       <p className="text-sm text-ink-muted">
@@ -1387,10 +1391,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                       <DataTable
                         onSelect={(item) => setSelectedDraftId(item._id)}
                         items={actionableDrafts.filter(
-                          (item) =>
-                            item.status === "IN_REVIEW" &&
-                            item.created_by !== currentUserId &&
-                            item.review_submitted_by !== currentUserId,
+                          (item) => item.status === "IN_REVIEW" && canReviewDraft(item),
                         )}
                         selectedIds={selectedApprovalDraftIds}
                         onSelectionChange={setSelectedApprovalDraftIds}
@@ -1535,8 +1536,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                               </button>
                             )}
                             {item.status === "IN_REVIEW" &&
-                              item.created_by !== currentUserId &&
-                              item.review_submitted_by !== currentUserId &&
+                              canReviewDraft(item) &&
                               can("testcase.approve") && (
                                 <button
                                   className="apple-button"
@@ -2164,7 +2164,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                 </p>
               )}
             {canDraft("testcase.update", selectedDraft) && selectedDraft.status === "DRAFT" ? (
-              <div className="grid gap-4 p-5 lg:grid-cols-2">
+              <div className="test-design-form grid gap-4 p-5 lg:grid-cols-2">
                 <label className="field-label lg:col-span-2">
                   Tên ca kiểm thử
                   <input
@@ -2284,6 +2284,26 @@ export default function TestDesignPage({ project, workspaceView }) {
                   />
                 </label>
                 <div className="grid gap-4 lg:col-span-2">
+                  <label className="field-label">
+                    Kịch bản liên kết
+                    <select
+                      className="apple-input mt-2"
+                      aria-label="Kịch bản liên kết"
+                      value={draftEdit.scenarioId}
+                      onChange={(event) => changeDraftEdit({ scenarioId: event.target.value })}
+                    >
+                      <option value="">Chưa liên kết kịch bản</option>
+                      {scenarios.map((scenario) => (
+                        <option key={scenario._id} value={scenario._id}>
+                          {scenario.scenario_key || scenario._id} · {scenario.title || "Kịch bản"}
+                        </option>
+                      ))}
+                      {draftEdit.scenarioId &&
+                        !scenarios.some((scenario) => scenario._id === draftEdit.scenarioId) && (
+                          <option value={draftEdit.scenarioId}>Kịch bản đã liên kết</option>
+                        )}
+                    </select>
+                  </label>
                   <MultiSelect
                     label="Phiên bản yêu cầu liên quan"
                     searchPlaceholder="Tìm yêu cầu"
@@ -2642,7 +2662,11 @@ export default function TestDesignPage({ project, workspaceView }) {
                                 member.user?.full_name ||
                                 member.user?.email ||
                                 member.user_id}
-                              {member.project_role ? ` · ${valueLabel(member.project_role)}` : ""}
+                              {member.project_roles?.length
+                                ? ` · ${member.project_roles.map(valueLabel).join(", ")}`
+                                : member.project_role
+                                  ? ` · ${valueLabel(member.project_role)}`
+                                  : ""}
                             </option>
                           ))}
                         </select>
@@ -2948,7 +2972,7 @@ export default function TestDesignPage({ project, workspaceView }) {
       )}
       {workspaceView === "test-sets" && access.canReadTestSets && (
         <Panel title="Danh sách bộ kiểm thử">
-          <div className="flex flex-wrap items-center gap-2 px-4 pt-4 sm:px-5">
+          <div className="flex flex-wrap items-center gap-2 px-4 pt-4 pb-4 sm:px-5">
             <SearchField
               ariaLabel="Tìm bộ kiểm thử"
               className="min-w-64 flex-1"

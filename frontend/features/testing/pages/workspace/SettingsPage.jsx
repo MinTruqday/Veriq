@@ -187,7 +187,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
   const minimumPlannedEndAt = minimumProjectEndDate(plannedStartAt);
   useEffect(() => {
     setProjectLeadUserId(project.project_lead_user_id || "");
-    setLocale(project.locale || (typeof navigator === "undefined" ? "" : navigator.language));
+    setLocale(project.locale || "vi");
     setTimezone(
       project.timezone ||
         (typeof Intl === "undefined" ? "" : Intl.DateTimeFormat().resolvedOptions().timeZone),
@@ -292,7 +292,8 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
   )
     ? activeSettingsSection
     : settingsSections[0]?.id;
-  const memberRoles = (item) => [item.project_role].filter(Boolean);
+  const memberRoles = (item) =>
+    item.project_roles?.length ? item.project_roles : [item.project_role].filter(Boolean);
   const isProjectLead = (item) => item.user_id === project.project_lead_user_id;
   const auditActions = useMemo(
     () => [...new Set(audit.map((item) => item.action).filter(Boolean))].sort(),
@@ -1085,7 +1086,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                 <>
                   {can("project.members.manage") && (
                     <form
-                      className="grid gap-2 sm:grid-cols-[1fr_150px_auto]"
+                      className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]"
                       onSubmit={async (event) => {
                         event.preventDefault();
                         const form = event.currentTarget;
@@ -1093,7 +1094,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                         try {
                           await testingApi.inviteMember(project._id, {
                             user_id: value.get("user_id"),
-                            project_role: value.get("project_role"),
+                            project_roles: value.getAll("project_roles"),
                           });
                           form.reset();
                           if (can("project.members.read")) {
@@ -1111,17 +1112,21 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                         placeholder="Email hoặc mã người dùng"
                         aria-label="Email hoặc mã người dùng"
                       />
-                      <select
-                        className="apple-input"
-                        name="project_role"
-                        aria-label="Vai trò dự án"
-                      >
-                        {(project.available_project_roles || []).map((role) => (
-                          <option key={role} value={role}>
+                      <fieldset className="flex flex-wrap gap-x-3 gap-y-2 rounded-xl border border-line px-3 py-2">
+                        <legend className="px-1 text-xs text-ink-muted">Vai trò dự án</legend>
+                        {(project.available_project_roles || []).map((role, index) => (
+                          <label key={role} className="inline-flex items-center gap-1.5 text-sm">
+                            <input
+                              className="accent-accent"
+                              type="checkbox"
+                              name="project_roles"
+                              value={role}
+                              defaultChecked={index === 0}
+                            />
                             {valueLabel(role)}
-                          </option>
+                          </label>
                         ))}
-                      </select>
+                      </fieldset>
                       <button className="secondary-button" type="submit">
                         Gửi lời mời
                       </button>
@@ -1155,31 +1160,54 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                             const roles = memberRoles(item);
                             const roleLabels = roles.map(valueLabel);
                             return can("project.members.manage") ? (
-                              <span className="flex min-w-36 flex-col gap-1">
-                                <select
+                              <details className="min-w-40">
+                                <summary
+                                  className="cursor-pointer rounded-lg border border-line px-3 py-2 text-sm text-ink"
                                   aria-label={`Vai trò ${memberDisplayName(item)}`}
-                                  className="apple-input"
-                                  value={item.project_role}
-                                  disabled={item.status !== "ACTIVE" || isProjectLead(item)}
-                                  onChange={async (event) => {
-                                    try {
-                                      await testingApi.updateMember(project._id, item.user_id, {
-                                        expected_revision: item.membership_revision,
-                                        project_role: event.target.value,
-                                      });
-                                      setMembers(await testingApi.listMembers(project._id));
-                                    } catch (reason) {
-                                      setError(messageOf(reason));
-                                    }
-                                  }}
                                 >
+                                  {roleLabels.join(", ") || "Chưa gán vai trò"}
+                                </summary>
+                                <fieldset
+                                  className="mt-2 grid gap-2 rounded-xl border border-line bg-surface p-3 shadow-lg"
+                                  disabled={item.status !== "ACTIVE" || isProjectLead(item)}
+                                >
+                                  <legend className="px-1 text-xs text-ink-muted">
+                                    Vai trò dự án
+                                  </legend>
                                   {(project.available_project_roles || []).map((role) => (
-                                    <option key={role} value={role}>
+                                    <label
+                                      key={role}
+                                      className="inline-flex items-center gap-2 text-sm"
+                                    >
+                                      <input
+                                        className="accent-accent"
+                                        type="checkbox"
+                                        checked={roles.includes(role)}
+                                        onChange={async (event) => {
+                                          const nextRoles = event.target.checked
+                                            ? [...roles, role]
+                                            : roles.filter((value) => value !== role);
+                                          if (!nextRoles.length) return;
+                                          try {
+                                            await testingApi.updateMember(
+                                              project._id,
+                                              item.user_id,
+                                              {
+                                                expected_revision: item.membership_revision,
+                                                project_roles: nextRoles,
+                                              },
+                                            );
+                                            setMembers(await testingApi.listMembers(project._id));
+                                          } catch (reason) {
+                                            setError(messageOf(reason));
+                                          }
+                                        }}
+                                      />
                                       {valueLabel(role)}
-                                    </option>
+                                    </label>
                                   ))}
-                                </select>
-                              </span>
+                                </fieldset>
+                              </details>
                             ) : (
                               <span>{roleLabels.join(", ")}</span>
                             );

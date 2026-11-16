@@ -18,13 +18,13 @@ from src.core.database import database
 from src.core.sensitive_data import redact_sensitive_text
 from src.clients.project_knowledge import index_artifact, remove_artifact
 from src.repositories.test_design import test_design_repository
-from src.core.human_decisions import require_automation_publication_authority
+from src.core.human_decisions import require_ai_publication_authority
 from src.core.human_decisions import require_independent_review
 from src.core.human_decisions import content_authorship_changes
 from src.modules.design.services.design_authorization import require_assigned_design_draft
-from src.core.ai_automation import ai_contract_metadata
+from src.core.ai_capabilities import ai_contract_metadata
 from src.modules.design.services.generation import generate_requirement_drafts, select_generation_criteria
-from src.modules.design.services.test_case_records import validate_design_sources, validate_test_case_owner, require_current_baselined_version
+from src.modules.design.services.test_case_records import validate_design_sources, validate_test_case_owner, require_current_baselined_version, require_current_design_source
 
 
 def scenario_search_text(scenario):
@@ -148,7 +148,7 @@ async def create_test_scenario_draft_batch(project_id, payloads, user):
             version = await get_project_entity(
                 "requirement_versions", version_id, user, "requirement.read"
             )
-            await require_current_baselined_version(version)
+            await require_current_design_source(version, user)
         scenarios.append({
             "_id": new_id("TS"),
             "project_id": project_id,
@@ -307,13 +307,13 @@ async def generate_test_scenario_records(version_id, payload, user):
         "requirement_versions", version_id, user, "ai.generate_scenario"
     )
     await get_project(version["project_id"], user, "testscenario.create")
-    await require_current_baselined_version(version)
+    await require_current_design_source(version, user)
     criteria = await test_design_repository.list_acceptance_criteria(version_id)
     criteria = select_generation_criteria(criteria, payload.acceptance_criterion_ids)
     drafts, result = await generate_requirement_drafts(
         version, criteria, payload, user, scenario=True
     )
-    await require_current_baselined_version(version)
+    await require_current_design_source(version, user)
     current_criteria = select_generation_criteria(
         await test_design_repository.list_acceptance_criteria(version_id),
         payload.acceptance_criterion_ids,
@@ -347,7 +347,7 @@ async def transition_test_scenario_record(scenario_id, payload, user, action):
     if action in {'approve', 'revise'}:
         await require_independent_review(scenario, user, 'TEST_SCENARIO_SELF_REVIEW_FORBIDDEN')
     if action == 'approve':
-        require_automation_publication_authority(user, 'testscenario.update')
+        require_ai_publication_authority(user, 'testscenario.update')
         if not scenario.get('objective') or not scenario.get('requirement_version_ids'):
             raise HTTPException(409, detail={'code': 'SCENARIO_INCOMPLETE'})
         await validate_design_sources(

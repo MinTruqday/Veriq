@@ -23,10 +23,10 @@ from src.schemas.evaluation import (
 from src.schemas.inference_requests import (
     CrossDocumentExpansionRequest,
     KnowledgeDocumentSummaryRequest,
-    TestingAutomationRequest,
-    TestingAutomationResult,
+    TestingCapabilityRequest,
+    TestingCapabilityResult,
 )
-from src.services.ai_automation import generate_ai_automation
+from src.services.ai_capabilities import generate_ai_capability
 from src.services.inference import (
     decompose_retrieval,
     stream_sink,
@@ -94,8 +94,8 @@ def _apply_reference_provenance(report, dataset):
     dependencies=[Depends(verify_internal_token)],
     response_model=TestabilityBenchmarkReport,
     description=(
-        "Chỉ chấm các đầu ra đã cung cấp; không gọi model. Dùng endpoint chạy bộ dữ liệu "
-        "để thực thi các pipeline AI thật"
+        "Score supplied outputs without calling a model. Use the dataset run endpoint "
+        "to execute the actual AI pipelines."
     ),
 )
 async def evaluate_testability_compiler(req: TestabilityBenchmarkRequest):
@@ -143,9 +143,9 @@ async def evaluate_blueprint_against_reference(req: TestabilityBlueprintBenchmar
             "assessment_type": "NOT_AVAILABLE",
             "independently_validated": False,
             "reason": (
-                "Không tìm thấy duy nhất một bộ tham chiếu phù hợp khớp chính xác với nguồn."
+                'Không tìm thấy duy nhất một bộ tham chiếu khớp chính xác với các phiên bản nguồn đã cung cấp.'
                 if not exact_matches
-                else "Có nhiều đáp án chuẩn khớp nguồn; cần chọn bộ tham chiếu rõ ràng trước khi chấm."
+                else 'Có nhiều đáp án tham chiếu khớp với các nguồn này; cần chọn rõ bộ tham chiếu trước khi chấm.'
             ),
         }
     dataset, gold_case, independently_reviewed = exact_matches[0]
@@ -260,8 +260,8 @@ async def get_testability_benchmark_dataset(
     "/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/bo-du-lieu/{dataset_id}",
     response_model=TestabilityBenchmarkDataset,
     description=(
-        "Cập nhật bộ dữ liệu theo revision hiện tại. Mọi thay đổi làm mất rà soát đáp án cũ; "
-        "cần một Admin khác rà lại trước lần chạy kế tiếp."
+        "Update the dataset at its current revision. Changes invalidate the existing answer-key review "
+        "and require a different administrator to review it before the next run."
     ),
 )
 async def update_testability_benchmark_dataset(
@@ -283,8 +283,8 @@ async def update_testability_benchmark_dataset(
     "/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/bo-du-lieu/{dataset_id}/ra-soat-dap-an",
     response_model=TestabilityBenchmarkDataset,
     description=(
-        "Ghi nhận rà soát đáp án chuẩn bởi Admin đã xác thực, khác người tạo bộ dữ liệu. "
-        "Danh tính được lấy từ phiên đăng nhập, không nhận reviewer_id từ request."
+        "Record an answer-key review by an authenticated administrator other than the dataset creator. "
+        "Reviewer identity comes from the authenticated session, not from the request body."
     ),
 )
 async def review_testability_benchmark_answer_key(
@@ -333,8 +333,8 @@ async def evaluate_testability_benchmark_dataset(
     "/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/bo-du-lieu/{dataset_id}/chay-lap",
     response_model=TestabilityBenchmarkRepeatedReport,
     description=(
-        "Chạy lại các pipeline AI thật theo thứ tự để đo độ biến thiên mô tả; "
-        "mỗi lần chạy được lưu riêng để có thể truy xuất đầu ra và lỗi."
+        "Rerun the actual AI pipelines in order to measure descriptive variability. "
+        "Each run is stored separately so its outputs and failures can be inspected."
     ),
 )
 async def repeat_testability_benchmark_dataset(
@@ -400,7 +400,7 @@ async def get_testability_benchmark_run(
 @router.post(
     "/noi-bo/phan-ra-lien-tai-lieu",
     dependencies=[Depends(verify_internal_token)],
-    description="Phân rã truy vấn theo từng tài liệu đã được chỉ định",
+    description="Decompose a query across the specified documents",
 )
 async def decompose_cross_document_query(req: CrossDocumentExpansionRequest):
     try:
@@ -415,7 +415,7 @@ async def decompose_cross_document_query(req: CrossDocumentExpansionRequest):
 @router.post(
     "/noi-bo/tom-tat-tai-lieu-tri-thuc",
     dependencies=[Depends(verify_internal_token)],
-    description="Tóm tắt tài liệu knowledge sau khi kiểm tra an toàn",
+    description="Summarize a knowledge document after safety inspection",
 )
 async def summarize_knowledge_document(req: KnowledgeDocumentSummaryRequest):
     try:
@@ -428,15 +428,15 @@ async def summarize_knowledge_document(req: KnowledgeDocumentSummaryRequest):
 @router.post(
     "/noi-bo/kiem-thu/tao-ket-qua",
     dependencies=[Depends(verify_internal_token)],
-    response_model=TestingAutomationResult,
-    description="Tạo kết quả có cấu trúc cho một bước xử lý nội bộ của AI agent",
+    response_model=TestingCapabilityResult,
+    description="Generate structured output for an internal AI agent step",
 )
-async def ai_automation(req: TestingAutomationRequest):
-    return await generate_ai_automation(req)
+async def ai_capability(req: TestingCapabilityRequest):
+    return await generate_ai_capability(req)
 
 
 @router.post("/noi-bo/kiem-thu/tao-ket-qua/stream", dependencies=[Depends(verify_internal_token)])
-async def stream_ai_automation(req: TestingAutomationRequest):
+async def stream_ai_capability(req: TestingCapabilityRequest):
     queue = asyncio.Queue()
 
     async def emit(piece):
@@ -452,7 +452,7 @@ async def stream_ai_automation(req: TestingAutomationRequest):
     async def run():
         token = stream_sink.set(emit)
         try:
-            result = await ai_automation(req)
+            result = await ai_capability(req)
             await queue.put({"type": "result", "data": jsonable_encoder(result)})
         except Exception as error:
             await queue.put({"type": "error", "code": type(error).__name__})

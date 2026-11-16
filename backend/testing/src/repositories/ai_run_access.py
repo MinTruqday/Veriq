@@ -6,12 +6,12 @@ from pymongo.errors import DuplicateKeyError
 from src.core.database import database
 
 
-class AIAutomationAccessRepository:
+class AIRunAccessRepository:
     LEASE_TTL_SECONDS = 90
 
     @property
     def leases(self):
-        return database.value.ai_automation_access_leases
+        return database.value.ai_run_access_leases
 
     async def acquire(self, scope_key: str, lease_id: str) -> bool:
         """Atomically admit a request unless revocation already fenced its scope."""
@@ -176,4 +176,4 @@ class AIAutomationAccessRepository:
         )
 
 
-ai_automation_access_repository = AIAutomationAccessRepository()
+ai_run_access_repository = AIRunAccessRepository()

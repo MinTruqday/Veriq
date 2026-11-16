@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from src.repositories.memory import memory_repository
-from src.schemas.agent import AgentRunStatus, AgentTaskStatus, VeriqRunState
+from src.schemas.agent import AIRunExecutionStatus, AgentTaskStatus, VeriqRunState
 
 
 class LongTermMemory:
@@ -11,7 +11,7 @@ class LongTermMemory:
 
     async def record_verified(self, state: VeriqRunState):
         if not (
-            state.status == AgentRunStatus.COMPLETED
+            state.status == AIRunExecutionStatus.COMPLETED
             and state.proposal is not None
             and state.proposal.get("verification", {}).get("verified") is True
             and all(

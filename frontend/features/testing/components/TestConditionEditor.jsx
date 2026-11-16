@@ -77,7 +77,7 @@ export default function TestConditionEditor({
   ];
   return (
     <form
-      className="space-y-4 p-5"
+      className="test-design-form space-y-4 p-5"
       onSubmit={async (event) => {
         event.preventDefault();
         setError("");

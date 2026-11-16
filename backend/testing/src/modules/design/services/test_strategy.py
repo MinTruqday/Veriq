@@ -4,6 +4,7 @@ from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from src.core.common import audit, get_project, new_id, now, page_payload
+from src.core.database import database
 from src.core.human_decisions import require_independent_review
 from src.schemas.test_strategy import (
     TestStrategyFields,
@@ -13,6 +14,34 @@ from src.schemas.test_strategy import (
     strategy_snapshot,
 )
 from src.repositories.test_strategy import test_strategy_repository
+
+
+async def _independent_review_required(project_id):
+    project = await database.value.projects.find_one(
+        {"_id": project_id}, {"settings.require_independent_review": 1}
+    )
+    return bool((project or {}).get("settings", {}).get("require_independent_review"))
+
+
+def _require_strategy_reviewer_assignment(strategy, user, independent_review_required):
+    reviewer_ids = strategy.get("reviewer_ids", [])
+    if independent_review_required:
+        if user.id not in reviewer_ids:
+            raise HTTPException(
+                status_code=403,
+                detail={"code": 'STRATEGY_REVIEW_ASSIGNMENT_REQUIRED'},
+            )
+        if user.id == strategy.get("created_by"):
+            raise HTTPException(
+                status_code=403,
+                detail={"code": 'STRATEGY_SELF_REVIEW_NOT_ALLOWED'},
+            )
+        return
+    if reviewer_ids and user.id not in reviewer_ids and user.id != strategy.get("created_by"):
+        raise HTTPException(
+            status_code=403,
+            detail={"code": 'STRATEGY_REVIEW_ASSIGNMENT_REQUIRED'},
+        )
 
 
 
@@ -138,9 +167,9 @@ async def submit_strategy(strategy_id, payload, user):
         raise HTTPException(
             status_code=409, detail={"code": 'TEST_STRATEGY_INCOMPLETE', **completeness}
         )
-    if not strategy.get("reviewer_ids"):
-        raise HTTPException(status_code=422, detail={"code": 'STRATEGY_REVIEWERS_REQUIRED'})
-    if not any(reviewer_id != user.id for reviewer_id in strategy.get("reviewer_ids", [])):
+    if await _independent_review_required(strategy["project_id"]) and not any(
+        reviewer_id != user.id for reviewer_id in strategy.get("reviewer_ids", [])
+    ):
         raise HTTPException(
             status_code=422, detail={"code": 'INDEPENDENT_STRATEGY_REVIEWER_REQUIRED'}
         )
@@ -178,14 +207,11 @@ async def request_strategy_changes(strategy_id, payload, user):
         strategy_id, user, 'teststrategy.review'
     )
     await require_independent_review(strategy, user, 'TEST_STRATEGY_SELF_REVIEW_FORBIDDEN')
-    if user.id not in strategy.get("reviewer_ids", []):
-        raise HTTPException(
-            status_code=403, detail={"code": 'STRATEGY_REVIEW_ASSIGNMENT_REQUIRED'}
-        )
-    if user.id == strategy.get("created_by"):
-        raise HTTPException(
-            status_code=403, detail={"code": 'STRATEGY_SELF_REVIEW_NOT_ALLOWED'}
-        )
+    _require_strategy_reviewer_assignment(
+        strategy,
+        user,
+        await _independent_review_required(strategy["project_id"]),
+    )
     updated = await test_strategy_repository.update(
         strategy_id,
         strategy["project_id"],
@@ -219,8 +245,11 @@ async def approve_strategy(strategy_id, payload, user):
         strategy_id, user, 'teststrategy.approve'
     )
     await require_independent_review(strategy, user, 'TEST_STRATEGY_SELF_REVIEW_FORBIDDEN')
-    if user.id not in strategy.get("reviewer_ids", []):
-        raise HTTPException(status_code=403, detail={"code": 'STRATEGY_REVIEW_ASSIGNMENT_REQUIRED'})
+    _require_strategy_reviewer_assignment(
+        strategy,
+        user,
+        await _independent_review_required(strategy["project_id"]),
+    )
     if strategy["status"] != 'IN_REVIEW':
         raise HTTPException(status_code=409, detail={"code": 'STRATEGY_NOT_IN_REVIEW'})
     if payload.expected_revision != strategy["revision"]:
@@ -377,14 +406,9 @@ async def review_strategy(strategy_id, payload, user):
     )
     if strategy["status"] != 'IN_REVIEW':
         raise HTTPException(status_code=409, detail={"code": 'TEST_STRATEGY_NOT_IN_REVIEW'})
-    if user.id not in strategy.get("reviewer_ids", []):
-        raise HTTPException(
-            status_code=403, detail={"code": 'STRATEGY_REVIEW_ASSIGNMENT_REQUIRED'}
-        )
-    if user.id == strategy.get("created_by"):
-        raise HTTPException(
-            status_code=403, detail={"code": 'STRATEGY_SELF_REVIEW_NOT_ALLOWED'}
-        )
+    independent_review_required = await _independent_review_required(strategy["project_id"])
+    await require_independent_review(strategy, user, 'TEST_STRATEGY_SELF_REVIEW_FORBIDDEN')
+    _require_strategy_reviewer_assignment(strategy, user, independent_review_required)
     entry = {"reviewer_id": user.id, "note": payload.note, "at": now()}
     updated = await test_strategy_repository.update(
         strategy_id,

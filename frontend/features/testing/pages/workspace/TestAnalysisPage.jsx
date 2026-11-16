@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BadgeCheck, Check, FilePlus2, Pencil, UserRoundPlus } from "lucide-react";
+import { BadgeCheck, Check, FilePlus2, Pencil, RefreshCw, UserRoundPlus } from "lucide-react";
 import DataTable from "../../components/DataTable";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import TestConditionEditor from "../../components/TestConditionEditor";
@@ -82,6 +82,8 @@ export default function TestAnalysisPage({ project }) {
   const [activeTab, setActiveTab] = useState("conditions");
   const [editing, setEditing] = useState(false);
   const [aiResults, setAiResults] = useState([]);
+  const [refreshingAiResults, setRefreshingAiResults] = useState(false);
+  const refreshAiResultsPending = useRef(false);
   const [selectedRequirementVersions, setSelectedRequirementVersions] = useState([]);
   const [aiInstruction, setAiInstruction] = useState("");
   const [testabilityMode, setTestabilityMode] = useState("OFF");
@@ -227,27 +229,21 @@ export default function TestAnalysisPage({ project }) {
       setAiGenerating(false);
     }
   };
-  useEffect(() => {
-    if (!can("testanalysis.read") || visibleTab !== "ai") return undefined;
-    let active = true;
-    let pending = false;
-    const timer = window.setInterval(async () => {
-      if (document.visibilityState !== "visible" || pending) return;
-      pending = true;
-      try {
-        const values = await testingApi.listTestAnalysisAiResults(project._id);
-        if (active) setAiResults(values || []);
-      } catch (reason) {
-        if (active) setError(messageOf(reason));
-      } finally {
-        pending = false;
-      }
-    }, 5000);
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-    };
-  }, [can, project._id, visibleTab]);
+  const refreshAiResults = async () => {
+    if (refreshAiResultsPending.current) return;
+    refreshAiResultsPending.current = true;
+    setRefreshingAiResults(true);
+    try {
+      const values = await testingApi.listTestAnalysisAiResults(project._id);
+      setAiResults(values || []);
+      setError("");
+    } catch (reason) {
+      setError(messageOf(reason));
+    } finally {
+      refreshAiResultsPending.current = false;
+      setRefreshingAiResults(false);
+    }
+  };
   if (initialLoading || initialLoadFailed)
     return (
       <InitialLoadState
@@ -346,6 +342,27 @@ export default function TestAnalysisPage({ project }) {
               selectedId={selected?._id}
               onSelect={setSelected}
             />
+            {!conditions.length && (
+              <div className="mx-4 mb-4 grid gap-2 rounded-control border border-dashed border-border bg-surface-quiet/50 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                <div>
+                  <h3 className="text-sm font-semibold text-ink">
+                    Bắt đầu từ Requirement đã duyệt
+                  </h3>
+                  <p className="mt-1 text-sm text-ink-muted">
+                    Tạo điều kiện kiểm thử thủ công hoặc mở tab Đề xuất AI để tạo bản nháp có dẫn
+                    chứng.
+                  </p>
+                </div>
+                {can("requirement.read") && (
+                  <a
+                    className="secondary-button justify-self-start"
+                    href={projectRoute(project._id, PROJECT_SECTION_SLUGS.requirements)}
+                  >
+                    Mở yêu cầu
+                  </a>
+                )}
+              </div>
+            )}
           </Panel>
           {selected?._id ? (
             <div className="min-w-0" hidden={visibleTab !== "conditions"}>
@@ -602,7 +619,25 @@ export default function TestAnalysisPage({ project }) {
       )}
       {can("testanalysis.read") && (
         <div className="space-y-5" hidden={visibleTab !== "ai"}>
-          <Panel title="Điều kiện do AI đề xuất">
+          <Panel
+            title="Điều kiện do AI đề xuất"
+            actions={
+              <button
+                aria-label="Tải lại đề xuất AI"
+                className="icon-button h-9 w-9 shrink-0"
+                disabled={refreshingAiResults}
+                onClick={() => void refreshAiResults()}
+                title="Tải lại đề xuất AI"
+                type="button"
+              >
+                <RefreshCw
+                  aria-hidden="true"
+                  className={refreshingAiResults ? "animate-spin" : ""}
+                  size={16}
+                />
+              </button>
+            }
+          >
             <div className="space-y-4 p-5">
               <ContentOriginBadge origin="ai_generated" />
               <p className="text-sm text-ink-muted">
@@ -959,7 +994,7 @@ export default function TestAnalysisPage({ project }) {
                           hideWhenEmpty: true,
                           render: (item) => (
                             <button
-                              aria-label={`Dùng điều kiện ${item.condition_key} làm bản nháp`}
+                              aria-label={`Dùng ${item.title || item.condition_key || item.coverage_item || "đề xuất"} làm bản nháp điều kiện kiểm thử`}
                               title="Dùng làm bản nháp"
                               className="icon-button h-9 w-9"
                               type="button"

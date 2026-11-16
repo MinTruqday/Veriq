@@ -8,7 +8,6 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from src.clients.ai_automation import start_event_dispatcher, stop_event_dispatcher
 from src.core.ai_streaming import AIStreamingMiddleware
 from src.core.auth import refresh_access_policy
 from src.core.common import failure_metadata, new_id
@@ -51,7 +50,6 @@ async def lifespan(app: FastAPI):
     await reporting_repository.initialize()
     from src.modules.execution.services.report_jobs import start_reporting_background
     await start_reporting_background()
-    await start_event_dispatcher()
     await start_requirement_document_parse_worker()
     await start_defect_search_index_worker()
     yield
@@ -59,7 +57,6 @@ async def lifespan(app: FastAPI):
     await stop_reporting_background()
     await stop_defect_search_index_worker()
     await stop_requirement_document_parse_worker()
-    await stop_event_dispatcher()
     await close_database()
 
 
@@ -85,26 +82,26 @@ async def refresh_project_policy(request: Request, call_next):
 
 
 @app.middleware("http")
-async def release_ai_automation_access_lease(request: Request, call_next):
+async def release_ai_capability_access_lease(request: Request, call_next):
     request_task = asyncio.current_task()
     lease_lost = asyncio.Event()
 
     async def maintain_leases():
         while True:
             await asyncio.sleep(15)
-            leases = getattr(request.state, "ai_automation_leases", None) or []
+            leases = getattr(request.state, "ai_capability_leases", None) or []
             if not leases:
                 continue
-            from src.repositories.ai_automation_access import ai_automation_access_repository
+            from src.repositories.ai_run_access import ai_run_access_repository
 
             for scope_key, lease_id in leases:
                 try:
-                    alive = await ai_automation_access_repository.heartbeat(
+                    alive = await ai_run_access_repository.heartbeat(
                         scope_key, lease_id
                     )
                     if not alive:
                         logger.error(
-                            "AI automation request lease disappeared scope=%s",
+                            "AI run access lease disappeared scope=%s",
                             scope_key,
                         )
                         lease_lost.set()
@@ -113,7 +110,7 @@ async def release_ai_automation_access_lease(request: Request, call_next):
                         return
                 except Exception:
                     logger.exception(
-                        "Failed to renew AI automation request lease scope=%s",
+                        "Failed to renew AI run access lease scope=%s",
                         scope_key,
                     )
                     lease_lost.set()
@@ -122,7 +119,7 @@ async def release_ai_automation_access_lease(request: Request, call_next):
                     return
 
     def lease_lost_response():
-        code = "AI_AUTOMATION_ACCESS_LEASE_LOST"
+        code = "AI_RUN_ACCESS_LEASE_LOST"
         detail = {"code": code, "retryable": True}
         return JSONResponse(
             status_code=503,
@@ -151,15 +148,15 @@ async def release_ai_automation_access_lease(request: Request, call_next):
             await heartbeat_task
         except asyncio.CancelledError:
             pass
-        leases = getattr(request.state, "ai_automation_leases", None)
+        leases = getattr(request.state, "ai_capability_leases", None)
         if leases:
-            from src.repositories.ai_automation_access import ai_automation_access_repository
+            from src.repositories.ai_run_access import ai_run_access_repository
 
             for lease in leases:
                 try:
-                    await ai_automation_access_repository.release(*lease)
+                    await ai_run_access_repository.release(*lease)
                 except Exception:
-                    logger.exception("Failed to release AI automation request lease")
+                    logger.exception("Failed to release AI run access lease")
 
 
 app.include_router(projects_router)

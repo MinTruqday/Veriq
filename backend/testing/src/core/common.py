@@ -11,7 +11,7 @@ from src.core.auth import (
     ASSIGNED_OWNER_PERMISSIONS,
     CurrentUser,
     access_policy,
-    ai_automation_context,
+    ai_capability_context,
     archive_read_permissions,
     permission_explicitly_denied,
     permissions_for_membership,
@@ -20,7 +20,7 @@ from src.core.auth import (
     responsibility_allows,
     roles_for_membership,
 )
-from src.core.human_decisions import require_automation_publication_authority
+from src.core.human_decisions import require_ai_publication_authority
 from src.core.project_settings import resolve_project_settings
 from src.repositories.common import common_repository
 
@@ -271,14 +271,14 @@ def build_audit_event(
     details: dict | None = None,
     event_id: str | None = None,
 ):
-    automation = ai_automation_context.get()
+    run_context = ai_capability_context.get()
     event_details = details or {}
-    if automation and automation.get("principal_id") == user_id:
+    if run_context and run_context.get("principal_id") == user_id:
         event_details = {
             **event_details,
-            "actor_type": "AI_AUTOMATION",
-            "initiated_by": automation.get("initiator_id"),
-            "automation_definition_id": automation.get("definition_id"),
+            "actor_type": "AI_RUN",
+            "initiated_by": run_context.get("initiator_id"),
+            "ai_run_definition_id": run_context.get("definition_id"),
         }
     event = {
         "_id": event_id or new_id('AUD'),
@@ -290,8 +290,8 @@ def build_audit_event(
         "details": event_details,
         "created_at": now(),
     }
-    if automation and automation.get("principal_id") == user_id:
-        event["automation_run_id"] = automation.get("run_id")
+    if run_context and run_context.get("principal_id") == user_id:
+        event["ai_run_id"] = run_context.get("run_id")
     return event
 
 
@@ -327,13 +327,13 @@ async def get_project(
         raise HTTPException(status_code=403, detail={"code": 'PROJECT_MEMBERSHIP_INACTIVE'})
     if project.get("administrative_status", 'ACTIVE') != 'ACTIVE':
         raise HTTPException(status_code=423, detail={"code": 'PROJECT_ADMINISTRATIVELY_SUSPENDED'})
-    automation_publication_allowed = False
+    ai_publication_allowed = False
     if permission.endswith((".approve", ".submit_review", ".publish", ".confirm", ".decide")) or permission in {
         "proposal.bulk.approve", "release.close", "qualitygate.decide",
         "qualitygate.accept_risk", "qualitygate.override",
     }:
-        if not automation_publication_allowed:
-            require_automation_publication_authority(user, permission)
+        if not ai_publication_allowed:
+            require_ai_publication_authority(user, permission)
     active_roles = (
         roles_for_membership(membership)
         if membership and membership.get("status") == 'ACTIVE'
@@ -357,7 +357,7 @@ async def get_project(
         permission not in permissions
         and permission not in grant_permissions
         and not assigned_access
-        and not automation_publication_allowed
+        and not ai_publication_allowed
     ):
         await audit(
             user.id,

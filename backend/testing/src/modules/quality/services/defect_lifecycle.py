@@ -4,15 +4,9 @@ import json
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
-from src.clients.ai_automation import emit_defect_changed
 from src.core.common import audit, get_project, get_project_entity, new_id, now, optimistic_patch
 from src.core.database import database
-from src.modules.execution.services.execution_context import (
-    defect_blocks_release,
-    recheck_release_gates_for_defect,
-    resolve_execution_context,
-    serialize_release_gate,
-)
+from src.modules.execution.services.execution_context import defect_blocks_release, resolve_execution_context, serialize_release_gate
 from src.modules.execution.services.execution_state import defect_transitions
 from src.modules.quality.services.defect_authorization import require_defect_editor_assignment
 from src.modules.quality.services.defect_classification import (
@@ -21,7 +15,6 @@ from src.modules.quality.services.defect_classification import (
 )
 from src.repositories.defect import defect_repository
 from src.repositories.defect_search_index import defect_search_index_repository
-
 
 def _retest_request_fingerprint(payload):
     request = {
@@ -35,14 +28,12 @@ def _retest_request_fingerprint(payload):
         )
     ).hexdigest()
 
-
 def _public_retest(retest):
     return {
         key: value
         for key, value in retest.items()
         if key not in {"idempotency_key", "idempotency_request_hash"}
     }
-
 
 async def _replay_retest(project_id, defect_id, existing, payload, request_hash):
     if (
@@ -80,7 +71,6 @@ async def _replay_retest(project_id, defect_id, existing, payload, request_hash)
         "defect": defect,
         "retest": _public_retest(existing),
     }
-
 
 async def update_defect_record(defect_id, payload, project_id, user):
     payload = payload.model_dump(exclude_unset=True)
@@ -221,16 +211,6 @@ async def update_defect_record(defect_id, payload, project_id, user):
                 environment=changes.get("environment", defect.get("environment", "")),
             )
         )
-    source_fields = {
-        "title",
-        "description_doc",
-        "steps_to_reproduce",
-        "actual_result_doc",
-        "expected_result_doc",
-        "linked_test_result_id",
-        "linked_test_case_version_id",
-        "linked_requirement_version_ids",
-    }
     async with await database.client.start_session() as session:
         async with session.start_transaction():
             candidate = {**defect, **changes}
@@ -263,20 +243,7 @@ async def update_defect_record(defect_id, payload, project_id, user):
                 session=session,
             )
             await defect_search_index_repository.enqueue(updated, session=session)
-            if source_fields.intersection(changes):
-                await emit_defect_changed(updated, user, session=session)
-            if {"severity", "release_id", "linked_test_result_id"}.intersection(changes) and (
-                defect_blocks_release(defect) or defect_blocks_release(candidate)
-            ):
-                await recheck_release_gates_for_defect(
-                    defect["project_id"],
-                    [defect.get("release_id"), candidate.get("release_id")],
-                    updated,
-                    user,
-                    session,
-                )
     return updated
-
 
 async def transition_defect_record(defect_id, payload, user):
     permission = {
@@ -345,12 +312,7 @@ async def transition_defect_record(defect_id, payload, user):
                 session=session,
             )
             await defect_search_index_repository.enqueue(updated, session=session)
-            if old_is_blocking or new_is_blocking:
-                await recheck_release_gates_for_defect(
-                    defect["project_id"], [defect.get("release_id")], updated, user, session
-                )
     return updated
-
 
 async def retest_defect_record(project_id, defect_id, payload, user):
     defect = await get_project_entity("defects", defect_id, user, "defect.retest")
@@ -473,10 +435,6 @@ async def retest_defect_record(project_id, defect_id, payload, user):
                     session=session,
                 )
                 await defect_search_index_repository.enqueue(updated, session=session)
-                if defect_blocks_release(defect) or new_is_blocking:
-                    await recheck_release_gates_for_defect(
-                        project_id, [defect.get("release_id")], updated, user, session
-                    )
     except DuplicateKeyError:
         existing = await defect_repository.find_retest(defect_id, payload.idempotency_key)
         if not existing:

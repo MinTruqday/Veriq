@@ -18,14 +18,14 @@ from src.prompts.testing import (
 from src.runtime.output import normalize_narrative_payload
 from src.schemas.inference import output_schema
 from src.schemas.inference_requests import (
-    TestingAutomationDegradedMode,
-    TestingAutomationRequest,
-    TestingAutomationResult,
-    TestingAutomationStatus,
+    TestingAIDegradedMode,
+    TestingCapabilityRequest,
+    TestingCapabilityResult,
+    TestingCapabilityStatus,
 )
 from src.schemas.inference_requirements import TestabilityBlueprintGroundingReview
 from src.schemas.inference_test_design import GeneratedCasesGroundingReview
-from src.services.automation_provenance import source_quote_spans
+from src.services.source_provenance import source_quote_spans
 from src.services.inference import model_metadata, structured
 
 EXECUTION_ASSISTANCE_SENSITIVE_TERMS = (
@@ -281,11 +281,11 @@ def grounded_requirement_recommendations(recommendations, evidence):
     return accepted, rejected
 
 
-async def generate_ai_automation(req: TestingAutomationRequest):
-    return await _generate_ai_automation(req)
+async def generate_ai_capability(req: TestingCapabilityRequest):
+    return await _generate_ai_capability(req)
 
 
-async def _generate_ai_automation(req: TestingAutomationRequest):
+async def _generate_ai_capability(req: TestingCapabilityRequest):
     evidence = evidence_payload(req.evidence)
     source_text = evidence_text(
         evidence,
@@ -312,7 +312,7 @@ async def _generate_ai_automation(req: TestingAutomationRequest):
         "prompt_version": prompt_contract_fingerprint(req.capability, schema),
         "prompt_execution_fingerprints": [],
         "prompt_execution_attempts": [],
-        "tool_schema_version": "ai_automation",
+        "tool_schema_version": "ai_capability",
         "retrieval_version": "project_evidence",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -332,9 +332,11 @@ async def _generate_ai_automation(req: TestingAutomationRequest):
         generated = await structured(
             prompt,
             schema,
-            max_tokens=4096,
+            max_tokens=settings.TESTABILITY_BLUEPRINT_MAX_OUTPUT_TOKENS
+            if req.capability == "testability_blueprint_compilation"
+            else 4096,
             timeout_seconds=settings.MODEL_TIMEOUT_SECONDS,
-            provider_schema=False,
+            provider_schema=req.capability == "testability_blueprint_compilation",
             prompt_attempt_observer=observe_prompt_attempt("generation"),
         )
         generated_data = normalize_narrative_payload(generated.model_dump())
@@ -375,7 +377,7 @@ async def _generate_ai_automation(req: TestingAutomationRequest):
                 GeneratedCasesGroundingReview,
                 max_tokens=4096,
                 timeout_seconds=settings.MODEL_TIMEOUT_SECONDS,
-                provider_schema=False,
+                provider_schema=True,
                 prompt_attempt_observer=observe_prompt_attempt("grounding"),
             )
             if [item.index for item in review.cases] != list(range(len(cases))):
@@ -416,7 +418,7 @@ async def _generate_ai_automation(req: TestingAutomationRequest):
             review = await structured(
                 review_prompt,
                 TestabilityBlueprintGroundingReview,
-                max_tokens=4096,
+                max_tokens=settings.TESTABILITY_BLUEPRINT_MAX_OUTPUT_TOKENS,
                 timeout_seconds=settings.MODEL_TIMEOUT_SECONDS,
                 provider_schema=False,
                 prompt_attempt_observer=observe_prompt_attempt("blueprint_grounding"),
@@ -499,7 +501,7 @@ async def _generate_ai_automation(req: TestingAutomationRequest):
             generated_data["suggestions"] = generated_data.pop("condition_candidates")
         generated_data.update(
             {
-                "status": TestingAutomationStatus.SUCCESS,
+                "status": TestingCapabilityStatus.SUCCESS,
                 "degraded_mode": None,
                 "provider": model["provider"],
                 "model": model,
@@ -509,7 +511,7 @@ async def _generate_ai_automation(req: TestingAutomationRequest):
                 "created_at": model["created_at"],
             }
         )
-        result = TestingAutomationResult(**generated_data)
+        result = TestingCapabilityResult(**generated_data)
     except Exception as error:
         error_message = str(error)
         output_invalid = type(error).__name__ in {
@@ -527,23 +529,23 @@ async def _generate_ai_automation(req: TestingAutomationRequest):
             else "AI_OUTPUT_INVALID" if output_invalid else "AI_PROVIDER_UNAVAILABLE"
         )
         logger.warning(
-            "AI automation result rejected capability={} error_type={} error_code={}",
+            "AI capability result rejected capability={} error_type={} error_code={}",
             req.capability,
             type(error).__name__,
             failure_code,
         )
         degraded_mode = (
-            TestingAutomationDegradedMode.OUTPUT
+            TestingAIDegradedMode.OUTPUT
             if output_invalid
-            else TestingAutomationDegradedMode.PROVIDER
+            else TestingAIDegradedMode.PROVIDER
         )
         provider = model["provider"] if output_invalid else "unavailable"
         answer = (
-            "Đầu ra của mô hình không đáp ứng hợp đồng dữ liệu yêu cầu"
+            'Đầu ra được tạo không đáp ứng hợp đồng dữ liệu yêu cầu.'
             if output_invalid
-            else "Chưa thể tạo kết quả có căn cứ vì dịch vụ AI hiện không khả dụng"
+            else 'Chưa thể tạo kết quả có căn cứ vì dịch vụ AI hiện không khả dụng.'
         )
-        result = TestingAutomationResult(
+        result = TestingCapabilityResult(
             capability=req.capability,
             suggestions=[],
             findings=unsupported_details
@@ -557,7 +559,7 @@ async def _generate_ai_automation(req: TestingAutomationRequest):
             evidence_refs=evidence_reference_ids(evidence),
             confidence=0,
             warnings=[failure_code, "MANUAL_REVIEW_REQUIRED"],
-            status=TestingAutomationStatus.DEGRADED,
+            status=TestingCapabilityStatus.DEGRADED,
             degraded_mode=degraded_mode,
             provider=provider,
             model={**model, "provider": provider},
@@ -592,7 +594,7 @@ async def _generate_ai_automation(req: TestingAutomationRequest):
         "candidate_count": len(result.suggestions) + len(result.new_test_candidates),
         "confidence": result.confidence,
         "degraded_flags": (
-            result.warnings if result.status == TestingAutomationStatus.DEGRADED else []
+            result.warnings if result.status == TestingCapabilityStatus.DEGRADED else []
         ),
         "hidden_reasoning_stored": False,
     }

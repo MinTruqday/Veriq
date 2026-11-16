@@ -17,7 +17,7 @@ class DeadLetterRecoveryAudit(BaseModel):
     requested_by: str = Field(min_length=1, max_length=200)
     payload_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     origin_queue: Optional[str] = Field(default=None, max_length=200)
-    identity_type: Optional[Literal["event_id", "automation_run_id"]] = None
+    identity_type: Optional[Literal["event_id", "ai_run_id"]] = None
     identity_sha256: Optional[str] = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     redrive_count: int = Field(ge=0, strict=True)
     source_delivery_attempt: Optional[int] = Field(default=None, ge=0, strict=True)

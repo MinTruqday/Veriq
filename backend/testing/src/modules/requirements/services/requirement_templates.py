@@ -5,19 +5,23 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
 
-from src.core.ai_automation import (
+from src.core.ai_capabilities import (
     ai_contract_metadata,
-    request_ai_automation,
-    require_document_ingestion_event,
+    request_ai_capability,
+    require_user_requested_document_ingestion,
 )
 from src.core.common import audit, get_project, new_id, now, plain_text
 from src.modules.requirements.services.requirement_documents import require_document_access
 from src.modules.requirements.services.requirement_import import api_operation_identifiers
-from src.modules.requirements.services.requirement_import_workflow import create_requirement_preview_from_candidates
+from src.modules.requirements.services.requirement_import_workflow import (
+    authorize_requirement_import_job,
+    create_requirement_preview_from_candidates,
+)
 from src.modules.requirements.services.requirement_indexing import validate_requirement_api_operations, validate_requirement_sources
 from src.modules.requirements.services.requirement_records import validate_requirement_custom_values
 from src.modules.requirements.services.requirement_workflow import candidate_quality_issues, serialized_content, text_doc
 from src.repositories.requirement_document import requirement_document_repository
+from src.repositories.requirement_import import requirement_import_repository
 from src.repositories.requirement_template import requirement_template_repository
 from src.schemas.contracts.requirements import RequirementCreate, RequirementTemplateCreate
 
@@ -584,6 +588,8 @@ async def preview_template(project_id, template_id, user):
     if (template.get("synthesis") or {}).get("conflicts"):
         raise HTTPException(status_code=409, detail={"code": "TEMPLATE_CONFLICT_REQUIRES_REVIEW"})
     candidates = []
+    source_document_ids = set()
+    source_content_hashes = set()
     for item in template["requirements"]:
         requirement = RequirementCreate(**item)
         await validate_requirement_custom_values(project_id, requirement)
@@ -593,6 +599,12 @@ async def preview_template(project_id, template_id, user):
             {key: value for key, value in reference.items() if key != "source_quote"}
             for reference in requirement.source_refs
         ]
+        for reference in source_refs:
+            document_id = reference.get("requirement_document_id")
+            if document_id:
+                source_document_ids.add(str(document_id))
+                if reference.get("content_hash"):
+                    source_content_hashes.add(str(reference["content_hash"]))
         source_refs.append({"template_id": template_id, "template_version": template["version"]})
         candidate = requirement.model_dump()
         candidate["source_refs"] = source_refs
@@ -600,7 +612,48 @@ async def preview_template(project_id, template_id, user):
         if "REQUIREMENT_CONTENT_MISSING" in candidate["quality_issues"]:
             raise HTTPException(status_code=422, detail={"code": "TEMPLATE_REQUIREMENT_INCOMPLETE"})
         candidates.append(candidate)
-    return await create_requirement_preview_from_candidates(project_id, template["name"], candidates, user, template_id=template_id, template_version=template["version"], template_public_view=template.get("project_id") != project_id)
+    source_document_id = None
+    source_content_hash = None
+    if getattr(user, "_ai_capability_run_id", None):
+        source_document_id, _, source_hash = require_user_requested_document_ingestion(
+            user, source_document_ids
+        )
+        source_document = await requirement_document_repository.find(
+            source_document_id, project_id
+        )
+        if (
+            not source_document
+            or str(source_document.get("content_hash") or "") != source_hash
+            or source_document.get("ai_enabled") is not True
+        ):
+            raise HTTPException(status_code=409, detail={"code": "DOCUMENT_EVENT_SOURCE_CHANGED"})
+        source_content_hash = str(source_document.get("content_hash") or "")
+        existing_source_job = await requirement_import_repository.find_by_source_document(
+            source_document_id
+        )
+        if existing_source_job:
+            if (
+                existing_source_job.get("project_id") != project_id
+                or existing_source_job.get("source_content_hash") != source_content_hash
+                or existing_source_job.get("status") not in {"PREVIEW_READY", "CONFIRMED"}
+            ):
+                raise HTTPException(status_code=409, detail={"code": "IMPORT_SOURCE_CHANGED"})
+            await authorize_requirement_import_job(existing_source_job, user)
+            return existing_source_job
+    elif len(source_document_ids) == 1 and len(source_content_hashes) <= 1:
+        source_document_id = next(iter(source_document_ids))
+        source_content_hash = next(iter(source_content_hashes), None)
+    return await create_requirement_preview_from_candidates(
+        project_id,
+        template["name"],
+        candidates,
+        user,
+        template_id=template_id,
+        template_version=template["version"],
+        template_public_view=template.get("project_id") != project_id,
+        source_document_id=source_document_id,
+        source_content_hash=source_content_hash,
+    )
 
 
 async def review_template(project_id, template_id, user):
@@ -610,8 +663,8 @@ async def review_template(project_id, template_id, user):
         raise HTTPException(status_code=404, detail={"code": "TEMPLATE_NOT_FOUND"})
     document_ids = await validate_template_ai_sources(project_id, template, user)
     documents = await validate_template_documents(project_id, sorted(document_ids), user, ai_required=True)
-    if getattr(user, "_ai_automation_run_id", None):
-        triggering_document_id, triggering_revision = require_document_ingestion_event(
+    if getattr(user, "_ai_capability_run_id", None):
+        triggering_document_id, _, triggering_source_hash = require_user_requested_document_ingestion(
             user, document_ids
         )
         triggering_document = next(
@@ -620,7 +673,7 @@ async def review_template(project_id, template_id, user):
         )
         if (
             triggering_document is None
-            or int(triggering_document.get("revision") or 0) != triggering_revision
+            or str(triggering_document.get("content_hash") or "") != triggering_source_hash
         ):
             raise HTTPException(status_code=409, detail={"code": "DOCUMENT_EVENT_SOURCE_CHANGED"})
     template_evidence = []
@@ -661,7 +714,7 @@ async def review_template(project_id, template_id, user):
     findings = []
     results = []
     for batch in batches:
-        result = await request_ai_automation(
+        result = await request_ai_capability(
             "requirement_template_review",
             project_id,
             "",
@@ -708,9 +761,9 @@ async def synthesize_template(project_id, payload, user):
     await get_project(project_id, user, "requirement.create")
     documents = await validate_template_documents(project_id, payload.source_document_ids, user, ai_required=True)
     triggering_document_id = None
-    triggering_revision = None
-    if getattr(user, "_ai_automation_run_id", None):
-        triggering_document_id, triggering_revision = require_document_ingestion_event(
+    triggering_source_hash = None
+    if getattr(user, "_ai_capability_run_id", None):
+        triggering_document_id, _, triggering_source_hash = require_user_requested_document_ingestion(
             user, payload.source_document_ids
         )
         triggering_document = next(
@@ -719,7 +772,7 @@ async def synthesize_template(project_id, payload, user):
         )
         if (
             triggering_document is None
-            or int(triggering_document.get("revision") or 0) != triggering_revision
+            or str(triggering_document.get("content_hash") or "") != triggering_source_hash
         ):
             raise HTTPException(status_code=409, detail={"code": "DOCUMENT_EVENT_SOURCE_CHANGED"})
     templates = [await visible_template(item, project_id, user) for item in payload.source_template_ids]
@@ -759,7 +812,7 @@ async def synthesize_template(project_id, payload, user):
         )
         if (
             triggering_document is None
-            or int(triggering_document.get("revision") or 0) != triggering_revision
+            or str(triggering_document.get("content_hash") or "") != triggering_source_hash
         ):
             raise HTTPException(status_code=409, detail={"code": "DOCUMENT_EVENT_SOURCE_CHANGED"})
     evidence = []
@@ -789,7 +842,7 @@ async def synthesize_template(project_id, payload, user):
         raise HTTPException(status_code=422, detail={"code": "TEMPLATE_SOURCE_EMPTY"})
     results = []
     for start in range(0, len(evidence), 8):
-        result = await request_ai_automation(
+        result = await request_ai_capability(
             "requirement_template_synthesis",
             project_id,
             payload.instruction or "",

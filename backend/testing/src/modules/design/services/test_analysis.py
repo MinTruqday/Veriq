@@ -13,10 +13,10 @@ from src.core.auth import (
     responsibility_allows,
     roles_for_membership,
 )
-from src.clients.ai_automation import ai_automation_client
+from src.clients.ai_capabilities import ai_capability_client
 from src.core.common import audit, get_project, new_id, next_key, now, page_payload
 from src.core.database import database
-from src.core.ai_automation import ai_contract_metadata, request_ai_automation
+from src.core.ai_capabilities import ai_contract_metadata, request_ai_capability
 from src.core.human_decisions import require_independent_review
 from src.modules.design.services.test_analysis_basis import (
     deterministic_testability_findings,
@@ -180,7 +180,7 @@ def _bounded_blueprint_context(blueprint):
     return context
 
 
-def _automation_instruction(value):
+def _blueprint_instruction(value):
     serialized = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
     if len(serialized) > 5000:
         raise HTTPException(
@@ -198,10 +198,10 @@ def _blueprint_digest(blueprint):
 
 
 async def _run_blueprint_review(project_id, blueprint, evidence, source_text_by_ref):
-    review_result = await request_ai_automation(
+    review_result = await request_ai_capability(
         "testability_blueprint_self_review",
         project_id,
-        _automation_instruction({"blueprint": _bounded_blueprint_context(blueprint)}),
+        _blueprint_instruction({"blueprint": _bounded_blueprint_context(blueprint)}),
         evidence,
     )
     if review_result.get("status") != "SUCCESS" or review_result.get("degraded_mode"):
@@ -237,7 +237,7 @@ async def _run_blueprint_review(project_id, blueprint, evidence, source_text_by_
 
 
 async def _compile_user_blueprint(project_id, evidence, source_text_by_ref, instruction=""):
-    result = await request_ai_automation(
+    result = await request_ai_capability(
         "testability_blueprint_compilation", project_id, instruction, evidence
     )
     return _validate_blueprint_output(result, source_text_by_ref), result
@@ -259,8 +259,8 @@ async def list_ai_analysis_results(project_id, user, limit=100, idempotency_key=
     if idempotency_key:
         await get_project(project_id, user, "testanalysis.run_ai")
         if (
-            not getattr(user, "_ai_automation_run_id", "")
-            or getattr(user, "_ai_automation_trigger", "") != "REQUIREMENT_CHANGED"
+            not getattr(user, "_ai_capability_run_id", "")
+            or getattr(user, "_ai_capability_trigger", "") != "REQUIREMENT_CHANGED"
         ):
             raise HTTPException(403, detail={"code": "VERIFIED_REQUIREMENT_EVENT_REQUIRED"})
         result = await test_analysis_repository.find_ai_result(project_id, idempotency_key)
@@ -549,13 +549,13 @@ async def run_ai_analysis(project_id, payload, user):
     
     await get_project(project_id, user, 'testanalysis.run_ai')
     event_scoped = bool(payload.source_event_id or payload.source_event_revision)
-    automation_trigger = str(getattr(user, "_ai_automation_trigger", "") or "")
+    event_trigger = str(getattr(user, "_ai_capability_trigger", "") or "")
     source_version_id = None
     if event_scoped and (
         not payload.source_event_id
         or payload.source_event_revision is None
-        or not getattr(user, "_ai_automation_run_id", "")
-        or automation_trigger != "REQUIREMENT_CHANGED"
+        or not getattr(user, "_ai_capability_run_id", "")
+        or event_trigger != "REQUIREMENT_CHANGED"
         or len(payload.basis_refs) != 1
         or payload.basis_refs[0].artifact_type != "REQUIREMENT_VERSION"
     ):
@@ -668,7 +668,7 @@ async def run_ai_analysis(project_id, payload, user):
                     if item.get("suggested_change")
                 )
                 if suggestions:
-                    refinement_instruction = _automation_instruction(
+                    refinement_instruction = _blueprint_instruction(
                         {
                             "task": "Revise the draft blueprint using only these review suggestions and the cited source evidence. Keep supported content, do not invent behavior, and preserve source citations.",
                             "current_blueprint": _bounded_blueprint_context(testability_blueprint),
@@ -681,7 +681,7 @@ async def run_ai_analysis(project_id, payload, user):
                     blueprint_contracts["refinement"] = ai_contract_metadata(refinement_result)
             if blueprint_contracts.get("benchmark_blueprint_hash") != _blueprint_digest(testability_blueprint):
                 try:
-                    benchmark = await ai_automation_client.evaluate_blueprint_against_reference(
+                    benchmark = await ai_capability_client.evaluate_blueprint_against_reference(
                         project_id,
                         user.id,
                         [
@@ -696,6 +696,7 @@ async def run_ai_analysis(project_id, payload, user):
                             if item.get("text")
                         ],
                         testability_blueprint,
+                        getattr(user, "locale", None) or "auto",
                     )
                 except Exception:
                     benchmark = {
@@ -717,9 +718,9 @@ async def run_ai_analysis(project_id, payload, user):
     instruction = (
         json.dumps(generation_instruction, ensure_ascii=False)
         if testability_blueprint is None
-        else _automation_instruction(generation_instruction)
+        else _blueprint_instruction(generation_instruction)
     )
-    ai_result = await request_ai_automation(
+    ai_result = await request_ai_capability(
         "test_condition_generation", project_id, instruction, evidence
     )
     if ai_result.get("status") != "SUCCESS" or ai_result.get("degraded_mode"):

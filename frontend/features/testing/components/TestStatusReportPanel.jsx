@@ -102,11 +102,7 @@ export default function TestStatusReportPanel({ project }) {
   const generateNarrative = async () => {
     if (aiInFlight.current || !selected) return;
     const report = selected;
-    const outputLanguage = preferredSummaryLocale(
-      user?.locale,
-      project.locale,
-      typeof navigator === "undefined" ? "" : navigator.language,
-    );
+    const outputLanguage = preferredSummaryLocale(user?.locale, project.locale);
     const key = `${report._id}:${report.revision}:${outputLanguage}`;
     if (aiOperation.current?.key !== key)
       aiOperation.current = {

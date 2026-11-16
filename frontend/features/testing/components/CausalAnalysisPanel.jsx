@@ -582,7 +582,7 @@ export default function CausalAnalysisPanel({ project }) {
           </div>
           {selected.source_event_id && (
             <section className="grid gap-1 rounded-control border border-border bg-surface-quiet p-3 text-sm">
-              <p className="font-medium text-ink">Nguồn tự động hóa</p>
+              <p className="font-medium text-ink">Sự kiện nguồn</p>
               <p className="text-ink-muted">
                 {EVENT_TRIGGER_LABELS[selected.source_event_trigger] || "Sự kiện dự án"} · phiên bản
                 lỗi {selected.source_event_revision}
@@ -590,8 +590,8 @@ export default function CausalAnalysisPanel({ project }) {
               <details className="text-xs text-ink-muted">
                 <summary className="cursor-pointer">Thông tin hỗ trợ</summary>
                 <p className="mt-1 break-all">Mã sự kiện: {selected.source_event_id}</p>
-                {selected.source_automation_run_id && (
-                  <p className="break-all">Mã tham chiếu: {selected.source_automation_run_id}</p>
+                {selected.source_ai_run_id && (
+                  <p className="break-all">Mã lượt xử lý AI: {selected.source_ai_run_id}</p>
                 )}
               </details>
             </section>
@@ -634,8 +634,7 @@ export default function CausalAnalysisPanel({ project }) {
           )}
           {selected.status === "DRAFT" && !hypothesisResult && (
             <p className="text-sm text-ink-muted" role="status">
-              Chưa có kết quả giả thuyết tự động cho phân tích này. Kết quả sẽ xuất hiện nếu một
-              lượt AI theo sự kiện tạo được.
+              Chưa có đề xuất AI cho phân tích này. Bạn có thể tạo một lượt phân tích khi cần.
             </p>
           )}
           <PreventiveActionTable

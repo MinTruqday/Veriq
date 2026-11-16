@@ -2,6 +2,7 @@ import json
 
 from langchain_core.runnables import RunnableConfig
 
+from src.core.security.guardrails import guardrails_engine
 from src.knowledge.evidence import package
 from src.memory.long_term import long_term_memory
 from src.runtime.limits import limits
@@ -10,7 +11,7 @@ from src.services.retrieval import retriever
 
 
 async def hybrid_evidence(
-    project_id, query, requester_id, token=None, limit=None, automation_run_id=None
+    project_id, query, requester_id, token=None, limit=None, ai_run_id=None
 ):
     maximum = min(limit or limits.evidence_items, limits.evidence_items)
     items = []
@@ -25,7 +26,7 @@ async def hybrid_evidence(
                     configurable={
                         "token": token,
                         "project_id": project_id,
-                        "automation_run_id": automation_run_id,
+                        "ai_run_id": ai_run_id,
                     }
                 ),
             )
@@ -104,8 +105,20 @@ async def hybrid_evidence(
         degraded.append("KNOWLEDGE_UNAVAILABLE")
     try:
         for memory in await long_term_memory.list(project_id, requester_id, maximum):
-            text = str(memory.get("proposal") or memory.get("objective") or "")
-            if query.lower() in text.lower():
+            proposal = memory.get("proposal")
+            text = (
+                str(proposal.get("summary") or "")
+                if isinstance(proposal, dict)
+                else str(proposal or "")
+            ).strip()
+            objective = str(memory.get("objective") or "")
+            if text and (
+                query.lower() in text.lower()
+                or query.lower() in objective.lower()
+            ):
+                if not guardrails_engine.inspect_input(text).get("is_safe", False):
+                    degraded.append("MEMORY_SENSITIVE_CONTENT_SUPPRESSED")
+                    continue
                 items.append(
                     EvidenceItem(
                         artifact_type="LongTermMemory",

@@ -13,7 +13,7 @@ from src.core.configuration import settings
 from src.schemas.contracts.common import CurrentUser, SystemRole
 from src.schemas.project_access import ProjectAccessControl, canonical_permission
 
-ai_automation_context = ContextVar("ai_automation_context", default=None)
+ai_capability_context = ContextVar("ai_capability_context", default=None)
 _access_policy_context = ContextVar("project_access_policy", default=None)
 
 
@@ -140,14 +140,15 @@ def roles_for_membership(membership: dict | None) -> set[str]:
     if not membership:
         return set()
     primary = membership.get("project_role")
-    if primary:
-        normalized = str(primary).strip().upper()
-        return {normalized} if normalized else set()
     roles = membership.get("project_roles")
     if not isinstance(roles, list):
         roles = []
-    legacy_roles = {str(role).strip().upper() for role in roles if str(role).strip()}
-    return legacy_roles if len(legacy_roles) == 1 else set()
+    values = [primary, *roles]
+    return {
+        str(role).strip().upper()
+        for role in values
+        if role is not None and str(role).strip()
+    }
 
 
 def permission_explicitly_denied(permission, roles, settings_value=None):
@@ -195,10 +196,10 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/xac-thuc/dang-nhap", auto_error=
 async def get_current_user(
     request: Request,
     token: str | None = Depends(oauth2_scheme),
-    ai_automation_run_id: str | None = Header(default=None, alias="X-AI-Automation-Run"),
+    ai_capability_run_id: str | None = Header(default=None, alias="X-AI-Run-ID"),
     x_internal_token: str | None = Header(default=None, alias="X-Internal-Token"),
 ):
-    ai_automation_context.set(None)
+    ai_capability_context.set(None)
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail={"code": "AUTH_REQUIRED"}
@@ -219,21 +220,21 @@ async def get_current_user(
             _id=str(user_id), email=str(email), system_role=SystemRole(str(role_value).upper())
         )
         user._access_token = token
-        token_run_id = str(payload.get("ai_automation_run_id") or "")
+        token_run_id = str(payload.get("ai_capability_run_id") or "")
         if token_run_id:
             if (
-                not ai_automation_run_id
-                or ai_automation_run_id != token_run_id
+                not ai_capability_run_id
+                or ai_capability_run_id != token_run_id
                 or not x_internal_token
                 or not hmac.compare_digest(x_internal_token, settings.SECRET_KEY)
             ):
                 raise HTTPException(
-                    status_code=403, detail={"code": "AI_AUTOMATION_IDENTITY_INVALID"}
+                    status_code=403, detail={"code": "AI_RUN_IDENTITY_INVALID"}
                 )
             try:
-                from src.clients.ai_automation import automation_run_is_active
+                from src.clients.ai_capabilities import ai_run_is_active
 
-                worker_revision = payload.get("ai_automation_worker_revision")
+                worker_revision = payload.get("ai_capability_worker_revision")
                 if worker_revision is not None and (
                     isinstance(worker_revision, bool)
                     or not isinstance(worker_revision, int)
@@ -241,31 +242,31 @@ async def get_current_user(
                 ):
                     raise HTTPException(
                         status_code=403,
-                        detail={"code": "AI_AUTOMATION_WORKER_REVISION_INVALID"},
+                        detail={"code": "AI_RUN_WORKER_REVISION_INVALID"},
                     )
                 if worker_revision is None and request.method not in {"GET", "HEAD"}:
                     raise HTTPException(
                         status_code=403,
-                        detail={"code": "AI_AUTOMATION_WORKER_FENCE_REQUIRED"},
+                        detail={"code": "AI_RUN_WORKER_FENCE_REQUIRED"},
                     )
-                run_is_active = await automation_run_is_active(
+                run_is_active = await ai_run_is_active(
                     token_run_id, worker_revision
                 )
             except HTTPException:
                 raise
             except Exception as error:
                 raise HTTPException(
-                    status_code=503, detail={"code": "AI_AUTOMATION_STATUS_UNAVAILABLE"}
+                    status_code=503, detail={"code": "AI_RUN_STATUS_UNAVAILABLE"}
                 ) from error
             if not run_is_active:
                 raise HTTPException(
-                    status_code=409, detail={"code": "AI_AUTOMATION_RUN_NOT_ACTIVE"}
+                    status_code=409, detail={"code": "AI_RUN_NOT_ACTIVE"}
                 )
             from uuid import uuid4
 
-            from src.repositories.ai_automation_access import ai_automation_access_repository
+            from src.repositories.ai_run_access import ai_run_access_repository
 
-            source_document_ids = payload.get("ai_automation_source_document_ids")
+            source_document_ids = payload.get("ai_capability_source_document_ids")
             if (
                 not isinstance(source_document_ids, list)
                 or len(source_document_ids) > 100
@@ -276,7 +277,23 @@ async def get_current_user(
                 or len(source_document_ids) != len(set(source_document_ids))
             ):
                 raise HTTPException(
-                    status_code=403, detail={"code": "AI_AUTOMATION_SOURCE_SCOPE_INVALID"}
+                    status_code=403, detail={"code": "AI_RUN_SOURCE_SCOPE_INVALID"}
+                )
+            source_document_hash = str(
+                payload.get("ai_capability_source_document_hash") or ""
+            )
+            try:
+                canonical_source_document_hash = bytes.fromhex(
+                    source_document_hash
+                ).hex()
+            except ValueError:
+                canonical_source_document_hash = ""
+            if source_document_ids and (
+                len(source_document_hash) != 64
+                or canonical_source_document_hash != source_document_hash
+            ):
+                raise HTTPException(
+                    status_code=403, detail={"code": "AI_RUN_SOURCE_HASH_INVALID"}
                 )
             lease_scopes = [f"run:{token_run_id}"] + [
                 f"source:{document_id}" for document_id in source_document_ids
@@ -285,14 +302,14 @@ async def get_current_user(
             try:
                 for scope_key in lease_scopes:
                     lease_id = str(uuid4())
-                    admitted = await ai_automation_access_repository.acquire(scope_key, lease_id)
+                    admitted = await ai_run_access_repository.acquire(scope_key, lease_id)
                     if not admitted:
                         for acquired_scope, acquired_id in acquired_leases:
-                            await ai_automation_access_repository.release(
+                            await ai_run_access_repository.release(
                                 acquired_scope, acquired_id
                             )
                         raise HTTPException(
-                            status_code=409, detail={"code": "AI_AUTOMATION_RUN_ACCESS_REVOKED"}
+                            status_code=409, detail={"code": "AI_RUN_ACCESS_REVOKED"}
                         )
                     acquired_leases.append((scope_key, lease_id))
             except Exception as error:
@@ -300,24 +317,27 @@ async def get_current_user(
                     raise
                 for acquired_scope, acquired_id in acquired_leases:
                     try:
-                        await ai_automation_access_repository.release(acquired_scope, acquired_id)
+                        await ai_run_access_repository.release(acquired_scope, acquired_id)
                     except Exception:
                         pass
                 raise HTTPException(
-                    status_code=503, detail={"code": "AI_AUTOMATION_ACCESS_LEASE_UNAVAILABLE"}
+                    status_code=503, detail={"code": "AI_RUN_ACCESS_LEASE_UNAVAILABLE"}
                 ) from error
-            request.state.ai_automation_leases = acquired_leases
-            user._ai_automation_run_id = token_run_id
-            user._ai_automation_trigger = str(payload.get("ai_automation_trigger") or "")
-            user._ai_automation_source_event_id = str(
-                payload.get("ai_automation_source_event_id") or ""
+            request.state.ai_capability_leases = acquired_leases
+            user._ai_capability_source_document_ids = list(source_document_ids)
+            user._ai_capability_source_document_hash = source_document_hash
+            user._ai_capability_run_id = token_run_id
+            user._ai_capability_intent = str(payload.get("ai_capability_intent") or "")
+            user._ai_capability_trigger = str(payload.get("ai_capability_trigger") or "")
+            user._ai_capability_source_event_id = str(
+                payload.get("ai_capability_source_event_id") or ""
             )
-            user._ai_automation_initiator_id = str(payload.get("ai_automation_initiator_id") or "")
-            user._ai_automation_definition_id = str(
-                payload.get("ai_automation_definition_id") or ""
+            user._ai_capability_initiator_id = str(payload.get("ai_capability_initiator_id") or "")
+            user._ai_capability_definition_id = str(
+                payload.get("ai_capability_definition_id") or ""
             )
-            publication_project_id = str(payload.get("ai_automation_publication_project_id") or "")
-            publication_permissions = payload.get("ai_automation_publication_permissions")
+            publication_project_id = str(payload.get("ai_capability_publication_project_id") or "")
+            publication_permissions = payload.get("ai_capability_publication_permissions")
             allowed_publication_permissions = {
                 "requirement.submit_review",
                 "requirement.approve",
@@ -331,18 +351,19 @@ async def get_current_user(
                 "testadequacy.execution_feedback.record",
             }
             if publication_project_id and isinstance(publication_permissions, list):
-                user._ai_automation_publication_permissions = sorted(
+                user._ai_capability_publication_permissions = sorted(
                     set(map(str, publication_permissions)) & allowed_publication_permissions
                 )
-            ai_automation_context.set(
+            ai_capability_context.set(
                 {
                     "run_id": token_run_id,
-                    "source_event_id": user._ai_automation_source_event_id,
-                    "initiator_id": user._ai_automation_initiator_id,
-                    "definition_id": user._ai_automation_definition_id,
+                    "intent": user._ai_capability_intent,
+                    "source_event_id": user._ai_capability_source_event_id,
+                    "initiator_id": user._ai_capability_initiator_id,
+                    "definition_id": user._ai_capability_definition_id,
                     "principal_id": user.id,
                     "publication_project_id": publication_project_id,
-                    "publication_permissions": user._ai_automation_publication_permissions,
+                    "publication_permissions": user._ai_capability_publication_permissions,
                 }
             )
         return user

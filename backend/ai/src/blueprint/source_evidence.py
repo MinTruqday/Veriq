@@ -2,7 +2,7 @@ import json
 from collections import OrderedDict
 
 from src.schemas.inference_requests import TestingEvidence
-from src.services.automation_provenance import source_quote_spans
+from src.services.source_provenance import source_quote_spans
 
 
 def verified_document_lineage(path, artifact_id, allowed_document_ids):

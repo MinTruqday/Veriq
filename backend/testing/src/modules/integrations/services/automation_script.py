@@ -8,7 +8,7 @@ from pymongo.errors import DuplicateKeyError
 from src.core.common import audit, get_project, get_project_entity, new_id, now, optimistic_patch
 from src.core.database import database
 from src.repositories.execution_asset import execution_asset_repository
-from src.core.ai_automation import ai_contract_metadata, request_ai_automation
+from src.core.ai_capabilities import ai_contract_metadata, request_ai_capability
 
 
 def _create_request_hash(payload, version_id):
@@ -117,8 +117,8 @@ class AutomationScriptService:
     async def generate(project_id, payload, user):
         await get_project(project_id, user, 'ai.generate_automation_script')
         if (
-            not getattr(user, "_ai_automation_run_id", "")
-            or getattr(user, "_ai_automation_trigger", "") != "TEST_CASE_APPROVED"
+            not getattr(user, "_ai_capability_run_id", "")
+            or getattr(user, "_ai_capability_trigger", "") != "TEST_CASE_APPROVED"
         ):
             raise HTTPException(
                 403,
@@ -183,7 +183,7 @@ class AutomationScriptService:
                 )[: int(4000)],
             }
         ]
-        ai_result = await request_ai_automation(
+        ai_result = await request_ai_capability(
             'automation_script_generation',
             project_id,
             json.dumps(

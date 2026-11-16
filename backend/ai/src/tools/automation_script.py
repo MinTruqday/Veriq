@@ -6,7 +6,7 @@ from pydantic import Field
 from typing import Annotated
 
 from src.tools.registry import with_tool_access
-from src.tools.testing_api import AutomationOperationError, require_operation
+from src.tools.testing_api import ToolOperationError, require_operation
 
 
 @with_tool_access(("execution", "analysis"), "MUTATE", "ai.generate_automation_script")
@@ -19,9 +19,9 @@ async def generate_automation_script_after_test_case_approval(
 ) -> str:
     """Generate an automation script proposal for an approved Test Case version."""
     configurable = (config or {}).get("configurable", {})
-    if not configurable.get("automation_run_id"):
+    if not configurable.get("ai_run_id"):
         return json.dumps(
-            {"status": "automation_blocked", "reason_code": "AUTOMATION_RUN_REQUIRED"}
+            {"status": "blocked", "reason_code": "AI_RUN_REQUIRED"}
         )
 
     evidence = next(
@@ -42,18 +42,18 @@ async def generate_automation_script_after_test_case_approval(
     if not evidence or event_key != expected_event_key:
         return json.dumps(
             {
-                "status": "automation_blocked",
+                "status": "blocked",
                 "reason_code": "VERIFIED_TEST_CASE_APPROVAL_EVENT_REQUIRED",
             }
         )
 
     version = await require_operation("GET", f"/phien-ban-ca-kiem-thu/{version_id}", config)
     if version.get("_id") != version_id or version.get("project_id") != project_id:
-        raise AutomationOperationError("TEST_CASE_VERSION_PROJECT_SCOPE_INVALID")
+        raise ToolOperationError("TEST_CASE_VERSION_PROJECT_SCOPE_INVALID")
     if version.get("status") != "ACTIVE":
         return json.dumps(
             {
-                "status": "automation_blocked",
+                "status": "blocked",
                 "reason_code": "TEST_CASE_VERSION_NOT_ACTIVE",
                 "version_id": version_id,
             }
@@ -75,7 +75,7 @@ async def generate_automation_script_after_test_case_approval(
 
     project = await require_operation("GET", f"/du-an/{project_id}", config)
     if project.get("_id") != project_id:
-        raise AutomationOperationError("AUTOMATION_PROJECT_SCOPE_INVALID")
+        raise ToolOperationError("AUTOMATION_PROJECT_SCOPE_INVALID")
     framework = project.get("automation_framework")
     language = project.get("automation_language")
     compatible = {
@@ -87,7 +87,7 @@ async def generate_automation_script_after_test_case_approval(
         return json.dumps(
             {
                 "status": "completed",
-                "reason_code": "PROJECT_AUTOMATION_RUNTIME_NOT_CONFIGURED",
+                "reason_code": "PROJECT_AI_RUNTIME_NOT_CONFIGURED",
                 "verification": {
                     "status": "COMPLETED",
                     "project_id": project_id,
@@ -117,7 +117,7 @@ async def generate_automation_script_after_test_case_approval(
     )
     draft_id = str(generated.get("_id") or "")
     if not draft_id:
-        raise AutomationOperationError("AUTOMATION_SCRIPT_DRAFT_CREATE_FAILED")
+        raise ToolOperationError("AUTOMATION_SCRIPT_DRAFT_CREATE_FAILED")
     readback = await require_operation(
         "GET", f"/ban-nhap-kich-ban-tu-dong/{draft_id}", config
     )
@@ -130,7 +130,7 @@ async def generate_automation_script_after_test_case_approval(
         or not str(readback.get("source") or "").strip()
         or readback.get("idempotency_key") != idempotency_key
     ):
-        raise AutomationOperationError("AUTOMATION_SCRIPT_READBACK_INVALID")
+        raise ToolOperationError("AUTOMATION_SCRIPT_READBACK_INVALID")
     return json.dumps(
         {
             "status": "completed",

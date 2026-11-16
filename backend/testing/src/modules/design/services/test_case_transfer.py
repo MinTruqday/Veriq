@@ -338,8 +338,8 @@ async def confirm_test_import(
     if not selected:
         if (
             not job.get("source_api_operation_id")
-            or not getattr(user, "_ai_automation_run_id", None)
-            or getattr(user, "_ai_automation_trigger", None) != "API_OPERATION_CONFIRMED"
+            or not getattr(user, "_ai_capability_run_id", None)
+            or getattr(user, "_ai_capability_trigger", None) != "API_OPERATION_CONFIRMED"
         ):
             raise HTTPException(status_code=422, detail={"code": "TEST_IMPORT_SELECTION_REQUIRED"})
         safe_candidates = [
@@ -512,7 +512,7 @@ async def confirm_test_import(
                             if item.get("incomplete") or not item.get("draft")
                         ],
                     }
-                    if getattr(user, "_ai_automation_trigger", None)
+                    if getattr(user, "_ai_capability_trigger", None)
                     == "API_OPERATION_CONFIRMED"
                     else {}
                 ),

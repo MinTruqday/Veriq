@@ -6,13 +6,12 @@ import { RefreshCw } from "lucide-react";
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
 import {
   agentAuthorizationGuidance,
-  canResumeAgentRun,
+  canResumeAIRun,
   agentCheckpointView,
-  agentRunErrorMessage,
+  aiRunErrorMessage,
   latestAgentUncertainties,
   agentSourceExtractionGaps,
-  workflowForSelectedAgentRun,
-} from "../lib/agentRun.logic.mjs";
+} from "../lib/aiRun.logic.mjs";
 import { formatDate, messageOf, valueLabel } from "../lib/testing";
 import { preferredSummaryLocale } from "../lib/summaryLanguage";
 import { testingApi } from "../services/testing.service";
@@ -21,6 +20,60 @@ import ContentOriginBadge from "../../../shared/components/common/ContentOriginB
 import { useDateTimeOptions } from "../hooks/useDateTimeOptions";
 
 const activeStatuses = new Set(["QUEUED", "RUNNING"]);
+
+const documentWorkflowStageLabels = {
+  blueprint: "Blueprint yêu cầu",
+  test_plan: "Kế hoạch kiểm thử",
+  test_scenarios: "Kịch bản kiểm thử",
+  test_cases: "Ca kiểm thử",
+  test_run: "Thực thi kiểm thử",
+  test_report: "Báo cáo kiểm thử",
+  release: "Phát hành",
+};
+
+const documentWorkflowStatusLabels = {
+  COMPLETED: "Đã hoàn tất",
+  DRAFT_CREATED: "Đã tạo bản nháp",
+  PARTIAL_OR_BLOCKED: "Mới hoàn tất một phần hoặc đang bị chặn",
+  BLOCKED: "Đang bị chặn",
+  NOT_STARTED: "Chưa thực hiện",
+  IN_PROGRESS: "Đang thực hiện",
+  REQUIRES_REAL_EXECUTION: "Cần thực thi kiểm thử thực tế",
+  REQUIRES_EXECUTION_RESULTS: "Cần có kết quả thực thi",
+  REQUIRES_HUMAN_REVIEW_AND_APPROVAL: "Cần người dùng rà soát và phê duyệt",
+};
+
+const documentWorkflowAssessmentLabels = {
+  INDEPENDENT_REFERENCE: "Đánh giá bằng bộ tham chiếu độc lập",
+  SELF_REVIEW: "AI tự rà soát, không phải đánh giá độ chính xác độc lập",
+  NOT_AVAILABLE: "Chưa có bộ tham chiếu phù hợp để đánh giá",
+};
+
+function documentWorkflowResult(run) {
+  if (run?.intent !== "process_ingested_requirement_document") return null;
+  const observations = Array.isArray(run?.result?.observations) ? run.result.observations : [];
+  return (
+    observations
+      .filter(
+        (item) =>
+          item?.tool_name === "process_ingested_requirement_document" &&
+          item?.status === "COMPLETED" &&
+          item?.result?.workflow_stages &&
+          typeof item.result.workflow_stages === "object",
+      )
+      .map((item) => item.result)
+      .at(-1) || null
+  );
+}
+
+function documentWorkflowStageHref(projectId, stage) {
+  const base = `/du-an/${encodeURIComponent(projectId)}`;
+  if (stage === "test_plan") return `${base}/ke-hoach-kiem-thu`;
+  if (stage === "test_scenarios") return `${base}/ca-kiem-thu/kich-ban`;
+  if (stage === "test_cases") return `${base}/ca-kiem-thu`;
+  if (stage === "release") return `${base}/ban-phat-hanh`;
+  return "";
+}
 
 function agentOriginLabel(run) {
   const providedLabel = String(run?.trigger_label || run?.trigger_display_name || "").trim();
@@ -36,7 +89,10 @@ function agentOriginLabel(run) {
   return "Hoạt động AI trước đây";
 }
 
-function agentRunTitle(run) {
+function aiRunTitle(run) {
+  if (run?.intent === "process_ingested_requirement_document") {
+    return "Xử lý tài liệu yêu cầu";
+  }
   const internalCode = /\b[A-Z][A-Z0-9]*(?:_+[A-Z0-9]+)+\b/;
   const summary = [
     run?.display_name,
@@ -63,6 +119,10 @@ function sourceFactSummary(fact) {
     : `${sourceType} · Đoạn trích đã xác minh`;
 }
 
+function displayEvidenceQuote(quote) {
+  return String(quote || "").replace(/\\r\\n|\\n|\\r/g, "\n");
+}
+
 function sourceFactHref(projectId, fact) {
   const artifactId = fact?.artifact_id;
   if (!artifactId) return "";
@@ -73,6 +133,22 @@ function sourceFactHref(projectId, fact) {
     return `/du-an/${encodeURIComponent(projectId)}/ca-kiem-thu?case=${encodeURIComponent(artifactId)}`;
   }
   return "";
+}
+
+function evidenceReferencesInSummary(summary) {
+  const references = new Set();
+  const pattern = /\[([^\]]+)\]|\((?:Nguồn|Source)\s*:\s*([A-Z][A-Z0-9_-]*-[A-Za-z0-9_-]{8,})\)/gi;
+  let match;
+  while ((match = pattern.exec(String(summary || ""))) !== null) {
+    const values = match[1] ? match[1].split(",") : [match[2]];
+    values
+      .map((reference) => reference.trim())
+      .filter(Boolean)
+      .forEach((reference) => {
+        references.add(reference);
+      });
+  }
+  return references;
 }
 
 function proposalSummaryParts(summary, evidenceReferences) {
@@ -92,17 +168,47 @@ function proposalSummaryParts(summary, evidenceReferences) {
       });
   });
   const parts = [];
-  const citationPattern = /\[([^\]]+)\]/g;
+  const markerPattern =
+    /\[([^\]]+)\]|\((Nguồn|Source)\s*:\s*([A-Z][A-Z0-9_-]*-[A-Za-z0-9_-]{8,})\)/gi;
   let lastIndex = 0;
   let match;
-  while ((match = citationPattern.exec(String(summary || ""))) !== null) {
+  while ((match = markerPattern.exec(String(summary || ""))) !== null) {
+    if (match[2]) {
+      const language = match[2].toLocaleLowerCase() === "source" ? "en" : "vi";
+      const reference = match[3];
+      const number = referenceNumbers.get(reference);
+      const item = referenceEntries.get(reference);
+      if (match.index > lastIndex) parts.push(String(summary || "").slice(lastIndex, match.index));
+      if (!number || !item) {
+        parts.push(language === "en" ? "(Unverified source)" : "(Nguồn chưa đối chiếu)");
+      } else {
+        const href = sourceFactHref(item.projectId, item.fact);
+        const label = language === "en" ? `Source ${number}` : `Nguồn ${number}`;
+        const citation = href ? (
+          <Link
+            className="font-medium text-brand underline-offset-2 hover:underline"
+            href={href}
+            key={`inline-source-${match.index}`}
+          >
+            {label}
+          </Link>
+        ) : (
+          <span className="font-medium text-brand" key={`inline-source-${match.index}`}>
+            {label}
+          </span>
+        );
+        parts.push("(", citation, ")");
+      }
+      lastIndex = markerPattern.lastIndex;
+      continue;
+    }
     const references = match[1].split(",").map((reference) => reference.trim());
     const hasInternalReference = references.some((reference) => referenceNumbers.has(reference));
     const looksLikeInternalReference = references.some((reference) =>
       /^[A-Z0-9_-]{8,}$/.test(reference),
     );
     if (!hasInternalReference && !looksLikeInternalReference) continue;
-    if (match.index > lastIndex) parts.push(summary.slice(lastIndex, match.index));
+    if (match.index > lastIndex) parts.push(String(summary || "").slice(lastIndex, match.index));
     if (!hasInternalReference) {
       parts.push(
         <span className="text-ink-muted" key={`unresolved-${match.index}`}>
@@ -141,7 +247,7 @@ function proposalSummaryParts(summary, evidenceReferences) {
         </span>,
       );
     }
-    lastIndex = citationPattern.lastIndex;
+    lastIndex = markerPattern.lastIndex;
   }
   if (lastIndex < String(summary || "").length) parts.push(String(summary || "").slice(lastIndex));
   return parts.length ? parts : [String(summary || "")];
@@ -158,7 +264,7 @@ function isOlderRunSnapshot(incoming, current) {
   );
 }
 
-export default function AgentRunPanel({
+export default function AIRunPanel({
   project,
   compact = false,
   showPanelHeading = true,
@@ -173,12 +279,11 @@ export default function AgentRunPanel({
   const permissions = project.current_permissions || [];
   const permissionKey = permissions.join("|");
   const canReadProjectRuns = permissions.includes("proposal.read");
-  const canReadOwnAgentRuns = permissions.includes("automation.read");
+  const canReadOwnAIRuns = permissions.includes("requirement.read");
   const canViewRun = (item) => canReadProjectRuns || item?.requester_user_id === currentUserId;
   const [recentRuns, setRecentRuns] = useState([]);
   const [agentCapabilities, setAgentCapabilities] = useState([]);
   const [run, setRun] = useState(null);
-  const [workflow, setWorkflow] = useState(null);
   const [checkpoints, setCheckpoints] = useState([]);
   const [receipt, setReceipt] = useState(null);
   const [sourceFacts, setSourceFacts] = useState([]);
@@ -216,7 +321,6 @@ export default function AgentRunPanel({
     setRun(null);
     selectedRunIdRef.current = null;
     selectedRunSnapshotRef.current = null;
-    setWorkflow(null);
     setCheckpoints([]);
     setReceipt(null);
     setSourceFacts([]);
@@ -224,10 +328,10 @@ export default function AgentRunPanel({
     setClarificationAnswers({});
     setSubmittingClarification("");
     Promise.allSettled([
-      canReadProjectRuns || canReadOwnAgentRuns
-        ? testingApi.listAgentRuns(project._id)
+      canReadProjectRuns || canReadOwnAIRuns
+        ? testingApi.listAIRuns(project._id)
         : Promise.resolve([]),
-      testingApi.listAgentCapabilities(project._id),
+      testingApi.listAIRunCapabilities(project._id),
     ])
       .then((results) => {
         if (!active) return;
@@ -235,7 +339,11 @@ export default function AgentRunPanel({
         if (listRequestVersion === runListRequestVersion.current) {
           setRecentRuns(values[0]);
           const runListError = results[0].status === "rejected" ? messageOf(results[0].reason) : "";
-          onRunsStateChange?.({ runs: values[0], error: runListError, loading: false });
+          onRunsStateChange?.({
+            runs: values[0],
+            error: runListError,
+            loading: false,
+          });
         }
         setAgentCapabilities(values[1]);
         setError(
@@ -254,7 +362,7 @@ export default function AgentRunPanel({
       }
     };
   }, [
-    canReadOwnAgentRuns,
+    canReadOwnAIRuns,
     canReadProjectRuns,
     currentUserId,
     initialLoadAttempt,
@@ -264,11 +372,11 @@ export default function AgentRunPanel({
   ]);
 
   const refreshRuns = useCallback(async () => {
-    if (!canReadProjectRuns && !canReadOwnAgentRuns) return;
+    if (!canReadProjectRuns && !canReadOwnAIRuns) return;
     const requestVersion = ++runListRequestVersion.current;
     const selectedRunId = selectedRunIdRef.current;
     const selectionVersion = detailRequestVersion.current;
-    const items = await testingApi.listAgentRuns(project._id);
+    const items = await testingApi.listAIRuns(project._id);
     if (requestVersion !== runListRequestVersion.current) return;
     setRecentRuns(items);
     onRunsStateChange?.({ runs: items, error: "", loading: false });
@@ -276,17 +384,9 @@ export default function AgentRunPanel({
       selectedRunId === selectedRunIdRef.current &&
       selectionVersion === detailRequestVersion.current
     ) {
-      const selectedWorkflow = workflowForSelectedAgentRun(items, selectedRunId);
-      const selectedSummary = items.find((item) => item.automation_run_id === selectedRunId);
-      if (
-        selectedWorkflow &&
-        !isOlderRunSnapshot(selectedSummary, selectedRunSnapshotRef.current)
-      ) {
-        setWorkflow(selectedWorkflow);
-      }
     }
     setRunsRefreshError("");
-  }, [canReadOwnAgentRuns, canReadProjectRuns, onRunsStateChange, project._id]);
+  }, [canReadOwnAIRuns, canReadProjectRuns, onRunsStateChange, project._id]);
 
   const refreshRunList = async () => {
     if (refreshingRuns) return;
@@ -306,16 +406,16 @@ export default function AgentRunPanel({
     selectedRunIdRef.current = runId;
     selectedRunSnapshotRef.current = null;
     setSourceFacts([]);
+    setToolEvidence([]);
     setDetailRefreshError("");
-    if (run?.automation_run_id !== runId) {
+    if (run?.ai_run_id !== runId) {
       setRun(null);
-      setWorkflow(null);
       setCheckpoints([]);
       setReceipt(null);
     }
     let detail;
     try {
-      detail = await testingApi.getAgentRun(runId);
+      detail = await testingApi.getAIRun(runId);
     } catch (reason) {
       if (requestVersion !== detailRequestVersion.current) return;
       throw reason;
@@ -326,11 +426,10 @@ export default function AgentRunPanel({
       status: detail.run.status,
     };
     setRun(detail.run);
-    setWorkflow(detail.workflow || null);
     setCheckpoints(detail.checkpoints || []);
     setReceipt(detail.receipt || null);
     try {
-      const evidence = await testingApi.getAgentRunEvidence(runId);
+      const evidence = await testingApi.getAIRunEvidence(runId);
       if (requestVersion !== detailRequestVersion.current) return;
       setReceipt(evidence.receipt || detail.receipt || null);
       setSourceFacts(evidence.source_facts || []);
@@ -343,7 +442,7 @@ export default function AgentRunPanel({
   };
 
   useEffect(() => {
-    if (!run || (!activeStatuses.has(run.status) && !(workflow?.active_count > 0))) {
+    if (!run || !activeStatuses.has(run.status)) {
       return undefined;
     }
     let active = true;
@@ -353,14 +452,14 @@ export default function AgentRunPanel({
       pending = true;
       const requestVersion = detailRequestVersion.current;
       try {
-        const detail = await testingApi.getAgentRun(run.automation_run_id);
+        const detail = await testingApi.getAIRun(run.ai_run_id);
         if (!active || requestVersion !== detailRequestVersion.current) return;
         if (isOlderRunSnapshot(detail.run, selectedRunSnapshotRef.current)) return;
         let evidence = null;
         let evidenceError = "";
-        if (!activeStatuses.has(detail.run.status) && !(detail.workflow?.active_count > 0)) {
+        if (!activeStatuses.has(detail.run.status)) {
           try {
-            evidence = await testingApi.getAgentRunEvidence(run.automation_run_id);
+            evidence = await testingApi.getAIRunEvidence(run.ai_run_id);
           } catch (reason) {
             evidenceError = messageOf(reason);
           }
@@ -368,7 +467,7 @@ export default function AgentRunPanel({
         if (
           !active ||
           requestVersion !== detailRequestVersion.current ||
-          selectedRunIdRef.current !== run.automation_run_id ||
+          selectedRunIdRef.current !== run.ai_run_id ||
           isOlderRunSnapshot(detail.run, selectedRunSnapshotRef.current)
         ) {
           return;
@@ -379,7 +478,6 @@ export default function AgentRunPanel({
         };
         setDetailRefreshError(evidenceError);
         setRun(detail.run);
-        setWorkflow(detail.workflow || null);
         setCheckpoints(detail.checkpoints || []);
         setReceipt(evidence?.receipt || detail.receipt || null);
         if (evidence) {
@@ -389,7 +487,7 @@ export default function AgentRunPanel({
           setSourceFacts([]);
           setToolEvidence([]);
         }
-        if (!activeStatuses.has(detail.run.status) && !(detail.workflow?.active_count > 0)) {
+        if (!activeStatuses.has(detail.run.status)) {
           try {
             await refreshRuns();
           } catch (reason) {
@@ -406,17 +504,17 @@ export default function AgentRunPanel({
       active = false;
       window.clearInterval(timer);
     };
-  }, [run, workflow?.active_count, refreshRuns]);
+  }, [run, refreshRuns]);
 
   const retry = async () => {
     if (!run) return;
-    const runId = run.automation_run_id;
+    const runId = run.ai_run_id;
     const selectionVersion = detailRequestVersion.current;
     setBusy(true);
     setError("");
     try {
       try {
-        await testingApi.resumeAgentRun(runId, {
+        await testingApi.resumeAIRun(runId, {
           expected_revision: run.revision,
         });
       } catch (reason) {
@@ -450,13 +548,13 @@ export default function AgentRunPanel({
 
   const cancel = async () => {
     if (!run) return;
-    const runId = run.automation_run_id;
+    const runId = run.ai_run_id;
     const selectionVersion = detailRequestVersion.current;
     setBusy(true);
     setError("");
     try {
       try {
-        await testingApi.cancelAgentRun(runId, {
+        await testingApi.cancelAIRun(runId, {
           expected_revision: run.revision,
         });
       } catch (reason) {
@@ -493,7 +591,7 @@ export default function AgentRunPanel({
     }
     const answer = clarificationAnswers[uncertainty.code]?.trim();
     if (!answer) return;
-    const runId = run.automation_run_id;
+    const runId = run.ai_run_id;
     const selectionVersion = detailRequestVersion.current;
     setSubmittingClarification(uncertainty.code);
     setError("");
@@ -504,7 +602,10 @@ export default function AgentRunPanel({
         answer,
       });
       if (selectionVersion === detailRequestVersion.current) {
-        setClarificationAnswers((current) => ({ ...current, [uncertainty.code]: "" }));
+        setClarificationAnswers((current) => ({
+          ...current,
+          [uncertainty.code]: "",
+        }));
       }
       try {
         await refreshRuns();
@@ -533,6 +634,8 @@ export default function AgentRunPanel({
   };
 
   const proposal = run?.result?.proposal;
+  const documentWorkflow = documentWorkflowResult(run);
+  const documentWorkflowStages = documentWorkflow?.workflow_stages || null;
   const blueprintClaims = receipt?.blueprint_claim_lineage || [];
   const blueprintArtifacts = receipt?.blueprint_artifact_lineage || [];
   const sourceFactsById = new Map(
@@ -543,6 +646,11 @@ export default function AgentRunPanel({
     ),
   );
   const toolEvidenceById = new Map(toolEvidence.map((item) => [item.evidence_ref, item]));
+  const agentCapabilityLabels = new Map(
+    agentCapabilities
+      .filter((item) => item?.name && item?.label)
+      .map((item) => [item.name, item.label]),
+  );
   const proposalEvidenceReferences = [];
   const evidenceNumbersByIdentity = new Map();
   (proposal?.evidence_refs || []).forEach((reference) => {
@@ -566,6 +674,18 @@ export default function AgentRunPanel({
       if (!existing.toolResult) existing.toolResult = toolResult;
     }
   });
+  const summaryEvidenceReferences = evidenceReferencesInSummary(proposal?.summary);
+  const citedProposalEvidenceReferences = proposalEvidenceReferences
+    .filter((item) =>
+      [
+        item.reference,
+        item.fact?.source_fact_id,
+        item.fact?.artifact_id,
+        item.fact?.artifact_version_id,
+        item.toolResult?.artifact_id,
+      ].some((reference) => reference && summaryEvidenceReferences.has(reference)),
+    )
+    .map((item, index) => ({ ...item, number: index + 1 }));
   const proposalEvidenceFactIds = new Set(
     proposalEvidenceReferences.map((item) => item.fact?.source_fact_id).filter(Boolean),
   );
@@ -581,7 +701,7 @@ export default function AgentRunPanel({
   const visibleRuns = recentRuns.filter(canViewRun);
   const canControlRun = run?.requester_user_id === currentUserId;
   const canAnswerClarification = permissions.includes("requirement.update");
-  const canResumeRun = canControlRun && canResumeAgentRun(run, checkpoints, currentUserId);
+  const canResumeRun = canControlRun && canResumeAIRun(run, checkpoints, currentUserId);
   const canShowRunControls = (busyRun && canControlRun) || canResumeRun;
   const uncertainties = latestAgentUncertainties(checkpoints);
   const sourceExtractionGaps = agentSourceExtractionGaps(run);
@@ -590,7 +710,7 @@ export default function AgentRunPanel({
   const showRecentActivity =
     visibleRuns.length > 0 || showCompactEmptyState || (!compact && !loading && !error && !run);
   const canStartAgent = agentCapabilities.length > 0;
-  const startAgentRun = async () => {
+  const startAIRun = async () => {
     const instruction = agentInstruction.trim();
     if (!instruction || startingAgent) return;
     setStartingAgent(true);
@@ -604,13 +724,13 @@ export default function AgentRunPanel({
         agentIdempotencyKey.current = `agent-${crypto.randomUUID()}`;
         agentIdempotencyFingerprint.current = requestFingerprint;
       }
-      const started = await testingApi.createAgentRun({
+      const started = await testingApi.createAIRun({
         project_id: project._id,
         objective: instruction,
         intent: "",
         target_artifact_ids: targetArtifactIds,
         evidence: [],
-        output_language: preferredSummaryLocale(user?.locale, project.locale, navigator.language),
+        output_language: preferredSummaryLocale(user?.locale, project.locale),
         idempotency_key: agentIdempotencyKey.current,
       });
       agentIdempotencyKey.current = "";
@@ -621,7 +741,7 @@ export default function AgentRunPanel({
       } catch (reason) {
         setRunsRefreshError(messageOf(reason));
       }
-      if (started?.automation_run_id) await loadRun(started.automation_run_id);
+      if (started?.ai_run_id) await loadRun(started.ai_run_id);
     } catch (reason) {
       setAgentStartError(messageOf(reason));
     } finally {
@@ -678,10 +798,10 @@ export default function AgentRunPanel({
         )}
         {!compact && canStartAgent && (
           <form
-            className="grid gap-3 rounded-control border border-border p-4"
+            className="grid gap-3"
             onSubmit={(event) => {
               event.preventDefault();
-              void startAgentRun();
+              void startAIRun();
             }}
           >
             <label className="grid gap-2 text-sm font-medium text-ink">
@@ -768,12 +888,12 @@ export default function AgentRunPanel({
               {recentActivityHeading}
               {visibleRuns.slice(0, compact ? 3 : 10).map((item) => (
                 <button
-                  className={`flex flex-wrap items-center justify-between gap-3 rounded-control border p-3 text-left transition ${item.automation_run_id === run?.automation_run_id ? "border-brand/50 bg-brand-soft" : "border-border hover:bg-surface-quiet"}`}
-                  key={item.automation_run_id}
+                  className={`grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 rounded-control border p-3 text-left transition ${item.ai_run_id === run?.ai_run_id ? "border-brand/50 bg-brand-soft" : "border-border hover:bg-surface-quiet"}`}
+                  key={item.ai_run_id}
                   type="button"
                   onClick={async () => {
                     try {
-                      await loadRun(item.automation_run_id);
+                      await loadRun(item.ai_run_id);
                       setError("");
                       setDetailRefreshError("");
                     } catch (reason) {
@@ -782,22 +902,14 @@ export default function AgentRunPanel({
                   }}
                 >
                   <span className="min-w-0">
-                    <span className="block truncate font-medium text-ink">
-                      {agentRunTitle(item)}
-                    </span>
-                    <span className="block text-xs text-ink-muted">
+                    <span className="block truncate font-medium text-ink">{aiRunTitle(item)}</span>
+                    <span className="block truncate text-xs text-ink-muted">
                       {compact
                         ? formatDate(item.created_at, dateTimeOptions)
                         : `${agentOriginLabel(item)}${item.created_at ? ` · ${formatDate(item.created_at, dateTimeOptions)}` : ""}`}
                     </span>
                   </span>
-                  <StatusPill
-                    value={
-                      item.automation_run_id === run?.automation_run_id
-                        ? workflow?.status || item.workflow?.status || item.status
-                        : item.workflow?.status || item.status
-                    }
-                  />
+                  <StatusPill value={item.status} />
                 </button>
               ))}
             </div>
@@ -823,7 +935,7 @@ export default function AgentRunPanel({
                     disabled={busy}
                     onClick={async () => {
                       try {
-                        await loadRun(run.automation_run_id);
+                        await loadRun(run.ai_run_id);
                       } catch (reason) {
                         setDetailRefreshError(messageOf(reason));
                       }
@@ -832,47 +944,6 @@ export default function AgentRunPanel({
                     Tải lại hoạt động và căn cứ
                   </button>
                 </div>
-              )}
-              {workflow && (
-                <section aria-label="Tiến độ xử lý AI" className="grid gap-3">
-                  {workflow.truncated && (
-                    <p
-                      className="rounded-control border border-warning/40 bg-warning/5 p-3 text-sm text-warning"
-                      role="status"
-                    >
-                      Chưa tải đủ lịch sử hoạt động để xác nhận toàn bộ đã hoàn tất.
-                    </p>
-                  )}
-                  <details className="rounded-control border border-border bg-surface-quiet p-3">
-                    <summary className="cursor-pointer text-sm font-medium text-ink">
-                      Tiến độ hoạt động
-                    </summary>
-                    <div className="mt-3 grid gap-3">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <span className="text-sm text-ink-muted">
-                          {workflow.run_count} lượt · {workflow.active_count} đang chạy ·{" "}
-                          {workflow.blocked_count} đang chờ · {workflow.failed_count} lỗi
-                        </span>
-                        <StatusPill value={workflow.status} />
-                      </div>
-                      {workflow.runs?.length > 1 && (
-                        <ul className="grid gap-2">
-                          {workflow.runs.slice(1).map((item) => (
-                            <li
-                              className="flex flex-wrap items-center justify-between gap-2 rounded-control border border-border bg-surface p-3"
-                              key={item.automation_run_id}
-                            >
-                              <span className="min-w-0 text-sm text-ink-muted">
-                                {agentRunTitle(item)}
-                              </span>
-                              <StatusPill value={item.status} />
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  </details>
-                </section>
               )}
               {Array.isArray(run.target_artifact_ids) && (
                 <section
@@ -1054,7 +1125,7 @@ export default function AgentRunPanel({
                 </section>
               )}
               {run.error_code && run.status !== "AWAITING_INPUT" && (
-                <ErrorState message={agentRunErrorMessage(run.error_code)} />
+                <ErrorState message={aiRunErrorMessage(run.error_code)} />
               )}
               {run.status === "AWAITING_AUTHORIZATION" && (
                 <section
@@ -1066,12 +1137,14 @@ export default function AgentRunPanel({
                   <p className="text-ink-muted">{authorizationGuidance.message}</p>
                 </section>
               )}
-              {canControlRun && ["FAILED", "DEGRADED"].includes(run.status) && !canResumeRun && (
-                <p className="rounded-control border border-warning/40 bg-warning/5 p-3 text-sm text-ink-muted">
-                  Chưa thể tiếp tục an toàn vì hệ thống chưa xác minh được trạng thái thao tác
-                  trước. Cần đối soát kết quả để tránh chạy lặp hoặc ghi trùng dữ liệu.
-                </p>
-              )}
+              {canControlRun &&
+                run.error_code === "AI_RUN_ACTION_OUTCOME_UNCERTAIN" &&
+                !canResumeRun && (
+                  <p className="rounded-control border border-warning/40 bg-warning/5 p-3 text-sm text-ink-muted">
+                    Chưa thể tiếp tục an toàn vì hệ thống chưa xác minh được trạng thái thao tác
+                    trước. Cần đối soát kết quả để tránh chạy lặp hoặc ghi trùng dữ liệu.
+                  </p>
+                )}
               {proposal?.summary && (
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -1079,19 +1152,124 @@ export default function AgentRunPanel({
                     <ContentOriginBadge origin="ai_generated" />
                   </div>
                   <p className="mt-1 whitespace-pre-wrap text-ink-muted">
-                    {proposalSummaryParts(proposal.summary, proposalEvidenceReferences)}
+                    {proposalSummaryParts(proposal.summary, citedProposalEvidenceReferences)}
                   </p>
                 </div>
               )}
+              {documentWorkflowStages && (
+                <section
+                  aria-label="Tiến độ xử lý tài liệu yêu cầu"
+                  className="grid gap-3 rounded-control border border-border bg-surface p-4"
+                >
+                  <div>
+                    <h3 className="font-semibold text-ink">Tiến độ từ tài liệu đến ca kiểm thử</h3>
+                    <p className="mt-1 text-ink-muted">
+                      Các nội dung AI tạo đã được lưu ở trạng thái nháp để bạn rà soát. Benchmark
+                      chỉ được ghi nhận là độc lập khi có bộ tham chiếu phù hợp.
+                    </p>
+                  </div>
+                  <ol className="grid gap-2">
+                    {Object.entries(documentWorkflowStageLabels).map(([stage, label]) => {
+                      const details = documentWorkflowStages[stage] || {};
+                      const href = documentWorkflowStageHref(project._id, stage);
+                      const draftIds = Array.isArray(details.draft_ids) ? details.draft_ids : [];
+                      const assessmentType =
+                        details.assessment_type || details.evaluation?.assessment_type;
+                      const assessmentLabel = documentWorkflowAssessmentLabels[assessmentType];
+                      const requirementIds =
+                        stage === "blueprint" && Array.isArray(documentWorkflow.requirement_ids)
+                          ? documentWorkflow.requirement_ids
+                          : [];
+                      const blockers = Array.isArray(details.warnings)
+                        ? details.warnings.filter(Boolean).slice(0, 5)
+                        : [];
+                      return (
+                        <li
+                          className="grid min-w-0 gap-1 rounded-control border border-border bg-surface-quiet/40 p-3"
+                          key={stage}
+                        >
+                          <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                            <span className="font-medium text-ink">{label}</span>
+                            <span className="text-xs text-ink-muted">
+                              {documentWorkflowStatusLabels[details.status] ||
+                                (details.status
+                                  ? valueLabel(details.status)
+                                  : "Chưa có trạng thái")}
+                            </span>
+                          </div>
+                          {assessmentLabel && (
+                            <p className="text-xs text-ink-muted">{assessmentLabel}</p>
+                          )}
+                          {details.evaluation?.reason && (
+                            <p className="text-xs text-ink-muted">{details.evaluation.reason}</p>
+                          )}
+                          {details.reason_code && (
+                            <p className="text-xs text-warning">
+                              {valueLabel(details.reason_code)}
+                            </p>
+                          )}
+                          {draftIds.length > 0 && (
+                            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                              <span className="text-ink-muted">
+                                {draftIds.length} bản nháp · {draftIds.join(", ")}
+                              </span>
+                              {href && (
+                                <Link
+                                  className="font-medium text-brand hover:underline"
+                                  href={href}
+                                >
+                                  Mở khu vực rà soát
+                                </Link>
+                              )}
+                            </div>
+                          )}
+                          {requirementIds.length > 0 && (
+                            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                              <span className="text-ink-muted">
+                                {requirementIds.length} yêu cầu được tạo từ tài liệu; cần rà soát
+                                trước khi phê duyệt.
+                              </span>
+                              {requirementIds.map((requirementId) => (
+                                <Link
+                                  className="font-medium text-brand hover:underline"
+                                  href={`/du-an/${encodeURIComponent(project._id)}/yeu-cau/${encodeURIComponent(requirementId)}`}
+                                  key={requirementId}
+                                >
+                                  Mở {requirementId}
+                                </Link>
+                              ))}
+                            </div>
+                          )}
+                          {blockers.length > 0 && (
+                            <ul className="grid gap-1 text-xs text-warning">
+                              {blockers.map((warning, index) => (
+                                <li key={`${stage}-warning-${index}`}>{valueLabel(warning)}</li>
+                              ))}
+                            </ul>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ol>
+                  {Array.isArray(documentWorkflow.unresolved) &&
+                    documentWorkflow.unresolved.length > 0 && (
+                      <p className="text-sm text-ink-muted">
+                        Còn {documentWorkflow.unresolved.length} nội dung cần rà soát hoặc bổ sung
+                        trước khi hoàn tất quy trình.
+                      </p>
+                    )}
+                </section>
+              )}
               {proposal?.evidence_refs?.length > 0 && (
                 <div>
-                  <h3 className="font-semibold text-ink">Căn cứ đã sử dụng</h3>
+                  <h3 className="font-semibold text-ink">Căn cứ được trích dẫn trong kết quả</h3>
                   <p className="mt-1 text-ink-muted">
-                    {proposalEvidenceReferences.length} căn cứ được ghi nhận cho kết quả này.
+                    {citedProposalEvidenceReferences.length} căn cứ được trích dẫn trong câu trả
+                    lời.
                   </p>
-                  {proposalEvidenceReferences.length > 0 && (
+                  {citedProposalEvidenceReferences.length > 0 ? (
                     <ul className="mt-2 grid gap-1 text-sm text-ink-muted">
-                      {proposalEvidenceReferences.map((item) => (
+                      {citedProposalEvidenceReferences.map((item) => (
                         <li
                           className="grid min-w-0 gap-1 rounded-control border border-border bg-surface p-3"
                           key={`${item.reference}-${item.number}`}
@@ -1111,7 +1289,11 @@ export default function AgentRunPanel({
                                 )}
                               </>
                             ) : item.toolResult ? (
-                              <span>Kết quả đã kiểm tra từ {item.toolResult.tool_name}</span>
+                              <span>
+                                Kết quả đã kiểm tra từ{" "}
+                                {agentCapabilityLabels.get(item.toolResult.tool_name) ||
+                                  "công cụ AI"}
+                              </span>
                             ) : (
                               <span className="text-warning">
                                 Chưa tải được trích dẫn để đối chiếu
@@ -1119,8 +1301,8 @@ export default function AgentRunPanel({
                             )}
                           </div>
                           {item.fact?.quote && (
-                            <blockquote className="break-words border-l-2 border-accent/40 pl-3 text-ink-muted">
-                              {item.fact.quote}
+                            <blockquote className="break-words whitespace-pre-wrap border-l-2 border-accent/40 pl-3 text-ink-muted">
+                              {displayEvidenceQuote(item.fact.quote)}
                             </blockquote>
                           )}
                           {item.toolResult?.text && (
@@ -1136,6 +1318,11 @@ export default function AgentRunPanel({
                         </li>
                       ))}
                     </ul>
+                  ) : (
+                    <p className="mt-2 text-sm text-ink-muted">
+                      Câu trả lời không trích dẫn nguồn cụ thể. Có thể xem nguồn được đối chiếu
+                      trong phần truy vết bên dưới.
+                    </p>
                   )}
                 </div>
               )}
@@ -1250,8 +1437,8 @@ export default function AgentRunPanel({
                                         <p className="break-words text-xs text-ink-muted">
                                           {sourceFactSummary(fact)}
                                         </p>
-                                        <blockquote className="mt-2 break-words border-l-2 border-accent/40 pl-3 text-ink">
-                                          {fact.quote}
+                                        <blockquote className="mt-2 break-words whitespace-pre-wrap border-l-2 border-accent/40 pl-3 text-ink">
+                                          {displayEvidenceQuote(fact.quote)}
                                         </blockquote>
                                       </div>
                                     ))
@@ -1319,8 +1506,8 @@ export default function AgentRunPanel({
                               <p className="break-words text-xs text-ink-muted">
                                 {sourceFactSummary(fact)}
                               </p>
-                              <blockquote className="mt-2 break-words border-l-2 border-accent/40 pl-3 text-ink">
-                                {fact.quote}
+                              <blockquote className="mt-2 break-words whitespace-pre-wrap border-l-2 border-accent/40 pl-3 text-ink">
+                                {displayEvidenceQuote(fact.quote)}
                               </blockquote>
                             </li>
                           ))}

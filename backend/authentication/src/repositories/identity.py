@@ -78,6 +78,82 @@ class IdentityRepository:
         )
 
     @staticmethod
+    async def record_failed_login(
+        user_id: str,
+        timestamp: datetime,
+        failure_limit: int,
+        lockout_minutes: int,
+    ):
+        lockout_until = timestamp + timedelta(minutes=lockout_minutes)
+        locked_until = {"$ifNull": ["$login_security.locked_until", None]}
+        failure_count = {"$ifNull": ["$login_security.failed_attempts", 0]}
+        lock_active = {"$gt": [locked_until, timestamp]}
+        lock_expired = {
+            "$and": [
+                {"$ne": [locked_until, None]},
+                {"$lte": [locked_until, timestamp]},
+            ]
+        }
+        base_count = {
+            "$cond": [lock_expired, 0, failure_count]
+        }
+        next_count = {
+            "$cond": [
+                lock_active,
+                failure_count,
+                {"$add": [base_count, 1]},
+            ]
+        }
+        updated_lockout = {
+            "$cond": [
+                lock_active,
+                locked_until,
+                {
+                    "$cond": [
+                        {"$gte": [next_count, failure_limit]},
+                        lockout_until,
+                        "$$REMOVE",
+                    ]
+                },
+            ]
+        }
+        return await mongo.get_db()["auth_credentials"].find_one_and_update(
+            {"_id": user_id},
+            [
+                {
+                    "$set": {
+                        "login_security.failed_attempts": next_count,
+                        "login_security.locked_until": updated_lockout,
+                        "login_security.last_failed_at": timestamp,
+                    }
+                }
+            ],
+            return_document=ReturnDocument.AFTER,
+        )
+
+    @staticmethod
+    async def complete_successful_login(user_id: str, timestamp: datetime):
+        return await mongo.get_db()["auth_credentials"].find_one_and_update(
+            {
+                "_id": user_id,
+                "is_active": {"$ne": False},
+                "$or": [
+                    {"login_security.locked_until": {"$exists": False}},
+                    {"login_security.locked_until": {"$lte": timestamp}},
+                ],
+            },
+            {
+                "$unset": {
+                    "login_security.failed_attempts": "",
+                    "login_security.locked_until": "",
+                    "login_security.last_failed_at": "",
+                },
+                "$set": {"login_security.last_successful_at": timestamp},
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+
+    @staticmethod
     async def update_system_config(config_type: str, update: dict, upsert: bool = False):
         return await mongo.update_one(
             "system_configs", {"type": config_type}, update, upsert=upsert

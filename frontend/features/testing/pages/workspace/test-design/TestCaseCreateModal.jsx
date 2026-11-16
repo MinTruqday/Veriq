@@ -408,7 +408,11 @@ export default function TestCaseCreateModal({
                         member.user?.full_name ||
                         member.user?.email ||
                         "Thành viên dự án"}
-                      {member.project_role ? ` · ${valueLabel(member.project_role)}` : ""}
+                      {member.project_roles?.length
+                        ? ` · ${member.project_roles.map(valueLabel).join(", ")}`
+                        : member.project_role
+                          ? ` · ${valueLabel(member.project_role)}`
+                          : ""}
                     </option>
                   ))}
               </select>

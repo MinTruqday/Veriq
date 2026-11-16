@@ -7,7 +7,6 @@ import re
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
-from src.clients.ai_automation import emit_defect_recorded
 from src.core.common import (
     audit,
     get_project,
@@ -21,12 +20,7 @@ from src.core.common import (
     visible_defect,
 )
 from src.core.database import database
-from src.modules.execution.services.execution_context import (
-    defect_blocks_release,
-    recheck_release_gates_for_defect,
-    resolve_execution_context,
-    serialize_release_gate,
-)
+from src.modules.execution.services.execution_context import defect_blocks_release, resolve_execution_context, serialize_release_gate
 from src.modules.quality.services.defect_classification import (
     defect_is_blocking,
     defect_is_critical,
@@ -35,7 +29,6 @@ from src.modules.quality.services.defect_classification import (
 from src.repositories.test_strategy import test_strategy_repository
 from src.repositories.defect import defect_repository
 from src.repositories.defect_search_index import defect_search_index_repository
-
 
 def _defect_request_fingerprint(payload):
     request = payload.model_dump(exclude={"idempotency_key"})
@@ -49,7 +42,6 @@ def _defect_request_fingerprint(payload):
         ).encode("utf-8")
     ).hexdigest()
 
-
 def _public_defect(defect):
     public = {
         key: value
@@ -59,7 +51,6 @@ def _public_defect(defect):
     public.setdefault("severity_blocks_release", defect_is_blocking(defect))
     public.setdefault("severity_is_critical", defect_is_critical(defect))
     return public
-
 
 async def defect_classification_options(project_id, user):
     permissions = await get_project_permissions(project_id, user.id)
@@ -84,7 +75,6 @@ async def defect_classification_options(project_id, user):
         "severity": [item.get("label") for item in risk_model.get("severity_scale") or []],
         "priority": [item.get("label") for item in risk_model.get("priority_scale") or []],
     }
-
 
 async def create_defect_record(project_id, payload, user):
     if project_id != payload.project_id:
@@ -118,7 +108,6 @@ async def create_defect_record(project_id, payload, user):
             )
         await defect_search_index_repository.enqueue(existing)
         return _public_defect(existing)
-
 
 async def _create_defect_record(project_id, payload, user):
     classification = await resolve_defect_classification(
@@ -330,14 +319,8 @@ async def _create_defect_record(project_id, payload, user):
                 project_id,
                 session=session,
             )
-            await emit_defect_recorded(defect, user, session=session)
             await defect_search_index_repository.enqueue(defect, session=session)
-            if defect_blocks_release(defect):
-                await recheck_release_gates_for_defect(
-                    project_id, [defect.get("release_id")], defect, user, session
-                )
     return defect
-
 
 async def list_defect_records(
     project_id,
@@ -424,7 +407,6 @@ async def list_defect_records(
     permissions = await get_project_permissions(project_id, user.id)
     return page_payload([visible_defect(item, permissions) for item in items], page, page_size, total)
 
-
 async def build_defect_export(project_id, user):
     
     await get_project(project_id, user, "report.export")
@@ -436,7 +418,6 @@ async def build_defect_export(project_id, user):
     for defect in defects:
         writer.writerow({field: defect.get(field) for field in ['defect_key', 'title', 'severity', 'priority', 'status', 'environment', 'build', 'assignee']})
     return stream.getvalue()
-
 
 async def get_defect_record(defect_id, project_id, user):
     

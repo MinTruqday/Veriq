@@ -50,7 +50,7 @@ const groups = {
   workreport: "Báo cáo công việc",
   report: "Xuất báo cáo",
   proposal: "Đề xuất",
-  ai: "AI Agent",
+  ai: "AI",
   apiartifact: "Đặc tả API",
   automation: "Script kiểm thử",
   knowledge: "Tài liệu tham chiếu",

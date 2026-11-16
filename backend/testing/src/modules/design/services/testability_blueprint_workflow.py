@@ -3,8 +3,8 @@ import json
 
 from fastapi import HTTPException
 
-from src.clients.ai_automation import ai_automation_client
-from src.core.ai_automation import ai_contract_metadata, request_ai_automation
+from src.clients.ai_capabilities import ai_capability_client
+from src.core.ai_capabilities import ai_contract_metadata, request_ai_capability
 from src.core.common import new_id, now
 from src.core.database import database
 from src.repositories.test_analysis import test_analysis_repository
@@ -79,9 +79,11 @@ def _blueprint_hash(blueprint):
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
-async def _evaluate_blueprint_reference(project_id, requester_user_id, snapshots, blueprint):
+async def _evaluate_blueprint_reference(
+    project_id, requester_user_id, snapshots, blueprint, output_language="auto"
+):
     try:
-        return await ai_automation_client.evaluate_blueprint_against_reference(
+        return await ai_capability_client.evaluate_blueprint_against_reference(
             project_id,
             str(requester_user_id),
             [
@@ -95,6 +97,7 @@ async def _evaluate_blueprint_reference(project_id, requester_user_id, snapshots
                 for item in snapshots
             ],
             blueprint,
+            output_language,
         )
     except Exception as error:
         return {
@@ -113,7 +116,7 @@ async def blueprint_for_requirement(project_id, version, criteria, mode, user):
         raise HTTPException(422, detail={"code": "TESTABILITY_MODE_INVALID"})
 
     from src.modules.design.services.test_analysis import (
-        _automation_instruction,
+        _blueprint_instruction,
         _blueprint_evidence,
         _bounded_blueprint_context,
         _compile_user_blueprint,
@@ -168,7 +171,7 @@ async def blueprint_for_requirement(project_id, version, criteria, mode, user):
         )
         suggestions = list(dict.fromkeys(item.strip() for item in suggestions if item.strip()))[:50]
         if suggestions:
-            instruction = _automation_instruction(
+            instruction = _blueprint_instruction(
                 {
                     "task": "Refine this Blueprint once using only the cited findings and source evidence. Keep supported items, preserve exact citations, do not add unstated behavior, and do not resolve conflicts by choosing a source.",
                     "current_blueprint": _bounded_blueprint_context(blueprint),
@@ -188,7 +191,11 @@ async def blueprint_for_requirement(project_id, version, criteria, mode, user):
         benchmark = saved_metadata.get("benchmark")
         if saved_metadata.get("benchmark_blueprint_hash") != _blueprint_hash(blueprint):
             benchmark = await _evaluate_blueprint_reference(
-                project_id, user.id, snapshots, blueprint
+                project_id,
+                user.id,
+                snapshots,
+                blueprint,
+                getattr(user, "locale", None) or "auto",
             )
             metadata["benchmark"] = benchmark
             metadata["benchmark_blueprint_hash"] = _blueprint_hash(blueprint)

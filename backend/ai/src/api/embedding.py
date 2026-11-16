@@ -16,23 +16,23 @@ router = APIRouter(dependencies=[Depends(verify_internal_token)])
 @router.post(
     "/truy-van",
     response_model=APIResponse[EmbeddingResponse],
-    description="Tạo embedding cho một truy vấn knowledge",
+    description="Create an embedding for a knowledge query",
 )
 async def embed_single_query(req: EmbedQueryRequest):
     emb = await embedder.embed_query(req.text)
     return APIResponse(
-        data=EmbeddingResponse(embedding=emb), message="Trích xuất vector embedding thành công"
+        data=EmbeddingResponse(embedding=emb), message="Query embedding generated"
     )
 
 
 @router.post(
     "/hang-loat",
     response_model=APIResponse[BatchEmbeddingResponse],
-    description="Tạo embedding theo lô cho knowledge",
+    description="Create embeddings for a batch of knowledge texts",
 )
 async def embed_batch_texts(req: EmbedBatchRequest):
     embs = await embedder.embed_batch(req.texts)
     return APIResponse(
         data=BatchEmbeddingResponse(embeddings=embs, count=len(embs)),
-        message="Trích xuất hàng loạt vector embedding thành công",
+        message="Batch embeddings generated",
     )

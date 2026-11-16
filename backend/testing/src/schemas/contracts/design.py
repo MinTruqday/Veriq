@@ -9,7 +9,7 @@ from src.schemas.contracts.utility import TestDesignChallengeInput
 
 TestScenarioCategory: TypeAlias = str
 TestCaseType: TypeAlias = str
-AutomationStatus: TypeAlias = Literal["manual", "candidate", "automated"]
+AIRunStatus: TypeAlias = Literal["manual", "candidate", "automated"]
 
 class ScenarioCreate(BaseModel):
     scenario_key: str | None = Field(default=None, max_length=80)
@@ -239,7 +239,7 @@ class TestCaseDraftCreate(BaseModel):
     custom_values: dict[str, Any] = Field(default_factory=dict, max_length=100)
     owner_id: str | None = Field(default=None, max_length=200)
     techniques: list[str] = Field(default_factory=list, max_length=50)
-    automation_status: AutomationStatus = "manual"
+    automation_status: AIRunStatus = "manual"
     attachments: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
     data_set_version_ids: list[str] = Field(default_factory=list, max_length=100)
     requirement_version_ids: list[str] = Field(default_factory=list, max_length=200)
@@ -365,7 +365,7 @@ class TestCaseDraftPatch(BaseModel):
     custom_values: dict[str, Any] | None = Field(default=None, max_length=100)
     owner_id: str | None = Field(default=None, max_length=200)
     techniques: list[str] | None = None
-    automation_status: AutomationStatus | None = None
+    automation_status: AIRunStatus | None = None
     attachments: list[dict[str, Any]] | None = None
     data_set_version_ids: list[str] | None = None
     requirement_version_ids: list[str] | None = None

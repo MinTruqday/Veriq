@@ -210,10 +210,10 @@ export default function RequirementTemplatePanel({
   const [busy, setBusy] = useState(false);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [templatesLoadFailed, setTemplatesLoadFailed] = useState(false);
-  const [agentRuns, setAgentRuns] = useState([]);
-  const [agentRunsError, setAgentRunsError] = useState("");
-  const [agentRunsLoading, setAgentRunsLoading] = useState(false);
-  const [agentRunsRefreshVersion, setAgentRunsRefreshVersion] = useState(0);
+  const [aiRuns, setAIRuns] = useState([]);
+  const [aiRunsError, setAIRunsError] = useState("");
+  const [aiRunsLoading, setAIRunsLoading] = useState(false);
+  const [aiRunsRefreshVersion, setAIRunsRefreshVersion] = useState(0);
   const [templateReadbackError, setTemplateReadbackError] = useState("");
   const seenTerminalRunIds = useRef(new Set());
   const [fieldDraft, setFieldDraft] = useState({
@@ -254,9 +254,9 @@ export default function RequirementTemplatePanel({
     };
   }, [isOpen, project._id, onError]);
 
-  const canReadAgentRuns =
+  const canReadAIRuns =
     project.current_permissions?.includes("proposal.read") ||
-    project.current_permissions?.includes("automation.read");
+    project.current_permissions?.includes("requirement.read");
   const canApprovePublication = project.current_permissions?.includes("requirement.approve");
   const canManageRequirementFields = project.current_permissions?.includes("requirement.update");
   const documentEventKey = sourceDocuments
@@ -266,26 +266,26 @@ export default function RequirementTemplatePanel({
     .join("|");
 
   useEffect(() => {
-    if (!isOpen || !canReadAgentRuns) {
-      setAgentRuns([]);
-      setAgentRunsError("");
+    if (!isOpen || !canReadAIRuns) {
+      setAIRuns([]);
+      setAIRunsError("");
       return;
     }
     let active = true;
-    const refreshAgentRuns = async () => {
-      setAgentRunsLoading(true);
+    const refreshAIRuns = async () => {
+      setAIRunsLoading(true);
       try {
-        const runs = await testingApi.listAgentRuns(project._id);
+        const runs = await testingApi.listAIRuns(project._id);
         if (!active) return;
-        setAgentRuns(runs);
-        setAgentRunsError("");
+        setAIRuns(runs);
+        setAIRunsError("");
         const terminalRunIds = runs
           .filter(
             (run) =>
               run.source_event_id?.startsWith("requirement-document:") &&
               ["COMPLETED", "DEGRADED", "FAILED", "CANCELLED"].includes(run.status),
           )
-          .map((run) => run.automation_run_id);
+          .map((run) => run.ai_run_id);
         const unseenTerminalRunIds = terminalRunIds.filter(
           (runId) => !seenTerminalRunIds.current.has(runId),
         );
@@ -303,18 +303,18 @@ export default function RequirementTemplatePanel({
         }
       } catch (reason) {
         if (active) {
-          setAgentRuns([]);
-          setAgentRunsError(messageOf(reason));
+          setAIRuns([]);
+          setAIRunsError(messageOf(reason));
         }
       } finally {
-        if (active) setAgentRunsLoading(false);
+        if (active) setAIRunsLoading(false);
       }
     };
-    void refreshAgentRuns();
+    void refreshAIRuns();
     return () => {
       active = false;
     };
-  }, [agentRunsRefreshVersion, canReadAgentRuns, documentEventKey, isOpen, project._id]);
+  }, [aiRunsRefreshVersion, canReadAIRuns, documentEventKey, isOpen, project._id]);
 
   const loadTemplate = (template) => {
     setActive(template);
@@ -392,7 +392,7 @@ export default function RequirementTemplatePanel({
 
   const eventRunFor = (sourceDocument) => {
     const eventId = `requirement-document:${sourceDocument._id}:${sourceDocument.revision || 1}`;
-    return agentRuns.find((item) => item.source_event_id === eventId) || null;
+    return aiRuns.find((item) => item.source_event_id === eventId) || null;
   };
 
   const templateIdsForRun = (run) => {
@@ -537,28 +537,28 @@ export default function RequirementTemplatePanel({
         </div>
         <div className="space-y-2 rounded-control border border-border p-3">
           <p className="text-sm font-medium">Tài liệu nguồn cho AI</p>
-          {canReadAgentRuns && (
+          {canReadAIRuns && (
             <div className="space-y-2 border-b border-border pb-3" aria-live="polite">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-sm font-medium">Kết quả xử lý tài liệu</p>
                 <button
                   aria-label="Cập nhật trạng thái AI"
                   className="icon-button h-8 w-8 shrink-0"
-                  disabled={agentRunsLoading}
-                  onClick={() => setAgentRunsRefreshVersion((version) => version + 1)}
+                  disabled={aiRunsLoading}
+                  onClick={() => setAIRunsRefreshVersion((version) => version + 1)}
                   title="Cập nhật trạng thái AI"
                   type="button"
                 >
                   <RefreshCw
                     aria-hidden="true"
-                    className={agentRunsLoading ? "animate-spin" : ""}
+                    className={aiRunsLoading ? "animate-spin" : ""}
                     size={16}
                   />
                 </button>
               </div>
-              {agentRunsError && (
+              {aiRunsError && (
                 <p className="text-sm text-danger" role="alert">
-                  Chưa tải được kết quả xử lý tài liệu: {agentRunsError}
+                  Chưa tải được kết quả xử lý tài liệu: {aiRunsError}
                 </p>
               )}
               {templateReadbackError && (

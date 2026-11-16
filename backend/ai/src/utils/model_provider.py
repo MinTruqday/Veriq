@@ -12,7 +12,9 @@ from loguru import logger
 from src.core.infrastructure.configuration import settings
 
 
-def _retry_delay(error: Exception, attempt: int) -> float:
+def _retry_delay(
+    error: Exception, attempt: int, max_delay_seconds: int | None = None
+) -> float:
     if isinstance(error, httpx.HTTPStatusError):
         value = error.response.headers.get("Retry-After")
         if value:
@@ -27,8 +29,18 @@ def _retry_delay(error: Exception, attempt: int) -> float:
                 except (TypeError, ValueError, OverflowError):
                     seconds = float("nan")
             if math.isfinite(seconds) and seconds >= 0:
-                return min(seconds, max(0.0, float(settings.MODEL_TIMEOUT_SECONDS)))
-    return min(2**attempt, 4)
+                cap = (
+                    settings.MODEL_TIMEOUT_SECONDS
+                    if max_delay_seconds is None
+                    else max_delay_seconds
+                )
+                return min(seconds, max(0.0, float(cap)))
+    default_delay = min(2**attempt, 4)
+    return (
+        default_delay
+        if max_delay_seconds is None
+        else min(default_delay, max(0.0, float(max_delay_seconds)))
+    )
 
 
 def _is_retryable_model_error(error: Exception) -> bool:
@@ -371,11 +383,20 @@ class HostedAuxiliaryClient:
     def _endpoint(self, model: str) -> str:
         return f"{settings.HF_INFERENCE_URL.rstrip('/')}/{model}"
 
-    async def _post(self, model: str, payload: dict[str, Any]) -> Any:
-        maximum_attempts = 3
+    async def _post(
+        self,
+        model: str,
+        payload: dict[str, Any],
+        *,
+        timeout_seconds: int | None = None,
+        maximum_attempts: int = 3,
+        max_retry_delay_seconds: int | None = None,
+    ) -> Any:
         for attempt in range(maximum_attempts):
             try:
-                async with httpx.AsyncClient(timeout=settings.MODEL_TIMEOUT_SECONDS) as client:
+                async with httpx.AsyncClient(
+                    timeout=timeout_seconds or settings.MODEL_TIMEOUT_SECONDS
+                ) as client:
                     response = await client.post(
                         self._endpoint(model), headers=self._headers(), json=payload
                     )
@@ -395,7 +416,9 @@ class HostedAuxiliaryClient:
                     type(provider_error).__name__,
                     model,
                 )
-                await asyncio.sleep(_retry_delay(provider_error, attempt))
+                await asyncio.sleep(
+                    _retry_delay(provider_error, attempt, max_retry_delay_seconds)
+                )
         raise ModelProviderUnavailable("hosted_auxiliary_model_unavailable")
 
     async def embed(self, texts: list[str], prompt_name: str) -> list[list[float]]:
@@ -428,6 +451,9 @@ class HostedAuxiliaryClient:
                     for pair in pairs
                 ]
             },
+            timeout_seconds=settings.RERANKER_TIMEOUT_SECONDS,
+            maximum_attempts=2,
+            max_retry_delay_seconds=settings.RERANKER_RETRY_DELAY_SECONDS,
         )
         entries = body[0] if isinstance(body, list) and len(body) == 1 else body
         if not isinstance(entries, list) or len(entries) != len(pairs):

@@ -15,7 +15,14 @@ from src.clients.content import ContentClient
 from src.core.infrastructure.configuration import settings
 from src.schemas.project import validate_project_source_structure
 from src.services.chunking import SemanticChunkingError, chunker
-from src.services.conversion import IndexingAttemptSupersededError, document_parser
+from src.services.conversion import (
+    DocumentSourceMissingError,
+    DocumentStorageAccessError,
+    DocumentStorageConfigurationError,
+    DocumentStorageUnavailableError,
+    IndexingAttemptSupersededError,
+    document_parser,
+)
 from src.services.embedding import embedder
 from src.services.inference import summarize_document
 from src.store.vector import vector_store
@@ -37,6 +44,18 @@ class BoundedIngestionDiagnostics(list):
     def clear(self):
         super().clear()
         self.total_count = 0
+
+
+def _indexing_error_code(error: Exception) -> str:
+    if isinstance(error, DocumentSourceMissingError):
+        return "document_source_missing"
+    if isinstance(error, DocumentStorageAccessError):
+        return "document_storage_access_denied"
+    if isinstance(error, DocumentStorageConfigurationError):
+        return "document_storage_bucket_missing"
+    if isinstance(error, DocumentStorageUnavailableError):
+        return "document_storage_unavailable"
+    return type(error).__name__
 
 
 def source_timestamp(value):
@@ -998,7 +1017,7 @@ async def index_document(
             try:
                 await ContentClient.mark_index_failed(
                     document_id,
-                    type(error).__name__,
+                    _indexing_error_code(error),
                     indexing_attempt_id,
                     indexing_lease_token,
                 )

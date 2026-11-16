@@ -31,7 +31,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> CurrentUser:
             logger.warning("Token verification failed due to missing identity claims")
             raise credentials_exception
     except jwt.PyJWTError:
-        logger.exception("Authentication decoding failed due to invalid token payload")
+        logger.warning("Rejected request with an invalid or expired access token")
         raise credentials_exception
 
     uid = payload.get("uid")

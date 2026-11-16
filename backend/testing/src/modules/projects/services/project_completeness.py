@@ -5,7 +5,7 @@ from datetime import timedelta
 from fastapi import HTTPException
 from shared.completeness import COMPLETENESS_AREAS
 
-from src.core.ai_automation import ai_contract_metadata, request_ai_automation
+from src.core.ai_capabilities import ai_contract_metadata, request_ai_capability
 from src.core.common import audit, get_project, now
 from src.core.database import database
 from src.modules.projects.services.project_complexity import (
@@ -158,7 +158,7 @@ async def review_project_completeness(project_id, user, payload):
             }, ensure_ascii=False)
             if len(instruction) > 5000:
                 _fail("PROJECT_COMPLETENESS_CONTEXT_TOO_LARGE", 422)
-            result = await request_ai_automation(
+            result = await request_ai_capability(
                 "project_completeness_review", project_id, instruction, batch,
                 output_language=locale,
             )

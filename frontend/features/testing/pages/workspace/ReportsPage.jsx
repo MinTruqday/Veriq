@@ -86,7 +86,7 @@ const aiCapabilityLabels = {
   project_question: "Hỏi đáp dự án",
   security_test_generation: "Đề xuất kiểm thử bảo mật",
   performance_plan_generation: "Đề xuất kiểm thử hiệu năng",
-  automation_script_generation: "Tạo bản nháp mã tự động hóa",
+  automation_script_generation: "Tạo bản nháp mã kiểm thử tự động",
   causal_analysis: "Phân tích nguyên nhân khả dĩ",
   status_report_narrative: "Soạn diễn giải báo cáo trạng thái",
   completion_report_narrative: "Soạn diễn giải báo cáo hoàn tất",

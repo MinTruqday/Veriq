@@ -269,8 +269,8 @@ class TestabilityBenchmarkService(
                 for run in (report.semantic_obligation_comparison for report in reports)
             ),
             "interpretation": (
-                "Thống kê mô tả điểm do mô hình giám khảo ước lượng trên nhãn nghĩa vụ do người biên soạn nhập; "
-                "không phải phép đo độc lập."
+                "Descriptive statistics of judge-model estimates against author-supplied obligation labels; "
+                "not an independent measurement."
             ),
             "before_self_review": {},
             "after_self_review": {},

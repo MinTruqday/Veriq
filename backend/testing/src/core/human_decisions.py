@@ -3,12 +3,12 @@ from fastapi import HTTPException
 from src.core.database import database
 
 
-def require_automation_publication_authority(user, permission=None):
-    if getattr(user, "_ai_automation_run_id", None):
+def require_ai_publication_authority(user, permission=None):
+    if getattr(user, "_ai_capability_run_id", None):
         raise HTTPException(
             status_code=403,
             detail={
-                "code": "AUTOMATION_PUBLICATION_NOT_AUTHORIZED",
+                "code": "AI_RUN_PUBLICATION_NOT_AUTHORIZED",
                 "message": "Quyết định phê duyệt phải được người có quyền thực hiện trực tiếp.",
                 "permission": permission,
             },

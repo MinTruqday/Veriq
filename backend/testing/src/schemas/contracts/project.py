@@ -304,20 +304,63 @@ class ProjectArchiveInput(BaseModel):
 
 class ProjectMemberCreate(BaseModel):
     user_id: str = Field(min_length=1, max_length=200)
-    project_role: str = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z][A-Za-z0-9_-]*$")
+    project_role: str | None = Field(default=None, min_length=1, max_length=80, pattern=r"^[A-Za-z][A-Za-z0-9_-]*$")
+    project_roles: list[str] | None = Field(default=None, min_length=1, max_length=10)
 
     @field_validator("project_role")
     @classmethod
     def normalize_project_role(cls, value):
-        return value.strip().upper()
+        return value.strip().upper() if value else value
+
+    @field_validator("project_roles")
+    @classmethod
+    def normalize_project_roles(cls, values):
+        if values is None:
+            return values
+        normalized = list(dict.fromkeys(value.strip().upper() for value in values if value.strip()))
+        if len(normalized) != len(values):
+            raise ValueError("DUPLICATE_OR_EMPTY_PROJECT_ROLE")
+        return normalized
+
+    @model_validator(mode="after")
+    def require_project_roles(self):
+        roles = self.project_roles or ([self.project_role] if self.project_role else [])
+        if not roles:
+            raise ValueError("PROJECT_ROLE_REQUIRED")
+        if self.project_role and self.project_role not in roles:
+            raise ValueError("PROJECT_ROLE_LIST_MISMATCH")
+        self.project_roles = roles
+        self.project_role = roles[0] if len(roles) == 1 else None
+        return self
 
 
 class ProjectMemberPatch(BaseModel):
     expected_revision: int = Field(ge=1)
     project_role: str | None = Field(default=None, min_length=1, max_length=80, pattern=r"^[A-Za-z][A-Za-z0-9_-]*$")
+    project_roles: list[str] | None = Field(default=None, min_length=1, max_length=10)
     status: Literal["ACTIVE", "INACTIVE"] | None = None
 
     @field_validator("project_role")
     @classmethod
     def normalize_project_role(cls, value):
         return value.strip().upper() if value else value
+
+    @field_validator("project_roles")
+    @classmethod
+    def normalize_project_roles(cls, values):
+        if values is None:
+            return values
+        normalized = list(dict.fromkeys(value.strip().upper() for value in values if value.strip()))
+        if len(normalized) != len(values):
+            raise ValueError("DUPLICATE_OR_EMPTY_PROJECT_ROLE")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_project_roles(self):
+        if self.project_roles is not None:
+            if self.project_role and self.project_role not in self.project_roles:
+                raise ValueError("PROJECT_ROLE_LIST_MISMATCH")
+            self.project_role = self.project_roles[0] if len(self.project_roles) == 1 else None
+        elif self.project_role:
+            self.project_roles = [self.project_role]
+        return self

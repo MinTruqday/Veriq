@@ -69,7 +69,7 @@ async def find_near_duplicates(
     if test_case_draft_id:
         if expected_revision is None:
             return json.dumps(
-                {"status": "automation_blocked", "reason_code": "TEST_CASE_DRAFT_REVISION_REQUIRED"}
+                {"status": "blocked", "reason_code": "TEST_CASE_DRAFT_REVISION_REQUIRED"}
             )
         path = f"{path}?{urlencode({'test_case_draft_id': test_case_draft_id, 'expected_revision': expected_revision})}"
     return await call("GET", path, config)
@@ -77,15 +77,15 @@ async def find_near_duplicates(
 
 @with_tool_access(("requirement",), "MUTATE", "ai.generate_security_tests")
 async def generate_security_suggestions_for_requirement(
-    project_id: Annotated[str, Field(min_length=1, description="Dự án sở hữu phiên bản Requirement")],
-    requirement_version_id: Annotated[str, Field(min_length=1, description="Phiên bản Requirement đã baseline")],
-    source_event_id: Annotated[str, Field(min_length=1, max_length=200, description="Mã sự kiện Requirement đã xác minh")],
-    source_event_revision: Annotated[int, Field(ge=1, description="Revision Requirement trong sự kiện")],
+    project_id: Annotated[str, Field(min_length=1, description="Project that owns the Requirement version")],
+    requirement_version_id: Annotated[str, Field(min_length=1, description="Baselined Requirement version")],
+    source_event_id: Annotated[str, Field(min_length=1, max_length=200, description="Verified Requirement event identifier")],
+    source_event_revision: Annotated[int, Field(ge=1, description="Requirement revision in the source event")],
     config: RunnableConfig = None,
 ) -> str:
     """Create idempotent, source-quoted security-test candidates for one verified Requirement baseline event."""
     configurable = (config or {}).get("configurable", {})
-    automation_run_id = configurable.get("automation_run_id")
+    ai_run_id = configurable.get("ai_run_id")
     source = next(
         (
             item
@@ -102,10 +102,10 @@ async def generate_security_suggestions_for_requirement(
     expected_event_id = (
         f"requirement-version:{requirement_version_id}:{source_event_revision}:BASELINED"
     )
-    if not automation_run_id:
-        return json.dumps({"status": "automation_blocked", "reason_code": "VERIFIED_AUTOMATION_RUN_REQUIRED"})
+    if not ai_run_id:
+        return json.dumps({"status": "blocked", "reason_code": "VERIFIED_AI_RUN_REQUIRED"})
     if not source or source_event_id != expected_event_id:
-        return json.dumps({"status": "automation_blocked", "reason_code": "BASELINED_REQUIREMENT_EVENT_EVIDENCE_REQUIRED"})
+        return json.dumps({"status": "blocked", "reason_code": "BASELINED_REQUIREMENT_EVENT_EVIDENCE_REQUIRED"})
 
     idempotency_key = "security-requirement:" + hashlib.sha256(
         f"{source_event_id}:{requirement_version_id}".encode("utf-8")
@@ -126,7 +126,7 @@ async def generate_security_suggestions_for_requirement(
         )
     )
     if not suggestion or not suggestion.get("_id"):
-        return json.dumps({"status": "automation_partial_failure", "reason_code": "SECURITY_SUGGESTION_CREATE_FAILED"})
+        return json.dumps({"status": "partial_failure", "reason_code": "SECURITY_SUGGESTION_CREATE_FAILED"})
     stored = parse_collection(
         await call("GET", f"/du-an/{project_id}/ai/goi-y-kiem-thu-bao-mat", config)
     )
@@ -143,7 +143,7 @@ async def generate_security_suggestions_for_requirement(
         or readback.get("candidate_only") is not True
         or readback.get("vulnerability_scan_performed") is not False
     ):
-        return json.dumps({"status": "automation_partial_failure", "reason_code": "SECURITY_SUGGESTION_READBACK_INVALID"})
+        return json.dumps({"status": "partial_failure", "reason_code": "SECURITY_SUGGESTION_READBACK_INVALID"})
     return json.dumps(
         {
             "status": "completed",
@@ -299,7 +299,7 @@ async def apply_maintenance_proposal(
     review_note: Annotated[str, Field(min_length=2, description="Reason the verified proposal is applied")],
     config: RunnableConfig = None,
 ) -> str:
-    """Apply a validated maintenance proposal when the automation principal has proposal approval permission"""
+    """Apply a validated maintenance proposal when the run principal has proposal approval permission"""
     return await call(
         "POST",
         f"/du-an/{project_id}/de-xuat-ai/{proposal_id}/phe-duyet",
@@ -343,7 +343,7 @@ async def generate_testcases(
     instruction: Annotated[str, Field(description="Test case generation instruction")] = "",
     config: RunnableConfig = None,
 ) -> str:
-    """Generate evidence-grounded test cases for the automation run to save after duplicate checks"""
+    """Generate evidence-grounded test cases for the run to save after duplicate checks"""
     return await call(
         "POST",
         f"/phien-ban-yeu-cau/{requirement_version_id}/ai/sinh-ca-kiem-thu",
@@ -355,15 +355,15 @@ async def generate_testcases(
 
 @with_tool_access(("requirement", "test_design"), "PROPOSE", "ai.generate_testcase")
 async def recommend_test_design_techniques_for_requirement_change(
-    project_id: Annotated[str, Field(description="Dự án sở hữu phiên bản Requirement")],
-    requirement_version_id: Annotated[str, Field(description="Phiên bản Requirement vừa thay đổi")],
-    expected_revision: Annotated[int, Field(ge=1, description="Revision của sự kiện nguồn")],
+    project_id: Annotated[str, Field(description="Project that owns the Requirement version")],
+    requirement_version_id: Annotated[str, Field(description="Updated Requirement version")],
+    expected_revision: Annotated[int, Field(ge=1, description="Revision of the source event")],
     config: RunnableConfig = None,
 ) -> str:
     """Recommend evidence-supported test-design techniques for a Requirement change."""
     configurable = (config or {}).get("configurable", {})
-    if not configurable.get("automation_run_id"):
-        return json.dumps({"status": "automation_blocked", "reason_code": "AUTOMATION_RUN_REQUIRED"})
+    if not configurable.get("ai_run_id"):
+        return json.dumps({"status": "blocked", "reason_code": "AI_RUN_REQUIRED"})
     event = next(
         (
             item
@@ -377,7 +377,7 @@ async def recommend_test_design_techniques_for_requirement_change(
         None,
     )
     if event is None:
-        return json.dumps({"status": "automation_blocked", "reason_code": "VERIFIED_REQUIREMENT_CHANGE_EVENT_REQUIRED"})
+        return json.dumps({"status": "blocked", "reason_code": "VERIFIED_REQUIREMENT_CHANGE_EVENT_REQUIRED"})
     version = parse(
         await call("GET", f"/phien-ban-yeu-cau/{requirement_version_id}", config)
     )
@@ -387,9 +387,9 @@ async def recommend_test_design_techniques_for_requirement_change(
         or version.get("project_id") != project_id
         or version.get("revision") != expected_revision
     ):
-        return json.dumps({"status": "automation_blocked", "reason_code": "REQUIREMENT_SOURCE_REVISION_MISMATCH"})
+        return json.dumps({"status": "blocked", "reason_code": "REQUIREMENT_SOURCE_REVISION_MISMATCH"})
     if version.get("status") != "BASELINED":
-        return json.dumps({"status": "automation_waiting_for_input", "reason_code": "REQUIREMENT_NOT_BASELINED"})
+        return json.dumps({"status": "awaiting_input", "reason_code": "REQUIREMENT_NOT_BASELINED"})
     result = parse(
         await call(
             "POST",
@@ -407,15 +407,15 @@ async def recommend_test_design_techniques_for_requirement_change(
             "TEST_DESIGN_PREVIEW_STALE",
         }:
             return json.dumps(
-                {"status": "automation_partial_failure", "reason_code": error_code}
+                {"status": "partial_failure", "reason_code": error_code}
             )
     if not result or not isinstance(result.get("items"), list):
-        return json.dumps({"status": "automation_partial_failure", "reason_code": "TECHNIQUE_RECOMMENDATION_RESULT_INVALID"})
+        return json.dumps({"status": "partial_failure", "reason_code": "TECHNIQUE_RECOMMENDATION_RESULT_INVALID"})
     latest = parse(
         await call("GET", f"/phien-ban-yeu-cau/{requirement_version_id}", config)
     )
     if not latest or latest.get("revision") != expected_revision or latest.get("project_id") != project_id:
-        return json.dumps({"status": "automation_partial_failure", "reason_code": "TECHNIQUE_RECOMMENDATION_SOURCE_CHANGED"})
+        return json.dumps({"status": "partial_failure", "reason_code": "TECHNIQUE_RECOMMENDATION_SOURCE_CHANGED"})
     return json.dumps(
         {
             "status": "completed",

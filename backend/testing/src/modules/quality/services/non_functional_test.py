@@ -2,13 +2,11 @@
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
-from src.clients.ai_automation import emit_performance_configuration_approved
 from src.core.common import audit, get_project, new_id, now
 from src.core.common import idempotency_request_hash as _create_request_hash
 from src.core.common import verify_idempotency_replay as _verify_create_replay
 from src.core.database import database
 from src.repositories.non_functional_test import non_functional_test_repository
-
 
 def normalize_plan(value):
     if value is None:
@@ -20,7 +18,6 @@ def normalize_plan(value):
  'tool_refs': 'tools'}.items():
         normalized[target] = normalized.get(target, normalized.get(source, []))
     return normalized
-
 
 async def validate_refs(project_id, values):
     
@@ -37,7 +34,6 @@ async def validate_refs(project_id, values):
                 detail={"code": 'NFR_TRACE_NOT_IN_PROJECT', "field": field},
             )
 
-
 async def get_plan(plan_id, user, permission="nfrtest.read"):
     value = await non_functional_test_repository.find_plan(plan_id)
     if not value:
@@ -47,7 +43,6 @@ async def get_plan(plan_id, user, permission="nfrtest.read"):
         )
     await get_project(value["project_id"], user, permission)
     return normalize_plan(value)
-
 
 async def list_plans(project_id, plan_type, user):
     await get_project(project_id, user, "nfrtest.read")
@@ -61,7 +56,6 @@ async def list_plans(project_id, plan_type, user):
         )
     ]
     return {"items": items, "total": len(items)}
-
 
 async def create_plan(project_id, payload, user):
     
@@ -113,7 +107,6 @@ async def create_plan(project_id, payload, user):
         raise
     return value
 
-
 async def update_plan(plan_id, payload, user):
     
     value = await get_plan(plan_id, user, "nfrtest.manage")
@@ -140,7 +133,6 @@ async def update_plan(plan_id, payload, user):
         {"fields": sorted(changes)},
     )
     return updated
-
 
 async def transition_plan(plan_id, payload, user, approve=False):
     
@@ -173,10 +165,7 @@ async def transition_plan(plan_id, payload, user, approve=False):
                 {"note": payload.note},
                 session=session,
             )
-            if approve and updated.get("plan_type") == "PERFORMANCE_TEST_PLAN":
-                await emit_performance_configuration_approved(updated, user, session=session)
     return updated
-
 
 async def import_evidence(plan_id, payload, user):
     
@@ -240,7 +229,6 @@ async def import_evidence(plan_id, payload, user):
             return existing
         raise
     return evidence
-
 
 class NonFunctionalTestService:
     @staticmethod

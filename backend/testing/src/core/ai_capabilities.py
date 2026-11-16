@@ -7,7 +7,7 @@ from typing import Awaitable, Callable
 import httpx
 from fastapi import HTTPException
 
-from src.clients.ai_automation import ai_automation_client
+from src.clients.ai_capabilities import ai_capability_client
 from src.core.common import new_id, now
 from src.core.database import database
 from src.core.sensitive_data import redact_sensitive_data
@@ -54,18 +54,18 @@ async def _record_ai_request(capability, project_id, result, evidence_count, req
         )
 
 
-def require_ai_automation_event(user, allowed_triggers):
-    run_id = str(getattr(user, "_ai_automation_run_id", "") or "")
-    trigger = str(getattr(user, "_ai_automation_trigger", "") or "")
-    source_event_id = str(getattr(user, "_ai_automation_source_event_id", "") or "")
+def require_ai_capability_event(user, allowed_triggers):
+    run_id = str(getattr(user, "_ai_capability_run_id", "") or "")
+    trigger = str(getattr(user, "_ai_capability_trigger", "") or "")
+    source_event_id = str(getattr(user, "_ai_capability_source_event_id", "") or "")
     if not run_id or not source_event_id or trigger not in set(allowed_triggers):
-        raise HTTPException(status_code=403, detail={"code": "AI_AUTOMATION_EVENT_REQUIRED"})
+        raise HTTPException(status_code=403, detail={"code": "AI_RUN_EVENT_REQUIRED"})
     return {"run_id": run_id, "trigger": trigger, "source_event_id": source_event_id}
 
 
-def require_document_ingestion_event(user, source_document_ids):
-    automation = require_ai_automation_event(user, {"DOCUMENT_INGESTED"})
-    event_parts = automation["source_event_id"].split(":")
+def require_user_requested_document_ingestion(user, source_document_ids):
+    event_context = require_ai_capability_event(user, {"DOCUMENT_INGESTED"})
+    event_parts = event_context["source_event_id"].split(":")
     if (
         len(event_parts) < 3
         or event_parts[0] != "requirement-document"
@@ -74,7 +74,41 @@ def require_document_ingestion_event(user, source_document_ids):
         or event_parts[1] not in set(map(str, source_document_ids))
     ):
         raise HTTPException(status_code=403, detail={"code": "VERIFIED_DOCUMENT_EVENT_REQUIRED"})
-    return event_parts[1], int(event_parts[2])
+    source_hash = str(getattr(user, "_ai_capability_source_document_hash", "") or "")
+    return event_parts[1], int(event_parts[2]), source_hash
+
+
+async def is_document_ingestion_draft_source(version, user):
+    if getattr(user, "_ai_capability_intent", "") != "process_ingested_requirement_document":
+        return False
+    document_ids = getattr(user, "_ai_capability_source_document_ids", [])
+    if not isinstance(document_ids, list) or not document_ids:
+        return False
+    try:
+        document_id, _, _ = require_user_requested_document_ingestion(user, document_ids)
+    except HTTPException:
+        return False
+    if (
+        version.get("status") != "DRAFT"
+        or not version.get("project_id")
+        or not version.get("_id")
+        or not any(
+            str(reference.get("requirement_document_id") or "") == document_id
+            for reference in version.get("source_refs", [])
+            if isinstance(reference, dict)
+        )
+    ):
+        return False
+    requirement = await database.value.requirements.find_one(
+        {
+            "_id": version.get("requirement_id"),
+            "project_id": version.get("project_id"),
+            "current_version_id": version.get("_id"),
+            "status": "DRAFT",
+        },
+        {"_id": 1},
+    )
+    return requirement is not None
 
 
 def ai_contract_metadata(result):
@@ -102,7 +136,7 @@ def ai_contract_metadata(result):
     }
 
 
-async def request_ai_automation(
+async def request_ai_capability(
     capability,
     project_id,
     instruction,
@@ -128,7 +162,7 @@ async def request_ai_automation(
                     + sum(len(str(item.get("text") or "")) for item in safe_evidence),
                 }
             )
-        result = await ai_automation_client.request(
+        result = await ai_capability_client.request(
             {
                 "capability": capability,
                 "project_id": project_id,

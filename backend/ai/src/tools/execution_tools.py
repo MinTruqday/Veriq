@@ -7,7 +7,7 @@ from pydantic import Field
 
 from src.core.infrastructure.configuration import settings
 from src.tools.registry import with_tool_access
-from src.tools.testing_api import AutomationOperationError, call, require_operation
+from src.tools.testing_api import ToolOperationError, call, require_operation
 
 
 @with_tool_access(("execution", "analysis", "reporting"), "READ", "testrun.read")
@@ -333,12 +333,12 @@ async def list_all_requirement_test_cases(project_id, requirement_id, config):
         config,
     )
     if not isinstance(first, dict):
-        raise AutomationOperationError("WORK_ITEM_IMPACT_PAGINATION_INVALID")
+        raise ToolOperationError("WORK_ITEM_IMPACT_PAGINATION_INVALID")
 
     total = first.get("total")
     total_pages = first.get("total_pages")
     if isinstance(total, int) and not isinstance(total, bool) and total >= max_items:
-        raise AutomationOperationError("WORK_ITEM_IMPACT_RESULT_LIMIT_REACHED")
+        raise ToolOperationError("WORK_ITEM_IMPACT_RESULT_LIMIT_REACHED")
     if (
         not isinstance(total, int)
         or isinstance(total, bool)
@@ -352,7 +352,7 @@ async def list_all_requirement_test_cases(project_id, requirement_id, config):
         or first.get("page_size") != page_size
         or not isinstance(first.get("items"), list)
     ):
-        raise AutomationOperationError("WORK_ITEM_IMPACT_PAGINATION_INVALID")
+        raise ToolOperationError("WORK_ITEM_IMPACT_PAGINATION_INVALID")
 
     items = list(first["items"])
     for page in range(2, total_pages + 1):
@@ -369,7 +369,7 @@ async def list_all_requirement_test_cases(project_id, requirement_id, config):
             or result.get("total_pages") != total_pages
             or not isinstance(result.get("items"), list)
         ):
-            raise AutomationOperationError("WORK_ITEM_IMPACT_PAGINATION_CHANGED")
+            raise ToolOperationError("WORK_ITEM_IMPACT_PAGINATION_CHANGED")
         items.extend(result["items"])
 
     identifiers = [str(item.get("_id") or "") for item in items if isinstance(item, dict)]
@@ -380,7 +380,7 @@ async def list_all_requirement_test_cases(project_id, requirement_id, config):
         or len(set(identifiers)) != len(identifiers)
         or any(item.get("project_id") != project_id for item in items)
     ):
-        raise AutomationOperationError("WORK_ITEM_IMPACT_PAGINATION_INCOMPLETE")
+        raise ToolOperationError("WORK_ITEM_IMPACT_PAGINATION_INCOMPLETE")
     return items
 
 @with_tool_access(("analysis", "execution", "reporting"), "READ", "defect.read")

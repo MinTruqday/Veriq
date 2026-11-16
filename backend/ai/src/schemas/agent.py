@@ -15,7 +15,7 @@ class AgentTaskStatus(str, Enum):
     LIMIT_REACHED = "LIMIT_REACHED"
 
 
-class AgentRunStatus(str, Enum):
+class AIRunExecutionStatus(str, Enum):
     PLANNING = "PLANNING"
     RUNNING = "RUNNING"
     VERIFYING = "VERIFYING"
@@ -163,22 +163,41 @@ class VeriqRunState(BaseModel):
     model_metadata: dict[str, Any] = Field(default_factory=dict)
     token_usage: dict[str, int] = Field(default_factory=dict)
     current_step: int = 0
-    status: AgentRunStatus = AgentRunStatus.PLANNING
+    status: AIRunExecutionStatus = AIRunExecutionStatus.PLANNING
     error_code: str | None = None
     revision: int = 1
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
 
 
-class AgentRunRequest(BaseModel):
+class AIRunRequest(BaseModel):
     project_id: str = Field(min_length=1, max_length=200)
     objective: str = Field(min_length=3, max_length=4000)
     intent: str = Field(default="", max_length=100)
     intent_arguments: dict[str, Any] = Field(default_factory=dict, max_length=100)
     target_artifact_ids: list[str] = Field(default_factory=list, max_length=100)
     evidence: list[EvidenceItem] = Field(default_factory=list, max_length=100)
-    output_language: str = Field(default="auto", min_length=2, max_length=80)
+    output_language: str = Field(
+        default="auto",
+        min_length=2,
+        max_length=35,
+        pattern=r"^(?:auto|[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*)$",
+    )
     idempotency_key: str = Field(min_length=8, max_length=200)
+
+
+class RequirementDocumentRunRequest(BaseModel):
+    project_id: str = Field(min_length=1, max_length=200)
+    requester_user_id: str = Field(min_length=1, max_length=200)
+    document_id: str = Field(min_length=1, max_length=200)
+    source_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    idempotency_key: str = Field(min_length=8, max_length=200)
+    output_language: str = Field(
+        default="auto",
+        min_length=2,
+        max_length=35,
+        pattern=r"^(?:auto|[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*)$",
+    )
 
 
 class TestingSkillInput(BaseModel):

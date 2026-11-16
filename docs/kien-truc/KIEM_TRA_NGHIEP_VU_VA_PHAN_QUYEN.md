@@ -98,7 +98,7 @@ Các mục dưới đây là phát hiện khi đọc mã ở đầu lượt tri�
 | RELEASE-01 | Quyết định quality gate và đóng release dựa trên capability; chưa thấy kiểm tra người quyết định phát hành được chỉ định trong đường gọi đã đọc | `modules/quality/services/quality_gate.py`, `modules/execution/services/execution_context.py` | Có chỉ định và kiểm tra scope/role hiện tại; QA không mặc nhiên phát hành |
 | REPORT-01 | BA được coi là managing để đọc/sửa work report ngoài danh sách owner/editor | `modules/execution/services/reporting.py`, `report_for_user()` | Quyền quản lý cấu hình không tự cấp sửa nội dung; thử BA không được phân công và BA được phân công |
 | REPORT-02 | Người duyệt work report chấp nhận BA hoặc QA chung; cần đối chiếu loại báo cáo và trách nhiệm | `modules/execution/services/reporting.py`, `participants()` | Phân biệt báo cáo công việc/kiểm thử; Viewer không Editor và reviewer khác người tham gia soạn |
-| AI-01 | Hợp đồng AI manual đã có thay đổi trong working tree; build/static check không chứng minh luồng triển khai thật | `backend/ai/src/api/agents.py`, `services/automation.py`, `runtime/automation_worker.py` | Người bấm → job → tool → nháp/kết quả đúng quyền; kiểm tra thu hồi nguồn giữa lượt chạy |
+| AI-01 | Hợp đồng AI manual đã có thay đổi trong working tree; build/static check không chứng minh luồng triển khai thật | `backend/ai/src/api/agents.py`, `backend/ai/src/services/agent_runs.py`, `backend/ai/src/runtime/agent_run_worker.py` | Người bấm → lượt AI → công cụ → bản nháp/kết quả đúng quyền; kiểm tra thu hồi nguồn giữa lượt chạy |
 
 ### Tiến độ chỉnh sửa nguồn sau kiểm kê
 

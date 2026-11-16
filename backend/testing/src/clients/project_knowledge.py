@@ -116,6 +116,11 @@ async def search_project_with_status(project_id, query, artifact_types, limit, u
                 headers={
                     "X-Internal-Token": settings.SECRET_KEY,
                     "Authorization": f"Bearer {user._access_token}",
+                    **(
+                        {"X-AI-Run-ID": user._ai_capability_run_id}
+                        if user._ai_capability_run_id
+                        else {}
+                    ),
                 },
                 json={
                     "query": query,

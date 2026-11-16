@@ -17,6 +17,7 @@ export default function LinkTabs({
     <HorizontalScrollCue
       ariaLabel={label}
       scrollLabel={scrollLabel || label || "các trang"}
+      hidePartialItems
       className={`min-w-0 ${className}`}
       viewportClassName={`hide-scrollbar min-w-0 overflow-x-auto ${viewportClassName}`}
     >

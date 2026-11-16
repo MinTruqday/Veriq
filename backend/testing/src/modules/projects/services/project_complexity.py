@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
-from src.core.ai_automation import ai_contract_metadata, request_ai_automation
+from src.core.ai_capabilities import ai_contract_metadata, request_ai_capability
 from src.core.common import audit, get_project, new_id, now, plain_text
 from src.core.database import database
 from src.modules.requirements.services.document_reader import _document_text
@@ -407,7 +407,7 @@ async def assess_project_complexity(project_id, user, payload, *, output_languag
             item.setdefault("label", labels.get(item.get("dimension_id"), item.get("dimension_id")))
         return response
     try:
-        result = await request_ai_automation(
+        result = await request_ai_capability(
             "project_complexity_assessment",
             project_id,
             json.dumps(context, ensure_ascii=False),

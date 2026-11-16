@@ -144,9 +144,9 @@ function metricLabel(metric) {
     clarification_precision: "Độ chính xác câu hỏi làm rõ (Precision)",
     clarification_recall: "Độ bao phủ câu hỏi làm rõ (Recall)",
     clarification_priority_ndcg: "Điểm xếp hạng ưu tiên câu hỏi (NDCG)",
-    obligation_semantic_precision: "Độ chính xác ngữ nghĩa nghĩa vụ (AI judge)",
-    obligation_semantic_recall: "Độ bao phủ ngữ nghĩa nghĩa vụ (AI judge)",
-    obligation_semantic_f1: "F1 ngữ nghĩa nghĩa vụ (AI judge)",
+    obligation_semantic_precision: "Độ chính xác ngữ nghĩa nghĩa vụ (đánh giá bằng AI)",
+    obligation_semantic_recall: "Độ bao phủ ngữ nghĩa nghĩa vụ (đánh giá bằng AI)",
+    obligation_semantic_f1: "F1 ngữ nghĩa nghĩa vụ (đánh giá bằng AI)",
   };
   return labels[metric] || valueLabel(metric);
 }
@@ -199,9 +199,9 @@ function benchmarkResultRows(report) {
         pipeline:
           {
             compiler: "Lập bản đồ điều kiện kiểm thử",
-            blueprint_before_self_review: "Blueprint trước Self-review",
-            blueprint_after_self_review: "Blueprint sau Self-review",
-            blueprint_self_review: "Self-review Blueprint",
+            blueprint_before_self_review: "Blueprint trước bước tự rà soát",
+            blueprint_after_self_review: "Blueprint sau bước tự rà soát",
+            blueprint_self_review: "Tự rà soát Blueprint",
             direct_generation: "Sinh ca kiểm thử trực tiếp",
             clarification_without_obligation_planning: "Chỉ hỏi làm rõ",
           }[pipeline] || valueLabel(pipeline),
@@ -223,8 +223,8 @@ function benchmarkResultRows(report) {
         _id: `semantic-${side}-${metric}`,
         pipeline:
           side === "before_self_review"
-            ? "Ngữ nghĩa · trước Self-review (AI judge)"
-            : "Ngữ nghĩa · sau Self-review (AI judge)",
+            ? "Ngữ nghĩa · trước bước tự rà soát (đánh giá bằng AI)"
+            : "Ngữ nghĩa · sau bước tự rà soát (đánh giá bằng AI)",
         metric: metricLabel(`obligation_semantic_${metric}`),
         mean: formatMetric(typeof value === "number" ? value : value?.mean),
         spread:
@@ -457,8 +457,8 @@ export default function RealTestabilityBenchmarkPanel({ project }) {
           </p>
           <p>
             Chấm trích dẫn, phiên bản nguồn và độ bao phủ nghĩa vụ. Đối chiếu ý nghĩa nghĩa vụ dùng
-            AI judge dựa trên mô tả do người biên soạn nhập; đây là ước lượng, không phải xác minh
-            độc lập. Bộ dữ liệu thiếu nhãn câu hỏi làm rõ thì các chỉ số đó được để trống.
+            AI đánh giá dựa trên mô tả do người biên soạn nhập; đây là ước lượng, không phải xác
+            minh độc lập. Bộ dữ liệu thiếu nhãn câu hỏi làm rõ thì các chỉ số đó được để trống.
           </p>
           <p>
             Bạn có thể chạy bộ tham chiếu tự chuẩn bị ngay để thử nghiệm cá nhân; kết quả sẽ được
@@ -703,7 +703,7 @@ export default function RealTestabilityBenchmarkPanel({ project }) {
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface-quiet p-4">
               <p className="text-sm text-ink-muted">
                 Phiên bản {selectedDataset.revision} · {selectedDataset.cases.length} ca · bốn
-                pipeline (có cặp trước/sau Self-review) · ba lượt mỗi pipeline ·{" "}
+                pipeline (có cặp trước/sau bước tự rà soát) · ba lượt mỗi pipeline ·{" "}
                 {selectedDataset.reference_provenance === "SELF_PREPARED_REFERENCE"
                   ? "đáp án tự chuẩn bị, chưa được kiểm chứng độc lập."
                   : "đáp án đã được rà soát độc lập."}
@@ -726,8 +726,8 @@ export default function RealTestabilityBenchmarkPanel({ project }) {
                 {report.failed_repetitions} lượt lỗi · {selectedDataset.cases.length} ca.
               </p>
               <p className="text-xs text-ink-faint">
-                Điểm ngữ nghĩa là ước lượng của AI judge so với mô tả nghĩa vụ do người biên soạn
-                nhập; không phải xác nhận độc lập.
+                Điểm ngữ nghĩa là ước lượng do AI đánh giá dựa trên mô tả nghĩa vụ của người biên
+                soạn nhập; không phải xác nhận độc lập.
               </p>
               <DataTable
                 items={benchmarkResultRows(report)}

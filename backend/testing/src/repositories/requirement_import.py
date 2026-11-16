@@ -60,7 +60,14 @@ class RequirementImportRepository:
         await database.value.import_jobs.insert_one(job, session=session)
 
     async def mark_document_extracted(
-        self, document_id, project_id, job_id, updated_at, content_hash, session=None
+        self,
+        document_id,
+        project_id,
+        job_id,
+        updated_at,
+        content_hash,
+        session=None,
+        import_status="PREVIEW_READY",
     ):
         result = await database.value.requirement_documents.update_one(
             {
@@ -72,7 +79,7 @@ class RequirementImportRepository:
             {
                 "$set": {
                     "status": "READY",
-                    "requirement_import_status": "PREVIEW_READY",
+                    "requirement_import_status": import_status,
                     "last_import_job_id": job_id,
                     "updated_at": updated_at,
                 },

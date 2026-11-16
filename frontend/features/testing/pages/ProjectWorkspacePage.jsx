@@ -156,10 +156,10 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
     [PROJECT_SECTION_SLUGS.testSets]: ["testsuite.read", "testcase.read"],
     [PROJECT_SECTION_SLUGS.testPlans]: "testplan.read",
     [PROJECT_SECTION_SLUGS.testRuns]: "testrun.read",
+    [PROJECT_SECTION_SLUGS.automation]: "automation.read",
   }[section[0]];
   const sectionAnyPermissions = {
     [PROJECT_SECTION_SLUGS.testAnalysis]: ["testcondition.read", "testanalysis.read"],
-    [PROJECT_SECTION_SLUGS.automation]: ["automation.read", "proposal.read"],
   }[section[0]];
   const permissions = state.project?.current_permissions || [];
   const hasCaseSubsectionPermission =
@@ -181,7 +181,7 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
       : area === "changes"
         ? ["changeset.read"]
         : area === "ai-review"
-          ? ["automation.read", "proposal.read"]
+          ? ["requirement.read", "proposal.read"]
           : area === "settings" && section[0] !== PROJECT_SECTION_SLUGS.audit
             ? PROJECT_SETTINGS_PERMISSIONS
             : null;

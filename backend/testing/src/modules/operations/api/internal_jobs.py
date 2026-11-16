@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from src.core.common import envelope
 from src.core.internal import require_internal_token
 from src.modules.operations.services.job_execution import process_delegated_job
-from src.repositories.ai_automation_access import ai_automation_access_repository
+from src.repositories.ai_run_access import ai_run_access_repository
 
 router = APIRouter(prefix="/kiem-thu/noi-bo/tac-vu", tags=["Tác vụ nội bộ kiểm thử"])
 
@@ -13,13 +13,13 @@ async def revoke_ai_run_access(
     run_id: str,
     _: None = Depends(require_internal_token),
 ):
-    drained = await ai_automation_access_repository.revoke_and_wait(f"run:{run_id}")
+    drained = await ai_run_access_repository.revoke_and_wait(f"run:{run_id}")
     if not drained:
         raise HTTPException(
             status_code=503,
-            detail={"code": "AI_AUTOMATION_REQUESTS_STILL_ACTIVE", "retryable": True},
+            detail={"code": "AI_RUNS_STILL_ACTIVE", "retryable": True},
         )
-    return envelope({"automation_run_id": run_id, "access_revoked": True, "drained": True})
+    return envelope({"ai_run_id": run_id, "access_revoked": True, "drained": True})
 
 
 @router.post("/{event}")

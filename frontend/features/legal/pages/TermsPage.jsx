@@ -1,3 +1,5 @@
+import Image from "next/image";
+import Link from "next/link";
 import PageHeader from "@/shared/components/layout/PageHeader";
 const sections = [
   {
@@ -34,48 +36,70 @@ const sections = [
 ];
 export default function TermsPage() {
   return (
-    <div className="mx-auto w-full max-w-[1480px] min-w-0">
-      <PageHeader title="Điều khoản" meta="Hiệu lực từ ngày 28 tháng 4 năm 2026" />
+    <main className="min-h-[100dvh] bg-canvas text-ink">
+      <nav className="border-b border-brand/10 bg-white/80" aria-label="Điều hướng">
+        <div className="mx-auto flex h-[72px] w-full max-w-[1200px] items-center justify-between px-5 md:px-8">
+          <Link href="/" className="flex items-center gap-3 text-[19px] font-semibold">
+            <Image
+              src="/brand/veriq-logo.png"
+              alt="Veriq"
+              width={36}
+              height={36}
+              className="h-9 w-9 rounded-xl object-cover"
+              priority
+              unoptimized
+            />
+            <span>Veriq</span>
+          </Link>
+          <Link href="/dang-nhap" className="apple-button">
+            Đăng nhập
+          </Link>
+        </div>
+      </nav>
 
-      <div className="grid gap-8 lg:grid-cols-[220px_minmax(0,720px)] lg:items-start">
-        <nav
-          className="border-y border-border py-2 lg:sticky lg:top-[84px]"
-          aria-label="Nội dung điều khoản"
-        >
-          {sections.map((section, index) => (
-            <a
-              key={section.id}
-              href={`#${section.id}`}
-              className="grid grid-cols-[24px_1fr] gap-2 border-b border-border py-3 text-[13px] text-ink-muted last:border-b-0 hover:text-ink"
-            >
-              <span className="text-ink-faint">{index + 1}</span>
-              <span className="font-semibold">{section.title}</span>
-            </a>
-          ))}
-        </nav>
+      <div className="mx-auto w-full max-w-[1200px] min-w-0 px-5 py-8 md:px-8 md:py-10">
+        <PageHeader title="Điều khoản" meta="Hiệu lực từ ngày 28 tháng 4 năm 2026" />
 
-        <article className="divide-y divide-border border-t border-border">
-          {sections.map((section, index) => (
-            <section key={section.id} id={section.id} className="scroll-mt-24 py-7 first:pt-6">
-              <div className="grid gap-5 sm:grid-cols-[32px_1fr]">
-                <span className="text-[13px] font-semibold text-ink-faint">
-                  {String(index + 1).padStart(2, "0")}
-                </span>
-                <div>
-                  <h2 className="text-[17px] font-semibold text-ink">{section.title}</h2>
-                  <div className="mt-4 space-y-4">
-                    {section.paragraphs.map((paragraph) => (
-                      <p key={paragraph} className="text-[15px] leading-7 text-ink-muted">
-                        {paragraph}
-                      </p>
-                    ))}
+        <div className="grid gap-8 lg:grid-cols-[220px_minmax(0,720px)] lg:items-start">
+          <nav
+            className="border-y border-border py-2 lg:sticky lg:top-[24px]"
+            aria-label="Nội dung điều khoản"
+          >
+            {sections.map((section, index) => (
+              <a
+                key={section.id}
+                href={`#${section.id}`}
+                className="grid grid-cols-[24px_1fr] gap-2 border-b border-border py-3 text-[13px] text-ink-muted last:border-b-0 hover:text-ink"
+              >
+                <span className="text-ink-faint">{index + 1}</span>
+                <span className="font-semibold">{section.title}</span>
+              </a>
+            ))}
+          </nav>
+
+          <article className="divide-y divide-border border-t border-border">
+            {sections.map((section, index) => (
+              <section key={section.id} id={section.id} className="scroll-mt-24 py-7 first:pt-6">
+                <div className="grid gap-5 sm:grid-cols-[32px_1fr]">
+                  <span className="text-[13px] font-semibold text-ink-faint">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <div>
+                    <h2 className="text-[17px] font-semibold text-ink">{section.title}</h2>
+                    <div className="mt-4 space-y-4">
+                      {section.paragraphs.map((paragraph) => (
+                        <p key={paragraph} className="text-[15px] leading-7 text-ink-muted">
+                          {paragraph}
+                        </p>
+                      ))}
+                    </div>
                   </div>
                 </div>
-              </div>
-            </section>
-          ))}
-        </article>
+              </section>
+            ))}
+          </article>
+        </div>
       </div>
-    </div>
+    </main>
   );
 }

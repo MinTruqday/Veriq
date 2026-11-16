@@ -8,14 +8,14 @@ from pydantic import Field
 
 from src.core.infrastructure.configuration import settings
 from src.prompts.test_generation import requirement_test_generation_instruction
-from src.schemas.automation import AutomationFact
+from src.schemas.ai_runs import AgentFact
 from src.blueprint import (
     compile_testability_blueprint,
     obligations_supported_by_requirement_version,
     requirement_version_source_segments,
     requirement_version_source_text,
 )
-from src.tools.automation_publication import (
+from src.tools.grounded_publication import (
     publish_grounded_requirement,
     publish_grounded_test_case,
     verified_test_case_publication_readback,
@@ -30,7 +30,7 @@ from src.tools.testing import (
     resolve_answered_clarifications,
     response_items,
 )
-from src.tools.testing_api import AutomationOperationError, require_operation
+from src.tools.testing_api import ToolOperationError, require_operation
 
 
 def requirement_version_source_facts(version, event_facts=()):
@@ -52,7 +52,7 @@ def requirement_version_source_facts(version, event_facts=()):
                 continue
             cursor = start + len(quote)
             facts.append(
-                AutomationFact(
+                AgentFact(
                     artifact_type="requirement_version",
                     artifact_id=version_id,
                     artifact_version_id=version_id,
@@ -83,7 +83,7 @@ def requirement_version_source_facts(version, event_facts=()):
                 continue
             end = start + len(item.quote)
         facts.append(
-            AutomationFact(
+            AgentFact(
                 artifact_type="requirement_version",
                 artifact_id=version_id,
                 artifact_version_id=version_id,
@@ -122,7 +122,7 @@ async def assess_changed_requirement_quality(project_id, version, config):
     version_id = str(version.get("_id") or "")
     revision = version.get("revision")
     if not version_id or not isinstance(revision, int) or isinstance(revision, bool):
-        raise AutomationOperationError("REQUIREMENT_QUALITY_SOURCE_REVISION_INVALID")
+        raise ToolOperationError("REQUIREMENT_QUALITY_SOURCE_REVISION_INVALID")
     idempotency_key = f"requirement-quality-event:{version_id}:{revision}"
     result = await require_operation(
         "POST",
@@ -130,7 +130,7 @@ async def assess_changed_requirement_quality(project_id, version, config):
         config,
         {
             "idempotency_key": idempotency_key,
-            "instruction": "Đánh giá khả năng hiểu và kiểm thử của đúng phiên bản Requirement này; chỉ ghi nhận vấn đề có căn cứ, không tự sửa nội dung.",
+            "instruction": "Assess the testability of this exact Requirement version. Record only evidence-backed issues and do not modify the source content.",
         },
         timeout=settings.MODEL_TIMEOUT_SECONDS,
     )
@@ -143,7 +143,7 @@ async def assess_changed_requirement_quality(project_id, version, config):
         or result.get("result_type") != "REQUIREMENT_QUALITY_ANALYSIS"
         or result.get("idempotency_key") != idempotency_key
     ):
-        raise AutomationOperationError("REQUIREMENT_QUALITY_READBACK_INVALID")
+        raise ToolOperationError("REQUIREMENT_QUALITY_READBACK_INVALID")
     system_checks = result.get("findings")
     recommendations = result.get("recommendations")
     if not isinstance(system_checks, list) or any(
@@ -151,18 +151,18 @@ async def assess_changed_requirement_quality(project_id, version, config):
         or item.get("severity") not in {"error", "warning", "info"}
         for item in system_checks
     ):
-        raise AutomationOperationError("REQUIREMENT_QUALITY_FINDINGS_INVALID")
+        raise ToolOperationError("REQUIREMENT_QUALITY_FINDINGS_INVALID")
     if not isinstance(recommendations, list) or any(
         not isinstance(item, dict) or "severity" in item
         for item in recommendations
     ):
-        raise AutomationOperationError("REQUIREMENT_QUALITY_RECOMMENDATIONS_INVALID")
+        raise ToolOperationError("REQUIREMENT_QUALITY_RECOMMENDATIONS_INVALID")
     status = result.get("status")
     if status not in {"SUCCESS", "DEGRADED", "FAILED"}:
-        raise AutomationOperationError("REQUIREMENT_QUALITY_STATUS_INVALID")
+        raise ToolOperationError("REQUIREMENT_QUALITY_STATUS_INVALID")
     degraded_mode = result.get("degraded_mode")
     if not isinstance(result.get("valid"), bool) or not isinstance(degraded_mode, bool):
-        raise AutomationOperationError("REQUIREMENT_QUALITY_STATUS_INVALID")
+        raise ToolOperationError("REQUIREMENT_QUALITY_STATUS_INVALID")
     return {
         "analysis_id": str(result["_id"]),
         "status": status,
@@ -176,7 +176,7 @@ async def assess_changed_requirement_quality(project_id, version, config):
     }
 
 
-def requirement_quality_allows_automatic_publication(assessment):
+def requirement_quality_allows_ai_publication(assessment):
     return (
         isinstance(assessment, dict)
         and assessment.get("status") == "SUCCESS"
@@ -209,44 +209,44 @@ async def list_all_impact_proposals(project_id, impact_analysis_id, config, page
         for item in items:
             identifier = str(item.get("_id") or "")
             if not identifier or identifier in seen_ids:
-                raise AutomationOperationError("MAINTENANCE_PROPOSAL_PAGINATION_DUPLICATE")
+                raise ToolOperationError("MAINTENANCE_PROPOSAL_PAGINATION_DUPLICATE")
             if (
                 item.get("project_id") != project_id
                 or item.get("impact_analysis_id") != impact_analysis_id
             ):
-                raise AutomationOperationError("MAINTENANCE_PROPOSAL_SCOPE_INVALID")
+                raise ToolOperationError("MAINTENANCE_PROPOSAL_SCOPE_INVALID")
             seen_ids.add(identifier)
             records.append(item)
 
         if not isinstance(response, dict):
-            raise AutomationOperationError("MAINTENANCE_PROPOSAL_PAGINATION_INVALID")
+            raise ToolOperationError("MAINTENANCE_PROPOSAL_PAGINATION_INVALID")
         try:
             reported_total = int(response["total"])
             reported_pages = int(response["total_pages"])
             reported_page = int(response["page"])
             reported_page_size = int(response["page_size"])
         except (KeyError, TypeError, ValueError) as error:
-            raise AutomationOperationError("MAINTENANCE_PROPOSAL_PAGINATION_INVALID") from error
+            raise ToolOperationError("MAINTENANCE_PROPOSAL_PAGINATION_INVALID") from error
         if reported_page != page or reported_page_size != page_size:
-            raise AutomationOperationError("MAINTENANCE_PROPOSAL_PAGINATION_INVALID")
+            raise ToolOperationError("MAINTENANCE_PROPOSAL_PAGINATION_INVALID")
         reported_fingerprint = response.get("scope_fingerprint")
         if not isinstance(reported_fingerprint, str) or not reported_fingerprint:
-            raise AutomationOperationError("MAINTENANCE_PROPOSAL_SCOPE_FINGERPRINT_MISSING")
+            raise ToolOperationError("MAINTENANCE_PROPOSAL_SCOPE_FINGERPRINT_MISSING")
         if scope_fingerprint is not None and reported_fingerprint != scope_fingerprint:
-            raise AutomationOperationError("MAINTENANCE_PROPOSAL_SCOPE_CHANGED_DURING_READ")
+            raise ToolOperationError("MAINTENANCE_PROPOSAL_SCOPE_CHANGED_DURING_READ")
         scope_fingerprint = reported_fingerprint
         if total is not None and reported_total != total:
-            raise AutomationOperationError("MAINTENANCE_PROPOSAL_SCOPE_CHANGED_DURING_READ")
+            raise ToolOperationError("MAINTENANCE_PROPOSAL_SCOPE_CHANGED_DURING_READ")
         if total_pages is not None and reported_pages != total_pages:
-            raise AutomationOperationError("MAINTENANCE_PROPOSAL_SCOPE_CHANGED_DURING_READ")
+            raise ToolOperationError("MAINTENANCE_PROPOSAL_SCOPE_CHANGED_DURING_READ")
         if reported_total < 0 or reported_pages < 0:
-            raise AutomationOperationError("MAINTENANCE_PROPOSAL_PAGINATION_INVALID")
+            raise ToolOperationError("MAINTENANCE_PROPOSAL_PAGINATION_INVALID")
         total = reported_total
         total_pages = reported_pages
         page += 1
 
     if total is not None and len(records) != total:
-        raise AutomationOperationError("MAINTENANCE_PROPOSAL_PAGINATION_INCOMPLETE")
+        raise ToolOperationError("MAINTENANCE_PROPOSAL_PAGINATION_INCOMPLETE")
     return records
 
 
@@ -260,7 +260,7 @@ async def apply_grounded_maintenance_proposal(
         or impact_analysis.get("status") != "REVIEWED"
         or not proposal.get("evidence")
     ):
-        raise AutomationOperationError("MAINTENANCE_PROPOSAL_SOURCE_SCOPE_INVALID")
+        raise ToolOperationError("MAINTENANCE_PROPOSAL_SOURCE_SCOPE_INVALID")
 
     proposal_type = proposal.get("proposal_type")
     patch = proposal.get("patch") or {}
@@ -280,14 +280,14 @@ async def apply_grounded_maintenance_proposal(
             for item in affected
         )
         if not exact_match:
-            raise AutomationOperationError("MAINTENANCE_PROPOSAL_TARGET_NOT_VERIFIED")
+            raise ToolOperationError("MAINTENANCE_PROPOSAL_TARGET_NOT_VERIFIED")
     elif proposal_type == "CREATE_TEST_CASE":
         if requirement_version_id not in set(patch.get("requirement_version_ids") or []):
-            raise AutomationOperationError("MAINTENANCE_PROPOSAL_REQUIREMENT_SCOPE_INVALID")
+            raise ToolOperationError("MAINTENANCE_PROPOSAL_REQUIREMENT_SCOPE_INVALID")
         if not patch.get("title") or not patch.get("steps"):
-            raise AutomationOperationError("MAINTENANCE_PROPOSAL_TEST_CASE_INCOMPLETE")
+            raise ToolOperationError("MAINTENANCE_PROPOSAL_TEST_CASE_INCOMPLETE")
     else:
-        raise AutomationOperationError("MAINTENANCE_PROPOSAL_TYPE_NOT_AUTOMATABLE")
+        raise ToolOperationError("MAINTENANCE_PROPOSAL_TYPE_NOT_AUTOMATABLE")
 
     if proposal.get("status") in {"PENDING", "APPLY_PARTIAL", "APPLYING"}:
         await require_operation(
@@ -296,10 +296,7 @@ async def apply_grounded_maintenance_proposal(
             config,
             {
                 "expected_revision": proposal["revision"],
-                "review_note": (
-                    "Tự động áp dụng sau khi xác minh đúng dự án, phân tích tác động đã rà soát, "
-                    "phiên bản nguồn và kiểm tra chất lượng."
-                ),
+                "review_note": 'Tự động áp dụng sau khi xác minh đúng dự án, phân tích tác động đã rà soát, phiên bản nguồn và kiểm tra chất lượng.',
             },
         )
 
@@ -310,7 +307,7 @@ async def apply_grounded_maintenance_proposal(
         or applied.get("status") not in {"ACCEPTED", "EDITED_ACCEPTED"}
         or not applied.get("applied_artifact_id")
     ):
-        raise AutomationOperationError("MAINTENANCE_PROPOSAL_APPLY_READBACK_INVALID")
+        raise ToolOperationError("MAINTENANCE_PROPOSAL_APPLY_READBACK_INVALID")
 
     artifact_id = str(applied["applied_artifact_id"])
     if proposal_type == "UPDATE_TEST_CASE":
@@ -330,7 +327,7 @@ async def apply_grounded_maintenance_proposal(
             or current_version_id != artifact_id
             or requirement_version_id not in set(version.get("requirement_version_ids") or [])
         ):
-            raise AutomationOperationError("MAINTENANCE_TEST_CASE_VERSION_READBACK_INVALID")
+            raise ToolOperationError("MAINTENANCE_TEST_CASE_VERSION_READBACK_INVALID")
         return {
             "proposal_id": proposal["_id"],
             "test_case_id": proposal["target_artifact_id"],
@@ -346,15 +343,15 @@ async def apply_grounded_maintenance_proposal(
         or requirement_version_id not in set(draft.get("requirement_version_ids") or [])
         or requirement_version_id not in set(draft.get("evidence_refs") or [])
     ):
-        raise AutomationOperationError("MAINTENANCE_TEST_CASE_DRAFT_READBACK_INVALID")
+        raise ToolOperationError("MAINTENANCE_TEST_CASE_DRAFT_READBACK_INVALID")
     lint = await require_operation(
         "POST", f"/ban-nhap-ca-kiem-thu/{artifact_id}/kiem-tra", config
     )
     if lint.get("valid") is not True:
-        raise AutomationOperationError("MAINTENANCE_TEST_CASE_QUALITY_FAILED")
+        raise ToolOperationError("MAINTENANCE_TEST_CASE_QUALITY_FAILED")
     case, version, status = await publish_grounded_test_case(project_id, draft, config)
     if status != "SUCCESS" or version.get("status") != "ACTIVE":
-        raise AutomationOperationError("MAINTENANCE_TEST_CASE_PUBLICATION_FAILED")
+        raise ToolOperationError("MAINTENANCE_TEST_CASE_PUBLICATION_FAILED")
     return {
         "proposal_id": proposal["_id"],
         "test_case_id": case["_id"],
@@ -370,7 +367,7 @@ async def process_changed_requirement_version(
         str, Field(min_length=1, description="Changed Requirement version identifier")
     ],
     source_facts: Annotated[
-        list[AutomationFact], Field(description="Verified facts from the changed Requirement event")
+        list[AgentFact], Field(description="Verified facts from the changed Requirement event")
     ] = Field(default_factory=list),
     config: RunnableConfig = None,
 ) -> str:
@@ -399,7 +396,7 @@ async def process_changed_requirement_version(
     if missing:
         return json.dumps(
             {
-                "status": "automation_blocked",
+                "status": "blocked",
                 "reason_code": "REQUIRED_PERMISSION_MISSING",
                 "missing_permissions": missing,
             }
@@ -417,12 +414,16 @@ async def process_changed_requirement_version(
     )
     allowed_source_ids = {item.artifact_id for item in blueprint_facts}
     blueprint = await compile_testability_blueprint(
-        project_id, blueprint_facts, evidence_by_ref, allowed_source_ids
+        project_id,
+        blueprint_facts,
+        evidence_by_ref,
+        allowed_source_ids,
+        output_language=(config or {}).get("configurable", {}).get("output_language"),
     )
     if blueprint.get("status") != "SUCCESS":
         return json.dumps(
             {
-                "status": "automation_partial_failure",
+                "status": "partial_failure",
                 "reason_code": "TESTABILITY_BLUEPRINT_COMPILATION_FAILED",
                 "requirement_version_id": requirement_version_id,
                 "blueprint_reason_codes": blueprint.get("reason_codes", []),
@@ -437,7 +438,7 @@ async def process_changed_requirement_version(
     if unlinked_obligations:
         return json.dumps(
             {
-                "status": "automation_partial_failure",
+                "status": "partial_failure",
                 "reason_code": "BLUEPRINT_OBLIGATIONS_NOT_SUPPORTED_BY_REQUIREMENT_VERSION",
                 "requirement_version_id": requirement_version_id,
                 "obligation_keys": [item.get("key") for item in unlinked_obligations],
@@ -455,7 +456,7 @@ async def process_changed_requirement_version(
     if open_clarifications:
         return json.dumps(
             {
-                "status": "automation_waiting_for_input",
+                "status": "awaiting_input",
                 "reason_code": "REQUIREMENT_CLARIFICATION_REQUIRED",
                 "requirement_version_id": requirement_version_id,
                 "clarification_ids": [
@@ -490,20 +491,20 @@ async def process_changed_requirement_version(
         requirement_quality = await assess_changed_requirement_quality(
             project_id, current_version, config
         )
-    except AutomationOperationError as error:
+    except ToolOperationError as error:
         return json.dumps(
             {
-                "status": "automation_partial_failure",
+                "status": "partial_failure",
                 "reason_code": error.reason_code,
                 "requirement_version_id": requirement_version_id,
                 "unresolved": [{"reason": error.reason_code}],
             },
             ensure_ascii=False,
         )
-    if not requirement_quality_allows_automatic_publication(requirement_quality):
+    if not requirement_quality_allows_ai_publication(requirement_quality):
         return json.dumps(
             {
-                "status": "automation_partial_failure",
+                "status": "partial_failure",
                 "reason_code": "REQUIREMENT_QUALITY_GATE_FAILED",
                 "requirement_version_id": requirement_version_id,
                 "requirement_quality": requirement_quality,
@@ -549,10 +550,10 @@ async def process_changed_requirement_version(
                 project_id, requirement, version, config
             )
             current_version = version
-        except AutomationOperationError as error:
+        except ToolOperationError as error:
             return json.dumps(
                 {
-                    "status": "automation_partial_failure",
+                    "status": "partial_failure",
                     "reason_code": error.reason_code,
                     "requirement_version_id": requirement_version_id,
                     "unresolved": [{"reason": error.reason_code}],
@@ -582,7 +583,7 @@ async def process_changed_requirement_version(
                     {
                         "expected_revision": change_set["revision"],
                         "changes": change_set["changes"],
-                        "review_note": "AI tự động xác minh khác biệt giữa hai phiên bản Requirement có nguồn",
+                        "review_note": 'AI tự động xác minh khác biệt giữa hai phiên bản Requirement có nguồn.',
                     },
                 )
             if change_set.get("status") == "REVIEWED":
@@ -600,7 +601,7 @@ async def process_changed_requirement_version(
                         {
                             "expected_revision": analysis["revision"],
                             "overrides": [],
-                            "review_note": "AI tự động rà soát tác động dựa trên trace và bằng chứng của Requirement mới",
+                            "review_note": 'AI tự động rà soát tác động dựa trên trace và bằng chứng của Requirement mới.',
                         },
                     )
                 if analysis.get("status") == "REVIEWED":
@@ -631,7 +632,7 @@ async def process_changed_requirement_version(
                             project_id, analysis["_id"], config
                         )
                         if response_items(created_proposals) and not proposals:
-                            raise AutomationOperationError(
+                            raise ToolOperationError(
                                 "MAINTENANCE_PROPOSAL_PERSISTENCE_READBACK_EMPTY"
                             )
                     for proposal in response_items(proposals):
@@ -660,7 +661,7 @@ async def process_changed_requirement_version(
                             maintenance_artifact_ids.append(
                                 applied_proposal["test_case_version_id"]
                             )
-                        except (AutomationOperationError, KeyError, RuntimeError) as error:
+                        except (ToolOperationError, KeyError, RuntimeError) as error:
                             unresolved.append(
                                 {
                                     "proposal_id": proposal.get("_id"),
@@ -695,7 +696,7 @@ async def process_changed_requirement_version(
     if not criteria_ids:
         return json.dumps(
             {
-                "status": "automation_partial_failure",
+                "status": "partial_failure",
                 "reason_code": "NO_ACCEPTANCE_CRITERIA",
                 "requirement_version_id": requirement_version_id,
             }
@@ -798,7 +799,7 @@ async def process_changed_requirement_version(
                 {
                     **draft,
                     "target_version_id": target["target_version_id"],
-                    "version_reason": "Tự động cập nhật liên kết và nội dung ca theo Requirement version mới sau khi đối chiếu trùng và bằng chứng nguồn",
+                    "version_reason": 'Tự động cập nhật liên kết và nội dung ca theo Requirement version mới sau khi đối chiếu trùng và bằng chứng nguồn.',
                 }
             )
             covered_ids.update(draft.get("acceptance_criterion_ids", []))
@@ -848,7 +849,7 @@ async def process_changed_requirement_version(
                     {
                         **draft,
                         "target_version_id": target["target_version_id"],
-                        "version_reason": "Tự động cập nhật liên kết và nội dung ca theo Requirement version mới sau khi đối chiếu trùng và bằng chứng nguồn",
+                        "version_reason": 'Tự động cập nhật liên kết và nội dung ca theo Requirement version mới sau khi đối chiếu trùng và bằng chứng nguồn.',
                     }
                 )
                 covered_ids.update(draft.get("acceptance_criterion_ids", []))
@@ -1019,7 +1020,7 @@ async def process_changed_requirement_version(
                 warnings.append(
                     f"TEST_CASE_PUBLICATION_DEGRADED:{case['_id']}"
                 )
-        except AutomationOperationError as error:
+        except ToolOperationError as error:
             unresolved.append({
                 "test_case_draft_id": draft["_id"],
                 "reason": error.reason_code,
@@ -1077,7 +1078,7 @@ async def process_changed_requirement_version(
         }.values()
     )
     if unresolved:
-        outcome = "automation_partial_failure"
+        outcome = "partial_failure"
     else:
         outcome = "COMPLETED"
     return json.dumps(

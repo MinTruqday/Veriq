@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from src.core.common import get_project, get_project_entity, now, plain_text
 from src.core.database import database
-from src.core.human_decisions import require_automation_publication_authority
+from src.core.human_decisions import require_ai_publication_authority
 from src.modules.design.services.linters import duplicate_score, lint_test_case
 from src.modules.design.services.test_evidence import requirement_test_evidence_text
 from src.core.project_settings import resolve_testcase_duplicate_threshold
@@ -436,7 +436,7 @@ async def review_context(draft_id, user, permission="testcase.read"):
 
 
 async def save_merged_test_case(draft_id, payload, user):
-    require_automation_publication_authority(user)
+    require_ai_publication_authority(user)
     context = await review_context(draft_id, user, "testcase.update")
     draft = context["draft"]
     decision_id = "TCMERGE-" + fingerprint([draft_id, payload.operation_id])

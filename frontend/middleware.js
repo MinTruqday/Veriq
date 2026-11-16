@@ -6,9 +6,13 @@ export function middleware(request) {
     !token &&
     (pathname.startsWith("/du-an") ||
       pathname.startsWith("/van-hanh") ||
-      pathname.startsWith("/cai-dat"))
-  )
-    return NextResponse.redirect(new URL("/dang-nhap", request.url));
+      pathname.startsWith("/cai-dat") ||
+      pathname.startsWith("/thong-bao"))
+  ) {
+    const loginUrl = new URL("/dang-nhap", request.url);
+    loginUrl.searchParams.set("next", `${pathname}${request.nextUrl.search}`);
+    return NextResponse.redirect(loginUrl);
+  }
   return NextResponse.next();
 }
 export const config = {

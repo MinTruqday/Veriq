@@ -17,16 +17,16 @@ from src.prompts.test_generation import (
     requirement_test_generation_instruction,
     retry_grounded_requirement_test_generation_instruction,
 )
-from src.repositories.automation import automation_repository
-from src.schemas.automation import AutomationFact, AutomationStatus
+from src.repositories.ai_runs import ai_run_repository
+from src.schemas.ai_runs import AgentFact, AIRunStatus
 from src.blueprint import (
     compile_testability_blueprint,
     facts_bound_to_authorized_evidence,
     map_blueprint_obligations_to_requirements,
     requirement_version_source_text,
 )
-from src.services.automation_provenance import source_quote_spans
-from src.tools.automation_publication import (
+from src.services.source_provenance import source_quote_spans
+from src.tools.grounded_publication import (
     verified_test_case_publication_readback,
 )
 from src.tools.registry import with_tool_access
@@ -40,7 +40,7 @@ from src.tools.testing import (
     resolve_answered_clarifications,
     response_items,
 )
-from src.tools.testing_api import AutomationOperationError, parse, require_operation
+from src.tools.testing_api import ToolOperationError, parse, require_operation
 
 REQUIREMENT_IMPORT_APPLY_TIMEOUT_SECONDS = 180
 
@@ -63,12 +63,12 @@ async def apply_requirement_import_safely(import_job, config, before_write=None)
             timeout=REQUIREMENT_IMPORT_APPLY_TIMEOUT_SECONDS,
         )
         latest = await require_operation("GET", f"/nhap-yeu-cau/{job_id}", config)
-    except (AutomationOperationError, httpx.TimeoutException, httpx.NetworkError) as error:
+    except (ToolOperationError, httpx.TimeoutException, httpx.NetworkError) as error:
         latest = None
         for _ in range(30):
             try:
                 latest = await require_operation("GET", f"/nhap-yeu-cau/{job_id}", config)
-            except (AutomationOperationError, httpx.TimeoutException, httpx.NetworkError):
+            except (ToolOperationError, httpx.TimeoutException, httpx.NetworkError):
                 await asyncio.sleep(2)
                 continue
             if latest.get("status") == "CONFIRMED":
@@ -76,7 +76,7 @@ async def apply_requirement_import_safely(import_job, config, before_write=None)
             if latest.get("status") != "CONFIRMING":
                 raise error
             await asyncio.sleep(2)
-        raise AutomationOperationError(
+        raise ToolOperationError(
             "REQUIREMENT_IMPORT_CONFIRMATION_OUTCOME_UNRESOLVED"
         ) from error
 
@@ -97,7 +97,7 @@ async def generate_grounded_test_case_preview(
         if before_request is not None:
             await before_request()
         return await require_operation("POST", path, config, payload, timeout=settings.MODEL_TIMEOUT_SECONDS)
-    except AutomationOperationError as error:
+    except ToolOperationError as error:
         if error.reason_code != "AI_UNGROUNDED_OUTPUT":
             raise
     retry_payload = {
@@ -336,7 +336,7 @@ async def existing_requirement_obligation_coverage(
     requirement_id, project_id, requirement_version_id, obligations, config, page_size=500
 ):
     if not isinstance(page_size, int) or isinstance(page_size, bool) or not 1 <= page_size <= 500:
-        raise AutomationOperationError("TEST_CASE_DEDUPLICATION_PAGINATION_INVALID")
+        raise ToolOperationError("TEST_CASE_DEDUPLICATION_PAGINATION_INVALID")
 
     page = 1
     existing_cases = []
@@ -360,17 +360,17 @@ async def existing_requirement_obligation_coverage(
         )
         items = response_items(result)
         if not isinstance(result, dict):
-            raise AutomationOperationError("TEST_CASE_DEDUPLICATION_PAGINATION_INVALID")
+            raise ToolOperationError("TEST_CASE_DEDUPLICATION_PAGINATION_INVALID")
         if not isinstance(result.get("items"), list):
-            raise AutomationOperationError("TEST_CASE_DEDUPLICATION_PAGINATION_INVALID")
+            raise ToolOperationError("TEST_CASE_DEDUPLICATION_PAGINATION_INVALID")
         for item in items:
             identifier = str(item.get("_id") or "") if isinstance(item, dict) else ""
             if not identifier:
-                raise AutomationOperationError("TEST_CASE_DEDUPLICATION_PAGINATION_INVALID")
+                raise ToolOperationError("TEST_CASE_DEDUPLICATION_PAGINATION_INVALID")
             if item.get("project_id") != project_id:
-                raise AutomationOperationError("TEST_CASE_DEDUPLICATION_SCOPE_INVALID")
+                raise ToolOperationError("TEST_CASE_DEDUPLICATION_SCOPE_INVALID")
             if identifier in seen_ids:
-                raise AutomationOperationError("TEST_CASE_DEDUPLICATION_PAGINATION_DUPLICATE")
+                raise ToolOperationError("TEST_CASE_DEDUPLICATION_PAGINATION_DUPLICATE")
             seen_ids.add(identifier)
             existing_cases.append(item)
         reported_values = (
@@ -380,7 +380,7 @@ async def existing_requirement_obligation_coverage(
             result.get("page_size"),
         )
         if any(not isinstance(value, int) or isinstance(value, bool) for value in reported_values):
-            raise AutomationOperationError("TEST_CASE_DEDUPLICATION_PAGINATION_INVALID")
+            raise ToolOperationError("TEST_CASE_DEDUPLICATION_PAGINATION_INVALID")
         reported_total, reported_pages, reported_page, reported_page_size = reported_values
         if (
             reported_total < 0
@@ -389,14 +389,14 @@ async def existing_requirement_obligation_coverage(
             or reported_page_size != page_size
             or len(items) != min(page_size, max(0, reported_total - (page - 1) * page_size))
         ):
-            raise AutomationOperationError("TEST_CASE_DEDUPLICATION_PAGINATION_INVALID")
+            raise ToolOperationError("TEST_CASE_DEDUPLICATION_PAGINATION_INVALID")
         reported_fingerprint = result.get("scope_fingerprint")
         if not isinstance(reported_fingerprint, str) or not reported_fingerprint:
-            raise AutomationOperationError("TEST_CASE_DEDUPLICATION_SCOPE_FINGERPRINT_MISSING")
+            raise ToolOperationError("TEST_CASE_DEDUPLICATION_SCOPE_FINGERPRINT_MISSING")
         if total is not None and (reported_total != total or reported_pages != total_pages):
-            raise AutomationOperationError("TEST_CASE_DEDUPLICATION_SCOPE_CHANGED_DURING_READ")
+            raise ToolOperationError("TEST_CASE_DEDUPLICATION_SCOPE_CHANGED_DURING_READ")
         if scope_fingerprint is not None and reported_fingerprint != scope_fingerprint:
-            raise AutomationOperationError("TEST_CASE_DEDUPLICATION_SCOPE_CHANGED_DURING_READ")
+            raise ToolOperationError("TEST_CASE_DEDUPLICATION_SCOPE_CHANGED_DURING_READ")
         total = reported_total
         total_pages = reported_pages
         scope_fingerprint = reported_fingerprint
@@ -405,7 +405,7 @@ async def existing_requirement_obligation_coverage(
         page += 1
 
     if total is not None and len(existing_cases) != total:
-        raise AutomationOperationError("TEST_CASE_DEDUPLICATION_PAGINATION_INCOMPLETE")
+        raise ToolOperationError("TEST_CASE_DEDUPLICATION_PAGINATION_INCOMPLETE")
 
     coverage = {}
     for case in existing_cases:
@@ -668,7 +668,7 @@ def verified_document_facts(source_document_ids, source_documents):
                     cursor = end
                     continue
                 facts.append(
-                    AutomationFact(
+                    AgentFact(
                         artifact_type="requirement_document",
                         artifact_id=str(document_id),
                         artifact_version_id=version_id,
@@ -744,7 +744,23 @@ def requirement_template_source_snapshot_matches(
     )
     if set(expected_documents) != set(expected_ids):
         return False
-    if snapshot.get("documents") != expected_documents:
+    stored_documents = snapshot.get("documents")
+    if not isinstance(stored_documents, dict) or set(stored_documents) != set(expected_ids):
+        return False
+    if any(
+        not isinstance(stored_documents.get(document_id), dict)
+        or {
+            key: value
+            for key, value in stored_documents[document_id].items()
+            if key != "revision"
+        }
+        != {
+            key: value
+            for key, value in expected_documents[document_id].items()
+            if key != "revision"
+        }
+        for document_id in expected_ids
+    ):
         return False
     if snapshot.get("templates") != {}:
         return False
@@ -819,7 +835,7 @@ def source_extraction_warnings(document_ids, documents):
 def require_project_scoped_sources(project_id, documents):
     items = response_items(documents)
     if any(item.get("project_id") != project_id for item in items):
-        raise AutomationOperationError("AI_SOURCE_PROJECT_SCOPE_INVALID")
+        raise ToolOperationError("AI_SOURCE_PROJECT_SCOPE_INVALID")
     return items
 
 
@@ -838,19 +854,19 @@ async def list_all_ai_readable_requirement_documents(project_id, project_path, c
             config,
         )
         if not isinstance(response, dict) or not isinstance(response.get("items"), list):
-            raise AutomationOperationError("AI_SOURCE_PAGE_INVALID")
+            raise ToolOperationError("AI_SOURCE_PAGE_INVALID")
         page = require_project_scoped_sources(project_id, response["items"])
         for document in page:
             document_id = str(document.get("_id") or "")
             if not document_id or document_id in seen_ids:
-                raise AutomationOperationError("AI_SOURCE_PAGINATION_DUPLICATE")
+                raise ToolOperationError("AI_SOURCE_PAGINATION_DUPLICATE")
             seen_ids.add(document_id)
             documents.append(document)
         next_cursor = response.get("next_cursor")
         if next_cursor is None:
             break
         if not isinstance(next_cursor, str) or not next_cursor or next_cursor in seen_cursors:
-            raise AutomationOperationError("AI_SOURCE_PAGINATION_CURSOR_INVALID")
+            raise ToolOperationError("AI_SOURCE_PAGINATION_CURSOR_INVALID")
         seen_cursors.add(next_cursor)
         cursor = next_cursor
     return documents
@@ -870,8 +886,9 @@ async def revalidate_compilation_sources(
     latest_compilable_ids = compilable_document_ids(
         list(latest_documents.values()), source_document_ids[0] if source_document_ids else ""
     )
-    if latest_compilable_ids != sorted(set(map(str, source_document_ids))):
-        raise AutomationOperationError("AI_SOURCE_SCOPE_CHANGED_DURING_COMPILATION")
+    expected_source_ids = set(map(str, source_document_ids))
+    if not expected_source_ids or not expected_source_ids.issubset(latest_compilable_ids):
+        raise ToolOperationError("AI_SOURCE_SCOPE_CHANGED_DURING_COMPILATION")
 
     for document_id in source_document_ids:
         previous = source_documents.get(str(document_id)) or {}
@@ -881,7 +898,6 @@ async def revalidate_compilation_sources(
             or current.get("project_id") != project_id
             or current.get("status") != "READY"
             or current.get("ai_enabled") is not True
-            or current.get("revision") != previous.get("revision")
             or current.get("source_version") != previous.get("source_version")
             or current.get("source_version_sequence")
             != previous.get("source_version_sequence")
@@ -889,12 +905,16 @@ async def revalidate_compilation_sources(
             or current.get("previous_source_version_id")
             != previous.get("previous_source_version_id")
             or current.get("authority") != previous.get("authority")
+            or current.get("filename") != previous.get("filename")
+            or current.get("title") != previous.get("title")
+            or current.get("source_type") != previous.get("source_type")
+            or current.get("content_hash") != previous.get("content_hash")
             or current.get("index_status") != previous.get("index_status")
             or current.get("parse_report") != previous.get("parse_report")
             or document_content_fingerprint(current)
             != document_content_fingerprint(previous)
         ):
-            raise AutomationOperationError("AI_SOURCE_SNAPSHOT_CHANGED_DURING_COMPILATION")
+            raise ToolOperationError("AI_SOURCE_SNAPSHOT_CHANGED_DURING_COMPILATION")
 
 
 def authorized_document_version_path(
@@ -1154,15 +1174,13 @@ def blocking_blueprint_clarifications(open_clarifications, blueprint_clarificati
 
 
 def classify_requirement_ingestion_outcome(unresolved):
-    unresolved = [
-        item for item in unresolved
-        if item.get("reason") not in {"HUMAN_REQUIREMENT_REVIEW_REQUIRED", "HUMAN_TEST_CASE_REVIEW_REQUIRED"}
-    ]
     if not unresolved:
         return "COMPLETED", "COMPLETED", None
     input_reasons = {
         "REQUIREMENT_CLARIFICATION_REQUIRED",
         "REQUIREMENT_MATCH_NEEDS_RECONCILIATION",
+        "HUMAN_REQUIREMENT_REVIEW_REQUIRED",
+        "HUMAN_TEST_CASE_REVIEW_REQUIRED",
     }
     if all(item.get("reason") in input_reasons for item in unresolved):
         reason_code = (
@@ -1174,11 +1192,11 @@ def classify_requirement_ingestion_outcome(unresolved):
             else next(item["reason"] for item in unresolved)
         )
         return (
-            "automation_waiting_for_input",
+            "awaiting_input",
             "AWAITING_INPUT",
             reason_code,
         )
-    return "automation_partial_failure", "INCOMPLETE", None
+    return "partial_failure", "INCOMPLETE", None
 
 
 def focused_requirement_generation_request(
@@ -1586,14 +1604,14 @@ async def update_resumed_requirement_drafts(
         return
     permissions = set((config or {}).get("configurable", {}).get("permissions", []))
     if not {"requirement.update", "business_rule.manage"}.issubset(permissions):
-        raise AutomationOperationError("REQUIREMENT_CLARIFICATION_UPDATE_PERMISSION_MISSING")
+        raise ToolOperationError("REQUIREMENT_CLARIFICATION_UPDATE_PERMISSION_MISSING")
     requirements = []
     for requirement_id in dict.fromkeys(str(value) for value in requirement_ids if value):
         requirement = await require_operation(
             "GET", f"/yeu-cau/{requirement_id}", config
         )
         if requirement.get("project_id") != project_id:
-            raise AutomationOperationError("RESUME_REQUIREMENT_PROJECT_MISMATCH")
+            raise ToolOperationError("RESUME_REQUIREMENT_PROJECT_MISMATCH")
         version = requirement.get("current_version") or await require_operation(
             "GET", f"/phien-ban-yeu-cau/{requirement['current_version_id']}", config
         )
@@ -1603,7 +1621,7 @@ async def update_resumed_requirement_drafts(
         quote = str(match["clarification"].get("source_quote") or "").strip()
         answer = str(match["response"].get("answer") or "").strip()
         if not quote or len(answer) < 2:
-            raise AutomationOperationError("CLARIFICATION_RESOLUTION_INCOMPLETE")
+            raise ToolOperationError("CLARIFICATION_RESOLUTION_INCOMPLETE")
         candidates = []
         for requirement, version in requirements:
             if version.get("status") != "DRAFT":
@@ -1616,7 +1634,7 @@ async def update_resumed_requirement_drafts(
             ):
                 candidates.append((requirement, version))
         if len(candidates) != 1:
-            raise AutomationOperationError("CLARIFICATION_REQUIREMENT_MATCH_AMBIGUOUS")
+            raise ToolOperationError("CLARIFICATION_REQUIREMENT_MATCH_AMBIGUOUS")
         requirement, version = candidates[0]
         business_rules = list(version.get("business_rules") or [])
         if answer not in business_rules:
@@ -1642,7 +1660,7 @@ async def update_resumed_requirement_drafts(
             or readback_version.get("status") != "DRAFT"
             or answer not in (readback_version.get("business_rules") or [])
         ):
-            raise AutomationOperationError("CLARIFICATION_REQUIREMENT_READBACK_INVALID")
+            raise ToolOperationError("CLARIFICATION_REQUIREMENT_READBACK_INVALID")
         clarification_payload = await require_operation(
             "GET",
             f"/phien-ban-yeu-cau/{readback_version['_id']}/phieu-lam-ro",
@@ -1687,7 +1705,7 @@ async def update_resumed_requirement_drafts(
                     and item.get("answer") == answer
                     for item in clarification_readback
                 ):
-                    raise AutomationOperationError(
+                    raise ToolOperationError(
                         "REQUIREMENT_CLARIFICATION_ANSWER_READBACK_INVALID"
                     )
 
@@ -1713,7 +1731,8 @@ def validate_blueprint_clarification_obligation_links(blueprint):
 async def process_ingested_requirement_document(
     project_id: Annotated[str, Field(description="Testing project identifier")],
     document_id: Annotated[str, Field(min_length=1, description="Verified uploaded requirement document identifier")],
-    source_facts: Annotated[list[AutomationFact], Field(description="Source facts extracted and quote-verified by the automation graph")] = Field(default_factory=list),
+    source_hash: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$", description="Content hash captured when the user started this document run")],
+    source_facts: Annotated[list[AgentFact], Field(description="Source facts extracted and quote-verified during the current AI request")] = Field(default_factory=list),
     clarification_responses: Annotated[list[dict[str, Any]], Field(description="Recorded user answers to clarification questions for this ingestion workflow")] = Field(default_factory=list),
     resume_import_job_id: Annotated[str | None, Field(description="Previously confirmed import job for resuming the same document workflow")] = None,
     resume_requirement_ids: Annotated[list[str], Field(description="Requirements created by the prior confirmed import in this workflow")] = Field(default_factory=list),
@@ -1733,7 +1752,7 @@ async def process_ingested_requirement_document(
     missing_permissions = sorted(required_permissions - permissions)
     if missing_permissions:
         return json.dumps(
-            {"status": "automation_blocked", "reason_code": "REQUIRED_PERMISSION_MISSING", "missing_permissions": missing_permissions},
+            {"status": "blocked", "reason_code": "REQUIRED_PERMISSION_MISSING", "missing_permissions": missing_permissions},
             ensure_ascii=False,
         )
 
@@ -1741,7 +1760,7 @@ async def process_ingested_requirement_document(
     project = await require_operation("GET", project_path, config)
     if project.get("_id") != project_id or not project.get("project_type"):
         return json.dumps(
-            {"status": "automation_blocked", "reason_code": "PROJECT_TYPE_REQUIRED"},
+            {"status": "blocked", "reason_code": "PROJECT_TYPE_REQUIRED"},
             ensure_ascii=False,
         )
     visible_document_items = await list_all_ai_readable_requirement_documents(
@@ -1755,7 +1774,10 @@ async def process_ingested_requirement_document(
     available_document_ids = compilable_document_ids(visible_document_items, document_id)
     source_document_ids = [document_id] if document_id in available_document_ids else []
     if not source_document_ids:
-        raise AutomationOperationError("AI_ENABLED_SOURCE_NOT_ACCESSIBLE")
+        raise ToolOperationError("AI_ENABLED_SOURCE_NOT_ACCESSIBLE")
+    source_document = source_documents[document_id]
+    if str(source_document.get("content_hash") or "") != source_hash:
+        raise ToolOperationError("DOCUMENT_EVENT_SOURCE_CHANGED")
 
     extraction_gaps = source_extraction_gaps(source_document_ids, source_documents)
     extraction_warnings, extraction_warnings_truncated = source_extraction_warnings(
@@ -1764,7 +1786,7 @@ async def process_ingested_requirement_document(
     if extraction_gaps:
         return json.dumps(
             {
-                "status": "automation_partial_failure",
+                "status": "partial_failure",
                 "reason_code": "SOURCE_EXTRACTION_INCOMPLETE",
                 "safe_no_mutation": True,
                 "source_extraction_gaps": extraction_gaps,
@@ -1821,11 +1843,12 @@ async def process_ingested_requirement_document(
         verified_facts,
         evidence_by_ref,
         source_document_ids,
+        output_language=configurable.get("output_language"),
     )
     if blueprint.get("status") != "SUCCESS":
         return json.dumps(
             {
-                "status": "automation_partial_failure",
+                "status": "partial_failure",
                 "reason_code": "TESTABILITY_BLUEPRINT_COMPILATION_FAILED",
                 "blueprint_reason_codes": blueprint.get("reason_codes", []),
                 "blueprint_warnings": blueprint.get("warnings", []),
@@ -1848,13 +1871,13 @@ async def process_ingested_requirement_document(
 
     async def validate_source_access():
         configurable = (config or {}).get("configurable", {})
-        automation_run_id = configurable.get("automation_run_id")
-        if automation_run_id:
-            active_run = await automation_repository.get_run(str(automation_run_id))
+        ai_run_id = configurable.get("ai_run_id")
+        if ai_run_id:
+            active_run = await ai_run_repository.get_run(str(ai_run_id))
             if not active_run:
-                raise AutomationOperationError("AUTOMATION_RUN_NOT_FOUND")
-            if active_run.status == AutomationStatus.CANCELLED:
-                raise AutomationOperationError(
+                raise ToolOperationError("AI_RUN_NOT_FOUND")
+            if active_run.status == AIRunStatus.CANCELLED:
+                raise ToolOperationError(
                     active_run.error_code or "AI_READ_PERMISSION_REVOKED"
                 )
         await revalidate_compilation_sources(
@@ -1991,15 +2014,15 @@ async def process_ingested_requirement_document(
                         f"{project_path}/mau-yeu-cau/{template['_id']}",
                         update_payload,
                     )
-                except (AutomationOperationError, httpx.TimeoutException, httpx.NetworkError) as error:
+                except (ToolOperationError, httpx.TimeoutException, httpx.NetworkError) as error:
                     write_error = error
                 try:
                     conflict_template = await require_operation(
                         "GET", f"{project_path}/mau-yeu-cau/{template['_id']}", config
                     )
-                except (AutomationOperationError, httpx.TimeoutException, httpx.NetworkError) as error:
+                except (ToolOperationError, httpx.TimeoutException, httpx.NetworkError) as error:
                     if write_error is not None:
-                        raise AutomationOperationError(
+                        raise ToolOperationError(
                             "TEMPLATE_RESOLUTION_OUTCOME_UNRESOLVED"
                         ) from write_error
                     raise error
@@ -2031,7 +2054,7 @@ async def process_ingested_requirement_document(
             )
             return json.dumps(
                 {
-                    "status": "automation_waiting_for_decision",
+                    "status": "awaiting_decision",
                     "reason_code": "SOURCE_CONFLICT",
                     "template_id": template["_id"],
                     "conflict_count": len(conflicts) + sum(
@@ -2063,7 +2086,7 @@ async def process_ingested_requirement_document(
     if not template_requirements:
         return json.dumps(
             {
-                "status": "automation_blocked",
+                "status": "blocked",
                 "reason_code": "NO_GROUNDED_REQUIREMENTS",
                 "template_id": template["_id"],
                 "testability_blueprint": blueprint,
@@ -2080,7 +2103,7 @@ async def process_ingested_requirement_document(
     if unrepresented_blueprint_obligation_keys:
         return json.dumps(
             {
-                "status": "automation_partial_failure",
+                "status": "partial_failure",
                 "reason_code": "BLUEPRINT_OBLIGATIONS_NOT_REFLECTED_IN_REQUIREMENTS",
                 "template_id": template.get("_id"),
                 "blueprint": blueprint,
@@ -2105,7 +2128,7 @@ async def process_ingested_requirement_document(
             or import_job.get("template_id") != template.get("_id")
             or import_job.get("status") != "CONFIRMED"
         ):
-            raise AutomationOperationError("RESUME_IMPORT_SCOPE_MISMATCH")
+            raise ToolOperationError("RESUME_IMPORT_SCOPE_MISMATCH")
         resumed_requirement_ids = {
             str(value)
             for value in [
@@ -2115,7 +2138,7 @@ async def process_ingested_requirement_document(
             if value
         }
         if not resumed_requirement_ids:
-            raise AutomationOperationError("RESUME_IMPORT_REQUIREMENTS_MISSING")
+            raise ToolOperationError("RESUME_IMPORT_REQUIREMENTS_MISSING")
         await update_resumed_requirement_drafts(
             project_id,
             sorted(resumed_requirement_ids),
@@ -2191,7 +2214,7 @@ async def process_ingested_requirement_document(
                         "target_requirement_id": match["requirement_id"],
                         "expected_target_version_id": match["version_id"],
                         "action": "link_source",
-                        "reason": f"Tài liệu {document_id} xác nhận cùng nội dung Requirement; chỉ bổ sung dấu vết nguồn",
+                        "reason": 'Tài liệu {document_id} xác nhận cùng nội dung Requirement; chỉ bổ sung dấu vết nguồn.'.format(document_id=document_id),
                     },
                 )
                 linked_requirement_ids.add(match["requirement_id"])
@@ -2210,11 +2233,7 @@ async def process_ingested_requirement_document(
                         "target_requirement_id": match["requirement_id"],
                         "expected_target_version_id": match["version_id"],
                         "action": "create_version",
-                        "reason": (
-                            f"Tài liệu {document_id} được đối chiếu với một Requirement hiện có "
-                            "theo mã định danh ổn định; tạo phiên bản "
-                            "mới từ nội dung có nguồn và giữ nguyên lịch sử phiên bản"
-                        ),
+                        "reason": 'Tài liệu {document_id} được đối chiếu với một Requirement hiện có theo mã định danh ổn định; tạo phiên bản mới từ nội dung có nguồn và giữ nguyên lịch sử phiên bản.'.format(document_id=document_id),
                     },
                 )
                 updated_requirement_versions.update(
@@ -2236,10 +2255,7 @@ async def process_ingested_requirement_document(
                     {
                         "expected_revision": current_job["revision"],
                         "action": "create_requirement",
-                        "reason": (
-                            f"Tài liệu {document_id} tạo Requirement nháp riêng vì ứng viên "
-                            "không trùng với Requirement hiện có; ứng viên mơ hồ khác vẫn chờ làm rõ"
-                        ),
+                        "reason": 'Tài liệu {document_id} tạo Requirement nháp riêng vì ứng viên không trùng với Requirement hiện có; ứng viên mơ hồ khác vẫn chờ làm rõ.'.format(document_id=document_id),
                     },
                 )
                 linked_requirement_ids.update(
@@ -2387,6 +2403,227 @@ async def process_ingested_requirement_document(
         )
     )
 
+    document_run_id = str(configurable.get("ai_run_id") or "")
+    workflow_stages = {
+        "blueprint": {
+            "status": "COMPLETED",
+            "assessment_type": "SELF_REVIEW",
+            "independently_validated": False,
+        },
+        "test_plan": {"status": "NOT_STARTED", "draft_ids": []},
+        "test_scenarios": {"status": "NOT_STARTED", "draft_ids": []},
+        "test_cases": {"status": "NOT_STARTED", "draft_ids": []},
+        "test_run": {"status": "REQUIRES_REAL_EXECUTION"},
+        "test_report": {"status": "REQUIRES_EXECUTION_RESULTS"},
+        "release": {"status": "REQUIRES_HUMAN_REVIEW_AND_APPROVAL"},
+    }
+    design_requirements = [
+        item
+        for item in requirements
+        if item.get("version", {}).get("_id")
+        and item["version"].get("_id") not in clarification_blocked_version_ids
+    ]
+    review_required_version_ids = [
+        str(item["version"]["_id"])
+        for item in design_requirements
+        if item["version"].get("status") != "BASELINED"
+    ]
+    design_version_ids = [
+        str(item["version"]["_id"])
+        for item in design_requirements
+        if item["version"].get("status") == "BASELINED"
+    ]
+    workflow_testability_mode = "BLUEPRINT_BENCHMARK"
+    if design_version_ids and "testplan.create" in permissions:
+        try:
+            await validate_source_access()
+            plan_suggestion = await require_operation(
+                "POST",
+                f"/du-an/{project_id}/ke-hoach-kiem-thu/ai/de-xuat",
+                config,
+                {
+                    "requirement_version_ids": design_version_ids,
+                    "testability_mode": workflow_testability_mode,
+                    "instruction": (
+                        "Create a traceable draft Test Plan from the exact imported Requirement versions "
+                        "and their saved Blueprint. Do not invent schedules, team assignments, environments, "
+                        "release data, or unsupported scope. Keep conflicting source values unresolved."
+                    ),
+                    "current_test_plan": {},
+                },
+                timeout=settings.MODEL_TIMEOUT_SECONDS,
+            )
+            proposal = plan_suggestion.get("suggestion") or {}
+            plan_fields = (
+                "objective", "scope_in", "scope_out", "entry_criteria", "exit_criteria",
+                "risks", "test_types", "environment", "test_level", "test_approach",
+                "assumptions", "constraints", "dependencies", "stakeholders",
+                "responsibility_matrix", "estimation", "schedule", "milestones",
+                "deliverables", "tools", "suspension_criteria", "resumption_criteria",
+                "monitoring_metrics", "quality_targets", "risk_register",
+                "communication_plan", "test_data_plan", "defect_management",
+            )
+            plan_payload = {
+                "project_id": project_id,
+                "name": str(source_documents[document_id].get("title") or source_documents[document_id].get("filename") or "Test Plan")[:300],
+                "requirement_version_ids": design_version_ids,
+                **{
+                    field: proposal[field]
+                    for field in plan_fields
+                    if field in proposal
+                    and proposal[field] is not None
+                    and not (
+                        isinstance(proposal[field], str)
+                        and not proposal[field].strip()
+                    )
+                },
+            }
+            created_plan = await authorized_source_operation(
+                "POST", f"/du-an/{project_id}/ke-hoach-kiem-thu", plan_payload
+            )
+            if created_plan.get("project_id") != project_id or not created_plan.get("_id") or created_plan.get("status") != "DRAFT":
+                raise RuntimeError("TEST_PLAN_DRAFT_READBACK_INVALID")
+            workflow_stages["test_plan"] = {
+                "status": "DRAFT_CREATED",
+                "draft_ids": [created_plan["_id"]],
+                "blueprint_refs": plan_suggestion.get("saved_blueprint_refs", []),
+                "blueprint_assessments": plan_suggestion.get("blueprint_assessments", []),
+                "evaluation": {
+                    "assessment_type": "NOT_AVAILABLE",
+                    "reason": "Không có bộ tham chiếu độc lập để chấm độ chính xác của Test Plan.",
+                    "grounding_warnings": proposal.get("warnings", [])[:20],
+                },
+            }
+            workflow_stages["blueprint"] = {
+                "status": "COMPLETED",
+                "assessments": plan_suggestion.get("blueprint_assessments", []),
+                "independently_validated": any(
+                    (item.get("benchmark") or {}).get("independently_validated") is True
+                    for item in plan_suggestion.get("blueprint_assessments", [])
+                    if isinstance(item, dict)
+                ),
+            }
+        except (ToolOperationError, RuntimeError, httpx.TimeoutException, httpx.NetworkError) as error:
+            workflow_stages["test_plan"] = {
+                "status": "BLOCKED",
+                "reason_code": getattr(error, "reason_code", str(error) or "TEST_PLAN_DRAFT_FAILED"),
+                "draft_ids": [],
+            }
+            unresolved.append({
+                "reason": "DOCUMENT_WORKFLOW_TEST_PLAN_DRAFT_FAILED",
+                "details": workflow_stages["test_plan"],
+            })
+    elif design_version_ids:
+        workflow_stages["test_plan"] = {
+            "status": "BLOCKED",
+            "reason_code": "TEST_PLAN_CREATE_PERMISSION_MISSING",
+            "draft_ids": [],
+        }
+    elif review_required_version_ids:
+        workflow_stages["test_plan"] = {
+            "status": "AWAITING_REQUIREMENT_REVIEW",
+            "requirement_version_ids": review_required_version_ids,
+            "draft_ids": [],
+        }
+
+    if design_version_ids and "ai.generate_scenario" in permissions and "testscenario.create" in permissions:
+        scenario_ids = []
+        scenario_blockers = []
+        for requirement in design_requirements:
+            version_id = str(requirement["version"]["_id"])
+            if requirement["version"].get("status") != "BASELINED":
+                continue
+            try:
+                await validate_source_access()
+                preview = await require_operation(
+                    "POST",
+                    f"/phien-ban-yeu-cau/{version_id}/ai/sinh-kich-ban",
+                    config,
+                    {
+                        "preview_only": True,
+                        "max_cases": 50,
+                        "testability_mode": workflow_testability_mode,
+                        "instruction": "Generate only source-grounded draft Test Scenarios. Preserve unresolved conflicts as warnings and do not invent expected behavior.",
+                    },
+                    timeout=settings.MODEL_TIMEOUT_SECONDS,
+                )
+                scenario_payloads = [
+                    item.get("draft")
+                    for item in preview.get("items", [])
+                    if isinstance(item, dict) and isinstance(item.get("draft"), dict)
+                ]
+                if scenario_payloads:
+                    allowed_fields = {
+                        "scenario_key", "title", "objective", "risk", "priority",
+                        "requirement_version_ids", "acceptance_criterion_ids",
+                        "test_condition_ids", "status", "origin", "category", "description",
+                        "actors", "preconditions", "business_flow", "expected_outcome",
+                        "test_data_notes", "test_level", "test_kind", "owner_id", "tags",
+                    }
+                    scenario_payloads = [
+                        {key: value for key, value in item.items() if key in allowed_fields}
+                        for item in scenario_payloads
+                    ]
+                    created_scenarios = await authorized_source_operation(
+                        "POST",
+                        f"/du-an/{project_id}/kich-ban-kiem-thu/ban-nhap/lo",
+                        scenario_payloads,
+                    )
+                    if not isinstance(created_scenarios, list) or len(created_scenarios) != len(scenario_payloads):
+                        raise RuntimeError("TEST_SCENARIO_DRAFT_READBACK_INVALID")
+                    readback_ids = [
+                        str(item["_id"])
+                        for item in created_scenarios
+                        if item.get("project_id") == project_id and item.get("_id") and item.get("status") == "draft"
+                    ]
+                    if len(readback_ids) != len(created_scenarios):
+                        raise RuntimeError("TEST_SCENARIO_DRAFT_READBACK_INVALID")
+                    scenario_ids.extend(readback_ids)
+                scenario_blockers.extend(preview.get("warnings", []))
+            except (ToolOperationError, RuntimeError, httpx.TimeoutException, httpx.NetworkError) as error:
+                scenario_blockers.append(getattr(error, "reason_code", str(error) or "SCENARIO_GENERATION_FAILED"))
+        workflow_stages["test_scenarios"] = {
+            "status": "DRAFT_CREATED" if scenario_ids else "PARTIAL_OR_BLOCKED",
+            "draft_ids": scenario_ids,
+            "warnings": list(dict.fromkeys(map(str, scenario_blockers)))[:50],
+            "evaluation": {
+                "assessment_type": "NOT_AVAILABLE",
+                "reason": "Chưa có bộ tham chiếu độc lập theo Scenario cho nguồn này.",
+            },
+        }
+        if not scenario_ids:
+            unresolved.append({
+                "reason": "DOCUMENT_WORKFLOW_SCENARIO_DRAFTS_UNAVAILABLE",
+                "details": workflow_stages["test_scenarios"],
+            })
+    elif design_version_ids:
+        workflow_stages["test_scenarios"] = {
+            "status": "BLOCKED",
+            "reason_code": "SCENARIO_GENERATION_PERMISSION_MISSING",
+            "draft_ids": [],
+        }
+    elif review_required_version_ids:
+        workflow_stages["test_scenarios"] = {
+            "status": "AWAITING_REQUIREMENT_REVIEW",
+            "requirement_version_ids": review_required_version_ids,
+            "draft_ids": [],
+        }
+
+    if design_version_ids and "ai.generate_testcase" in permissions and "testcase.create" in permissions:
+        workflow_stages["test_cases"] = {"status": "IN_PROGRESS", "draft_ids": []}
+    elif design_version_ids:
+        workflow_stages["test_cases"] = {
+            "status": "BLOCKED",
+            "reason_code": "TEST_CASE_GENERATION_PERMISSION_MISSING",
+            "draft_ids": [],
+        }
+    elif review_required_version_ids:
+        workflow_stages["test_cases"] = {
+            "status": "AWAITING_REQUIREMENT_REVIEW",
+            "requirement_version_ids": review_required_version_ids,
+            "draft_ids": [],
+        }
+
     changed_versions = [
         item["version"]
         for item in requirements
@@ -2404,7 +2641,7 @@ async def process_ingested_requirement_document(
             config=config,
         )
         parsed_change_result = parse(change_result)
-        if parsed_change_result and parsed_change_result.get("status") == "automation_waiting_for_input":
+        if parsed_change_result and parsed_change_result.get("status") == "awaiting_input":
             unresolved.append({
                 "requirement_version_id": version["_id"],
                 "reason": parsed_change_result.get("reason_code") or "REQUIREMENT_CHANGE_INPUT_REQUIRED",
@@ -2428,11 +2665,6 @@ async def process_ingested_requirement_document(
     skipped_duplicates = 0
     generation_warnings = []
     unapplied_categories = []
-    baselined_version_ids = {
-        item["version"]["_id"]
-        for item in requirements
-        if item["version"].get("status") == "BASELINED"
-    }
     mapped_blueprint_obligation_keys, obligations_by_version = (
         map_blueprint_obligations_to_requirements(
             requirements,
@@ -2524,6 +2756,7 @@ async def process_ingested_requirement_document(
             "categories": [],
             "max_cases": max(len(criterion_ids), len(version_obligations), 1),
             "preview_only": True,
+            "testability_mode": "BLUEPRINT_BENCHMARK",
         }
         if unlinked_obligations:
             unresolved.append(
@@ -2540,7 +2773,7 @@ async def process_ingested_requirement_document(
             str(item.get("key")) for item in version_obligations if item.get("key")
         }
         version_reused_coverage = await existing_requirement_obligation_coverage(
-            requirement["_id"],
+            item["requirement"]["_id"],
             project_id,
             version["_id"],
             version_obligations,
@@ -2591,7 +2824,7 @@ async def process_ingested_requirement_document(
                 version_obligations,
                 before_request=validate_source_access,
             )
-        except AutomationOperationError as error:
+        except ToolOperationError as error:
             if error.reason_code not in {
                 "GENERATION_EVIDENCE_INSUFFICIENT",
                 "AI_UNGROUNDED_OUTPUT",
@@ -2695,7 +2928,7 @@ async def process_ingested_requirement_document(
                     missing_obligation_items,
                     before_request=validate_source_access,
                 )
-            except AutomationOperationError as error:
+            except ToolOperationError as error:
                 if error.reason_code not in {
                     "GENERATION_EVIDENCE_INSUFFICIENT",
                     "AI_UNGROUNDED_OUTPUT",
@@ -2840,6 +3073,14 @@ async def process_ingested_requirement_document(
             "obligation_keys": unmapped_blueprint_obligation_keys,
         })
 
+    workflow_stages["test_cases"] = {
+        "status": "DRAFT_CREATED" if created_drafts else "PARTIAL_OR_BLOCKED",
+        "draft_ids": [str(item.get("_id")) for item in created_drafts if item.get("_id")],
+        "evaluation": {
+            "assessment_type": "NOT_AVAILABLE",
+            "reason": "Chưa có bộ tham chiếu độc lập theo Test Case cho nguồn này.",
+        },
+    }
     for draft in created_drafts:
         if draft.get("project_id") != project_id or not draft.get("_id"):
             raise RuntimeError("TEST_CASE_READBACK_INVALID")
@@ -2848,9 +3089,6 @@ async def process_ingested_requirement_document(
         )
         if not lint.get("valid"):
             unresolved.append({"test_case_draft_id": draft["_id"], "reason": "TEST_CASE_QUALITY_FAILED"})
-            continue
-        if not set(draft.get("requirement_version_ids", [])) <= baselined_version_ids:
-            unresolved.append({"test_case_draft_id": draft["_id"], "reason": "REQUIREMENT_NOT_BASELINED"})
             continue
         unresolved.append({"test_case_draft_id": draft["_id"], "reason": "HUMAN_TEST_CASE_REVIEW_REQUIRED"})
 
@@ -2984,6 +3222,7 @@ async def process_ingested_requirement_document(
         "qa_test_design_handoff_version_ids": qa_test_design_handoff_version_ids,
         "qa_test_design_handoff_evidence": qa_test_design_handoff_evidence,
         "test_case_draft_ids": [item["_id"] for item in created_drafts],
+        "workflow_stages": workflow_stages,
         "approved_test_case_ids": [item["_id"] for item in approved_cases],
         "blueprint_artifact_coverage": [
             item for item in blueprint_artifact_coverage.values()

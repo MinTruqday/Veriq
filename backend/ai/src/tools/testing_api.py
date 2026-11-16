@@ -41,9 +41,9 @@ def headers(config):
     if not token:
         return None
     values = {"Authorization": token, "X-Internal-Token": settings.SECRET_KEY}
-    automation_run_id = configurable.get("automation_run_id")
-    if automation_run_id:
-        values["X-AI-Automation-Run"] = str(automation_run_id)
+    ai_run_id = configurable.get("ai_run_id")
+    if ai_run_id:
+        values["X-AI-Run-ID"] = str(ai_run_id)
     return values
 
 async def call(method, path, config, payload=None, timeout=60):
@@ -106,9 +106,9 @@ def parse(value):
     except (TypeError, json.JSONDecodeError):
         return None
 
-class AutomationOperationError(RuntimeError):
+class ToolOperationError(RuntimeError):
     def __init__(self, reason_code):
-        self.reason_code = str(reason_code or "AUTOMATION_STEP_FAILED")
+        self.reason_code = str(reason_code or "AI_RUN_STEP_FAILED")
         super().__init__(self.reason_code)
 
 async def require_operation(method, path, config, payload=None, timeout=60):
@@ -124,10 +124,10 @@ async def require_operation(method, path, config, payload=None, timeout=60):
     }:
         error = (result or {}).get("error") if isinstance(result, dict) else None
         error_code = error.get("code") if isinstance(error, dict) else None
-        raise AutomationOperationError(
+        raise ToolOperationError(
             error_code
             or (result or {}).get("status")
-            or "AUTOMATION_STEP_FAILED"
+            or "AI_RUN_STEP_FAILED"
         )
     return result
 

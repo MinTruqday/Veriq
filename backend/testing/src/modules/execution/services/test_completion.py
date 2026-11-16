@@ -2,7 +2,6 @@
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
-from src.clients.ai_automation import emit_test_completion_report_created
 from src.core.auth import sign_off_has_permission
 from src.core.common import audit, get_project, new_id, now
 from src.core.common import idempotency_request_hash as _create_request_hash
@@ -10,11 +9,11 @@ from src.core.common import verify_idempotency_replay as _verify_create_replay
 from src.core.database import database
 from src.core.human_decisions import (
     content_authorship_changes,
-    require_automation_publication_authority,
+    require_ai_publication_authority,
     require_independent_review,
 )
 from src.modules.execution.services.exit_criteria import quality_gate_status
-from src.modules.execution.services.test_completion_automation import completion_ai_result
+from src.modules.execution.services.test_completion_ai import completion_ai_result
 from src.modules.execution.services.test_completion_query import (
     get_completion_for_user,
     list_completion_reports,
@@ -48,17 +47,12 @@ from src.schemas.test_completion import completion_hash, completion_snapshot
 
 OPEN_DEFECT_STATUSES = set(["NEW", "CONFIRMED", "IN_PROGRESS", "READY_FOR_RETEST", "REOPENED"])
 
-
-
-
-
 __all__ = [
     "add_completion_lesson",
     "add_completion_residual_risk",
     "list_completion_reports",
     "manage_completion_handover",
 ]
-
 
 async def create_completion_report(project_id, payload, user):
     await get_project(project_id, user, "testcompletion.create")
@@ -133,7 +127,7 @@ async def create_completion_report(project_id, payload, user):
         {
             "item_id": result["_id"],
             "item_type": "TEST_RESULT",
-            "reason": result.get("reason") or result.get("notes") or "",
+            "reason": result.get("reason") or result.get("notes") or result.get("note") or "",
             "source_refs": [
                 value
                 for value in (result.get("test_run_id"), result.get("test_case_version_id"))
@@ -285,9 +279,9 @@ async def create_completion_report(project_id, payload, user):
         "created_at": timestamp,
         "updated_at": timestamp,
     }
-    automation_run_id = getattr(user, "_ai_automation_run_id", None)
-    if automation_run_id:
-        report["automation_run_id"] = str(automation_run_id)
+    ai_run_id = getattr(user, "_ai_capability_run_id", None)
+    if ai_run_id:
+        report["ai_run_id"] = str(ai_run_id)
         report["automation_gate_snapshot"] = completion_snapshot(report)
         report["automation_gate_hash"] = completion_hash(report)
     try:
@@ -307,7 +301,6 @@ async def create_completion_report(project_id, payload, user):
                     },
                     session=session,
                 )
-                await emit_test_completion_report_created(report, user, session=session)
     except DuplicateKeyError:
         existing = (
             await find_completion_by_idempotency_key(project_id, payload.idempotency_key)
@@ -320,7 +313,6 @@ async def create_completion_report(project_id, payload, user):
         return existing
     return report
 
-
 async def latest_completion_ai_result(report_id, result_type, user):
     report = await get_completion_for_user(report_id, user, "testcompletion.read")
     result = await find_latest_completion_ai_result(report["project_id"], report_id, result_type)
@@ -328,7 +320,6 @@ async def latest_completion_ai_result(report_id, result_type, user):
         return None
     result["stale"] = result.get("source_event_revision") != report.get("revision")
     return result
-
 
 async def update_completion_report(report_id, payload, user):
     report = await get_completion_for_user(report_id, user, "testcompletion.update")
@@ -431,13 +422,11 @@ async def update_completion_report(report_id, payload, user):
     )
     return updated
 
-
 async def generate_completion_narrative(report_id, payload, user):
     report = await get_completion_for_user(report_id, user, "testcompletion.update")
     return await completion_ai_result(
         report, payload, user, "completion_report_narrative", "COMPLETION_REPORT_NARRATIVE"
     )
-
 
 async def cluster_completion_lessons(report_id, payload, user):
     report = await get_completion_for_user(report_id, user, "testcompletion.update")
@@ -446,7 +435,6 @@ async def cluster_completion_lessons(report_id, payload, user):
     return await completion_ai_result(
         report, payload, user, "lessons_learned_clustering", "LESSONS_LEARNED_CLUSTERS"
     )
-
 
 async def decide_residual_risk(report_id, risk_id, payload, user):
     report = await get_completion_for_user(report_id, user, "testcompletion.review")
@@ -493,7 +481,6 @@ async def decide_residual_risk(report_id, risk_id, payload, user):
     )
     return updated
 
-
 async def sign_off_completion(report_id, payload, user):
     report = await get_completion_for_user(report_id, user, "testcompletion.review")
     if report["status"] != "IN_REVIEW":
@@ -527,7 +514,6 @@ async def sign_off_completion(report_id, payload, user):
     )
     return updated
 
-
 async def transition_completion(report_id, payload, user, transition_action):
     transition = {
         "submit_review": {
@@ -558,7 +544,7 @@ async def transition_completion(report_id, payload, user, transition_action):
     source = transition["source"]
     target = transition["target"]
     if target in {'APPROVED', 'CLOSED'}:
-        require_automation_publication_authority(user, transition['permission'])
+        require_ai_publication_authority(user, transition['permission'])
     report = await get_completion_for_user(report_id, user, transition["permission"])
     if transition_action in {"approve", "request_changes"}:
         await require_independent_review(report, user, "TEST_COMPLETION_SELF_REVIEW_FORBIDDEN")

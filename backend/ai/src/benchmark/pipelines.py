@@ -2,20 +2,20 @@ import json
 
 from loguru import logger
 
-from src.agents.runner.automation_graph import extract_source_facts
+from src.agents.runner.ai_run_graph import extract_source_facts
 from src.prompts.testability_benchmark import (
     clarification_baseline_instruction,
     direct_generation_baseline_instruction,
 )
-from src.schemas.automation import AutomationFact
+from src.schemas.ai_runs import AgentFact
 from src.schemas.evaluation import (
     TestabilityBenchmarkCandidate,
     TestabilityBenchmarkGoldCase,
     TestabilityBenchmarkRequest,
 )
-from src.schemas.inference_requests import TestingAutomationRequest, TestingEvidence
+from src.schemas.inference_requests import TestingCapabilityRequest, TestingEvidence
 from src.core.text_matching import source_quote_spans
-from src.services.ai_automation import generate_ai_automation
+from src.services.ai_capabilities import generate_ai_capability
 from src.services.inference import model_metadata
 from src.blueprint import compile_testability_blueprint
 
@@ -200,13 +200,13 @@ class TestabilityBenchmarkPipelines:
         )
 
     async def _run_pipeline(self, capability, dataset_id, case, evidence, instruction):
-        request = TestingAutomationRequest(
+        request = TestingCapabilityRequest(
             capability=capability,
             project_id=f"benchmark:{dataset_id}",
             instruction=instruction,
             evidence=[TestingEvidence.model_validate(item) for item in evidence],
         )
-        result = await generate_ai_automation(request)
+        result = await generate_ai_capability(request)
         return result.model_dump(mode="json")
 
     @staticmethod
@@ -271,7 +271,7 @@ class TestabilityBenchmarkPipelines:
                 for item in source_evidence
             }
             source_facts = [
-                AutomationFact.model_validate(item)
+                AgentFact.model_validate(item)
                 for item in extraction.get("source_facts", [])
             ]
             output = await compile_testability_blueprint(
@@ -299,7 +299,7 @@ class TestabilityBenchmarkPipelines:
                 for item in source_evidence
             }
             source_facts = [
-                AutomationFact.model_validate(item)
+                AgentFact.model_validate(item)
                 for item in extraction.get("source_facts", [])
             ]
             allowed_document_ids = {
@@ -317,7 +317,7 @@ class TestabilityBenchmarkPipelines:
                     ";".join(initial.get("reason_codes") or ["BLUEPRINT_COMPILATION_FAILED"])
                 )
             evidence = [TestingEvidence.model_validate(item) for item in source_evidence]
-            review_request = TestingAutomationRequest(
+            review_request = TestingCapabilityRequest(
                 capability="testability_blueprint_self_review",
                 project_id=f"benchmark:{dataset_id}",
                 instruction=json.dumps(
@@ -330,7 +330,7 @@ class TestabilityBenchmarkPipelines:
                 ),
                 evidence=evidence,
             )
-            review_result = await generate_ai_automation(review_request)
+            review_result = await generate_ai_capability(review_request)
             if review_result.status != "SUCCESS" or review_result.degraded_mode:
                 raise RuntimeError("BLUEPRINT_SELF_REVIEW_UNAVAILABLE")
             review = {

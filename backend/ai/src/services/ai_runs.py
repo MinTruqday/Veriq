@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import json
+import re
 import time
 from datetime import datetime, timezone
 
@@ -12,61 +13,59 @@ from pymongo.errors import DuplicateKeyError
 
 from src.core.infrastructure.configuration import settings
 from src.core.infrastructure.mq import mq
-from src.repositories.automation import automation_repository
+from src.repositories.ai_runs import ai_run_repository
 from src.runtime.limits import limits
-from src.runtime.queue_names import AUTOMATION_QUEUE
-from src.schemas.automation import (
-    AutomationCheckpointPhase,
-    AutomationClarificationResponseRequest,
-    AutomationEventRequest,
-    AutomationKind,
-    AutomationRun,
-    AutomationStatus,
-    AutomationTrigger,
+from src.runtime.queue_names import AI_RUN_QUEUE
+from src.schemas.agent import AIRunRequest, RequirementDocumentRunRequest
+from src.schemas.ai_runs import (
+    AIRunPhase,
+    AIRunClarificationResponseRequest,
+    AIRunKind,
+    AIRun,
+    AIRunStatus,
+    AIRunTrigger,
     EvidenceItem,
 )
 from src.services.project_access import project_access
-from src.tools.registry import registered_tools, requires_human_decision, tool_access
+from src.tools.registry import agent_available_tools, registered_tools, tool_access
 
 
-async def publish_automation_run(automation_run_id: str) -> bool:
+async def publish_ai_run(ai_run_id: str) -> bool:
     try:
         return bool(
             await mq.publish(
-                AUTOMATION_QUEUE, {"automation_run_id": automation_run_id}
+                AI_RUN_QUEUE, {"ai_run_id": ai_run_id}
             )
         )
     except Exception:
-        logger.exception("AI automation run could not be queued")
+        logger.exception("AI run could not be queued")
         return False
 
 
-class AutomationService:
-    async def create_user_run(self, payload, user_id: str, role: str, permissions: list[str]):
+class AIRunService:
+    async def create_user_run(
+        self,
+        payload,
+        user_id: str,
+        role: str,
+        permissions: list[str],
+        *,
+        trigger: AIRunTrigger = AIRunTrigger.MANUAL,
+        source_event_id: str | None = None,
+        source_event_verified: bool = False,
+    ):
         if payload.evidence:
             raise HTTPException(
                 status_code=422, detail={"code": "AGENT_EVIDENCE_MUST_BE_RETRIEVED"}
             )
-        available = []
-        for tool in registered_tools().values():
-            access = tool_access(tool)
-            if (
-                access
-                and access.permission in permissions
-                and not requires_human_decision(access.permission)
-                and (access.action != "MUTATE" or access.draft_only)
-                and tool.metadata.get("user_selectable")
-            ):
-                available.append(access.name)
+        available = agent_available_tools(permissions)
         if not available:
             raise HTTPException(status_code=403, detail={"code": "AGENT_REQUEST_DENIED"})
         if payload.intent:
-            tool = registered_tools().get(payload.intent)
+            tool = available.get(payload.intent)
             access = tool_access(tool)
             if (
                 not access
-                or payload.intent not in available
-                or not tool.metadata.get("user_selectable")
             ):
                 raise HTTPException(status_code=403, detail={"code": "AGENT_CAPABILITY_DENIED"})
             try:
@@ -102,10 +101,13 @@ class AutomationService:
                 default=str,
             ).encode("utf-8")
         ).hexdigest()
-        event_id = "agent-request:" + hashlib.sha256(
-            f"{user_id}:{payload.idempotency_key}".encode("utf-8")
-        ).hexdigest()
-        existing = await automation_repository.find_event_run(payload.project_id, event_id)
+        event_id = source_event_id or (
+            "agent-request:"
+            + hashlib.sha256(
+                f"{user_id}:{payload.idempotency_key}".encode("utf-8")
+            ).hexdigest()
+        )
+        existing = await ai_run_repository.find_event_run(payload.project_id, event_id)
         if existing:
             if (
                 existing.requester_user_id != user_id
@@ -113,7 +115,7 @@ class AutomationService:
             ):
                 raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
             return existing
-        run = AutomationRun(
+        run = AIRun(
             project_id=payload.project_id,
             requester_user_id=user_id,
             requester_role=role,
@@ -121,10 +123,10 @@ class AutomationService:
             execution_user_id=user_id,
             execution_role=role,
             execution_permissions=permissions,
-            kind=AutomationKind.ON_DEMAND,
-            trigger=AutomationTrigger.MANUAL,
+            kind=AIRunKind.ON_DEMAND,
+            trigger=trigger,
             source_event_id=event_id,
-            source_event_verified=False,
+            source_event_verified=source_event_verified,
             objective=payload.objective.strip(),
             intent=payload.intent,
             intent_arguments=intent_arguments,
@@ -137,13 +139,13 @@ class AutomationService:
             },
         )
         try:
-            run = await automation_repository.create_run_with_checkpoint(
+            run = await ai_run_repository.create_run_with_checkpoint(
                 run,
-                phase=AutomationCheckpointPhase.QUEUED,
+                phase=AIRunPhase.QUEUED,
                 detail={"reason_code": "USER_REQUESTED"},
             )
         except DuplicateKeyError:
-            existing = await automation_repository.find_event_run(payload.project_id, event_id)
+            existing = await ai_run_repository.find_event_run(payload.project_id, event_id)
             if (
                 not existing
                 or existing.requester_user_id != user_id
@@ -151,21 +153,82 @@ class AutomationService:
             ):
                 raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
             return existing
-        if await publish_automation_run(run.automation_run_id):
+        if await publish_ai_run(run.ai_run_id):
             return run
-        degraded = await automation_repository.transition_with_checkpoint(
-            run.automation_run_id,
+        degraded = await ai_run_repository.transition_with_checkpoint(
+            run.ai_run_id,
             run.revision,
-            {"status": AutomationStatus.DEGRADED, "error_code": "AGENT_QUEUE_UNAVAILABLE"},
-            phase=AutomationCheckpointPhase.FINALIZED,
-            detail={"reason_code": "AGENT_QUEUE_UNAVAILABLE", "retryable": True},
+            {"status": AIRunStatus.DEGRADED, "error_code": "AI_RUN_QUEUE_UNAVAILABLE"},
+            phase=AIRunPhase.FINALIZED,
+            detail={"reason_code": "AI_RUN_QUEUE_UNAVAILABLE", "retryable": True},
         )
         return degraded or run
 
-    async def enqueue_event(self, event: AutomationEventRequest) -> list[AutomationRun]:
-        return []
+    async def create_requirement_document_run(
+        self, payload: RequirementDocumentRunRequest
+    ) -> AIRun:
+        event_parts = payload.idempotency_key.split(":")
+        if (
+            len(event_parts) not in {3, 4}
+            or event_parts[0] != "requirement-document"
+            or event_parts[1] != payload.document_id
+            or not event_parts[2].isdigit()
+            or (
+                len(event_parts) == 4
+                and (
+                    len(event_parts[3]) != 64
+                    or re.fullmatch(r"[0-9a-f]{64}", event_parts[3]) is None
+                )
+            )
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "DOCUMENT_INGESTION_EVENT_INVALID"},
+            )
+        token = self._token_for_user(payload.requester_user_id)
+        role, permissions = await project_access(payload.project_id, token)
+        if "requirement_document.extract" not in permissions:
+            raise HTTPException(status_code=403, detail={"code": "AGENT_REQUEST_DENIED"})
+        request = AIRunRequest(
+            project_id=payload.project_id,
+            objective=(
+                "Process this user-requested Requirement document import. Extract grounded "
+                "Requirements and create only traceable draft outputs in this project."
+            ),
+            intent="process_ingested_requirement_document",
+            intent_arguments={
+                "project_id": payload.project_id,
+                "document_id": payload.document_id,
+                "source_hash": payload.source_hash,
+            },
+            target_artifact_ids=[payload.document_id],
+            output_language=payload.output_language,
+            idempotency_key=payload.idempotency_key,
+        )
+        return await self.create_user_run(
+            request,
+            payload.requester_user_id,
+            role,
+            permissions,
+            trigger=AIRunTrigger.DOCUMENT_INGESTED,
+            source_event_id=payload.idempotency_key,
+            source_event_verified=True,
+        )
 
-    async def authorize_retry(self, run: AutomationRun, expected_revision: int) -> AutomationRun:
+    @staticmethod
+    def _token_for_user(user_id: str) -> str:
+        return jwt.encode(
+            {
+                "uid": user_id,
+                "sub": user_id,
+                "system_role": "USER",
+                "exp": int(time.time()) + 30,
+            },
+            settings.SECRET_KEY,
+            algorithm="HS256",
+        )
+
+    async def authorize_retry(self, run: AIRun, expected_revision: int) -> AIRun:
         if not (run.constraints or {}).get("user_requested"):
             raise HTTPException(status_code=409, detail={"code": "AGENT_REQUEST_REQUIRED"})
         if run.revision != expected_revision:
@@ -173,21 +236,21 @@ class AutomationService:
                 status_code=409,
                 detail={"code": "REVISION_CONFLICT", "latest": run.model_dump(mode="json")},
             )
-        if run.error_code == "AUTOMATION_ACTION_OUTCOME_UNCERTAIN":
+        if run.error_code == "AI_RUN_ACTION_OUTCOME_UNCERTAIN":
             raise HTTPException(
-                status_code=409, detail={"code": "AUTOMATION_RETRY_REQUIRES_RECONCILIATION"}
+                status_code=409, detail={"code": "AI_RUN_RETRY_REQUIRES_RECONCILIATION"}
             )
         if run.status not in {
-            AutomationStatus.AWAITING_AUTHORIZATION,
-            AutomationStatus.FAILED,
-            AutomationStatus.DEGRADED,
+            AIRunStatus.AWAITING_AUTHORIZATION,
+            AIRunStatus.FAILED,
+            AIRunStatus.DEGRADED,
         }:
-            raise HTTPException(status_code=409, detail={"code": "AUTOMATION_RETRY_NOT_ALLOWED"})
-        latest_checkpoint = await automation_repository.latest_checkpoint(run.automation_run_id)
+            raise HTTPException(status_code=409, detail={"code": "AI_RUN_RETRY_NOT_ALLOWED"})
+        latest_checkpoint = await ai_run_repository.latest_checkpoint(run.ai_run_id)
         resume_snapshot = None
         if latest_checkpoint:
             action_outcome_uncertain = (
-                latest_checkpoint.phase == AutomationCheckpointPhase.ACTION_STARTED
+                latest_checkpoint.phase == AIRunPhase.ACTION_STARTED
                 and (
                     latest_checkpoint.detail.get("action") != "READ"
                     or latest_checkpoint.detail.get("task_has_mutation") is True
@@ -195,18 +258,18 @@ class AutomationService:
             )
             if action_outcome_uncertain:
                 raise HTTPException(
-                    status_code=409, detail={"code": "AUTOMATION_RETRY_REQUIRES_RECONCILIATION"}
+                    status_code=409, detail={"code": "AI_RUN_RETRY_REQUIRES_RECONCILIATION"}
                 )
             resume_snapshot = latest_checkpoint.state_snapshot
         if resume_snapshot is None and (
-            run.status != AutomationStatus.AWAITING_AUTHORIZATION
-            and run.error_code != "AUTOMATION_QUEUE_UNAVAILABLE"
+            run.status != AIRunStatus.AWAITING_AUTHORIZATION
+            and run.error_code != "AI_RUN_QUEUE_UNAVAILABLE"
         ):
             raise HTTPException(
-                status_code=409, detail={"code": "AUTOMATION_RETRY_REQUIRES_RECONCILIATION"}
+                status_code=409, detail={"code": "AI_RUN_RETRY_REQUIRES_RECONCILIATION"}
             )
-        retry_values = {"status": AutomationStatus.QUEUED, "error_code": None}
-        if run.error_code == "AUTOMATION_EXECUTOR_UNAVAILABLE" or (
+        retry_values = {"status": AIRunStatus.QUEUED, "error_code": None}
+        if run.error_code == "AI_RUN_EXECUTOR_UNAVAILABLE" or (
             str(run.error_code or "").startswith("PROJECT_")
             and str(run.error_code).endswith("_EXECUTOR_UNAVAILABLE")
         ):
@@ -214,7 +277,7 @@ class AutomationService:
             role, permissions = await project_access(run.project_id, token)
             required_permission = (
                 "requirement_document.extract"
-                if run.trigger == AutomationTrigger.DOCUMENT_INGESTED
+                if run.intent == "process_ingested_requirement_document"
                 else "ai.generate_testcase"
             )
             if required_permission not in permissions:
@@ -228,15 +291,15 @@ class AutomationService:
                     "execution_permissions": permissions,
                 }
             )
-        updated = await automation_repository.transition_with_checkpoint(
-            run.automation_run_id,
+        updated = await ai_run_repository.transition_with_checkpoint(
+            run.ai_run_id,
             expected_revision,
             retry_values,
-            phase=AutomationCheckpointPhase.QUEUED,
+            phase=AIRunPhase.QUEUED,
             detail={
-                "reason_code": "AUTOMATION_RESUMED_FROM_CHECKPOINT"
+                "reason_code": "AI_RUN_RESUMED_FROM_CHECKPOINT"
                 if resume_snapshot
-                else "AUTOMATION_RETRY_STARTED",
+                else "AI_RUN_RETRY_STARTED",
                 "resuming_after": resume_snapshot.completed_phase.value
                 if resume_snapshot
                 else None,
@@ -245,13 +308,13 @@ class AutomationService:
         )
         if not updated:
             raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
-        if not await publish_automation_run(run.automation_run_id):
-            degraded = await automation_repository.transition_with_checkpoint(
-                updated.automation_run_id,
+        if not await publish_ai_run(run.ai_run_id):
+            degraded = await ai_run_repository.transition_with_checkpoint(
+                updated.ai_run_id,
                 updated.revision,
-                {"status": AutomationStatus.DEGRADED, "error_code": "AUTOMATION_QUEUE_UNAVAILABLE"},
-                phase=AutomationCheckpointPhase.FINALIZED,
-                detail={"reason_code": "AUTOMATION_QUEUE_UNAVAILABLE", "retryable": True},
+                {"status": AIRunStatus.DEGRADED, "error_code": "AI_RUN_QUEUE_UNAVAILABLE"},
+                phase=AIRunPhase.FINALIZED,
+                detail={"reason_code": "AI_RUN_QUEUE_UNAVAILABLE", "retryable": True},
                 state_snapshot=resume_snapshot,
             )
             if not degraded:
@@ -261,10 +324,10 @@ class AutomationService:
 
     async def provide_clarification(
         self,
-        run: AutomationRun,
-        payload: AutomationClarificationResponseRequest,
+        run: AIRun,
+        payload: AIRunClarificationResponseRequest,
         responder_user_id: str,
-    ) -> AutomationRun:
+    ) -> AIRun:
         if not (run.constraints or {}).get("user_requested"):
             raise HTTPException(status_code=409, detail={"code": "AGENT_REQUEST_REQUIRED"})
         if run.revision != payload.expected_revision:
@@ -272,17 +335,17 @@ class AutomationService:
                 status_code=409,
                 detail={"code": "REVISION_CONFLICT", "latest": run.model_dump(mode="json")},
             )
-        if run.status != AutomationStatus.AWAITING_INPUT:
+        if run.status != AIRunStatus.AWAITING_INPUT:
             raise HTTPException(
                 status_code=409,
-                detail={"code": "AUTOMATION_NOT_AWAITING_INPUT"},
+                detail={"code": "AI_RUN_NOT_AWAITING_INPUT"},
             )
-        checkpoint = await automation_repository.latest_checkpoint(run.automation_run_id)
+        checkpoint = await ai_run_repository.latest_checkpoint(run.ai_run_id)
         snapshot = checkpoint.state_snapshot if checkpoint else None
         if snapshot is None:
             raise HTTPException(
                 status_code=409,
-                detail={"code": "AUTOMATION_CLARIFICATION_CHECKPOINT_MISSING"},
+                detail={"code": "AI_RUN_CLARIFICATION_CHECKPOINT_MISSING"},
             )
         matching_uncertainties = [
             item
@@ -293,26 +356,26 @@ class AutomationService:
         if not matching_uncertainties:
             raise HTTPException(
                 status_code=409,
-                detail={"code": "AUTOMATION_CLARIFICATION_NOT_OPEN"},
+                detail={"code": "AI_RUN_CLARIFICATION_NOT_OPEN"},
             )
         if len(matching_uncertainties) != 1:
             raise HTTPException(
                 status_code=409,
-                detail={"code": "AUTOMATION_CLARIFICATION_CODE_AMBIGUOUS"},
+                detail={"code": "AI_RUN_CLARIFICATION_CODE_AMBIGUOUS"},
             )
         uncertainty = matching_uncertainties[0]
         if not uncertainty.response_allowed:
             raise HTTPException(
                 status_code=409,
-                detail={"code": "AUTOMATION_CLARIFICATION_REQUIRES_SOURCE_OR_SYSTEM_RECOVERY"},
+                detail={"code": "AI_RUN_CLARIFICATION_REQUIRES_SOURCE_OR_SYSTEM_RECOVERY"},
             )
 
         answered_at = datetime.now(timezone.utc)
         evidence_ref = "clarification:" + hashlib.sha256(
-            f"{run.automation_run_id}:{payload.uncertainty_code}:{payload.expected_revision + 1}".encode()
+            f"{run.ai_run_id}:{payload.uncertainty_code}:{payload.expected_revision + 1}".encode()
         ).hexdigest()[:48]
         clarification_evidence = EvidenceItem(
-            artifact_type="automation_clarification",
+            artifact_type="ai_run_clarification",
             artifact_id=evidence_ref,
             artifact_version_id=evidence_ref,
             source="user",
@@ -353,19 +416,37 @@ class AutomationService:
             "clarification_responses": [*prior_responses, response_record],
         }
         resume_after_phase = (
-            AutomationCheckpointPhase.FACTS_EXTRACTED
+            AIRunPhase.FACTS_EXTRACTED
             if snapshot.source_facts
-            else AutomationCheckpointPhase.OBSERVED
+            else AIRunPhase.OBSERVED
         )
+        resume_document_workflow = (
+            run.intent == "process_ingested_requirement_document"
+        )
+        resumed_run_values = {
+            "evidence_refs": list(
+                dict.fromkeys([*snapshot.run.evidence_refs, evidence_ref])
+            )
+        }
+        if resume_document_workflow:
+            resumed_run_values.update(
+                {
+                    "execution_plan": [],
+                    "active_task": None,
+                    "completed_tasks": [],
+                    "agent_results": [],
+                    "tool_calls": [],
+                    "proposal": None,
+                    "current_step": 0,
+                    "status": "PLANNING",
+                    "error_code": None,
+                }
+            )
         resumed_snapshot = snapshot.model_copy(
             update={
                 "completed_phase": resume_after_phase,
                 "run": snapshot.run.model_copy(
-                    update={
-                        "evidence_refs": list(
-                            dict.fromkeys([*snapshot.run.evidence_refs, evidence_ref])
-                        )
-                    }
+                    update=resumed_run_values
                 ),
                 "evidence": [*snapshot.evidence, clarification_evidence],
                 "uncertainties": resolved_uncertainties,
@@ -373,13 +454,24 @@ class AutomationService:
                     **snapshot.constraints,
                     "clarification_responses": [*prior_responses, response_record],
                 },
+                **(
+                    {
+                        "tasks": [],
+                        "results": [],
+                        "success_criteria": [],
+                        "planning_round": 0,
+                        "completed_phases": [AIRunPhase.OBSERVED.value],
+                    }
+                    if resume_document_workflow
+                    else {}
+                ),
             }
         )
-        updated = await automation_repository.transition_with_checkpoint(
-            run.automation_run_id,
+        updated = await ai_run_repository.transition_with_checkpoint(
+            run.ai_run_id,
             payload.expected_revision,
             {
-                "status": AutomationStatus.QUEUED,
+                "status": AIRunStatus.QUEUED,
                 "error_code": None,
                 "constraints": updated_constraints,
                 "evidence": [
@@ -389,9 +481,9 @@ class AutomationService:
                     for item in [*run.evidence, clarification_evidence]
                 ],
             },
-            phase=AutomationCheckpointPhase.QUEUED,
+            phase=AIRunPhase.QUEUED,
             detail={
-                "reason_code": "AUTOMATION_RESUMED_WITH_USER_CLARIFICATION",
+                "reason_code": "AI_RUN_RESUMED_WITH_USER_CLARIFICATION",
                 "uncertainty_code": payload.uncertainty_code,
                 "responder_user_id": responder_user_id,
                 "resuming_after": resume_after_phase.value,
@@ -400,17 +492,17 @@ class AutomationService:
         )
         if not updated:
             raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
-        if not await publish_automation_run(run.automation_run_id):
-            degraded = await automation_repository.transition_with_checkpoint(
-                updated.automation_run_id,
+        if not await publish_ai_run(run.ai_run_id):
+            degraded = await ai_run_repository.transition_with_checkpoint(
+                updated.ai_run_id,
                 updated.revision,
                 {
-                    "status": AutomationStatus.DEGRADED,
-                    "error_code": "AUTOMATION_QUEUE_UNAVAILABLE",
+                    "status": AIRunStatus.DEGRADED,
+                    "error_code": "AI_RUN_QUEUE_UNAVAILABLE",
                 },
-                phase=AutomationCheckpointPhase.FINALIZED,
+                phase=AIRunPhase.FINALIZED,
                 detail={
-                    "reason_code": "AUTOMATION_QUEUE_UNAVAILABLE",
+                    "reason_code": "AI_RUN_QUEUE_UNAVAILABLE",
                     "retryable": True,
                     "resuming_after": resume_after_phase.value,
                 },
@@ -421,78 +513,78 @@ class AutomationService:
             return degraded
         return updated
 
-    async def cancel(self, run: AutomationRun, expected_revision: int) -> AutomationRun:
+    async def cancel(self, run: AIRun, expected_revision: int) -> AIRun:
         if run.revision != expected_revision:
             raise HTTPException(
                 status_code=409,
                 detail={"code": "REVISION_CONFLICT", "latest": run.model_dump(mode="json")},
             )
-        if run.status in {AutomationStatus.COMPLETED, AutomationStatus.CANCELLED}:
-            raise HTTPException(status_code=409, detail={"code": "AUTOMATION_CANCEL_NOT_ALLOWED"})
-        if run.status == AutomationStatus.RUNNING:
+        if run.status in {AIRunStatus.COMPLETED, AIRunStatus.CANCELLED}:
+            raise HTTPException(status_code=409, detail={"code": "AI_RUN_CANCEL_NOT_ALLOWED"})
+        if run.status == AIRunStatus.RUNNING:
             try:
-                await self._revoke_testing_run_access(run.automation_run_id)
+                await self._revoke_testing_run_access(run.ai_run_id)
             except (httpx.HTTPError, RuntimeError, ValueError) as error:
                 raise HTTPException(
                     status_code=503,
-                    detail={"code": "AUTOMATION_CANCEL_DRAIN_UNAVAILABLE", "retryable": True},
+                    detail={"code": "AI_RUN_CANCEL_DRAIN_UNAVAILABLE", "retryable": True},
                 ) from error
         current = run
         for _ in range(3):
-            updated = await automation_repository.transition_with_checkpoint(
-                current.automation_run_id,
+            updated = await ai_run_repository.transition_with_checkpoint(
+                current.ai_run_id,
                 current.revision,
-                {"status": AutomationStatus.CANCELLED, "worker_lease_expires_at": None},
-                phase=AutomationCheckpointPhase.FINALIZED,
-                detail={"reason_code": "AUTOMATION_CANCELLED"},
+                {"status": AIRunStatus.CANCELLED, "worker_lease_expires_at": None},
+                phase=AIRunPhase.FINALIZED,
+                detail={"reason_code": "AI_RUN_CANCELLED"},
             )
             if updated:
                 return updated
-            latest = await automation_repository.get_run(current.automation_run_id)
+            latest = await ai_run_repository.get_run(current.ai_run_id)
             if not latest:
                 break
-            if latest.status == AutomationStatus.CANCELLED:
+            if latest.status == AIRunStatus.CANCELLED:
                 return latest
-            if latest.status == AutomationStatus.COMPLETED:
+            if latest.status == AIRunStatus.COMPLETED:
                 raise HTTPException(
-                    status_code=409, detail={"code": "AUTOMATION_CANCEL_NOT_ALLOWED"}
+                    status_code=409, detail={"code": "AI_RUN_CANCEL_NOT_ALLOWED"}
                 )
             current = latest
         raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
 
     async def cancel_document_ingestion_runs(self, document_id: str) -> int:
-        candidates = await automation_repository.list_incomplete_document_ingestion_runs(
+        candidates = await ai_run_repository.list_incomplete_document_ingestion_runs(
             document_id
         )
         await asyncio.gather(
-            *(self._revoke_testing_run_access(run.automation_run_id) for run in candidates)
+            *(self._revoke_testing_run_access(run.ai_run_id) for run in candidates)
         )
         cancelled_count = 0
         for candidate in candidates:
             run = candidate
             for _ in range(3):
-                if run.status in {AutomationStatus.COMPLETED, AutomationStatus.CANCELLED}:
+                if run.status in {AIRunStatus.COMPLETED, AIRunStatus.CANCELLED}:
                     break
-                updated = await automation_repository.transition_with_checkpoint(
-                    run.automation_run_id,
+                updated = await ai_run_repository.transition_with_checkpoint(
+                    run.ai_run_id,
                     run.revision,
                     {
-                        "status": AutomationStatus.CANCELLED,
+                        "status": AIRunStatus.CANCELLED,
                         "error_code": "AI_READ_PERMISSION_REVOKED",
                         "worker_lease_expires_at": None,
                     },
-                    phase=AutomationCheckpointPhase.FINALIZED,
+                    phase=AIRunPhase.FINALIZED,
                     detail={"reason_code": "AI_READ_PERMISSION_REVOKED"},
                 )
                 if updated:
                     cancelled_count += 1
                     run = updated
                     break
-                latest = await automation_repository.get_run(run.automation_run_id)
+                latest = await ai_run_repository.get_run(run.ai_run_id)
                 if not latest:
                     break
                 run = latest
-            if run.status not in {AutomationStatus.COMPLETED, AutomationStatus.CANCELLED}:
+            if run.status not in {AIRunStatus.COMPLETED, AIRunStatus.CANCELLED}:
                 raise RuntimeError("DOCUMENT_INGESTION_RUN_CANCELLATION_CONFLICT")
         return cancelled_count
 
@@ -506,53 +598,53 @@ class AutomationService:
             response.raise_for_status()
         result = response.json()
         if not isinstance(result, dict):
-            raise RuntimeError("AI_AUTOMATION_ACCESS_REVOCATION_RESPONSE_INVALID")
+            raise RuntimeError("AI_RUN_ACCESS_REVOCATION_RESPONSE_INVALID")
         payload = result.get("data", result)
         if not isinstance(payload, dict) or payload.get("drained") is not True:
-            raise RuntimeError("AI_AUTOMATION_ACCESS_REVOCATION_NOT_DRAINED")
+            raise RuntimeError("AI_RUN_ACCESS_REVOCATION_NOT_DRAINED")
 
     async def token_for(
-        self, automation_run_id: str, worker_revision: int | None = None
+        self, ai_run_id: str, worker_revision: int | None = None
     ) -> str | None:
-        run = await automation_repository.get_run(automation_run_id)
+        run = await ai_run_repository.get_run(ai_run_id)
         if not run or not run.execution_user_id or not run.execution_role:
             return None
         if worker_revision is not None and (
-            run.status != AutomationStatus.RUNNING or run.revision != worker_revision
+            run.status != AIRunStatus.RUNNING or run.revision != worker_revision
         ):
             return None
         execution_user_id = run.execution_user_id
         trigger = getattr(run.trigger, "value", run.trigger)
-        source_document_ids = []
-        if trigger == "DOCUMENT_INGESTED":
-            event_id = str(run.source_event_id or "")
-            prefix = "requirement-document:"
-            if event_id.startswith(prefix):
-                parts = event_id[len(prefix):].split(":", 2)
-                if len(parts) >= 2 and parts[0] and parts[1].isdigit():
-                    document_id = parts[0]
-                    source_document_ids = [document_id]
-                else:
-                    return None
-            else:
-                return None
+        source_document_ids = (
+            [str(run.intent_arguments.get("document_id"))]
+            if run.intent == "process_ingested_requirement_document"
+            and run.intent_arguments.get("document_id")
+            else []
+        )
+        source_document_hash = (
+            str(run.intent_arguments.get("source_hash") or "")
+            if source_document_ids
+            else ""
+        )
         publication_permissions = []
         return jwt.encode(
             {
                 "uid": execution_user_id,
                 "sub": execution_user_id,
                 "system_role": "USER",
-                "ai_automation_run_id": run.automation_run_id,
-                "ai_automation_worker_revision": worker_revision,
-                "ai_automation_trigger": trigger,
-                "ai_automation_source_event_id": run.source_event_id,
-                "ai_automation_initiator_id": run.requester_user_id,
-                "ai_automation_definition_id": run.definition_id,
-                "ai_automation_source_document_ids": source_document_ids,
-                "ai_automation_publication_project_id": run.project_id
+                "ai_capability_run_id": run.ai_run_id,
+                "ai_capability_intent": run.intent,
+                "ai_capability_worker_revision": worker_revision,
+                "ai_capability_trigger": trigger,
+                "ai_capability_source_event_id": run.source_event_id,
+                "ai_capability_initiator_id": run.requester_user_id,
+                "ai_capability_definition_id": run.definition_id,
+                "ai_capability_source_document_ids": source_document_ids,
+                "ai_capability_source_document_hash": source_document_hash,
+                "ai_capability_publication_project_id": run.project_id
                 if publication_permissions
                 else None,
-                "ai_automation_publication_permissions": publication_permissions,
+                "ai_capability_publication_permissions": publication_permissions,
                 "exp": int(time.time()) + limits.run_timeout_seconds,
             },
             settings.SECRET_KEY,
@@ -560,4 +652,4 @@ class AutomationService:
         )
 
 
-automation_service = AutomationService()
+ai_run_service = AIRunService()

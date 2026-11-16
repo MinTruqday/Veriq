@@ -2,7 +2,7 @@ import hashlib
 from datetime import timedelta
 
 from fastapi import HTTPException
-from src.core.human_decisions import require_automation_publication_authority
+from src.core.human_decisions import require_ai_publication_authority
 
 from src.core.common import audit, get_project_entity, new_id, now
 from src.core.configuration import settings
@@ -43,7 +43,7 @@ async def approve_maintenance_proposal(
 
 
 async def apply_maintenance_proposal(proposal_id, payload, user, final_status):
-    require_automation_publication_authority(user, "proposal.approve")
+    require_ai_publication_authority(user, "proposal.approve")
     proposal = await get_project_entity(
         "maintenance_proposals", proposal_id, user, 'proposal.approve'
     )
