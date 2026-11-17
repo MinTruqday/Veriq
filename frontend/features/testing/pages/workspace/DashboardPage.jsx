@@ -19,7 +19,6 @@ import { formatDate as formatDateValue, messageOf, valueLabel } from "../../lib/
 import { formatProjectDate } from "../../lib/projectSchedule.logic.mjs";
 import { taskProgressPresentation } from "../../lib/projectProgress.logic.mjs";
 import { useDateTimeOptions } from "../../hooks/useDateTimeOptions";
-import { ProjectWorkflowSummary } from "./ProjectWorkflowPage";
 
 function projectOverviewDescription(project, locale) {
   const start = project.planned_start_at
@@ -237,7 +236,6 @@ export default function DashboardPage({ project }) {
               )}
             </div>
           </Panel>
-          {can("project.read") && <ProjectWorkflowSummary project={project} />}
           {project.current_permissions?.includes("ai.ask_project") && (
             <details onToggle={(event) => setShowAiReview(event.currentTarget.open)}>
               <summary className="cursor-pointer border-y border-border py-3 text-sm font-medium">

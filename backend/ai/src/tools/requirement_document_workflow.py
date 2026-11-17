@@ -3214,6 +3214,10 @@ async def process_ingested_requirement_document(
     result = {
         "status": workflow_status,
         **({"reason_code": reason_code} if reason_code else {}),
+        "source_document_id": document_id,
+        "source_document_title": str(
+            source_document.get("title") or source_document.get("filename") or ""
+        ),
         "template_id": template["_id"],
         "testability_blueprint": blueprint,
         "requirement_import_job_id": import_job["_id"],

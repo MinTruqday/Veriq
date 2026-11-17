@@ -2,7 +2,17 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { RefreshCw } from "lucide-react";
+import {
+  BookOpen,
+  ClipboardCheck,
+  FileBarChart2,
+  FileText,
+  Flag,
+  GitBranch,
+  PlayCircle,
+  RefreshCw,
+  TestTube2,
+} from "lucide-react";
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
 import {
   agentAuthorizationGuidance,
@@ -22,7 +32,6 @@ import { useDateTimeOptions } from "../hooks/useDateTimeOptions";
 const activeStatuses = new Set(["QUEUED", "RUNNING"]);
 
 const documentWorkflowStageLabels = {
-  blueprint: "Blueprint yêu cầu",
   test_plan: "Kế hoạch kiểm thử",
   test_scenarios: "Kịch bản kiểm thử",
   test_cases: "Ca kiểm thử",
@@ -41,12 +50,6 @@ const documentWorkflowStatusLabels = {
   REQUIRES_REAL_EXECUTION: "Cần thực thi kiểm thử thực tế",
   REQUIRES_EXECUTION_RESULTS: "Cần có kết quả thực thi",
   REQUIRES_HUMAN_REVIEW_AND_APPROVAL: "Cần người dùng rà soát và phê duyệt",
-};
-
-const documentWorkflowAssessmentLabels = {
-  INDEPENDENT_REFERENCE: "Đánh giá bằng bộ tham chiếu độc lập",
-  SELF_REVIEW: "AI tự rà soát, không phải đánh giá độ chính xác độc lập",
-  NOT_AVAILABLE: "Chưa có bộ tham chiếu phù hợp để đánh giá",
 };
 
 function documentWorkflowResult(run) {
@@ -68,11 +71,58 @@ function documentWorkflowResult(run) {
 
 function documentWorkflowStageHref(projectId, stage) {
   const base = `/du-an/${encodeURIComponent(projectId)}`;
+  if (stage === "requirements") return `${base}/yeu-cau`;
   if (stage === "test_plan") return `${base}/ke-hoach-kiem-thu`;
   if (stage === "test_scenarios") return `${base}/ca-kiem-thu/kich-ban`;
   if (stage === "test_cases") return `${base}/ca-kiem-thu`;
+  if (stage === "test_run") return `${base}/lan-chay-kiem-thu`;
+  if (stage === "test_report") return `${base}/bao-cao?tab=reports&testReport=completion`;
   if (stage === "release") return `${base}/ban-phat-hanh`;
   return "";
+}
+
+const documentWorkflowIcons = {
+  document: BookOpen,
+  requirements: FileText,
+  test_plan: ClipboardCheck,
+  test_scenarios: GitBranch,
+  test_cases: TestTube2,
+  test_run: PlayCircle,
+  test_report: FileBarChart2,
+  release: Flag,
+};
+
+function documentWorkflowTreeStages(projectId, workflow) {
+  const requirementIds = Array.isArray(workflow.requirement_ids) ? workflow.requirement_ids : [];
+  const stages = [
+    {
+      key: "document",
+      label: "Tài liệu nguồn",
+      status: "COMPLETED",
+      detail: workflow.source_document_title || "Đã nhập và xử lý tài liệu",
+      href: workflow.source_document_id
+        ? `/du-an/${encodeURIComponent(projectId)}/tai-lieu/${encodeURIComponent(workflow.source_document_id)}`
+        : documentWorkflowStageHref(projectId, "requirements"),
+    },
+    {
+      key: "requirements",
+      label: "Requirement",
+      status: requirementIds.length ? "DRAFT_CREATED" : "PARTIAL_OR_BLOCKED",
+      detail: requirementIds.length
+        ? `${requirementIds.length} Requirement từ lượt AI này`
+        : "Chưa tạo được Requirement",
+      href: requirementIds.length
+        ? `/du-an/${encodeURIComponent(projectId)}/yeu-cau/${encodeURIComponent(requirementIds[0])}`
+        : documentWorkflowStageHref(projectId, "requirements"),
+    },
+    ...Object.entries(documentWorkflowStageLabels).map(([key, label]) => ({
+      key,
+      label,
+      ...(workflow.workflow_stages?.[key] || {}),
+      href: documentWorkflowStageHref(projectId, key),
+    })),
+  ];
+  return stages.map((stage) => ({ ...stage, Icon: documentWorkflowIcons[stage.key] }));
 }
 
 function agentOriginLabel(run) {
@@ -1158,98 +1208,108 @@ export default function AIRunPanel({
               )}
               {documentWorkflowStages && (
                 <section
-                  aria-label="Tiến độ xử lý tài liệu yêu cầu"
+                  aria-label="Cây tiến độ từ tài liệu đến phát hành của lượt AI này"
                   className="grid gap-3 rounded-control border border-border bg-surface p-4"
                 >
                   <div>
-                    <h3 className="font-semibold text-ink">Tiến độ từ tài liệu đến ca kiểm thử</h3>
+                    <h3 className="font-semibold text-ink">Quy trình từ tài liệu đến phát hành</h3>
                     <p className="mt-1 text-ink-muted">
-                      Các nội dung AI tạo đã được lưu ở trạng thái nháp để bạn rà soát. Benchmark
-                      chỉ được ghi nhận là độc lập khi có bộ tham chiếu phù hợp.
+                      Theo dõi toàn bộ quy trình được khởi tạo từ tài liệu này. Nội dung AI tạo được
+                      lưu để rà soát; kết quả thực thi, báo cáo và phát hành cập nhật theo dữ liệu
+                      thực tế của từng bước.
                     </p>
                   </div>
-                  <ol className="grid gap-2">
-                    {Object.entries(documentWorkflowStageLabels).map(([stage, label]) => {
-                      const details = documentWorkflowStages[stage] || {};
-                      const href = documentWorkflowStageHref(project._id, stage);
-                      const draftIds = Array.isArray(details.draft_ids) ? details.draft_ids : [];
-                      const assessmentType =
-                        details.assessment_type || details.evaluation?.assessment_type;
-                      const assessmentLabel = documentWorkflowAssessmentLabels[assessmentType];
-                      const requirementIds =
-                        stage === "blueprint" && Array.isArray(documentWorkflow.requirement_ids)
-                          ? documentWorkflow.requirement_ids
+                  <ol className="relative grid gap-0">
+                    {documentWorkflowTreeStages(project._id, documentWorkflow).map(
+                      (stage, index, stages) => {
+                        const Icon = stage.Icon;
+                        const draftIds = Array.isArray(stage.draft_ids) ? stage.draft_ids : [];
+                        const blockers = Array.isArray(stage.warnings)
+                          ? stage.warnings.filter(Boolean).slice(0, 5)
                           : [];
-                      const blockers = Array.isArray(details.warnings)
-                        ? details.warnings.filter(Boolean).slice(0, 5)
-                        : [];
-                      return (
-                        <li
-                          className="grid min-w-0 gap-1 rounded-control border border-border bg-surface-quiet/40 p-3"
-                          key={stage}
-                        >
-                          <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-                            <span className="font-medium text-ink">{label}</span>
-                            <span className="text-xs text-ink-muted">
-                              {documentWorkflowStatusLabels[details.status] ||
-                                (details.status
-                                  ? valueLabel(details.status)
-                                  : "Chưa có trạng thái")}
-                            </span>
-                          </div>
-                          {assessmentLabel && (
-                            <p className="text-xs text-ink-muted">{assessmentLabel}</p>
-                          )}
-                          {details.evaluation?.reason && (
-                            <p className="text-xs text-ink-muted">{details.evaluation.reason}</p>
-                          )}
-                          {details.reason_code && (
-                            <p className="text-xs text-warning">
-                              {valueLabel(details.reason_code)}
-                            </p>
-                          )}
-                          {draftIds.length > 0 && (
-                            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-                              <span className="text-ink-muted">
-                                {draftIds.length} bản nháp · {draftIds.join(", ")}
-                              </span>
-                              {href && (
-                                <Link
-                                  className="font-medium text-brand hover:underline"
-                                  href={href}
-                                >
-                                  Mở khu vực rà soát
-                                </Link>
+                        const stageStatus =
+                          documentWorkflowStatusLabels[stage.status] ||
+                          (stage.status ? valueLabel(stage.status) : "Chưa có trạng thái");
+                        return (
+                          <li className="relative min-w-0 pb-3 pl-9 last:pb-0" key={stage.key}>
+                            {index < stages.length - 1 && (
+                              <span
+                                aria-hidden="true"
+                                className="absolute bottom-[-1px] left-[7px] top-4 w-0.5 bg-violet-300"
+                              />
+                            )}
+                            <span
+                              aria-hidden="true"
+                              className="absolute left-0 top-[9px] h-4 w-4 rounded-full border-[3px] border-violet-600 bg-white"
+                            />
+                            <span
+                              aria-hidden="true"
+                              className="absolute left-[7px] top-4 h-0.5 w-5 bg-violet-400"
+                            />
+                            <div className="grid min-w-0 gap-1 rounded-control border border-border bg-surface-quiet/40 p-3">
+                              <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                                <span className="flex min-w-0 items-center gap-2 font-medium text-ink">
+                                  {Icon && (
+                                    <Icon
+                                      aria-hidden="true"
+                                      className="shrink-0 text-violet-700"
+                                      size={16}
+                                    />
+                                  )}
+                                  {stage.href ? (
+                                    <Link className="hover:text-brand" href={stage.href}>
+                                      {stage.label}
+                                    </Link>
+                                  ) : (
+                                    stage.label
+                                  )}
+                                </span>
+                                <span className="text-xs text-ink-muted">{stageStatus}</span>
+                              </div>
+                              {stage.detail && (
+                                <p className="break-words text-xs text-ink-muted">{stage.detail}</p>
                               )}
+                              {stage.evaluation?.reason && (
+                                <p className="text-xs text-ink-muted">{stage.evaluation.reason}</p>
+                              )}
+                              {stage.reason_code && (
+                                <p className="text-xs text-warning">
+                                  {valueLabel(stage.reason_code)}
+                                </p>
+                              )}
+                              {draftIds.length > 0 && (
+                                <p className="break-words text-xs text-ink-muted">
+                                  {draftIds.length} bản nháp được tạo trong lượt này
+                                </p>
+                              )}
+                              {blockers.length > 0 && (
+                                <ul className="grid gap-1 text-xs text-warning">
+                                  {blockers.map((warning, warningIndex) => (
+                                    <li key={`${stage.key}-warning-${warningIndex}`}>
+                                      {valueLabel(warning)}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                              {stage.key === "requirements" &&
+                                documentWorkflow.requirement_ids?.length > 0 && (
+                                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+                                    {documentWorkflow.requirement_ids.map((requirementId) => (
+                                      <Link
+                                        className="font-medium text-brand hover:underline"
+                                        href={`/du-an/${encodeURIComponent(project._id)}/yeu-cau/${encodeURIComponent(requirementId)}`}
+                                        key={requirementId}
+                                      >
+                                        Mở Requirement
+                                      </Link>
+                                    ))}
+                                  </div>
+                                )}
                             </div>
-                          )}
-                          {requirementIds.length > 0 && (
-                            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-                              <span className="text-ink-muted">
-                                {requirementIds.length} yêu cầu được tạo từ tài liệu; cần rà soát
-                                trước khi phê duyệt.
-                              </span>
-                              {requirementIds.map((requirementId) => (
-                                <Link
-                                  className="font-medium text-brand hover:underline"
-                                  href={`/du-an/${encodeURIComponent(project._id)}/yeu-cau/${encodeURIComponent(requirementId)}`}
-                                  key={requirementId}
-                                >
-                                  Mở {requirementId}
-                                </Link>
-                              ))}
-                            </div>
-                          )}
-                          {blockers.length > 0 && (
-                            <ul className="grid gap-1 text-xs text-warning">
-                              {blockers.map((warning, index) => (
-                                <li key={`${stage}-warning-${index}`}>{valueLabel(warning)}</li>
-                              ))}
-                            </ul>
-                          )}
-                        </li>
-                      );
-                    })}
+                          </li>
+                        );
+                      },
+                    )}
                   </ol>
                   {Array.isArray(documentWorkflow.unresolved) &&
                     documentWorkflow.unresolved.length > 0 && (
