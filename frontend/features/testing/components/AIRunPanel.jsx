@@ -2,17 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import {
-  BookOpen,
-  ClipboardCheck,
-  FileBarChart2,
-  FileText,
-  Flag,
-  GitBranch,
-  PlayCircle,
-  RefreshCw,
-  TestTube2,
-} from "lucide-react";
+import { BookOpen, ClipboardCheck, FileText, GitBranch, RefreshCw, TestTube2 } from "lucide-react";
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
 import {
   agentAuthorizationGuidance,
@@ -35,9 +25,6 @@ const documentWorkflowStageLabels = {
   test_plan: "Kế hoạch kiểm thử",
   test_scenarios: "Kịch bản kiểm thử",
   test_cases: "Ca kiểm thử",
-  test_run: "Thực thi kiểm thử",
-  test_report: "Báo cáo kiểm thử",
-  release: "Phát hành",
 };
 
 const documentWorkflowStatusLabels = {
@@ -47,9 +34,6 @@ const documentWorkflowStatusLabels = {
   BLOCKED: "Đang bị chặn",
   NOT_STARTED: "Chưa thực hiện",
   IN_PROGRESS: "Đang thực hiện",
-  REQUIRES_REAL_EXECUTION: "Cần thực thi kiểm thử thực tế",
-  REQUIRES_EXECUTION_RESULTS: "Cần có kết quả thực thi",
-  REQUIRES_HUMAN_REVIEW_AND_APPROVAL: "Cần người dùng rà soát và phê duyệt",
 };
 
 function documentWorkflowResult(run) {
@@ -75,9 +59,6 @@ function documentWorkflowStageHref(projectId, stage) {
   if (stage === "test_plan") return `${base}/ke-hoach-kiem-thu`;
   if (stage === "test_scenarios") return `${base}/ca-kiem-thu/kich-ban`;
   if (stage === "test_cases") return `${base}/ca-kiem-thu`;
-  if (stage === "test_run") return `${base}/lan-chay-kiem-thu`;
-  if (stage === "test_report") return `${base}/bao-cao?tab=reports&testReport=completion`;
-  if (stage === "release") return `${base}/ban-phat-hanh`;
   return "";
 }
 
@@ -87,9 +68,6 @@ const documentWorkflowIcons = {
   test_plan: ClipboardCheck,
   test_scenarios: GitBranch,
   test_cases: TestTube2,
-  test_run: PlayCircle,
-  test_report: FileBarChart2,
-  release: Flag,
 };
 
 function documentWorkflowTreeStages(projectId, workflow) {
@@ -1208,15 +1186,14 @@ export default function AIRunPanel({
               )}
               {documentWorkflowStages && (
                 <section
-                  aria-label="Cây tiến độ từ tài liệu đến phát hành của lượt AI này"
+                  aria-label="Cây tiến độ AI từ tài liệu đến ca kiểm thử"
                   className="grid gap-3 rounded-control border border-border bg-surface p-4"
                 >
                   <div>
-                    <h3 className="font-semibold text-ink">Quy trình từ tài liệu đến phát hành</h3>
+                    <h3 className="font-semibold text-ink">AI từ tài liệu đến ca kiểm thử</h3>
                     <p className="mt-1 text-ink-muted">
-                      Theo dõi toàn bộ quy trình được khởi tạo từ tài liệu này. Nội dung AI tạo được
-                      lưu để rà soát; kết quả thực thi, báo cáo và phát hành cập nhật theo dữ liệu
-                      thực tế của từng bước.
+                      Cây này ghi nhận các nội dung được tạo từ tài liệu trong lượt AI hiện tại. Mở
+                      từng mục để xem và rà soát nội dung.
                     </p>
                   </div>
                   <ol className="relative grid gap-0">
