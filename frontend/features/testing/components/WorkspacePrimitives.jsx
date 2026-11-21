@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { createPortal } from "react-dom";
 import LinkTabs from "@/shared/components/navigation/LinkTabs";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
@@ -120,7 +121,7 @@ export function useActionDialog() {
   };
   const dialog = state ? (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-ink/30 p-4 backdrop-blur-[2px] animate-in fade-in"
+      className="fixed inset-0 z-[3000] flex items-center justify-center bg-ink/30 p-4 backdrop-blur-[2px] animate-in fade-in"
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget && !submitting) close(null);
@@ -262,7 +263,10 @@ export function useActionDialog() {
       </section>
     </div>
   ) : null;
-  return { ask, dialog };
+  return {
+    ask,
+    dialog: dialog && typeof document !== "undefined" ? createPortal(dialog, document.body) : null,
+  };
 }
 
 export function WorkspacePage({ title, description, actions, children }) {
