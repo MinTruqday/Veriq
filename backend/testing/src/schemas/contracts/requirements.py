@@ -282,6 +282,8 @@ class ImportCreate(BaseModel):
     ocr_language: str | None = Field(default=None, min_length=2, max_length=32)
     source_type: KnowledgeSourceType = "REFERENCE"
     supersedes_document_id: str | None = Field(default=None, min_length=1, max_length=200)
+    duplicate_confirmed: bool = False
+    duplicate_confirmed_document_ids: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_access(self):

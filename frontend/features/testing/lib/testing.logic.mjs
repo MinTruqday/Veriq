@@ -582,6 +582,18 @@ export function formatCalendarDate(value, options = {}) {
 }
 
 export function messageOf(reason) {
+  const documentDuplicateMessages = {
+    DOCUMENT_DUPLICATE_CONFIRMATION_REQUIRED:
+      "Tài liệu vừa được thêm hoặc thay đổi trong lúc đối chiếu. Hãy đối chiếu lại danh sách trùng trước khi import tiếp.",
+    DOCUMENT_DUPLICATE_CONFIRMATION_INVALID:
+      "Thông tin xác nhận trùng lặp không hợp lệ. Hãy đối chiếu lại tài liệu trước khi import.",
+    DOCUMENT_DUPLICATE_SCAN_LIMIT_EXCEEDED:
+      "Có quá nhiều tài liệu trong phạm vi bạn được xem để đối chiếu an toàn. Hãy thu hẹp lô tài liệu hoặc thử lại sau.",
+    DOCUMENT_BATCH_SIZE_INVALID: "Số lượng tệp trong lô đối chiếu không hợp lệ.",
+    DOCUMENT_BATCH_TOO_LARGE: "Tổng dung lượng lô tài liệu vượt giới hạn của hệ thống.",
+    DOCUMENT_FORMATS_INVALID: "Thông tin định dạng tệp không khớp với danh sách tài liệu đã chọn.",
+  };
+  if (documentDuplicateMessages[reason?.code]) return documentDuplicateMessages[reason.code];
   const defectClassificationMessages = {
     DEFECT_CLASSIFICATION_POLICY_REQUIRED:
       "Hãy cấu hình và phê duyệt thang mức độ cùng thang ưu tiên trong chiến lược kiểm thử trước khi ghi nhận lỗi.",

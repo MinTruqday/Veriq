@@ -8,6 +8,13 @@ def _positive_int_environment(name: str, default: str) -> int:
     return value
 
 
+def _similarity_threshold_environment(name: str, default: str) -> float:
+    value = float(os.environ.get(name, default))
+    if not 0.5 <= value <= 1:
+        raise ValueError(f"{name} must be between 0.5 and 1")
+    return value
+
+
 class Settings:
     VERSION: str = os.environ["VERSION"]
     SECRET_KEY: str = os.environ["SECRET_KEY"]
@@ -21,6 +28,9 @@ class Settings:
     NOTIFICATION_URL: str = os.environ["NOTIFICATION_URL"]
     CLOUD_URL: str = os.environ["CLOUD_URL"]
     MAX_UPLOAD_SIZE_BYTES: int = int(os.environ["MAX_UPLOAD_SIZE_BYTES"])
+    DOCUMENT_DUPLICATE_BATCH_MAX_FILES: int = _positive_int_environment(
+        "DOCUMENT_DUPLICATE_BATCH_MAX_FILES", "20"
+    )
     DOCUMENT_PARSE_LEASE_SECONDS: int = _positive_int_environment(
         "DOCUMENT_PARSE_LEASE_SECONDS", "900"
     )
@@ -47,6 +57,15 @@ class Settings:
     )
     REQUIREMENT_DUPLICATE_SCAN_MAX_CRITERIA: int = _positive_int_environment(
         "REQUIREMENT_DUPLICATE_SCAN_MAX_CRITERIA", "10000"
+    )
+    DOCUMENT_DUPLICATE_SIMILARITY_THRESHOLD: float = _similarity_threshold_environment(
+        "DOCUMENT_DUPLICATE_SIMILARITY_THRESHOLD", "0.85"
+    )
+    DOCUMENT_DUPLICATE_SCAN_MAX_ITEMS: int = _positive_int_environment(
+        "DOCUMENT_DUPLICATE_SCAN_MAX_ITEMS", "10000"
+    )
+    DOCUMENT_DUPLICATE_MATCH_LIMIT: int = _positive_int_environment(
+        "DOCUMENT_DUPLICATE_MATCH_LIMIT", "100"
     )
     MAINTENANCE_PROPOSAL_APPLY_LEASE_SECONDS: int = _positive_int_environment(
         "MAINTENANCE_PROPOSAL_APPLY_LEASE_SECONDS", "900"

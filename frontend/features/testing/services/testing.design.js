@@ -262,6 +262,29 @@ export const designTestingApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  compareRequirementDocumentContent: (id, payload) =>
+    testingRequest(`/du-an/${id}/tai-lieu-yeu-cau/doi-chieu`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  compareRequirementDocumentFile: (id, file, format) => {
+    const body = new FormData();
+    body.append("files", file);
+    body.append("formats", JSON.stringify([format]));
+    return testingRequest(`/du-an/${id}/tai-lieu-yeu-cau/doi-chieu-tap`, {
+      method: "POST",
+      body,
+    });
+  },
+  compareRequirementDocumentBatch: (id, files, formats) => {
+    const body = new FormData();
+    files.forEach((file) => body.append("files", file));
+    body.append("formats", JSON.stringify(formats));
+    return testingRequest(`/du-an/${id}/tai-lieu-yeu-cau/doi-chieu-tap`, {
+      method: "POST",
+      body,
+    });
+  },
   uploadRequirementDocument: (id, file, format, access = {}) => {
     const body = new FormData();
     body.append("format", format);
@@ -270,6 +293,11 @@ export const designTestingApi = {
     body.append("shared_with", JSON.stringify(access.shared_with || []));
     body.append("ai_enabled", String(Boolean(access.ai_enabled)));
     body.append("source_type", access.source_type || "REFERENCE");
+    body.append("duplicate_confirmed", String(Boolean(access.duplicate_confirmed)));
+    body.append(
+      "duplicate_confirmed_document_ids",
+      JSON.stringify(access.duplicate_confirmed_document_ids || []),
+    );
     if (access.ocr_language?.trim()) body.append("ocr_language", access.ocr_language.trim());
     if (access.supersedes_document_id) {
       body.append("supersedes_document_id", access.supersedes_document_id);

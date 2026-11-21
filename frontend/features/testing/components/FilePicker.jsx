@@ -7,6 +7,7 @@ export default function FilePicker({
   accept,
   disabled = false,
   required = false,
+  multiple = false,
   buttonLabel = "Chọn tệp",
   ariaLabel,
   fileName,
@@ -37,11 +38,16 @@ export default function FilePicker({
           aria-required={required || undefined}
           className="peer sr-only"
           disabled={disabled}
+          multiple={multiple}
           ref={inputRef}
           type="file"
           onChange={(event) => {
             const input = event.currentTarget;
-            setSelectedFileName(input.files?.[0]?.name || "");
+            setSelectedFileName(
+              multiple && input.files?.length > 1
+                ? `${input.files.length} tệp đã chọn`
+                : input.files?.[0]?.name || "",
+            );
             try {
               onChange?.(event);
             } finally {

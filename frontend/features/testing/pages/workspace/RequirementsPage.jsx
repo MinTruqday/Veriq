@@ -82,7 +82,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
   const [importComparison, setImportComparison] = useState(null);
   const [separateIndexes, setSeparateIndexes] = useState([]);
   const [separateReasons, setSeparateReasons] = useState({});
-  const [upload, setUpload] = useState(null);
+  const [upload, setUpload] = useState([]);
   const [uploadAccess, setUploadAccess] = useState({
     visibility: "private",
     shared_with: [],
@@ -107,6 +107,66 @@ export default function RequirementsPage({ project, section, workspaceView }) {
     setImportComparison(null);
     setSeparateIndexes([]);
     setSeparateReasons({});
+  };
+  const handleDocumentDuplicateMatches = async (
+    filename,
+    matches,
+    { allowIndependent = true, allowExactIndependent = false } = {},
+  ) => {
+    if (!matches?.length) return "continue";
+    const reusable = matches.filter((match) => match.reusable);
+    const choices = [
+      { value: "", label: "Chọn cách xử lý" },
+      ...reusable.map((match) => ({
+        value: `reuse:${match.document_id}`,
+        label: `${match.project_name} · ${match.filename} · ${match.match_type.startsWith("EXACT") ? "Khớp 100%" : `Giống khoảng ${match.similarity_percent}%`}`,
+      })),
+    ];
+    const hasExactSameProject = matches.some(
+      (match) => match.same_project && ["EXACT_FILE", "EXACT_CONTENT"].includes(match.match_type),
+    );
+    if (
+      allowIndependent &&
+      !hasExactSameProject &&
+      (allowExactIndependent || matches.some((match) => match.match_type === "SIMILAR_CONTENT"))
+    ) {
+      choices.push({ value: "continue", label: "Tiếp tục như tài liệu riêng" });
+    }
+    choices.push({ value: "discard", label: "Bỏ tệp đang import" });
+    const details = matches
+      .slice(0, 6)
+      .map(
+        (match) =>
+          `${match.match_type.startsWith("EXACT") ? "100%" : `Độ giống ước tính ${match.similarity_percent}%`} · ${match.filename} · ${match.project_name} · ${match.status}${match.difference_summary ? ` · ${match.difference_summary}` : ""}`,
+      )
+      .join("\n");
+    const result = await ask({
+      title: "Tìm thấy tài liệu trùng hoặc tương tự",
+      description: `Tài liệu “${filename}” có ${matches.length} kết quả để đối chiếu:\n${details}\nChọn tài liệu có sẵn để mở dự án chứa bản đó; việc này không tạo bản sao hay chạy AI lại.`,
+      confirmLabel: "Tiếp tục",
+      fields: [
+        {
+          name: "action",
+          label: "Cách xử lý",
+          options: choices,
+          required: true,
+        },
+      ],
+    });
+    const action = result?.action || "";
+    if (action.startsWith("reuse:")) {
+      const documentId = action.slice("reuse:".length);
+      const match = reusable.find((item) => item.document_id === documentId);
+      if (match) {
+        window.location.assign(
+          projectRoute(match.project_id, PROJECT_SECTION_SLUGS.documentReader, documentId),
+        );
+      }
+      return "reuse";
+    }
+    if (action === "continue") return "continue";
+    if (action === "discard") return "discard";
+    return "stop";
   };
   const pendingExtractionStorageKey = `veriq:requirement-import:${project._id}`;
   const rememberPendingExtraction = useCallback(
@@ -343,7 +403,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
     setImportComparison(null);
     setSeparateIndexes([]);
     setSeparateReasons({});
-    setUpload(null);
+    setUpload([]);
     setUploadAccess({
       visibility: "private",
       shared_with: [],
@@ -675,7 +735,22 @@ export default function RequirementsPage({ project, section, workspaceView }) {
     clearImportPreview();
     const requestedProjectId = project._id;
     try {
-      const document = await testingApi.createRequirementDocument(requestedProjectId, importValue);
+      const duplicateCheck = await testingApi.compareRequirementDocumentContent(
+        requestedProjectId,
+        importValue,
+      );
+      const duplicateAction = await handleDocumentDuplicateMatches(
+        importValue.filename,
+        duplicateCheck.matches,
+      );
+      if (duplicateAction !== "continue") return;
+      const document = await testingApi.createRequirementDocument(requestedProjectId, {
+        ...importValue,
+        duplicate_confirmed: duplicateAction === "continue" && duplicateCheck.matches?.length > 0,
+        duplicate_confirmed_document_ids: (duplicateCheck.matches || []).map(
+          (match) => match.document_id,
+        ),
+      });
       if (activeProjectId.current !== requestedProjectId) return;
       rememberSourceDocument(document);
       const result = await testingApi.extractRequirementDocument(
@@ -787,23 +862,194 @@ export default function RequirementsPage({ project, section, workspaceView }) {
   };
   const uploadPreview = async (event) => {
     event.preventDefault();
-    if (!upload || uploadingSource || pendingExtractionDocumentId) return;
+    const uploads = Array.isArray(upload) ? upload : upload ? [upload] : [];
+    if (!uploads.length || uploadingSource || pendingExtractionDocumentId) return;
     clearImportPreview();
     setUploadingSource(true);
     const requestedProjectId = project._id;
-    const extension = upload.name.split(".").pop().toLowerCase();
-    const format =
-      ["json", "yaml", "yml"].includes(extension) && uploadAccess.source_type === "API_SPEC"
+    const formats = uploads.map((file) => {
+      const extension = file.name.split(".").pop().toLowerCase();
+      return ["json", "yaml", "yml"].includes(extension) && uploadAccess.source_type === "API_SPEC"
         ? uploadAccess.api_format || "openapi"
         : extension;
+    });
     try {
-      const document = await testingApi.uploadRequirementDocument(
+      const duplicateCheck = await testingApi.compareRequirementDocumentBatch(
         requestedProjectId,
-        upload,
-        format,
-        uploadAccess,
+        uploads,
+        formats,
       );
-      if (activeProjectId.current !== requestedProjectId) return;
+      const projectMatches = duplicateCheck.matching_projects || [];
+      let keepProjectIndependent = false;
+      if (projectMatches.length) {
+        const projectChoice = await ask({
+          title: "Bộ tài liệu đã có trong dự án khác",
+          description: projectMatches
+            .map((match) => `${match.project_name} · ${match.document_count} tài liệu`)
+            .join("\n"),
+          confirmLabel: "Tiếp tục",
+          fields: [
+            {
+              name: "action",
+              label: "Cách xử lý bộ tài liệu",
+              required: true,
+              options: [
+                { value: "", label: "Chọn cách xử lý" },
+                ...projectMatches.map((match) => ({
+                  value: `open:${match.project_id}`,
+                  label: `Mở và dùng dự án ${match.project_name}`,
+                })),
+                { value: "keep", label: "Giữ dự án này và import độc lập" },
+                { value: "discard", label: "Bỏ cả lô tệp" },
+              ],
+            },
+          ],
+        });
+        if (projectChoice?.action?.startsWith("open:")) {
+          const match = projectMatches.find(
+            (item) => item.project_id === projectChoice.action.slice("open:".length),
+          );
+          if (match) window.location.assign(`/du-an/${encodeURIComponent(match.project_id)}`);
+          return;
+        }
+        if (projectChoice?.action !== "keep") return;
+        keepProjectIndependent = true;
+      }
+      const acceptedFiles = [];
+      const acceptedCandidateIndexes = new Set();
+      const matchingProjectIds = new Set(projectMatches.map((match) => match.project_id));
+      for (let index = 0; index < uploads.length; index += 1) {
+        const allMatches = duplicateCheck.files?.[index]?.matches || [];
+        const batchMatches = allMatches.filter((match) => Number.isInteger(match.candidate_index));
+        const exactBatchMatches = batchMatches.filter((match) => match.match_type === "IN_IMPORT");
+        if (exactBatchMatches.length) {
+          const hasAcceptedEarlierCopy = exactBatchMatches.some((match) =>
+            acceptedCandidateIndexes.has(match.candidate_index),
+          );
+          const choice = await ask({
+            title: "Tệp bị lặp trong lô import",
+            description: `Tệp “${uploads[index].name}” khớp 100% với ${exactBatchMatches
+              .map((match) => `“${match.filename}”`)
+              .join(", ")}. Dùng tệp xuất hiện trước và bỏ bản lặp này?`,
+            confirmLabel: "Tiếp tục",
+            fields: [
+              {
+                name: "action",
+                label: "Cách xử lý",
+                required: true,
+                options: [
+                  { value: "", label: "Chọn cách xử lý" },
+                  hasAcceptedEarlierCopy
+                    ? { value: "keep_previous", label: "Dùng tệp xuất hiện trước" }
+                    : { value: "keep_current", label: "Giữ tệp này trong lô" },
+                  { value: "discard_batch", label: "Hủy cả lô import" },
+                ],
+              },
+            ],
+          });
+          if (choice?.action === "keep_previous") continue;
+          if (choice?.action !== "keep_current") return;
+        }
+        const similarBatchMatches = batchMatches.filter(
+          (match) => match.match_type === "SIMILAR_CONTENT_IN_IMPORT",
+        );
+        if (similarBatchMatches.length) {
+          const hasAcceptedEarlierCopy = similarBatchMatches.some((match) =>
+            acceptedCandidateIndexes.has(match.candidate_index),
+          );
+          const choice = await ask({
+            title: "Tệp tương tự trong lô import",
+            description: `Tệp “${uploads[index].name}” tương tự ${similarBatchMatches
+              .map((match) => `${match.similarity_percent}% với “${match.filename}”`)
+              .join(", ")}.`,
+            confirmLabel: "Tiếp tục",
+            fields: [
+              {
+                name: "action",
+                label: "Cách xử lý",
+                required: true,
+                options: [
+                  { value: "", label: "Chọn cách xử lý" },
+                  hasAcceptedEarlierCopy
+                    ? { value: "keep_previous", label: "Dùng tệp xuất hiện trước" }
+                    : { value: "continue", label: "Giữ tệp này trong lô" },
+                  ...(hasAcceptedEarlierCopy
+                    ? [{ value: "continue", label: "Import thành tài liệu riêng" }]
+                    : []),
+                  { value: "discard_batch", label: "Hủy cả lô import" },
+                ],
+              },
+            ],
+          });
+          if (choice?.action === "keep_previous") continue;
+          if (choice?.action !== "continue") return;
+        }
+        const matches = allMatches.filter((match) => !Number.isInteger(match.candidate_index));
+        const coveredByProjectChoice =
+          keepProjectIndependent &&
+          matches.length > 0 &&
+          matches.every(
+            (match) =>
+              !match.same_project &&
+              matchingProjectIds.has(match.project_id) &&
+              ["EXACT_FILE", "EXACT_CONTENT"].includes(match.match_type),
+          );
+        if (coveredByProjectChoice) {
+          acceptedFiles.push({
+            file: uploads[index],
+            format: formats[index],
+            duplicate_confirmed: true,
+            duplicate_confirmed_document_ids: matches.map((match) => match.document_id),
+            batch_duplicate_candidate_indexes: batchMatches.map((match) => match.candidate_index),
+            candidate_index: index,
+          });
+          acceptedCandidateIndexes.add(index);
+          continue;
+        }
+        const duplicateAction = await handleDocumentDuplicateMatches(uploads[index].name, matches, {
+          allowIndependent: true,
+          allowExactIndependent: keepProjectIndependent,
+        });
+        if (duplicateAction === "stop" || duplicateAction === "reuse") return;
+        if (duplicateAction === "discard") continue;
+        if (duplicateAction === "continue") {
+          acceptedFiles.push({
+            file: uploads[index],
+            format: formats[index],
+            duplicate_confirmed: allMatches.length > 0,
+            duplicate_confirmed_document_ids: matches.map((match) => match.document_id),
+            batch_duplicate_candidate_indexes: batchMatches.map((match) => match.candidate_index),
+            candidate_index: index,
+          });
+          acceptedCandidateIndexes.add(index);
+        }
+      }
+      if (!acceptedFiles.length) return;
+      const createdDocuments = [];
+      const uploadedDocumentIdsByCandidate = new Map();
+      for (const item of acceptedFiles) {
+        const confirmedDocumentIds = [
+          ...item.duplicate_confirmed_document_ids,
+          ...item.batch_duplicate_candidate_indexes
+            .map((candidateIndex) => uploadedDocumentIdsByCandidate.get(candidateIndex))
+            .filter(Boolean),
+        ];
+        const created = await testingApi.uploadRequirementDocument(
+          requestedProjectId,
+          item.file,
+          item.format,
+          {
+            ...uploadAccess,
+            duplicate_confirmed: item.duplicate_confirmed,
+            duplicate_confirmed_document_ids: confirmedDocumentIds,
+          },
+        );
+        if (activeProjectId.current !== requestedProjectId) return;
+        createdDocuments.push(created);
+        uploadedDocumentIdsByCandidate.set(item.candidate_index, created._id);
+      }
+      if (createdDocuments.length > 1) await load();
+      const document = createdDocuments[0];
       rememberSourceDocument(document);
       if (document.last_import_job_id) {
         await continueRequirementImport(document);

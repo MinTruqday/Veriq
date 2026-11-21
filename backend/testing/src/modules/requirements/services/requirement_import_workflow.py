@@ -4,39 +4,56 @@ import re
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
+from src.clients.project_knowledge import compare_project_text_semantics, search_project_with_status
 from src.core.ai_capabilities import request_ai_capability
-from src.core.common import audit, get_project, get_project_entity, new_id, now, plain_text, validate_doc
+from src.core.common import (
+    audit,
+    get_project,
+    get_project_entity,
+    new_id,
+    now,
+    plain_text,
+    validate_doc,
+)
 from src.core.database import database
-from src.schemas.contracts.requirements import RequirementCreate, RequirementExtractionInput, RequirementVersionCreate
-from src.repositories.requirement_import import requirement_import_repository
-from src.repositories.requirement import requirement_repository
-from src.repositories.requirement_document import requirement_document_repository
+from src.modules.design.services.linters import requirement_duplicate_score
+from src.modules.requirements.services.requirement_documents import (
+    create_requirement_document_record,
+    require_document_access,
+    require_duplicate_import_decision,
+)
 from src.modules.requirements.services.requirement_import import (
-    attach_labeled_acceptance_criteria,
     atomic_requirement_candidates,
+    attach_labeled_acceptance_criteria,
     explicit_acceptance_criteria,
     normalized_acceptance_criterion,
     source_document_text,
 )
-from src.modules.requirements.services.requirement_documents import create_requirement_document_record, require_document_access
 from src.modules.requirements.services.requirement_indexing import (
     index_requirement_version,
     validate_requirement_sources,
 )
-from src.modules.requirements.services.requirement_records import create_requirement_record, create_requirement_version_record
-from src.modules.requirements.services.requirement_transformations import unique_source_refs
-from src.repositories.analysis import analysis_repository
-from src.clients.project_knowledge import (
-    compare_project_text_semantics,
-    search_project_with_status,
+from src.modules.requirements.services.requirement_records import (
+    create_requirement_record,
+    create_requirement_version_record,
 )
+from src.modules.requirements.services.requirement_transformations import unique_source_refs
 from src.modules.requirements.services.requirement_workflow import (
     candidate_fingerprint,
     prepare_requirement_candidates,
+    serialized_content,
     text_doc,
 )
-from src.modules.design.services.linters import requirement_duplicate_score
-from src.schemas.contracts.requirements import RequirementDuplicateCheckInput
+from src.repositories.analysis import analysis_repository
+from src.repositories.requirement import requirement_repository
+from src.repositories.requirement_document import requirement_document_repository
+from src.repositories.requirement_import import requirement_import_repository
+from src.schemas.contracts.requirements import (
+    RequirementCreate,
+    RequirementDuplicateCheckInput,
+    RequirementExtractionInput,
+    RequirementVersionCreate,
+)
 
 REQUIREMENT_EXTRACTION_VERSION = 2
 
@@ -1097,6 +1114,21 @@ async def extract_requirement_candidates(document_id, payload, user):
 
 
 async def create_requirement_import_job(project_id, payload, user):
+    content = serialized_content(payload.content)
+    normalized_content = (
+        payload.content
+        if payload.format in ("openapi", "postman")
+        else source_document_text(payload.content)
+    )
+    await require_duplicate_import_decision(
+        project_id,
+        user,
+        filename=payload.filename,
+        content_hash=hashlib.sha256(content.encode("utf-8")).hexdigest(),
+        normalized_content=normalized_content,
+        confirmed=payload.duplicate_confirmed,
+        confirmed_document_ids=payload.duplicate_confirmed_document_ids,
+    )
     document = await create_requirement_document_record(project_id, payload, user)
     return await extract_requirement_candidates(
         document["_id"],

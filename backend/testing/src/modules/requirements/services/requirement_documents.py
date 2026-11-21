@@ -1,10 +1,12 @@
 import asyncio
 import base64
+import difflib
 import hashlib
 import hmac
 import json
 import logging
 import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from uuid import uuid4
@@ -21,10 +23,7 @@ from src.clients.document_conversion import (
     clear_requirement_conversion_checkpoints,
     convert_requirement_source,
 )
-from src.clients.project_knowledge import (
-    index_artifact_result,
-    remove_artifact,
-)
+from src.clients.project_knowledge import index_artifact_result, remove_artifact
 from src.clients.storage import storage_client
 from src.core.auth import ai_capability_context
 from src.core.common import audit, get_project, get_project_entity, new_id, now
@@ -38,9 +37,10 @@ from src.modules.requirements.services.requirement_import import (
 from src.modules.requirements.services.requirement_workflow import serialized_content
 from src.repositories.ai_run_access import ai_run_access_repository
 from src.repositories.common import common_repository
+from src.repositories.project import project_repository
+from src.repositories.requirement import requirement_repository
 from src.repositories.requirement_document import requirement_document_repository
 from src.repositories.requirement_source_block import requirement_source_block_repository
-from src.repositories.requirement import requirement_repository
 from src.repositories.test_design import test_design_repository
 
 logger = logging.getLogger(__name__)
@@ -458,6 +458,251 @@ def can_read_requirement_document(document, user):
     return False
 
 
+def normalized_document_duplicate_text(content):
+    if isinstance(content, dict) and content.get("type") == "doc":
+        content = source_document_text(content)
+    elif isinstance(content, (dict, list)):
+        content = json.dumps(content, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    value = unicodedata.normalize("NFKC", str(content or "")).casefold()
+    return re.sub(r"\s+", " ", value).strip()
+
+
+async def accessible_requirement_document_project_ids(project_id, user):
+    if user.is_system_admin:
+        projects = await project_repository.list_projects(
+            {}, settings.DOCUMENT_DUPLICATE_SCAN_MAX_ITEMS
+        )
+        return list(dict.fromkeys([project_id, *(item["_id"] for item in projects)]))
+    memberships = await project_repository.list_active_memberships(user.id, "ACTIVE")
+    grants = await project_repository.list_active_grants(user.id, "ACTIVE", now())
+    return list(
+        dict.fromkeys(
+            [
+                project_id,
+                *(item["project_id"] for item in memberships),
+                *(item["project_id"] for item in grants),
+            ]
+        )
+    )
+
+
+async def find_requirement_document_duplicates(
+    project_id, user, *, filename, content_hash, normalized_content
+):
+    await get_project(project_id, user, "requirement_document.upload")
+    project_ids = await accessible_requirement_document_project_ids(project_id, user)
+    normalized_candidate = normalized_document_duplicate_text(normalized_content)
+    if not normalized_candidate and not content_hash:
+        return {"matches": [], "similarity_threshold": settings.DOCUMENT_DUPLICATE_SIMILARITY_THRESHOLD}
+    candidate_hash = (
+        hashlib.sha256(normalized_candidate.encode("utf-8")).hexdigest()
+        if normalized_candidate
+        else str(content_hash)
+    )
+    projects = await project_repository.list_projects({"_id": {"$in": project_ids}}, len(project_ids))
+    project_names = {item["_id"]: str(item.get("name") or item.get("key") or item["_id"]) for item in projects}
+    matches = []
+    scanned_documents = 0
+    for candidate_project_id in project_ids:
+        try:
+            permission = (
+                "requirement_document.upload"
+                if candidate_project_id == project_id
+                else "requirement_document.read"
+            )
+            await get_project(candidate_project_id, user, permission)
+        except HTTPException:
+            continue
+        access_query = requirement_document_read_query(user)
+        query = {
+            "$and": [
+                {"project_id": candidate_project_id, "status": {"$ne": "ARCHIVED"}},
+                access_query,
+            ]
+        }
+        remaining_scan_limit = settings.DOCUMENT_DUPLICATE_SCAN_MAX_ITEMS - scanned_documents
+        documents = await requirement_document_repository.documents.find(
+            query,
+            {
+                "_id": 1,
+                "project_id": 1,
+                "filename": 1,
+                "title": 1,
+                "normalized_content": 1,
+                "content_hash": 1,
+                "status": 1,
+                "source_version": 1,
+                "created_by": 1,
+                "visibility": 1,
+                "shared_with": 1,
+                "ai_enabled": 1,
+            },
+        ).to_list(remaining_scan_limit + 1)
+        scanned_documents += len(documents)
+        if scanned_documents > settings.DOCUMENT_DUPLICATE_SCAN_MAX_ITEMS:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "DOCUMENT_DUPLICATE_SCAN_LIMIT_EXCEEDED"},
+            )
+        for document in documents:
+            if not can_read_requirement_document(document, user):
+                continue
+            old_text = normalized_document_duplicate_text(document.get("normalized_content"))
+            raw_exact = bool(content_hash and content_hash == document.get("content_hash"))
+            normalized_exact = bool(old_text and old_text == normalized_candidate)
+            if raw_exact or normalized_exact:
+                score = 1.0
+                match_type = "EXACT_FILE" if raw_exact else "EXACT_CONTENT"
+                difference_summary = "Nội dung đã khớp hoàn toàn."
+            elif old_text:
+                matcher = difflib.SequenceMatcher(None, normalized_candidate, old_text)
+                score = matcher.ratio()
+                if score < settings.DOCUMENT_DUPLICATE_SIMILARITY_THRESHOLD:
+                    continue
+                match_type = "SIMILAR_CONTENT"
+                matched_characters = sum(block.size for block in matcher.get_matching_blocks())
+                difference_summary = (
+                    f"Ước tính {len(normalized_candidate) - matched_characters} ký tự khác "
+                    f"ở tài liệu mới và {len(old_text) - matched_characters} ký tự khác ở tài liệu đã có."
+                )
+            else:
+                continue
+            matches.append(
+                {
+                    "document_id": document["_id"],
+                    "project_id": candidate_project_id,
+                    "project_name": project_names.get(candidate_project_id, candidate_project_id),
+                    "filename": str(document.get("filename") or document.get("title") or "Tài liệu"),
+                    "status": str(document.get("status") or "UNKNOWN"),
+                    "source_version": str(document.get("source_version") or "1"),
+                    "similarity_percent": round(score * 100, 2),
+                    "match_type": match_type,
+                    "difference_summary": difference_summary,
+                    "same_project": candidate_project_id == project_id,
+                    "reusable": True,
+                }
+            )
+    matches.sort(
+        key=lambda item: (
+            item["match_type"] == "SIMILAR_CONTENT",
+            -item["similarity_percent"],
+            item["project_name"].casefold(),
+            item["filename"].casefold(),
+        )
+    )
+    return {
+        "matches": matches[: settings.DOCUMENT_DUPLICATE_MATCH_LIMIT],
+        "similarity_threshold": settings.DOCUMENT_DUPLICATE_SIMILARITY_THRESHOLD,
+        "candidate_normalized_hash": candidate_hash,
+    }
+
+
+async def find_matching_requirement_document_projects(project_id, user, items):
+    if not items:
+        return []
+    project_ids = await accessible_requirement_document_project_ids(project_id, user)
+    projects = await project_repository.list_projects({"_id": {"$in": project_ids}}, len(project_ids))
+    matches = []
+    candidate_hashes = sorted(item["normalized_hash"] for item in items)
+    for project in projects:
+        candidate_project_id = project["_id"]
+        if candidate_project_id == project_id:
+            continue
+        try:
+            await get_project(candidate_project_id, user, "requirement_document.read")
+        except HTTPException:
+            continue
+        active_query = {"project_id": candidate_project_id, "status": {"$ne": "ARCHIVED"}}
+        collection = requirement_document_repository.documents
+        total_count = await collection.count_documents(active_query)
+        if total_count != len(items):
+            continue
+        access_query = requirement_document_read_query(user)
+        documents = await collection.find(
+            {"$and": [active_query, access_query]},
+            {
+                "_id": 1,
+                "normalized_content": 1,
+                "content_hash": 1,
+                "created_by": 1,
+                "visibility": 1,
+                "shared_with": 1,
+                "ai_enabled": 1,
+            },
+        ).to_list(total_count + 1)
+        if len(documents) != total_count or any(
+            not can_read_requirement_document(document, user) for document in documents
+        ):
+            continue
+        project_hashes = []
+        complete = True
+        for document in documents:
+            text = normalized_document_duplicate_text(document.get("normalized_content"))
+            if text:
+                project_hashes.append(hashlib.sha256(text.encode("utf-8")).hexdigest())
+            elif document.get("content_hash"):
+                project_hashes.append(str(document["content_hash"]))
+            else:
+                complete = False
+                break
+        if complete and sorted(project_hashes) == candidate_hashes:
+            matches.append(
+                {
+                    "project_id": candidate_project_id,
+                    "project_name": str(project.get("name") or project.get("key") or candidate_project_id),
+                    "document_count": total_count,
+                    "match_type": "EXACT_PROJECT_CORPUS",
+                }
+            )
+    return matches
+
+
+async def require_duplicate_import_decision(
+    project_id,
+    user,
+    *,
+    filename,
+    content_hash,
+    normalized_content,
+    confirmed,
+    confirmed_document_ids,
+):
+    if len(confirmed_document_ids or []) > (
+        settings.DOCUMENT_DUPLICATE_MATCH_LIMIT
+        + settings.DOCUMENT_DUPLICATE_BATCH_MAX_FILES
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "DOCUMENT_DUPLICATE_CONFIRMATION_INVALID"},
+        )
+    result = await find_requirement_document_duplicates(
+        project_id,
+        user,
+        filename=filename,
+        content_hash=content_hash,
+        normalized_content=normalized_content,
+    )
+    matches = result.get("matches", [])
+    if not matches:
+        return
+    exact_same_project = any(
+        match["same_project"] and match["match_type"] in {"EXACT_FILE", "EXACT_CONTENT"}
+        for match in matches
+    )
+    unreviewed_document_ids = {
+        match["document_id"] for match in matches
+    } - set(map(str, confirmed_document_ids or []))
+    if exact_same_project or not confirmed or unreviewed_document_ids:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "DOCUMENT_DUPLICATE_CONFIRMATION_REQUIRED",
+                "matches": matches,
+                "similarity_threshold": result["similarity_threshold"],
+            },
+        )
+
+
 def requirement_document_read_query(user):
     if user.is_system_admin:
         return {}
@@ -702,7 +947,9 @@ def requirement_document_deduplication_key(
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
-async def create_requirement_document_record(project_id, payload, user):
+async def create_requirement_document_record(
+    project_id, payload, user, *, require_duplicate_confirmation=False
+):
     ocr_language = normalize_ocr_language(payload.format, payload.ocr_language)
     await get_project(project_id, user, 'requirement_document.upload')
     shared_with = await validate_document_recipients(project_id, payload.shared_with)
@@ -712,6 +959,16 @@ async def create_requirement_document_record(project_id, payload, user):
     if len(content.encode("utf-8")) > settings.MAX_UPLOAD_SIZE_BYTES:
         raise HTTPException(status_code=413, detail={"code": 'IMPORT_TOO_LARGE'})
     content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    if require_duplicate_confirmation:
+        await require_duplicate_import_decision(
+            project_id,
+            user,
+            filename=payload.filename,
+            content_hash=content_hash,
+            normalized_content=normalized_content,
+            confirmed=payload.duplicate_confirmed,
+            confirmed_document_ids=payload.duplicate_confirmed_document_ids,
+        )
     source_type = 'API_SPEC' if payload.format in ("openapi", "postman") else payload.source_type
     deduplication_key = requirement_document_deduplication_key(
         project_id,
@@ -1293,6 +1550,9 @@ async def upload_requirement_document_record(
     source_type="REFERENCE",
     ocr_language=None,
     supersedes_document_id=None,
+    duplicate_confirmed=False,
+    duplicate_confirmed_document_ids=None,
+    require_duplicate_confirmation=False,
 ):
     if format not in supported_requirement_formats():
         raise HTTPException(status_code=422, detail={"code": 'UNSUPPORTED_IMPORT_FORMAT'})
@@ -1305,6 +1565,17 @@ async def upload_requirement_document_record(
     shared_with = await validate_document_recipients(project_id, shared_with or [])
     resolved_filename = filename or f"{'requirements'}.{format}"
     content_hash = hashlib.sha256(data).hexdigest()
+    if require_duplicate_confirmation:
+        normalized_content = extract_file_content(data, format)
+        await require_duplicate_import_decision(
+            project_id,
+            user,
+            filename=resolved_filename,
+            content_hash=content_hash,
+            normalized_content=normalized_content,
+            confirmed=duplicate_confirmed,
+            confirmed_document_ids=duplicate_confirmed_document_ids or [],
+        )
     resolved_source_type = 'API_SPEC' if format in ("openapi", "postman") else source_type
     deduplication_key = requirement_document_deduplication_key(
         project_id,

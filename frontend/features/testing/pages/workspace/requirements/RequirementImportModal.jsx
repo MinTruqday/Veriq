@@ -239,6 +239,8 @@ export default function RequirementImportModal({
   const [confirmingImport, setConfirmingImport] = useState(false);
   const [includeBusinessRules, setIncludeBusinessRules] = useState(true);
   const [inputMethod, setInputMethod] = useState("file");
+  const uploadFiles = Array.isArray(upload) ? upload : upload ? [upload] : [];
+  const firstUpload = uploadFiles[0] || null;
   const confirmingImportRef = useRef(false);
   const previewRef = useRef(null);
   const lastScrolledPreviewKey = useRef("");
@@ -331,16 +333,28 @@ export default function RequirementImportModal({
         <FilePicker
           label="Tệp SRS, BRD hoặc bảng yêu cầu"
           accept=".pdf,.docx,.txt,.md,.csv,.xlsx,.json,.yaml,.yml"
+          multiple
           disabled={sourceProcessing}
-          fileName={upload?.name || ""}
-          onChange={(event) => setUpload(event.target.files?.[0] || null)}
+          fileName={
+            uploadFiles.length > 1 ? `${uploadFiles.length} tệp đã chọn` : firstUpload?.name || ""
+          }
+          onChange={(event) => setUpload(Array.from(event.target.files || []))}
         />
-        {upload && (
+        {uploadFiles.length > 1 && (
+          <ul className="max-h-32 space-y-1 overflow-y-auto rounded-control border border-border bg-surface-quiet p-3 text-sm">
+            {uploadFiles.map((file) => (
+              <li className="truncate" key={`${file.name}-${file.size}-${file.lastModified}`}>
+                {file.name}
+              </li>
+            ))}
+          </ul>
+        )}
+        {firstUpload && (
           <SourceVersionParent
             access={uploadAccess}
             documents={sourceDocuments}
             format={(() => {
-              const extension = upload.name.split(".").pop().toLowerCase();
+              const extension = firstUpload.name.split(".").pop().toLowerCase();
               return ["json", "yaml", "yml"].includes(extension) &&
                 uploadAccess.source_type === "API_SPEC"
                 ? uploadAccess.api_format || "openapi"
@@ -348,7 +362,7 @@ export default function RequirementImportModal({
             })()}
             project={project}
             onChange={setUploadAccess}
-            disabled={sourceProcessing}
+            disabled={sourceProcessing || uploadFiles.length > 1}
           />
         )}
         <label className="field-label">
@@ -368,7 +382,7 @@ export default function RequirementImportModal({
             ))}
           </select>
         </label>
-        {upload && upload.name.split(".").pop().toLowerCase() === "pdf" && (
+        {uploadFiles.some((file) => file.name.split(".").pop().toLowerCase() === "pdf") && (
           <label className="field-label">
             Ngôn ngữ OCR (không bắt buộc)
             <input
@@ -377,7 +391,11 @@ export default function RequirementImportModal({
               maxLength={32}
               placeholder="Để trống để dùng cấu hình mặc định của hệ thống"
               value={uploadAccess.ocr_language || ""}
-              disabled={sourceProcessing || Boolean(uploadAccess.supersedes_document_id)}
+              disabled={
+                sourceProcessing ||
+                uploadFiles.length > 1 ||
+                Boolean(uploadAccess.supersedes_document_id)
+              }
               onChange={(event) =>
                 setUploadAccess((value) => ({ ...value, ocr_language: event.target.value }))
               }
@@ -393,7 +411,11 @@ export default function RequirementImportModal({
             <select
               className="apple-input mt-2"
               value={uploadAccess.api_format || "openapi"}
-              disabled={sourceProcessing || Boolean(uploadAccess.supersedes_document_id)}
+              disabled={
+                sourceProcessing ||
+                uploadFiles.length > 1 ||
+                Boolean(uploadAccess.supersedes_document_id)
+              }
               onChange={(event) =>
                 setUploadAccess((value) => ({ ...value, api_format: event.target.value }))
               }
@@ -408,7 +430,11 @@ export default function RequirementImportModal({
           members={members}
           name="upload-document"
           privateLabel="Riêng tư chỉ người tải lên"
-          disabled={sourceProcessing || Boolean(uploadAccess.supersedes_document_id)}
+          disabled={
+            sourceProcessing ||
+            uploadFiles.length > 1 ||
+            Boolean(uploadAccess.supersedes_document_id)
+          }
           onChange={setUploadAccess}
         />
         <div className="action-dialog-footer flex justify-end">
@@ -417,7 +443,7 @@ export default function RequirementImportModal({
             type="submit"
             disabled={
               sourceProcessing ||
-              !upload ||
+              !uploadFiles.length ||
               (uploadAccess.visibility === "shared" && !uploadAccess.shared_with.length)
             }
           >
