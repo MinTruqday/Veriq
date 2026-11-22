@@ -224,7 +224,6 @@ def grounded_requirement_candidates(document, result_batches):
             acceptance_criteria = grounded_values(
                 criterion_values, "acceptance_criteria"
             )
-            actors = grounded_values(suggestion.get("actors", []), "actors")
             business_rules = grounded_values(
                 suggestion.get("business_rules", []), "business_rules"
             )
@@ -238,7 +237,7 @@ def grounded_requirement_candidates(document, result_batches):
                     details[field] = value
             story = {
                 field: suggestion.get(f"user_story_{field}")
-                for field in ("actor", "goal", "value")
+                for field in ("goal", "value")
                 if contains(suggestion.get(f"user_story_{field}"))
             }
             if story and document.get("source_type") == "USER_STORY":
@@ -247,7 +246,6 @@ def grounded_requirement_candidates(document, result_batches):
             missing.update(
                 field for field, values in (
                     ("acceptance_criteria", acceptance_criteria),
-                    ("actors", actors),
                     ("business_rules", business_rules),
                     ("dependencies", dependencies),
                 )
@@ -267,7 +265,6 @@ def grounded_requirement_candidates(document, result_batches):
                     field: "provided"
                     for field, values in (
                         ("acceptance_criteria", acceptance_criteria),
-                        ("actors", actors),
                         ("business_rules", business_rules),
                         ("dependencies", dependencies),
                     )
@@ -289,7 +286,6 @@ def grounded_requirement_candidates(document, result_batches):
                 "type": suggestion["type"],
                 "content_doc": text_doc(suggestion["content"]),
                 "acceptance_criteria": criteria,
-                "actors": actors,
                 "business_rules": business_rules,
                 "dependencies": dependencies,
                 "details": details,
@@ -460,7 +456,6 @@ async def compare_requirement_import_job(job, user):
                 [
                     str(candidate.get("title") or ""),
                     plain_text(candidate.get("content_doc", {})),
-                    *[str(item) for item in candidate.get("actors", [])],
                     *[str(item) for item in candidate.get("business_rules", [])],
                     *[
                         item.get("plain_text")
@@ -506,7 +501,6 @@ async def compare_requirement_import_job(job, user):
                                 str(version.get("title") or ""),
                                 version.get("plain_text_projection")
                                 or plain_text(version.get("content_doc", {})),
-                                *[str(value) for value in version.get("actors", [])],
                                 *[str(value) for value in version.get("business_rules", [])],
                                 *[
                                     criterion.get("plain_text")
@@ -544,7 +538,7 @@ async def compare_requirement_import_job(job, user):
                 and candidate.get("type") == version.get("type")
                 and all(
                     not candidate.get(field) or candidate[field] == version.get(field, [])
-                    for field in ("actors", "business_rules", "dependencies", "details", "section_states", "custom_values")
+                    for field in ("business_rules", "dependencies", "details", "section_states", "custom_values")
                 )
             )
             if exact_core:
@@ -848,7 +842,6 @@ async def resolve_requirement_import_candidate(job_id, candidate_id, payload, us
             "priority",
             "risk",
             "business_rules",
-            "actors",
             "dependencies",
             "tags",
             "details",

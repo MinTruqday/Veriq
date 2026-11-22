@@ -6,14 +6,13 @@ import re
 import unicodedata
 import zipfile
 
+import yaml
 from defusedxml import ElementTree
 from defusedxml.common import DefusedXmlException
 from fastapi import HTTPException
 from pypdf import PdfReader
-import yaml
 
 from src.modules.requirements.services.requirement_workflow import text_doc
-
 
 ACCEPTANCE_CRITERION_LINE = re.compile(
     r"^\s*(?:[-*•]\s*)?((?:AC|ACCEPTANCE[-_ ]?CRITERION)[-_ ]?\d+)\s*[:.)\-–—]\s*(.+?)\s*$",
@@ -79,7 +78,6 @@ REQUIREMENT_TABLE_FIELDS = {
     "type": {"type", "loai", "loai yeu cau"},
     "priority": {"priority", "uu tien", "muc uu tien"},
     "risk": {"risk", "rui ro", "muc do rui ro"},
-    "actors": {"actor", "actors", "tac nhan", "nguoi dung"},
     "business_rules": {"business rule", "business rules", "quy tac nghiep vu"},
     "tags": {"tag", "tags", "the"},
 }
@@ -422,7 +420,6 @@ def _build_requirement_table_candidate(document, text, source_start, source_end,
         "content_doc": text_doc(description),
         "acceptance_criteria": [],
         "business_rules": _requirement_table_list(values.get("business_rules")),
-        "actors": _requirement_table_list(values.get("actors")),
         "dependencies": _requirement_table_list(values.get("dependencies")),
         "tags": _requirement_table_list(values.get("tags")),
         "source_refs": [source_ref],

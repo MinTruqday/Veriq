@@ -4,9 +4,6 @@ import json
 from src.core.common import plain_text
 
 
-
-
-
 def text_doc(value):
     return {
         "type": "doc",
@@ -48,9 +45,10 @@ def prepare_requirement_ai_suggestion(candidate, acceptance_criteria):
     suggestion = dict(candidate)
     patch = {}
     
-    for source, target in {'revised_actors': 'actors',
- 'revised_business_rules': 'business_rules',
- 'revised_dependencies': 'dependencies'}.items():
+    for source, target in {
+        "revised_business_rules": "business_rules",
+        "revised_dependencies": "dependencies",
+    }.items():
         if suggestion.get(source) is not None:
             patch[target] = (
                 normalized_business_rule_lines(suggestion[source])
@@ -91,8 +89,6 @@ def requirement_suggestion_changes(version, suggestion, acceptance_criteria=None
         and revised_title != current_title
         or revised_content
         and revised_content != current_content
-        or "actors" in patch
-        and patch["actors"] != version.get("actors", [])
         or "business_rules" in patch
         and patch["business_rules"] != version.get("business_rules", [])
         or "dependencies" in patch

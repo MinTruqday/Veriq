@@ -25,6 +25,7 @@ from src.repositories.requirement import requirement_repository
 from src.repositories.requirement_template import requirement_template_repository
 from src.schemas.contracts.requirements import RequirementCreate
 
+
 async def persist_acceptance_criteria(version, values, session=None):
     criteria = []
     keys = [value.key if hasattr(value, "key") else value.get("key") for value in values]
@@ -115,7 +116,6 @@ async def create_requirement_record(project_id, payload, user, origin="manual", 
         "content_doc": payload.content_doc,
         "plain_text_projection": plain_text(payload.content_doc),
         "business_rules": payload.business_rules,
-        "actors": payload.actors,
         "dependencies": payload.dependencies,
         "source_refs": payload.source_refs,
         "tags": payload.tags,
@@ -463,7 +463,6 @@ async def create_requirement_version_record(requirement_id, payload, user, sessi
         "content_doc": validate_doc(payload.content_doc),
         "plain_text_projection": plain_text(payload.content_doc),
         "business_rules": payload.business_rules,
-        "actors": payload.actors,
         "dependencies": payload.dependencies,
         "source_refs": payload.source_refs,
         "tags": payload.tags,

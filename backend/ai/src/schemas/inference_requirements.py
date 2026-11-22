@@ -2,7 +2,6 @@ from typing import Any, List, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-
 RequirementQualityCategory = Literal[
     "AMBIGUITY", "OMISSION", "INCONSISTENCY", "CONTRADICTION", "UNTESTABLE",
     "MISSING_ACCEPTANCE_CRITERIA", "MISSING_ERROR_BEHAVIOR",
@@ -39,7 +38,6 @@ class RequirementRevisionSuggestionOutput(BaseModel):
 
     revised_title: str | None = Field(default=None, min_length=2, max_length=300)
     revised_content: str | None = Field(default=None, min_length=2, max_length=20000)
-    revised_actors: List[str] | None = Field(default=None, min_length=1, max_length=100)
     revised_business_rules: List[str] | None = Field(default=None, min_length=1, max_length=200)
     revised_acceptance_criteria: List[RequirementAcceptanceCriterionSuggestionOutput] | None = (
         Field(default=None, min_length=1, max_length=200)
@@ -47,7 +45,7 @@ class RequirementRevisionSuggestionOutput(BaseModel):
     revised_dependencies: List[str] | None = Field(default=None, max_length=200)
     target_fields: List[
         Literal[
-            "title", "content", "actors", "business_rules", "acceptance_criteria", "dependencies"
+            "title", "content", "business_rules", "acceptance_criteria", "dependencies"
         ]
     ] = Field(default_factory=list, max_length=6)
     rationale: str = Field(default="", max_length=5000)
@@ -59,7 +57,6 @@ class RequirementRevisionSuggestionOutput(BaseModel):
         values = {
             "title": self.revised_title,
             "content": self.revised_content,
-            "actors": self.revised_actors,
             "business_rules": self.revised_business_rules,
             "acceptance_criteria": self.revised_acceptance_criteria,
             "dependencies": self.revised_dependencies,
@@ -72,14 +69,13 @@ class RequirementRevisionSuggestionOutput(BaseModel):
             for field in (
                 "title",
                 "content",
-                "actors",
                 "business_rules",
                 "acceptance_criteria",
                 "dependencies",
             )
             if field in revised_fields
         ]
-        for values in (self.revised_actors, self.revised_business_rules):
+        for values in (self.revised_business_rules,):
             if values is not None and any(not value.strip() for value in values):
                 raise ValueError("requirement_revision_blank_list_value")
         return self
@@ -115,7 +111,6 @@ class RequirementTemplateContextOutput(BaseModel):
     in_scope: str = Field(default="", max_length=10000)
     out_of_scope: str = Field(default="", max_length=10000)
     stakeholders: List[str] = Field(default_factory=list, max_length=200)
-    actors_and_systems: List[str] = Field(default_factory=list, max_length=200)
     glossary: List[str] = Field(default_factory=list, max_length=500)
     assumptions: List[str] = Field(default_factory=list, max_length=200)
     constraints: List[str] = Field(default_factory=list, max_length=200)
@@ -135,16 +130,11 @@ class RequirementTemplateSuggestionOutput(BaseModel):
         default_factory=list,
         max_length=50,
     )
-    actors: List[str] = Field(
-        default_factory=list,
-        max_length=50,
-    )
     business_rules: List[str] = Field(
         default_factory=list,
         max_length=50,
     )
     dependencies: List[str] = Field(default_factory=list, max_length=50)
-    user_story_actor: str | None = None
     user_story_goal: str | None = None
     user_story_value: str | None = None
     main_flow: str | None = None

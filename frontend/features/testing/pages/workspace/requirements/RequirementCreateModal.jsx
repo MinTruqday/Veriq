@@ -101,14 +101,6 @@ export default function RequirementCreateModal({
           />
         </label>
         <label className="field-label">
-          Tác nhân (phân cách bằng dấu phẩy)
-          <input
-            className="apple-input mt-2"
-            value={form.actors}
-            onChange={(event) => updateForm({ actors: event.target.value })}
-          />
-        </label>
-        <label className="field-label">
           Yêu cầu phụ thuộc (mỗi dòng một mục)
           <textarea
             className="apple-input mt-2 min-h-20"

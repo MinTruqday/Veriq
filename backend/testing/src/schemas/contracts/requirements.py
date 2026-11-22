@@ -29,6 +29,18 @@ def validate_requirement_document_access(visibility, shared_with):
         raise ValueError("Chỉ tài liệu chia sẻ mới có danh sách thành viên")
 
 
+def strip_requirement_actor(values):
+    if not isinstance(values, dict):
+        return values
+    cleaned = dict(values)
+    story = cleaned.get("user_story")
+    if isinstance(story, dict) and "actor" in story:
+        cleaned["user_story"] = {
+            key: item for key, item in story.items() if key != "actor"
+        }
+    return cleaned
+
+
 class AcceptanceCriterionInput(BaseModel):
     key: str = Field(min_length=1, max_length=80)
     content_doc: dict[str, Any] = Field(default_factory=empty_doc)
@@ -47,7 +59,6 @@ class RequirementCreate(BaseModel):
         default_factory=list, max_length=200
     )
     business_rules: list[str] = Field(default_factory=list, max_length=200)
-    actors: list[str] = Field(default_factory=list, max_length=100)
     dependencies: list[str] = Field(default_factory=list, max_length=200)
     source_refs: list[dict[str, Any]] = Field(default_factory=list, max_length=200)
     tags: list[str] = Field(default_factory=list, max_length=100)
@@ -55,6 +66,22 @@ class RequirementCreate(BaseModel):
     details: dict[str, Any] = Field(default_factory=dict)
     section_states: dict[str, Literal["provided", "missing", "not_applicable"]] = Field(default_factory=dict)
     custom_values: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("section_states", mode="before")
+    @classmethod
+    def remove_unmodeled_requirement_sections(cls, value):
+        if not isinstance(value, dict):
+            return value
+        return {
+            key: state
+            for key, state in value.items()
+            if key not in {"actors", "user_story.actor"}
+        }
+
+    @field_validator("details", mode="before")
+    @classmethod
+    def remove_requirement_story_actor(cls, value):
+        return strip_requirement_actor(value)
 
     @field_validator("type")
     @classmethod
@@ -96,7 +123,6 @@ class RequirementDraftPatch(BaseModel):
     content_doc: dict[str, Any] | None = None
     acceptance_criteria: list[AcceptanceCriterionInput] | None = Field(default=None, max_length=200)
     business_rules: list[str] | None = Field(default=None, max_length=200)
-    actors: list[str] | None = Field(default=None, max_length=100)
     dependencies: list[str] | None = Field(default=None, max_length=200)
     source_refs: list[dict[str, Any]] | None = Field(default=None, max_length=200)
     tags: list[str] | None = Field(default=None, max_length=100)
@@ -104,6 +130,22 @@ class RequirementDraftPatch(BaseModel):
     details: dict[str, Any] | None = None
     section_states: dict[str, Literal["provided", "missing", "not_applicable"]] | None = None
     custom_values: dict[str, Any] | None = None
+
+    @field_validator("section_states", mode="before")
+    @classmethod
+    def remove_unmodeled_requirement_sections(cls, value):
+        if not isinstance(value, dict):
+            return value
+        return {
+            key: state
+            for key, state in value.items()
+            if key not in {"actors", "user_story.actor"}
+        }
+
+    @field_validator("details", mode="before")
+    @classmethod
+    def remove_requirement_story_actor(cls, value):
+        return strip_requirement_actor(value)
 
     @field_validator("priority", "risk")
     @classmethod
@@ -137,12 +179,11 @@ class RequirementTemplateContext(BaseModel):
     in_scope: str = Field(default="", max_length=10000)
     out_of_scope: str = Field(default="", max_length=10000)
     stakeholders: list[str] = Field(default_factory=list, max_length=200)
-    actors_and_systems: list[str] = Field(default_factory=list, max_length=200)
     glossary: list[str] = Field(default_factory=list, max_length=500)
     assumptions: list[str] = Field(default_factory=list, max_length=200)
     constraints: list[str] = Field(default_factory=list, max_length=200)
 
-    @field_validator("stakeholders", "actors_and_systems", "glossary", "assumptions", "constraints", mode="before")
+    @field_validator("stakeholders", "glossary", "assumptions", "constraints", mode="before")
     @classmethod
     def normalize_lines(cls, value):
         if isinstance(value, str):

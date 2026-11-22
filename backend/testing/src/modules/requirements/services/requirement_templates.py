@@ -17,9 +17,16 @@ from src.modules.requirements.services.requirement_import_workflow import (
     authorize_requirement_import_job,
     create_requirement_preview_from_candidates,
 )
-from src.modules.requirements.services.requirement_indexing import validate_requirement_api_operations, validate_requirement_sources
+from src.modules.requirements.services.requirement_indexing import (
+    validate_requirement_api_operations,
+    validate_requirement_sources,
+)
 from src.modules.requirements.services.requirement_records import validate_requirement_custom_values
-from src.modules.requirements.services.requirement_workflow import candidate_quality_issues, serialized_content, text_doc
+from src.modules.requirements.services.requirement_workflow import (
+    candidate_quality_issues,
+    serialized_content,
+    text_doc,
+)
 from src.repositories.requirement_document import requirement_document_repository
 from src.repositories.requirement_import import requirement_import_repository
 from src.repositories.requirement_template import requirement_template_repository
@@ -40,7 +47,6 @@ def starter_templates():
                 "in_scope": "",
                 "out_of_scope": "",
                 "stakeholders": [],
-                "actors_and_systems": [],
                 "glossary": [],
                 "assumptions": [],
                 "constraints": [],
@@ -59,12 +65,12 @@ def requirement_source_refs_from_suggestion(suggestion, evidence_lookup):
     """Keep each cited source span narrow enough to preserve requirement lineage."""
     refs = []
     source_values = [suggestion.get("requirement_key"), suggestion.get("title"), suggestion.get("content")]
-    for key in ("acceptance_criteria", "actors", "business_rules", "dependencies"):
+    for key in ("acceptance_criteria", "business_rules", "dependencies"):
         source_values.extend(suggestion.get(key, []))
     for key in ("main_flow", "exception_flow", "data_rules", "integration", "quality_measure"):
         source_values.append(suggestion.get(key))
     source_values.extend(
-        suggestion.get(f"user_story_{key}") for key in ("actor", "goal", "value")
+        suggestion.get(f"user_story_{key}") for key in ("goal", "value")
     )
     source_values = list(dict.fromkeys(
         str(value).strip() for value in source_values if str(value or "").strip()
@@ -864,7 +870,7 @@ async def synthesize_template(project_id, payload, user):
         cited_text = "\n".join(evidence_text_by_ref.get(reference, "") for reference in suggestion.get("evidence_refs", []))
         verified_lists = {}
         omitted_sections = set()
-        for key in ("acceptance_criteria", "actors", "business_rules", "dependencies"):
+        for key in ("acceptance_criteria", "business_rules", "dependencies"):
             verified_lists[key] = [
                 value
                 for value in suggestion.get(key, [])
@@ -881,7 +887,7 @@ async def synthesize_template(project_id, payload, user):
                     continue
                 details[key] = value
         story = {}
-        for key in ("actor", "goal", "value"):
+        for key in ("goal", "value"):
             value = suggestion.get(f"user_story_{key}")
             if value:
                 if str(value).casefold() not in cited_text.casefold():
@@ -929,7 +935,7 @@ async def synthesize_template(project_id, payload, user):
             section_states.update({key: "missing" for key in omitted_sections})
             section_states.update({key: "provided" for key, values in verified_lists.items() if values})
             section_states.update({key: "provided" for key in details})
-            requirements.append(RequirementCreate(requirement_key=suggestion.get("requirement_key"), title=suggestion["title"], type=suggestion["type"], content_doc=text_doc(suggestion["content"]), acceptance_criteria=[{"key": f"AC-{index + 1}", "content_doc": text_doc(value)} for index, value in enumerate(verified_lists["acceptance_criteria"])], actors=verified_lists["actors"], business_rules=verified_lists["business_rules"], dependencies=verified_lists["dependencies"], details=details, source_refs=refs, section_states=section_states))
+            requirements.append(RequirementCreate(requirement_key=suggestion.get("requirement_key"), title=suggestion["title"], type=suggestion["type"], content_doc=text_doc(suggestion["content"]), acceptance_criteria=[{"key": f"AC-{index + 1}", "content_doc": text_doc(value)} for index, value in enumerate(verified_lists["acceptance_criteria"])], business_rules=verified_lists["business_rules"], dependencies=verified_lists["dependencies"], details=details, source_refs=refs, section_states=section_states))
             if omitted_sections:
                 source_field_warnings.append("Một số mục AI đề xuất không có nguyên văn trong nguồn nên đã bị bỏ qua  Hãy rà soát mẫu")
         except (KeyError, ValidationError) as error:

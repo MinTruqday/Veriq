@@ -185,7 +185,6 @@ const valueLabels = {
   quality_measure: "Thuộc tính chất lượng và mức đo",
   api_operations: "Thao tác API liên kết",
   dependencies: "Phụ thuộc",
-  actors: "Tác nhân",
   business_rules: "Quy tắc nghiệp vụ",
   acceptance_criteria: "Tiêu chí chấp nhận",
   content_doc: "Nội dung yêu cầu",

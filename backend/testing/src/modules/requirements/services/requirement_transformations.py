@@ -13,13 +13,12 @@ from src.core.common import (
     plain_text,
     validate_doc,
 )
-from src.repositories.requirement import requirement_repository
 from src.modules.requirements.services.requirement_indexing import (
     index_requirement_version,
     validate_requirement_sources,
 )
 from src.modules.requirements.services.requirement_workflow import serialized_content
-
+from src.repositories.requirement import requirement_repository
 
 
 def unique_source_refs(values):
@@ -201,7 +200,6 @@ async def prepare_requirement_output(
         "content_doc": draft.content_doc,
         "plain_text_projection": plain_text(draft.content_doc),
         "business_rules": draft.business_rules,
-        "actors": draft.actors,
         "dependencies": draft.dependencies,
         "source_refs": source_refs,
         "tags": draft.tags,

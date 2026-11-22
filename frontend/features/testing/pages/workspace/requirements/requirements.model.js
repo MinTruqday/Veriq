@@ -75,7 +75,6 @@ export function createInitialRequirementForm() {
     content_doc: emptyDoc(),
     acceptance: "",
     businessRules: "",
-    actors: "",
     dependencies: "",
     tags: "",
     ownerId: "",
@@ -105,7 +104,6 @@ export function requirementSuggestionPreview(item) {
   const values = [];
   if (item.revised_title) values.push(["Tên", item.revised_title]);
   if (item.revised_content) values.push(["Nội dung", item.revised_content]);
-  if (item.patch?.actors) values.push(["Tác nhân", item.patch.actors.join(" · ")]);
   if (item.patch?.business_rules) {
     values.push(["Quy tắc nghiệp vụ", item.patch.business_rules.join(" · ")]);
   }
@@ -127,7 +125,6 @@ export function requirementFieldLabel(value) {
   return {
     title: "Tên",
     content: "Nội dung",
-    actors: "Tác nhân",
     business_rules: "Quy tắc nghiệp vụ",
     acceptance_criteria: "Tiêu chí chấp nhận",
     dependencies: "Phụ thuộc",

@@ -3,6 +3,7 @@ from difflib import SequenceMatcher
 
 from src.core.common import plain_text
 
+
 def _criterion_snapshot(items):
     return [
         {
@@ -34,7 +35,6 @@ def semantic_changes(before, after):
         field
         for field in [
             "title",
-            "actors",
             "business_rules",
             "dependencies",
         ]

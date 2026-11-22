@@ -5,15 +5,15 @@ from datetime import timedelta
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
+from src.core.ai_capabilities import ai_contract_metadata, request_ai_capability
 from src.core.common import audit, get_project_entity, new_id, now, plain_text
 from src.core.database import database
-from src.repositories.requirement_ai import requirement_ai_repository
-from src.core.ai_capabilities import ai_contract_metadata, request_ai_capability
 from src.modules.design.services.linters import requirement_findings
 from src.modules.requirements.services.requirement_workflow import (
     prepare_requirement_ai_suggestion,
     requirement_suggestion_changes,
 )
+from src.repositories.requirement_ai import requirement_ai_repository
 
 
 async def get_latest_requirement_quality_analysis(version_id, user):
@@ -47,7 +47,6 @@ async def analyze_requirement_quality(version_id, payload, user):
             "title": version.get("title"),
             "content": version.get("plain_text_projection")
             or plain_text(version.get("content_doc", {})),
-            "actors": version.get("actors", []),
             "business_rules": version.get("business_rules", []),
             "acceptance_criteria": [
                 str(item.get("plain_text") or "").strip()
@@ -188,7 +187,6 @@ async def analyze_requirement_quality(version_id, payload, user):
                 "title": (current_version or {}).get("title"),
                 "content": (current_version or {}).get("plain_text_projection")
                 or plain_text((current_version or {}).get("content_doc", {})),
-                "actors": (current_version or {}).get("actors", []),
                 "business_rules": (current_version or {}).get("business_rules", []),
                 "acceptance_criteria": [
                     str(item.get("plain_text") or "").strip()

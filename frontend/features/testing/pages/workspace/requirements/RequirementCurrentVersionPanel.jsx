@@ -453,7 +453,7 @@ export default function RequirementCurrentVersionPanel({
                 placeholder="Mỗi dòng nhập một tiêu chí"
               />
             </label>
-            <div className="grid gap-3 lg:grid-cols-3">
+            <div className="grid gap-3 lg:grid-cols-2">
               <label className="grid gap-2 text-sm font-medium text-ink">
                 Quy tắc nghiệp vụ
                 <textarea
@@ -462,16 +462,6 @@ export default function RequirementCurrentVersionPanel({
                   value={draft.businessRules}
                   onChange={(event) => onDraftChange({ businessRules: event.target.value })}
                   placeholder="Mỗi dòng nhập một quy tắc nghiệp vụ"
-                />
-              </label>
-              <label className="grid gap-2 text-sm font-medium text-ink">
-                Tác nhân
-                <textarea
-                  aria-label="Tác nhân"
-                  className="apple-input min-h-24"
-                  value={draft.actors}
-                  onChange={(event) => onDraftChange({ actors: event.target.value })}
-                  placeholder="Nhập các tác nhân, phân cách bằng dấu phẩy"
                 />
               </label>
               <label className="grid gap-2 text-sm font-medium text-ink">
@@ -516,7 +506,6 @@ export default function RequirementCurrentVersionPanel({
               </summary>
               <div className="mt-3 grid gap-3 md:grid-cols-2">
                 {[
-                  ["user_story.actor", "Tác nhân trong câu chuyện người dùng"],
                   ["user_story.goal", "Mục tiêu trong câu chuyện người dùng"],
                   ["user_story.value", "Giá trị trong câu chuyện người dùng"],
                   ["main_flow", "Luồng chính"],

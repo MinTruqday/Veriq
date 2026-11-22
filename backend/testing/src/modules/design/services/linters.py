@@ -10,7 +10,6 @@ def evaluate_rules(scope, value):
             finding
             for finding in (
                 _finding("MISSING_REQUIREMENT_CONTENT", "error", "Nội dung yêu cầu đang để trống", "Nhập mô tả phạm vi hoặc chức năng mà hệ thống phải đáp ứng", "content") if not _text(value.get("content")) else None,
-                _finding("MISSING_ACTOR", "error", "Yêu cầu chưa xác định tác nhân", "Bổ sung tác nhân thực hiện hoặc chịu tác động", "actors") if not _values(value.get("actors")) else None,
                 _finding("MISSING_BUSINESS_RULE", "error", "Yêu cầu chưa có quy tắc nghiệp vụ", "Bổ sung quy tắc có căn cứ hoặc xác nhận rõ yêu cầu không có quy tắc nghiệp vụ", "business_rules") if not _values(value.get("business_rules")) else None,
                 _finding("MISSING_ACCEPTANCE_CRITERIA", "error", "Yêu cầu chưa có tiêu chí chấp nhận", "Bổ sung ít nhất một điều kiện chấp nhận có thể kiểm thử", "acceptance_criteria") if not _values(value.get("acceptance_criteria")) else None,
             )
@@ -79,9 +78,7 @@ def requirement_findings(version, acceptance_criteria=None):
     has_business_rules = bool(_values(normalized_version.get("business_rules")))
     has_acceptance_criteria = bool(_values(normalized_version.get("acceptance_criteria")))
     for finding in findings:
-        if finding.get("rule_id") == "MISSING_ACTOR":
-            finding["severity"] = "warning"
-        elif (
+        if (
             finding.get("rule_id") == "MISSING_BUSINESS_RULE"
             and has_acceptance_criteria
         ) or (
@@ -124,7 +121,6 @@ def requirement_duplicate_score(left, right):
             if str(value or "").strip()
         ).lower(),
     ).ratio()
-    actor_similarity = _collection_similarity(left.get("actors"), right.get("actors"))
     rule_similarity = _collection_similarity(
         left.get("business_rules"), right.get("business_rules")
     )
@@ -141,8 +137,6 @@ def requirement_duplicate_score(left, right):
     reasons = []
     if content_similarity >= 0.55:
         reasons.append("Tiêu đề và nội dung gần giống")
-    if actor_similarity is not None and actor_similarity > 0:
-        reasons.append("Có tác nhân nghiệp vụ chung")
     if rule_similarity is not None and rule_similarity > 0:
         reasons.append("Có quy tắc nghiệp vụ gần giống")
     if criterion_similarity is not None and criterion_similarity > 0:
@@ -326,7 +320,6 @@ def _test_projection(value):
 def _requirement_projection(value):
     title = str(value.get("title", ""))
     content = value.get("plain_text_projection") or plain_text(value.get("content_doc", {}))
-    actors = " ".join(str(item) for item in value.get("actors", []) if str(item).strip())
     business_rules = " ".join(
         str(item) for item in value.get("business_rules", []) if str(item).strip()
     )
@@ -334,4 +327,4 @@ def _requirement_projection(value):
         item.get("plain_text") or plain_text(item.get("content_doc", {}))
         for item in value.get("acceptance_criteria", [])
     )
-    return " ".join(f"{title} {content} {actors} {business_rules} {criteria}".lower().split())
+    return " ".join(f"{title} {content} {business_rules} {criteria}".lower().split())

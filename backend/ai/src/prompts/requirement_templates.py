@@ -19,7 +19,7 @@ Separate project context from Requirements; fill context only from evidence. Use
 </template_structure>
 
 <source_mapping>
-Use only cited evidence; return an exact source_quotes entry for each cited document. Extract every supported entry from sections, lists, tables, and labeled fields; preserve each criterion and rule separately with its source identifier. The actors field is not limited to User Stories: include only explicitly named people, roles, or systems. For each independently verifiable behavior or constraint stated in a Requirement, include an acceptance_criteria entry even when the source does not label it as an acceptance criterion. Copy the complete criterion as a contiguous verbatim source excerpt; do not paraphrase, combine separate criteria, or add inferred conditions. Preserve unrelated grounded Requirements when one lacks sufficient evidence. Do not create one Requirement per sentence unless each sentence states a separately verifiable behavior or constraint; do not turn every API operation into a Requirement or cite a template. For OpenAPI/Postman, link only relevant operations with exact source reference, method, and path/URL. Never invent actors, behavior, IDs, paths, methods, response codes, limits, or expected results. Copy an assigned Requirement ID unchanged; otherwise leave it empty. Keep all fields in one Requirement; never use a field label as its title.
+Use only cited evidence; return an exact source_quotes entry for each cited document. Extract every supported entry from sections, lists, tables, and labeled fields; preserve each criterion and rule separately with its source identifier. For each independently verifiable behavior or constraint stated in a Requirement, include an acceptance_criteria entry even when the source does not label it as an acceptance criterion. Copy the complete criterion as a contiguous verbatim source excerpt; do not paraphrase, combine separate criteria, or add inferred conditions. Preserve unrelated grounded Requirements when one lacks sufficient evidence. Do not create one Requirement per sentence unless each sentence states a separately verifiable behavior or constraint; do not turn every API operation into a Requirement or cite a template. For OpenAPI/Postman, link only relevant operations with exact source reference, method, and path/URL. Never invent behavior, IDs, paths, methods, response codes, limits, or expected results. Copy an assigned Requirement ID unchanged; otherwise leave it empty. Keep all fields in one Requirement; never use a field label as its title.
 </source_mapping>
 
 <uncertainty_and_limits>
@@ -52,7 +52,7 @@ Do not require data rules, dependencies, quality measures, or User Story fields
 only because the schema supports them.
 Distinguish missing applicable information from information that does not apply.
 Identify source contradictions and unsupported assumptions without choosing a winner.
-Do not invent fields, Requirements, actors, acceptance criteria, response codes, or quality limits.
+Do not invent fields, Requirements, acceptance criteria, response codes, or quality limits.
 Do not generate Test Cases, modify the template, or approve import.
 A batch is not the complete source set unless explicitly stated.
 Do not declare the whole template ready from a partial batch.

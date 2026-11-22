@@ -7,7 +7,6 @@ def requirement_test_evidence_text(version):
         str(version.get("plain_text_projection") or plain_text(version.get("content_doc", {}))).strip()
     ]
     for field, label in (
-        ("actors", "Tác nhân"),
         ("business_rules", "Quy tắc nghiệp vụ"),
         ("dependencies", "Phụ thuộc"),
     ):

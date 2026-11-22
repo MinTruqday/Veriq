@@ -469,7 +469,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
         .map((item) => docText(item.content_doc))
         .join("\n"),
       businessRules: (current.business_rules || []).join("\n"),
-      actors: (current.actors || []).join(", "),
       dependencies: (current.dependencies || []).join("\n"),
       tags: (selected.tags || current.tags || []).join(", "),
       ownerId: selected.owner_id || current.owner_id || "",
@@ -523,10 +522,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
                   })),
                 business_rules: snapshot.businessRules
                   .split("\n")
-                  .map((value) => value.trim())
-                  .filter(Boolean),
-                actors: snapshot.actors
-                  .split(",")
                   .map((value) => value.trim())
                   .filter(Boolean),
                 dependencies: snapshot.dependencies
@@ -607,10 +602,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
           .split("\n")
           .map((value) => value.trim())
           .filter(Boolean),
-        actors: form.actors
-          .split(",")
-          .map((value) => value.trim())
-          .filter(Boolean),
         dependencies: form.dependencies
           .split("\n")
           .map((value) => value.trim())
@@ -689,7 +680,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
               status: item.status,
             })),
             business_rules: current.business_rules || [],
-            actors: current.actors || [],
             dependencies: current.dependencies || [],
             source_refs: current.source_refs || [],
             tags: selected.tags || current.tags || [],
@@ -1251,7 +1241,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
       business_rules: [
         ...new Set(candidates.flatMap((candidate) => candidate.business_rules || [])),
       ],
-      actors: [...new Set(candidates.flatMap((candidate) => candidate.actors || []))],
       dependencies: [...new Set(candidates.flatMap((candidate) => candidate.dependencies || []))],
       source_refs: candidates.flatMap((candidate) => candidate.source_refs || []),
       candidate_relation: "merged",
@@ -1432,7 +1421,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
               content_doc: textDoc(content),
               acceptance_criteria: parseAcceptanceCriteria(criteriaBlocks[index]),
               business_rules: current.business_rules || [],
-              actors: current.actors || [],
               dependencies: current.dependencies || [],
               source_refs: [],
               tags: selected.tags || current.tags || [],
@@ -1539,7 +1527,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
               business_rules: [
                 ...new Set(sources.flatMap((item) => item.current_version.business_rules || [])),
               ],
-              actors: [...new Set(sources.flatMap((item) => item.current_version.actors || []))],
               dependencies: [
                 ...new Set(sources.flatMap((item) => item.current_version.dependencies || [])),
               ],

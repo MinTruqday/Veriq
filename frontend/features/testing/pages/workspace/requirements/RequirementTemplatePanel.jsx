@@ -54,13 +54,11 @@ function emptyRequirement() {
     risk: "",
     owner_id: "",
     source_status: "",
-    actors: "",
     business_rules: "",
     dependencies: "",
     tags: "",
     content_doc: textDoc(""),
     acceptance: "",
-    actor: "",
     goal: "",
     value: "",
     main_flow: "",
@@ -81,14 +79,12 @@ function fromStored(item) {
     ...emptyRequirement(),
     ...item,
     content_doc: item.content_doc || textDoc(""),
-    actors: (item.actors || []).join("\n"),
     business_rules: (item.business_rules || []).join("\n"),
     dependencies: (item.dependencies || []).join("\n"),
     tags: (item.tags || []).join(", "),
     acceptance: (item.acceptance_criteria || [])
       .map((value) => docText(value.content_doc))
       .join("\n"),
-    actor: details.user_story?.actor || "",
     goal: details.user_story?.goal || "",
     value: details.user_story?.value || "",
     source_status: details.source_status || "",
@@ -109,8 +105,8 @@ function fromStored(item) {
 
 function toStored(item, fields) {
   const details = {};
-  if (item.actor || item.goal || item.value) {
-    details.user_story = { actor: item.actor, goal: item.goal, value: item.value };
+  if (item.goal || item.value) {
+    details.user_story = { goal: item.goal, value: item.value };
   }
   if (item.source_status) details.source_status = item.source_status;
   if (item.api_operations?.length) details.api_operations = item.api_operations;
@@ -131,7 +127,7 @@ function toStored(item, fields) {
   }
   const section_states = Object.fromEntries(
     Object.entries(item.section_states || {}).map(([key, state]) => [
-      new Set(["actor", "goal", "value"]).has(key) ? `user_story.${key}` : key,
+      new Set(["goal", "value"]).has(key) ? `user_story.${key}` : key,
       state,
     ]),
   );
@@ -144,10 +140,6 @@ function toStored(item, fields) {
     priority: item.priority,
     risk: item.risk,
     owner_id: item.owner_id || null,
-    actors: item.actors
-      .split("\n")
-      .map((value) => value.trim())
-      .filter(Boolean),
     business_rules: item.business_rules
       .split("\n")
       .map((value) => value.trim())
@@ -195,7 +187,6 @@ export default function RequirementTemplatePanel({
     in_scope: "",
     out_of_scope: "",
     stakeholders: "",
-    actors_and_systems: "",
     glossary: "",
     assumptions: "",
     constraints: "",
@@ -678,7 +669,6 @@ export default function RequirementTemplatePanel({
           ["in_scope", "Trong phạm vi"],
           ["out_of_scope", "Ngoài phạm vi"],
           ["stakeholders", "Các bên liên quan"],
-          ["actors_and_systems", "Tác nhân và hệ thống"],
           ["glossary", "Thuật ngữ"],
           ["assumptions", "Giả định"],
           ["constraints", "Ràng buộc dự án"],
@@ -865,7 +855,6 @@ export default function RequirementTemplatePanel({
             </label>
             <div className="grid gap-3 md:grid-cols-2">
               {[
-                ["actors", "Tác nhân"],
                 ["business_rules", "Quy tắc nghiệp vụ"],
                 ["dependencies", "Phụ thuộc"],
               ].map(([key, label]) => (
@@ -900,7 +889,6 @@ export default function RequirementTemplatePanel({
               <summary className="cursor-pointer text-sm">Thông tin theo loại yêu cầu</summary>
               <div className="mt-3 grid gap-3 md:grid-cols-2">
                 {[
-                  ["actor", "Tác nhân trong câu chuyện người dùng"],
                   ["goal", "Mục tiêu trong câu chuyện người dùng"],
                   ["value", "Giá trị trong câu chuyện người dùng"],
                   ["main_flow", "Luồng chính"],
@@ -1222,7 +1210,6 @@ export default function RequirementTemplatePanel({
                   in_scope: "Trong phạm vi",
                   out_of_scope: "Ngoài phạm vi",
                   stakeholders: "Các bên liên quan",
-                  actors_and_systems: "Tác nhân và hệ thống",
                   glossary: "Thuật ngữ",
                   assumptions: "Giả định",
                   constraints: "Ràng buộc dự án",
