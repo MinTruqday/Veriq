@@ -253,6 +253,19 @@ export default function TestCaseCreateForm({
                   />
                 )}
               </label>
+              <label className="field-label">
+                Ước lượng (phút)
+                <input
+                  aria-label="Ước lượng thời gian thực hiện ca kiểm thử (phút)"
+                  className="apple-input mt-2"
+                  type="number"
+                  min="1"
+                  max="10080"
+                  step="1"
+                  value={form.durationMinutes}
+                  onChange={(event) => update({ durationMinutes: event.target.value })}
+                />
+              </label>
             </div>
             <div className="grid gap-3 sm:grid-cols-3">
               {[

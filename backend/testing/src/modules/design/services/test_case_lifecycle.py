@@ -510,6 +510,7 @@ def build_test_case_version(draft, test_case_id, version_number, parent_version_
         "test_kind": draft.get("test_kind"),
         "priority": draft["priority"],
         "risk": draft["risk"],
+        "duration_minutes": draft.get("duration_minutes"),
         "objective_doc": draft.get("objective_doc", {"type": "doc", "content": []}),
         "preconditions_doc": draft["preconditions_doc"],
         "steps": draft["steps"],

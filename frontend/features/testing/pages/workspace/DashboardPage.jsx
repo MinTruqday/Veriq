@@ -16,20 +16,9 @@ import {
 } from "../../components/WorkspacePrimitives";
 import { testingApi } from "../../services/testing.service";
 import { formatDate as formatDateValue, messageOf, valueLabel } from "../../lib/testing";
-import { formatProjectDate } from "../../lib/projectSchedule.logic.mjs";
 import { taskProgressPresentation } from "../../lib/projectProgress.logic.mjs";
 import { useDateTimeOptions } from "../../hooks/useDateTimeOptions";
-
-function projectOverviewDescription(project, locale) {
-  const start = project.planned_start_at
-    ? formatProjectDate(project.planned_start_at, locale)
-    : null;
-  const end = project.planned_end_at ? formatProjectDate(project.planned_end_at, locale) : null;
-  if (start && end) return `${start} – ${end}`;
-  if (start) return `Từ ${start}`;
-  if (end) return `Đến ${end}`;
-  return "";
-}
+import { PROJECT_SECTION_SLUGS, projectRoute } from "../../routes";
 
 function latestRunLabel(run) {
   const name = String(run?.name || "").trim();
@@ -59,13 +48,15 @@ export default function DashboardPage({ project }) {
   const [error, setError] = useState("");
   const [reloadVersion, setReloadVersion] = useState(0);
   const [taskSummary, setTaskSummary] = useState(project.task_summary);
+  const [projectDetails, setProjectDetails] = useState(project);
+  const [projectMembers, setProjectMembers] = useState([]);
   const [showAiReview, setShowAiReview] = useState(false);
   const permissions = project.current_permissions || [];
   const can = (permission) => permissions.includes(permission);
   const canReadAnalytics = can("analytics.read");
   const canReadCoverage = can("coverage.read");
   const canReadAIRuns = can("proposal.read") || can("requirement.read");
-  const canReadKnowledge = can("knowledge.read");
+  const canReadProjectMembers = can("project.members.read");
   useEffect(() => {
     let active = true;
     const requests = [];
@@ -78,6 +69,9 @@ export default function DashboardPage({ project }) {
       requests.push(["coverage", testingApi.coverage(project._id)]);
     }
     requests.push(["project", testingApi.getProject(project._id)]);
+    if (canReadProjectMembers) {
+      requests.push(["members", testingApi.listMembers(project._id)]);
+    }
     Promise.allSettled(requests.map(([, request]) => request))
       .then((results) => {
         if (!active) return;
@@ -88,6 +82,8 @@ export default function DashboardPage({ project }) {
           else if (result.reason?.status !== 403) setError(messageOf(result.reason));
         });
         const currentProject = data.project;
+        if (currentProject) setProjectDetails(currentProject);
+        setProjectMembers(data.members || []);
         setValue({ dashboard: data.dashboard || null, coverage: data.coverage || null });
         if (!currentProject) return;
         setTaskSummary(currentProject.task_summary);
@@ -98,21 +94,8 @@ export default function DashboardPage({ project }) {
     return () => {
       active = false;
     };
-  }, [canReadAnalytics, canReadCoverage, project._id, reloadVersion]);
+  }, [canReadAnalytics, canReadCoverage, canReadProjectMembers, project._id, reloadVersion]);
   const base = `/du-an/${project._id}`;
-  const navigationCards = [
-    ["lap-ke-hoach/backlog", "Lập kế hoạch", "project.read"],
-    ["yeu-cau", "Yêu cầu", "requirement.read"],
-    ["ho-so-dam-bao", "Hồ sơ đảm bảo", "requirement.read", "testcase.read"],
-    ["ca-kiem-thu", "Thiết kế kiểm thử", "testcase.read"],
-    ["ke-hoach-kiem-thu", "Lập kế hoạch kiểm thử", "testplan.read"],
-    ["lan-chay-kiem-thu", "Thực thi kiểm thử", "testrun.read"],
-    ["loi", "Xử lý lỗi", "defect.read"],
-    ["ban-phat-hanh", "Quyết định phát hành", "release.read"],
-  ].filter(
-    ([, , permission, secondPermission]) =>
-      can(permission) && (!secondPermission || can(secondPermission)),
-  );
   const dashboard = value?.dashboard;
   const coverage = value?.coverage;
   const openDefectSeverities = Object.entries(dashboard?.open_defects_by_severity || {}).filter(
@@ -136,10 +119,7 @@ export default function DashboardPage({ project }) {
     canReadAIRuns || Boolean(dashboard && can("requirement.read") && can("impact.read"));
   const hasDashboardRightColumn = Boolean(dashboard && (can("defect.read") || can("testrun.read")));
   return (
-    <WorkspacePage
-      title={project.name}
-      description={projectOverviewDescription(project, user?.locale)}
-    >
+    <WorkspacePage title={project.name}>
       {error && (
         <div className="space-y-3">
           <ErrorState message={error} />
@@ -157,14 +137,81 @@ export default function DashboardPage({ project }) {
         <LoadingState label="Đang tải tổng quan dự án" variant="dashboard" />
       ) : (
         <>
-          <Panel title="Tiến độ và số liệu chính">
+          <Panel title="Tiến trình kiểm thử">
             <div className="grid gap-5 p-5">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
-                <span className="text-sm text-ink-muted">Trưởng dự án</span>
-                <span className="text-sm font-medium text-ink">
-                  {project.project_lead_label || "Chưa phân công"}
-                </span>
-              </div>
+              <ol className="grid gap-4 sm:grid-cols-5" aria-label="Các giai đoạn kiểm thử">
+                {[
+                  {
+                    label: "Yêu cầu",
+                    count: can("requirement.read") ? dashboard?.requirements_total : null,
+                    href: projectRoute(project._id, PROJECT_SECTION_SLUGS.requirements),
+                    permission: "requirement.read",
+                  },
+                  {
+                    label: "Kế hoạch",
+                    count: can("testplan.read") ? dashboard?.test_plans : null,
+                    href: projectRoute(project._id, PROJECT_SECTION_SLUGS.testPlans),
+                    permission: "testplan.read",
+                  },
+                  {
+                    label: "Thiết kế",
+                    count: can("testcase.read") ? dashboard?.active_tests : null,
+                    href: projectRoute(project._id, PROJECT_SECTION_SLUGS.testCases),
+                    permission: "testcase.read",
+                  },
+                  {
+                    label: "Thực thi",
+                    count: can("testrun.read") ? dashboard?.current_runs : null,
+                    href: projectRoute(project._id, PROJECT_SECTION_SLUGS.testRuns),
+                    permission: "testrun.read",
+                  },
+                  {
+                    label: "Báo cáo và phát hành",
+                    count:
+                      can("testcompletion.read") || can("release.read")
+                        ? (can("testcompletion.read")
+                            ? Number(dashboard?.completion_reports || 0)
+                            : 0) + (can("release.read") ? Number(dashboard?.releases || 0) : 0)
+                        : null,
+                    detail: [
+                      can("testcompletion.read")
+                        ? `${dashboard?.completion_reports ?? 0} báo cáo`
+                        : null,
+                      can("release.read") ? `${dashboard?.releases ?? 0} bản phát hành` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · "),
+                    href: projectRoute(project._id, PROJECT_SECTION_SLUGS.reports),
+                    permissions: ["testcompletion.read", "release.read"],
+                  },
+                ]
+                  .filter((stage) =>
+                    (stage.permissions || [stage.permission]).some((permission) => can(permission)),
+                  )
+                  .map((stage, index, stages) => (
+                    <li className="relative min-w-0" key={stage.label}>
+                      {index < stages.length - 1 && (
+                        <span
+                          aria-hidden="true"
+                          className="absolute left-5 right-[-1rem] top-5 hidden h-px bg-border sm:block"
+                        />
+                      )}
+                      <Link
+                        className="relative flex min-w-0 flex-col items-start gap-1 rounded-control p-1 text-left hover:text-brand"
+                        href={stage.href}
+                      >
+                        <span className="flex size-10 items-center justify-center rounded-full border border-brand/40 bg-surface-raised text-xs font-semibold text-brand">
+                          {String(index + 1).padStart(2, "0")}
+                        </span>
+                        <span className="text-[13px] font-medium">{stage.label}</span>
+                        <span className="text-xs text-ink-muted">
+                          {stage.detail ||
+                            (stage.count == null ? "Chưa có số liệu" : `${stage.count} mục`)}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+              </ol>
               <div>
                 <div className="flex items-center justify-between gap-3 text-sm">
                   <span>
@@ -197,45 +244,138 @@ export default function DashboardPage({ project }) {
               {(dashboard || coverage) && hasOverviewMetrics && (
                 <dl className="grid gap-x-5 gap-y-4 border-t border-border pt-4 sm:grid-cols-2 xl:grid-cols-4">
                   {can("requirement.read") && dashboard && (
-                    <div className="min-w-0">
-                      <dt className="text-[12px] leading-5 text-ink-muted">Yêu cầu đã duyệt</dt>
-                      <dd className="mt-1 text-[24px] font-semibold leading-7 tabular-nums text-ink">
-                        {dashboard.requirements}
-                      </dd>
-                    </div>
+                    <Metric
+                      label="Yêu cầu đã duyệt"
+                      value={`${dashboard.requirements}/${dashboard.requirements_total}`}
+                    />
                   )}
                   {can("testcase.read") && dashboard && (
-                    <div className="min-w-0">
-                      <dt className="text-[12px] leading-5 text-ink-muted">
-                        Ca kiểm thử đang hoạt động
-                      </dt>
-                      <dd className="mt-1 text-[24px] font-semibold leading-7 tabular-nums text-ink">
-                        {dashboard.active_tests}
-                      </dd>
-                    </div>
+                    <Metric label="Ca kiểm thử đang hoạt động" value={dashboard.active_tests} />
                   )}
                   {can("defect.read") && dashboard && (
-                    <div className="min-w-0">
-                      <dt className="text-[12px] leading-5 text-ink-muted">Lỗi đang mở</dt>
-                      <dd className="mt-1 text-[24px] font-semibold leading-7 tabular-nums text-ink">
-                        {dashboard.open_defects}
-                      </dd>
-                    </div>
+                    <Metric label="Lỗi đang mở" value={dashboard.open_defects} />
                   )}
                   {can("coverage.read") && coverage?.requirement_coverage != null && (
-                    <div className="min-w-0">
-                      <dt className="text-[12px] leading-5 text-ink-muted">
-                        Yêu cầu có liên kết kiểm thử
-                      </dt>
-                      <dd className="mt-1 text-[24px] font-semibold leading-7 tabular-nums text-ink">
-                        {formatCoveragePercent(coverage.requirement_coverage)}
-                      </dd>
-                    </div>
+                    <Metric
+                      label="Yêu cầu có liên kết kiểm thử"
+                      value={formatCoveragePercent(coverage.requirement_coverage)}
+                    />
                   )}
                 </dl>
               )}
             </div>
           </Panel>
+          <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(18rem,1fr)]">
+            <Panel title="Thông tin dự án">
+              <dl className="divide-y divide-border px-5">
+                <div className="grid min-w-0 gap-2 py-3 sm:grid-cols-[6rem_minmax(0,1fr)]">
+                  <dt className="text-[13px] text-ink-muted">Mô tả</dt>
+                  <dd className="min-w-0 break-words text-[13px]">
+                    {projectDetails.description || "Chưa có mô tả"}
+                  </dd>
+                </div>
+                <div className="grid min-w-0 gap-2 py-3 sm:grid-cols-[6rem_minmax(0,1fr)]">
+                  <dt className="text-[13px] text-ink-muted">Trưởng dự án</dt>
+                  <dd className="min-w-0 break-words text-[13px]">
+                    {projectMembers.find((member) => member.is_project_owner)?.user_label ||
+                      (can("project.members.read") ? "Chưa phân công" : "Không có quyền xem")}
+                  </dd>
+                </div>
+                <div className="grid min-w-0 gap-2 py-3 sm:grid-cols-[6rem_minmax(0,1fr)]">
+                  <dt className="text-[13px] text-ink-muted">Thời gian dự án</dt>
+                  <dd className="min-w-0 break-words text-[13px]">
+                    {[projectDetails.planned_start_at, projectDetails.planned_end_at]
+                      .filter(Boolean)
+                      .map((date) => formatDate(date))
+                      .join(" – ") || "Chưa thiết lập thời gian"}
+                  </dd>
+                </div>
+                <div className="grid min-w-0 gap-2 py-3 sm:grid-cols-[6rem_minmax(0,1fr)]">
+                  <dt className="text-[13px] text-ink-muted">Thành viên</dt>
+                  <dd className="min-w-0 break-words text-[13px]">
+                    {can("project.members.read")
+                      ? projectMembers
+                          .filter((member) => member.status === "ACTIVE")
+                          .map((member) => member.user_label)
+                          .filter(Boolean)
+                          .join(" · ") || "Chưa có thành viên"
+                      : "Không có quyền xem"}
+                  </dd>
+                </div>
+              </dl>
+            </Panel>
+            <Panel title="Tình hình kiểm thử">
+              <dl className="divide-y divide-border px-5">
+                {can("requirement.read") && dashboard && (
+                  <div className="flex items-center justify-between gap-3 py-3 text-[13px]">
+                    <dt>Yêu cầu đã thiết lập phiên bản chuẩn</dt>
+                    <dd className="font-semibold tabular-nums">{dashboard.requirements}</dd>
+                  </div>
+                )}
+                {can("testcase.read") && dashboard && (
+                  <div className="flex items-center justify-between gap-3 py-3 text-[13px]">
+                    <dt>Ca kiểm thử đang hoạt động</dt>
+                    <dd className="font-semibold tabular-nums">{dashboard.active_tests}</dd>
+                  </div>
+                )}
+                {can("testrun.read") && dashboard && (
+                  <div className="flex items-center justify-between gap-3 py-3 text-[13px]">
+                    <dt>Lượt chạy đang thực hiện</dt>
+                    <dd className="font-semibold tabular-nums">{dashboard.current_runs}</dd>
+                  </div>
+                )}
+                {can("release.read") && dashboard && (
+                  <div className="flex items-center justify-between gap-3 py-3 text-[13px]">
+                    <dt>Bản phát hành</dt>
+                    <dd className="font-semibold tabular-nums">{dashboard.releases}</dd>
+                  </div>
+                )}
+              </dl>
+            </Panel>
+          </div>
+          {canReadAnalytics && (
+            <Panel title="Cần xử lý">
+              <ul className="divide-y divide-border px-5">
+                {can("impact.read") && dashboard?.changes_waiting_impact > 0 && (
+                  <li className="flex flex-wrap items-center justify-between gap-3 py-3 text-[13px]">
+                    <span>
+                      {dashboard.changes_waiting_impact} thay đổi yêu cầu cần rà soát ảnh hưởng
+                    </span>
+                    <Link className="font-medium text-brand" href={`${base}/thay-doi`}>
+                      Xem thay đổi
+                    </Link>
+                  </li>
+                )}
+                {can("testcase.read") && dashboard?.tests_needing_update > 0 && (
+                  <li className="flex flex-wrap items-center justify-between gap-3 py-3 text-[13px]">
+                    <span>{dashboard.tests_needing_update} ca kiểm thử cần cập nhật</span>
+                    <Link
+                      className="font-medium text-brand"
+                      href={projectRoute(project._id, PROJECT_SECTION_SLUGS.testCases)}
+                    >
+                      Xem ca kiểm thử
+                    </Link>
+                  </li>
+                )}
+                {can("defect.read") && dashboard?.open_defects > 0 && (
+                  <li className="flex flex-wrap items-center justify-between gap-3 py-3 text-[13px]">
+                    <span>{dashboard.open_defects} lỗi đang mở</span>
+                    <Link
+                      className="font-medium text-brand"
+                      href={projectRoute(project._id, PROJECT_SECTION_SLUGS.defects)}
+                    >
+                      Xem lỗi
+                    </Link>
+                  </li>
+                )}
+                {(!can("impact.read") || !dashboard?.changes_waiting_impact) &&
+                  (!can("testcase.read") || !dashboard?.tests_needing_update) &&
+                  (!can("defect.read") || !dashboard?.open_defects) && (
+                    <li className="py-4 text-[13px] text-ink-muted">Không có mục cần xử lý</li>
+                  )}
+              </ul>
+            </Panel>
+          )}
           {project.current_permissions?.includes("ai.ask_project") && (
             <details onToggle={(event) => setShowAiReview(event.currentTarget.open)}>
               <summary className="cursor-pointer border-y border-border py-3 text-sm font-medium">
@@ -391,42 +531,6 @@ export default function DashboardPage({ project }) {
               )}
             </div>
           </div>
-          {(navigationCards.length > 0 || canReadKnowledge) && (
-            <section aria-labelledby="project-areas-heading" className="min-w-0">
-              <h2 className="mb-2 text-sm font-semibold text-ink" id="project-areas-heading">
-                Khu vực dự án
-              </h2>
-              <nav
-                aria-label="Khu vực dự án"
-                className="grid grid-cols-1 gap-x-8 sm:grid-cols-2 xl:grid-cols-4"
-              >
-                {navigationCards.map(([href, label]) => (
-                  <Link
-                    className="flex min-h-10 min-w-0 items-center justify-between gap-3 border-b border-border/70 py-2 text-[13px] font-medium text-ink transition-colors hover:text-brand"
-                    href={`${base}/${href}`}
-                    key={href}
-                  >
-                    <span className="min-w-0 break-words">{label}</span>
-                    <span aria-hidden="true" className="shrink-0 text-ink-muted">
-                      ›
-                    </span>
-                  </Link>
-                ))}
-                {canReadKnowledge && (
-                  <Link
-                    className="flex min-h-10 min-w-0 items-center justify-between gap-3 border-b border-border/70 py-2 text-[13px] font-medium text-ink transition-colors hover:text-brand"
-                    href={`${base}/tri-thuc`}
-                    key="tri-thuc"
-                  >
-                    <span className="min-w-0 break-words">Tài liệu và nguồn</span>
-                    <span aria-hidden="true" className="shrink-0 text-ink-muted">
-                      ›
-                    </span>
-                  </Link>
-                )}
-              </nav>
-            </section>
-          )}
         </>
       )}
     </WorkspacePage>

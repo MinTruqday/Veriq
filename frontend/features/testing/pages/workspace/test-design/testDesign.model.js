@@ -9,6 +9,7 @@ export function createTestCaseForm() {
     type: "",
     priority: UNASSESSED_VALUE,
     risk: UNASSESSED_VALUE,
+    durationMinutes: "",
     testLevel: "",
     testKind: "",
     ownerId: "",
@@ -156,6 +157,12 @@ export function buildTestCaseDraftChanges(snapshot, draft) {
     expected_doc: textDoc(step.expected),
   }));
   const changes = {};
+  if (
+    snapshot.durationMinutes !== undefined &&
+    Number(snapshot.durationMinutes || 0) !== Number(draft.duration_minutes || 0)
+  ) {
+    changes.duration_minutes = snapshot.durationMinutes ? Number(snapshot.durationMinutes) : null;
+  }
   for (const field of ["title", "type", "priority", "risk", "test_level", "test_kind"]) {
     if (snapshot[field] !== undefined && snapshot[field] !== draft[field]) {
       changes[field] =

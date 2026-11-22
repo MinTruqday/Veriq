@@ -176,6 +176,7 @@ class TestCaseDraftCreate(BaseModel):
     test_kind: str | None = Field(default=None, max_length=100)
     priority: str = Field(default="unassessed", min_length=1, max_length=100)
     risk: str = Field(default="unassessed", min_length=1, max_length=100)
+    duration_minutes: int | None = Field(default=None, ge=1, le=10080)
     objective_doc: dict[str, Any] = Field(default_factory=empty_doc)
     preconditions_doc: dict[str, Any] = Field(default_factory=empty_doc)
     steps: list[TestStep] = Field(default_factory=list, max_length=500)
@@ -267,6 +268,7 @@ class TestCaseDraftPatch(BaseModel):
     test_kind: str | None = Field(default=None, max_length=100)
     priority: str | None = Field(default=None, min_length=1, max_length=100)
     risk: str | None = Field(default=None, min_length=1, max_length=100)
+    duration_minutes: int | None = Field(default=None, ge=1, le=10080)
     objective_doc: dict[str, Any] | None = None
     preconditions_doc: dict[str, Any] | None = None
     steps: list[TestStep] | None = None

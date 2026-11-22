@@ -581,6 +581,7 @@ export const designTestingApi = {
   listTestCasePage: (id, query = "") => listPage(`/du-an/${id}/ca-kiem-thu`, query),
   listTestCases: (id, query = "") =>
     listPage(`/du-an/${id}/ca-kiem-thu`, query).then((result) => result.items),
+  getTestCase: (id) => testingRequest(`/ca-kiem-thu/${id}`),
   getTestCaseVersion: (versionId) => testingRequest(`/phien-ban-ca-kiem-thu/${versionId}`),
   listTestVersions: (id) => testingRequest(`/ca-kiem-thu/${id}/phien-ban`),
   createTestCaseVersionDraft: (id, payload) =>

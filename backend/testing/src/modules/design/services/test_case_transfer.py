@@ -241,6 +241,7 @@ async def preview_test_import(
                 type=row.get("type") or "custom",
                 priority=row.get("priority") or "unassessed",
                 risk=row.get("risk") or "unassessed",
+                duration_minutes=str(row.get("duration_minutes") or "").strip() or None,
                 objective_doc=text_document(str(row.get("objective") or projection).strip()),
                 preconditions_doc=text_document(str(row.get("preconditions") or row.get("precondition") or "").strip()),
                 steps=steps,
@@ -570,6 +571,7 @@ async def export_test_cases(
         "type": item.get("type"),
         "priority": item.get("priority"),
         "risk": item.get("risk"),
+        "duration_minutes": item.get("duration_minutes"),
         "automation_status": item.get("automation_status"),
         "status": item.get("status"),
         "objective": plain_text(item.get("objective_doc", {})),
@@ -599,7 +601,7 @@ async def export_test_cases(
         "plain_text_projection": item.get("plain_text_projection"),
     } for item in versions]
     fields = [
-        "project_id", "test_case_key", "version", "title", "type", "priority", "risk",
+        "project_id", "test_case_key", "version", "title", "type", "priority", "risk", "duration_minutes",
         "automation_status", "status", "objective", "preconditions", "steps_json",
         "test_data_json", "expected_result", "postconditions", "alternate_flows", "exception_flows", "tags", "owner_id",
         "techniques", "data_set_version_ids", "requirement_version_ids",
