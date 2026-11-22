@@ -11,9 +11,6 @@ export function createTestCaseForm() {
     risk: UNASSESSED_VALUE,
     testLevel: "",
     testKind: "",
-    expectedImpact: UNASSESSED_VALUE,
-    assessmentReason: "",
-    requiredSkills: "",
     ownerId: "",
     scenarioId: "",
     requirementVersionIds: [],
@@ -32,6 +29,8 @@ export function createTestCaseForm() {
     testData: emptyDataEntries(),
     expectedResult: emptyDoc(),
     postconditions: emptyDoc(),
+    alternateFlows: emptyDoc(),
+    exceptionFlows: emptyDoc(),
     tags: "",
     techniques: "",
     automationStatus: "manual",
@@ -45,7 +44,6 @@ export function createTestCaseForm() {
     given: "",
     when: "",
     then: "",
-    customValues: {},
   };
 }
 
@@ -158,16 +156,7 @@ export function buildTestCaseDraftChanges(snapshot, draft) {
     expected_doc: textDoc(step.expected),
   }));
   const changes = {};
-  for (const field of [
-    "title",
-    "type",
-    "priority",
-    "risk",
-    "test_level",
-    "test_kind",
-    "expected_impact",
-    "assessment_reason",
-  ]) {
+  for (const field of ["title", "type", "priority", "risk", "test_level", "test_kind"]) {
     if (snapshot[field] !== undefined && snapshot[field] !== draft[field]) {
       changes[field] =
         ["test_level", "test_kind"].includes(field) && !snapshot[field] ? null : snapshot[field];
@@ -178,6 +167,8 @@ export function buildTestCaseDraftChanges(snapshot, draft) {
     ["preconditions_doc", "preconditions"],
     ["expected_result_doc", "expected"],
     ["postconditions_doc", "postconditions"],
+    ["alternate_flows_doc", "alternateFlows"],
+    ["exception_flows_doc", "exceptionFlows"],
   ]) {
     if (snapshot[input] !== undefined && snapshot[input] !== docText(draft[field]))
       changes[field] = textDoc(snapshot[input]);
@@ -201,10 +192,6 @@ export function buildTestCaseDraftChanges(snapshot, draft) {
   }
   const otherValues = {
     test_data: snapshot.testData === undefined ? undefined : structuredValue(snapshot.testData),
-    required_skills: snapshot.requiredSkills
-      ?.split(",")
-      .map((value) => value.trim())
-      .filter(Boolean),
     techniques: snapshot.techniques
       ?.split(",")
       .map((value) => value.trim())
@@ -224,7 +211,6 @@ export function buildTestCaseDraftChanges(snapshot, draft) {
     coverage_item_ids: snapshot.coverageItemIds,
     repository_node_id: snapshot.repositoryNodeId,
     bdd: snapshot.bdd,
-    custom_values: snapshot.customValues,
   };
   for (const [field, value] of Object.entries(otherValues)) {
     if (value === undefined) continue;
@@ -232,7 +218,7 @@ export function buildTestCaseDraftChanges(snapshot, draft) {
     if (previous === undefined) {
       previous = Array.isArray(value)
         ? []
-        : field === "test_data" || field === "custom_values"
+        : field === "test_data"
           ? {}
           : field === "owner_id" || field === "bdd"
             ? ""

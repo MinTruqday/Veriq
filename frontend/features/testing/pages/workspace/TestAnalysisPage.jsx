@@ -22,21 +22,6 @@ import { docText, messageOf, valueLabel } from "../../lib/testing";
 import { testingApi } from "../../services/testing.service";
 import { PROJECT_SECTION_SLUGS, projectRoute } from "../../routes";
 import SearchField from "@/shared/components/ui/SearchField";
-import { useDateTimeOptions } from "../../hooks/useDateTimeOptions";
-import { formatDateTime } from "@/shared/lib/dateTime.mjs";
-
-const blueprintMetricLabels = {
-  source_quote_validity: "Tính hợp lệ của trích dẫn",
-  source_quote_precision: "Độ chính xác trích dẫn nguồn (Precision)",
-  source_quote_recall: "Độ bao phủ trích dẫn nguồn (Recall)",
-  source_quote_source_precision: "Độ chính xác phiên bản nguồn (Precision)",
-  source_quote_source_recall: "Độ bao phủ phiên bản nguồn (Recall)",
-  obligation_precision: "Độ chính xác nghĩa vụ kiểm thử (Precision)",
-  obligation_recall: "Độ bao phủ nghĩa vụ kiểm thử (Recall)",
-  clarification_precision: "Độ chính xác câu hỏi làm rõ (Precision)",
-  clarification_recall: "Độ bao phủ câu hỏi làm rõ (Recall)",
-  clarification_priority_ndcg: "Điểm xếp hạng ưu tiên câu hỏi (NDCG)",
-};
 
 const findingTypeLabels = {
   AMBIGUITY: "Nội dung chưa rõ",
@@ -69,7 +54,6 @@ const techniqueLabel = (value) => techniqueLabels[value] || valueLabel(value);
 const severityLabel = (value) => valueLabel(value);
 
 export default function TestAnalysisPage({ project }) {
-  const dateTimeOptions = useDateTimeOptions(project);
   const router = useRouter();
   const { ask, dialog } = useActionDialog();
   const [conditions, setConditions] = useState([]);
@@ -86,7 +70,6 @@ export default function TestAnalysisPage({ project }) {
   const refreshAiResultsPending = useRef(false);
   const [selectedRequirementVersions, setSelectedRequirementVersions] = useState([]);
   const [aiInstruction, setAiInstruction] = useState("");
-  const [testabilityMode, setTestabilityMode] = useState("OFF");
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiGenerationError, setAiGenerationError] = useState("");
   const [query, setQuery] = useState("");
@@ -178,9 +161,6 @@ export default function TestAnalysisPage({ project }) {
   useEffect(() => {
     void load();
   }, [load]);
-  useEffect(() => {
-    setTestabilityMode("OFF");
-  }, [project._id]);
   const tabs = [
     ...(can("testcondition.read") ? [{ id: "conditions", label: "Điều kiện kiểm thử" }] : []),
     ...(can("testanalysis.read") ? [{ id: "ai", label: "Đề xuất AI" }] : []),
@@ -219,7 +199,6 @@ export default function TestAnalysisPage({ project }) {
           relationship: "DERIVED_FROM",
         })),
         instruction: aiInstruction.trim(),
-        testability_mode: testabilityMode,
         idempotency_key: `manual-test-condition:${crypto.randomUUID()}`,
       });
       setAiResults((current) => [result, ...current.filter((item) => item._id !== result._id)]);
@@ -646,54 +625,6 @@ export default function TestAnalysisPage({ project }) {
               </p>
               {can("testanalysis.run_ai") && (
                 <div className="space-y-3 border-t border-border pt-4">
-                  <fieldset className="space-y-2">
-                    <legend className="text-sm font-medium">
-                      Chế độ phân tích yêu cầu bằng AI
-                    </legend>
-                    <div className="grid gap-2 lg:grid-cols-3">
-                      {[
-                        {
-                          value: "OFF",
-                          title: "Chỉ tạo đề xuất điều kiện kiểm thử",
-                          description: "Chỉ tạo đề xuất điều kiện kiểm thử như hiện tại.",
-                        },
-                        {
-                          value: "BLUEPRINT_ONLY",
-                          title: "Lập bản đồ điều kiện kiểm thử",
-                          description: "Lập nghĩa vụ kiểm thử và câu hỏi làm rõ từ nguồn.",
-                        },
-                        {
-                          value: "BLUEPRINT_BENCHMARK",
-                          title: "Lập bản đồ điều kiện kiểm thử và đánh giá thực nghiệm",
-                          description:
-                            "AI tự rà soát và đề xuất cải thiện Blueprint một lượt; Benchmark chỉ chấm khi có bộ tham chiếu phù hợp, nếu không sẽ ghi rõ chưa có căn cứ.",
-                        },
-                      ].map((option) => (
-                        <label
-                          className={`flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-sm ${
-                            testabilityMode === option.value
-                              ? "border-accent bg-accent/5"
-                              : "border-border"
-                          }`}
-                          key={option.value}
-                        >
-                          <input
-                            checked={testabilityMode === option.value}
-                            className="mt-1"
-                            name="testability-mode"
-                            onChange={() => setTestabilityMode(option.value)}
-                            type="radio"
-                          />
-                          <span>
-                            <span className="block font-medium">{option.title}</span>
-                            <span className="mt-1 block text-xs text-ink-muted">
-                              {option.description}
-                            </span>
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-                  </fieldset>
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <h3 className="text-sm font-medium">Yêu cầu nguồn</h3>
                     <div className="flex gap-2">
@@ -780,125 +711,6 @@ export default function TestAnalysisPage({ project }) {
                     </span>
                   </div>
                   {aiGenerationError && <ErrorState message={aiGenerationError} />}
-                </div>
-              )}
-              {aiResults.some((result) => result.testability_blueprint) && (
-                <div className="space-y-3 border-t border-border pt-4">
-                  <h3 className="text-sm font-medium">Bản đồ kiểm thử theo từng lần chạy</h3>
-                  {aiResults
-                    .filter((result) => result.testability_blueprint)
-                    .map((result) => {
-                      const blueprint = result.testability_blueprint;
-                      return (
-                        <details className="rounded-lg border border-border p-3" key={result._id}>
-                          <summary className="cursor-pointer text-sm font-medium">
-                            {result.testability_mode === "BLUEPRINT_BENCHMARK"
-                              ? "Bản đồ điều kiện kiểm thử và đánh giá thực nghiệm"
-                              : "Bản đồ điều kiện kiểm thử"}
-                            {result.created_at
-                              ? ` · ${formatDateTime(result.created_at, dateTimeOptions)}`
-                              : ""}
-                          </summary>
-                          <div className="mt-3 space-y-4 text-sm">
-                            {result.blueprint_ai_metadata?.benchmark && (
-                              <section className="rounded-control bg-surface-quiet p-3 text-ink-muted">
-                                <p>
-                                  {result.blueprint_ai_metadata.benchmark.assessment_type ===
-                                  "INDEPENDENT_REFERENCE"
-                                    ? "Đánh giá theo bộ tham chiếu đã được rà soát độc lập."
-                                    : result.blueprint_ai_metadata.benchmark.assessment_type ===
-                                        "SELF_PREPARED_REFERENCE"
-                                      ? "Đánh giá thử theo bộ tham chiếu do người dùng chuẩn bị; chưa được xác thực độc lập."
-                                      : result.blueprint_ai_metadata.benchmark.reason ||
-                                        "Chưa có bộ tham chiếu phù hợp để đánh giá độc lập."}
-                                </p>
-                                {result.blueprint_ai_metadata.benchmark.metrics && (
-                                  <dl className="mt-3 grid gap-2 sm:grid-cols-2">
-                                    {Object.entries(result.blueprint_ai_metadata.benchmark.metrics)
-                                      .filter(([, value]) => typeof value === "number")
-                                      .map(([metric, value]) => (
-                                        <div key={metric}>
-                                          <dt>
-                                            {blueprintMetricLabels[metric] || valueLabel(metric)}
-                                          </dt>
-                                          <dd className="font-medium text-ink">
-                                            {`${(value * 100).toFixed(1)}%`}
-                                          </dd>
-                                        </div>
-                                      ))}
-                                  </dl>
-                                )}
-                              </section>
-                            )}
-                            {result.blueprint_self_review && (
-                              <section className="rounded-control border border-violet-200 p-3">
-                                <h4 className="font-medium">
-                                  AI tự rà soát · không phải Benchmark độc lập
-                                </h4>
-                                <p className="mt-1 text-ink-muted">
-                                  {result.blueprint_self_review.summary}
-                                </p>
-                                {result.testability_blueprint_before_review && (
-                                  <p className="mt-2 text-xs text-ink-muted">
-                                    Đã giữ bản trước rà soát để đối chiếu với Blueprint hiện tại.
-                                  </p>
-                                )}
-                                {result.blueprint_self_review.findings?.length > 0 && (
-                                  <ul className="mt-2 list-disc space-y-1 pl-5">
-                                    {result.blueprint_self_review.findings.map((finding, index) => (
-                                      <li key={`${finding.item_ref}-${index}`}>
-                                        {finding.observation} — {finding.suggested_change}
-                                      </li>
-                                    ))}
-                                  </ul>
-                                )}
-                              </section>
-                            )}
-                            <section>
-                              <h4 className="font-medium">
-                                Nghĩa vụ kiểm thử ({blueprint.obligations?.length || 0})
-                              </h4>
-                              {blueprint.obligations?.length ? (
-                                <ul className="mt-2 list-disc space-y-2 pl-5">
-                                  {blueprint.obligations.map((obligation) => (
-                                    <li key={obligation.key}>
-                                      <strong>{obligation.key}:</strong> {obligation.obligation}
-                                      <span className="block text-xs text-ink-muted">
-                                        Nguồn {obligation.source_ref}: “{obligation.source_quote}”
-                                      </span>
-                                    </li>
-                                  ))}
-                                </ul>
-                              ) : (
-                                <p className="mt-1 text-ink-muted">
-                                  Không tạo được nghĩa vụ từ nguồn đã chọn.
-                                </p>
-                              )}
-                            </section>
-                            <section>
-                              <h4 className="font-medium">
-                                Câu hỏi làm rõ ({blueprint.clarifications?.length || 0})
-                              </h4>
-                              {blueprint.clarifications?.length ? (
-                                <ul className="mt-2 list-disc space-y-2 pl-5">
-                                  {blueprint.clarifications.map((clarification) => (
-                                    <li key={clarification.code}>
-                                      <strong>{clarification.code}:</strong>{" "}
-                                      {clarification.question}
-                                      <span className="block text-xs text-ink-muted">
-                                        {clarification.reason}
-                                      </span>
-                                    </li>
-                                  ))}
-                                </ul>
-                              ) : (
-                                <p className="mt-1 text-ink-muted">Không có câu hỏi làm rõ.</p>
-                              )}
-                            </section>
-                          </div>
-                        </details>
-                      );
-                    })}
                 </div>
               )}
               <DataTable

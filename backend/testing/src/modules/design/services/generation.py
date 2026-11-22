@@ -149,7 +149,6 @@ def merge_duplicate_generated_cases(drafts, suggestions, threshold):
             )
             if (
             draft.type == kept_draft.type
-            and set(suggestion.challenge_techniques) == set(kept_suggestion.challenge_techniques)
             and generated_cases_have_equivalent_actions(draft, kept_draft)
             and duplicate_score(draft.model_dump(), kept_draft.model_dump(), threshold)[0]
             >= threshold
@@ -170,33 +169,13 @@ def merge_duplicate_generated_cases(drafts, suggestions, threshold):
                 (quote.evidence_ref, quote.quote): quote
                 for quote in [*kept_suggestion.evidence_quotes, *suggestion.evidence_quotes]
             }.values())
-            obligations = list(dict.fromkeys([
-                *kept_suggestion.coverage_obligations,
-                *suggestion.coverage_obligations,
-            ]))
             techniques = list(dict.fromkeys([
                 *kept_suggestion.techniques,
                 *suggestion.techniques,
             ]))
-            obligation_evidence_by_key = {}
-            for item in [*kept_suggestion.obligation_evidence, *suggestion.obligation_evidence]:
-                evidence = obligation_evidence_by_key.setdefault(item.obligation_key, {})
-                evidence.update({
-                    (quote.evidence_ref, quote.quote): quote
-                    for quote in item.evidence_quotes
-                })
-            obligation_evidence = [
-                {
-                    "obligation_key": key,
-                    "evidence_quotes": list(quotes.values()),
-                }
-                for key, quotes in obligation_evidence_by_key.items()
-            ]
             if (
                 len(evidence_quotes) > 20
-                or len(obligations) > 100
                 or len(techniques) > 50
-                or len(obligation_evidence) > 100
                 or len(criterion_ids) > 500
                 or len(evidence_refs) > 200
             ):
@@ -210,12 +189,6 @@ def merge_duplicate_generated_cases(drafts, suggestions, threshold):
                     "techniques": techniques,
                     "evidence_refs": evidence_refs,
                     "evidence_quotes": [item.model_dump() for item in evidence_quotes],
-                    "coverage_obligations": obligations,
-                    "obligation_evidence": obligation_evidence,
-                    "required_skills": list(dict.fromkeys([
-                        *kept_suggestion.required_skills,
-                        *suggestion.required_skills,
-                    ])),
                 })
                 merged_draft = type(kept_draft).model_validate({
                     **kept_draft.model_dump(),
@@ -223,9 +196,6 @@ def merge_duplicate_generated_cases(drafts, suggestions, threshold):
                     "techniques": techniques,
                     "evidence_refs": evidence_refs,
                     "evidence_quotes": [item.model_dump() for item in evidence_quotes],
-                    "coverage_obligations": obligations,
-                    "obligation_evidence": obligation_evidence,
-                    "required_skills": merged_suggestion.required_skills,
                 })
             except ValidationError:
                 kept_drafts.append(draft)
@@ -300,51 +270,6 @@ async def generate_requirement_drafts(
         }
         for item in criteria
     )
-    blueprint_context = None
-    processed_blueprint = None
-    if payload.testability_mode != "OFF":
-        from src.modules.design.services.testability_blueprint_workflow import (
-            blueprint_for_requirement,
-        )
-
-        processed_blueprint = await blueprint_for_requirement(
-            version["project_id"], version, criteria, payload.testability_mode, user
-        )
-    if processed_blueprint:
-        value = processed_blueprint.get("blueprint") or {}
-        benchmark = processed_blueprint.get("benchmark") or {}
-        blueprint_context = {
-            "requirement_version_id": version["_id"],
-            "blueprint_result_id": processed_blueprint.get("blueprint_result_id"),
-            "obligations": [
-                {
-                    "key": str(item.get("key") or ""),
-                    "obligation": str(item.get("obligation") or "")[:180],
-                }
-                for item in value.get("obligations", [])[:6]
-            ],
-            "clarifications": [
-                {
-                    "code": str(item.get("code") or ""),
-                    "question": str(item.get("question") or "")[:150],
-                }
-                for item in value.get("clarifications", [])[:3]
-            ],
-            "review_type": (
-                "SELF_REVIEW_NOT_INDEPENDENT_BENCHMARK"
-                if processed_blueprint.get("self_review")
-                else None
-            ),
-            "benchmark": {
-                "assessment_type": benchmark.get("assessment_type", "NOT_AVAILABLE"),
-                "independently_validated": bool(
-                    benchmark.get("independently_validated")
-                ),
-                "dataset_id": benchmark.get("dataset_id"),
-                "dataset_revision": benchmark.get("dataset_revision"),
-                "reason": str(benchmark.get("reason") or "")[:240],
-            },
-        }
     related_context = None
     if scenario:
         cursor = database.value.test_plans.find(
@@ -364,7 +289,7 @@ async def generate_requirement_drafts(
                 "scope_in": 1,
                 "scope_out": 1,
                 "test_approach": 1,
-                "risks": 1,
+                "risk_register": 1,
             },
         ).sort([("status", 1), ("updated_at", -1)]).limit(10)
         for plan in await cursor.to_list(10):
@@ -383,7 +308,7 @@ async def generate_requirement_drafts(
                     "scope_in": snapshot.get("scope_in", [])[:20],
                     "scope_out": snapshot.get("scope_out", [])[:20],
                     "test_approach": snapshot.get("test_approach"),
-                    "risks": snapshot.get("risks", [])[:20],
+                    "risk_register": snapshot.get("risk_register", [])[:20],
                 }
             else:
                 related_context = {
@@ -394,7 +319,7 @@ async def generate_requirement_drafts(
                     "scope_in": list(plan.get("scope_in") or [])[:20],
                     "scope_out": list(plan.get("scope_out") or [])[:20],
                     "test_approach": plan.get("test_approach"),
-                    "risks": list(plan.get("risks") or [])[:20],
+                    "risk_register": list(plan.get("risk_register") or [])[:20],
                     "status": "DRAFT",
                 }
             break
@@ -551,36 +476,6 @@ async def generate_requirement_drafts(
                 "existing_items_are_context_not_authoritative_requirement_evidence": True,
             }
     source_text_by_ref = {item["artifact_version_id"]: item["text"] for item in evidence}
-    challenge_cases = {}
-    challenge_similarity_threshold = None
-    if bool(payload.challenge_hypotheses) != bool(payload.challenge_suite_signature):
-        raise HTTPException(422, detail={"code": "TEST_DESIGN_CHALLENGE_SOURCE_CHANGED", "message": "Cần nhận lại gợi ý kỹ thuật trước khi tạo ca theo giả thuyết lỗi"})
-    if payload.challenge_hypotheses:
-        related, challenge_similarity_threshold = await comparison_cases(version["project_id"])
-        challenge_cases = {item["_id"]: item for item in related if item.get("status") == "ACTIVE"}
-        current_refs = {
-            item["_id"]
-            for item in related
-            if item.get("status") == "ACTIVE"
-            and version["_id"] in item.get("requirement_version_ids", [])
-        }
-        if (
-            payload.challenge_suite_signature != active_suite_signature(related, [version["_id"]])
-            or any(not set(item.existing_case_refs) <= current_refs for item in payload.challenge_hypotheses)
-        ):
-            raise HTTPException(409, detail={"code": "TEST_DESIGN_PREVIEW_STALE", "message": "Bộ ca đang hiệu lực đã thay đổi  Hãy nhận gợi ý mới trước khi tạo ca"})
-    if (
-        scenario and payload.challenge_hypotheses
-        or len({item.technique for item in payload.challenge_hypotheses})
-        != len(payload.challenge_hypotheses)
-        or any(
-            item.technique not in payload.techniques
-            or item.source_ref not in source_text_by_ref
-            or item.source_quote.strip() not in source_text_by_ref[item.source_ref]
-            for item in payload.challenge_hypotheses
-        )
-    ):
-        raise HTTPException(422, detail={"code": "TEST_DESIGN_CHALLENGE_SOURCE_CHANGED", "message": "Giả thuyết lỗi không còn khớp với nguồn hoặc kỹ thuật đã chọn  Hãy nhận gợi ý mới trước khi tạo ca"})
     risk_policy = await project_risk_assessment_policy(version["project_id"])
     instruction = json.dumps(
         {
@@ -589,14 +484,11 @@ async def generate_requirement_drafts(
             "maximum_cases": payload.max_cases or (len(payload.techniques) if technique_mode else (len(criteria) if not categories else None)),
             "selected_design_techniques": payload.techniques if not scenario else [],
             "allowed_acceptance_criterion_ids": [item["_id"] for item in criteria],
-            "challenge_hypotheses": [item.model_dump() for item in payload.challenge_hypotheses],
             "project_risk_assessment_policy": risk_policy,
-            "saved_testability_blueprint": blueprint_context,
-            "testability_mode": payload.testability_mode,
             "upstream_approved_context": related_context,
             "consistency_rules": [
-                "Treat the exact Requirement version, acceptance criteria, current related artifacts, and Blueprint as distinct sources. Do not assume one source is always correct when they disagree.",
-                "Use a saved Blueprint only when the user selected a Blueprint mode and it matches this exact Requirement version. Reuse it; do not benchmark again during Scenario or Case generation.",
+                "Treat the exact Requirement version, acceptance criteria, and current related artifacts as distinct sources. Do not assume one source is always correct when they disagree.",
+                "Use the exact Requirement version, acceptance criteria, and current related artifacts supplied in this request.",
                 "If generated content conflicts with a source or existing Scenario and none of the supplied sources establishes which value governs, report the conflict in warnings for the user to resolve; never silently choose a side.",
                 "Cite only Requirement and acceptance-criterion evidence references in generated cases.",
             ],
@@ -704,27 +596,6 @@ async def generate_requirement_drafts(
                         ][:10],
                     },
                 )
-        selected_challenges = {item.technique for item in payload.challenge_hypotheses}
-        if any(
-            len(item.challenge_techniques) != len(set(item.challenge_techniques))
-            or not set(item.challenge_techniques) <= set(item.techniques)
-            or not set(item.challenge_techniques) <= selected_challenges
-            for item in generated
-        ):
-            raise ValueError("invalid challenge association")
-        addressed_challenges = {
-            technique for item in generated for technique in item.challenge_techniques
-        }
-        if addressed_challenges != selected_challenges:
-            raise HTTPException(
-                422,
-                detail={
-                    "code": "TEST_DESIGN_CHALLENGE_NOT_ADDRESSED",
-                    "message": "AI chưa tạo được ca kiểm thử cho mọi giả thuyết đã chọn  Hãy xem lại bằng chứng hoặc chọn ít giả thuyết hơn",
-                    "unaddressed_challenges": sorted(selected_challenges - addressed_challenges),
-                    "warnings": result.get("warnings", [])[:10],
-                },
-            )
         drafts = []
         for item in generated:
             if not set(item.acceptance_criterion_ids) <= criterion_ids:
@@ -739,14 +610,8 @@ async def generate_requirement_drafts(
                 raise ValueError("invalid evidence quote")
             if selected_techniques and (not item.techniques or not set(item.techniques) <= selected_techniques):
                 raise ValueError("unselected design technique")
-            if selected_techniques and (not item.coverage_obligations or not item.evidence_refs):
+            if selected_techniques and not item.evidence_refs:
                 raise ValueError("missing technique coverage evidence")
-            if any(
-                challenge.source_ref not in item.evidence_refs
-                for challenge in payload.challenge_hypotheses
-                if challenge.technique in item.challenge_techniques
-            ):
-                raise ValueError("challenge source not cited by generated case")
             common = {
                 "title": item.title,
                 "requirement_version_ids": [version["_id"]],
@@ -792,7 +657,8 @@ async def generate_requirement_drafts(
                         preconditions_doc=text_document(item.preconditions),
                         steps=steps,
                         expected_result_doc=text_document(item.expected),
-                        required_skills=item.required_skills,
+                        alternate_flows_doc=text_document(item.alternate_flows),
+                        exception_flows_doc=text_document(item.exception_flows),
                         source_evidence=evidence,
                         acceptance_criteria_snapshot_ids=(
                             list(dict.fromkeys(acceptance_criteria_snapshot_ids))
@@ -800,38 +666,10 @@ async def generate_requirement_drafts(
                             else None
                         ),
                         techniques=item.techniques,
-                        coverage_obligations=item.coverage_obligations,
-                        obligation_evidence=[
-                            evidence.model_dump()
-                            for evidence in item.obligation_evidence
-                        ],
                         evidence_refs=item.evidence_refs,
                         evidence_quotes=[quote.model_dump() for quote in item.evidence_quotes],
-                        challenge_hypotheses=[
-                            challenge
-                            for challenge in payload.challenge_hypotheses
-                            if challenge.technique in item.challenge_techniques
-                        ],
                     )
                 )
-                draft = drafts[-1]
-                if any(
-                    duplicate_score(
-                        draft.model_dump(),
-                        challenge_cases[existing_ref],
-                        challenge_similarity_threshold,
-                    )[0] >= challenge_similarity_threshold
-                    for challenge in payload.challenge_hypotheses
-                    if challenge.technique in item.challenge_techniques
-                    for existing_ref in challenge.existing_case_refs
-                ):
-                    raise HTTPException(
-                        422,
-                        detail={
-                            "code": "TEST_DESIGN_CHALLENGE_NOT_DISTINGUISHING",
-                            "message": "Ca được tạo vẫn trùng phạm vi của ca đang hiệu lực nên chưa thể kiểm chứng giả thuyết  Hãy nhận gợi ý kỹ thuật mới",
-                        },
-                    )
     except (ValueError, TypeError, ValidationError) as error:
         raise HTTPException(
             502,
@@ -854,10 +692,6 @@ async def generate_requirement_drafts(
     generated_categories = Counter(item.category for item in generated)
     result["unapplied_categories"] = [category for category, requested_count in requested_categories.items() if generated_categories[category] < requested_count]
     missing_context_warnings = []
-    if not blueprint_context:
-        missing_context_warnings.append(
-            "Chưa có Blueprint đã lưu cho đúng phiên bản yêu cầu; bản xem trước chỉ dùng nguồn yêu cầu và tiêu chí chấp nhận."
-        )
     if not related_context:
         missing_context_warnings.append(
             "Chưa có tài sản ở bước trước đã duyệt để đối chiếu nhất quán trong lượt tạo này."

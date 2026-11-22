@@ -47,20 +47,20 @@ LEGACY_DEVICE_PLAN_SNAPSHOT_FIELDS = (
     'device_matrix_id', 'device_profile_keys', 'device_matrix_snapshot',
 )
 PLAN_SNAPSHOT_FIELDS = (
-    *LEGACY_PLAN_SNAPSHOT_FIELDS,
-    'test_suite_snapshots',
-    'device_matrix_id', 'device_profile_keys', 'device_matrix_snapshot',
+    'project_id', 'name', 'objective', 'scope_in', 'scope_out',
+    'requirement_version_ids', 'test_suite_ids', 'test_case_version_ids',
+    'test_suite_snapshots', 'environment', 'environment_id',
+    'entry_criteria', 'exit_criteria', 'test_types', 'members',
+    'release', 'release_id', 'build', 'build_id',
+    'strategy_version_id', 'strategy_id', 'strategy_version',
+    'strategy_snapshot_hash', 'test_level', 'test_approach',
+    'assumptions', 'constraints', 'dependencies', 'estimation', 'schedule',
+    'quality_targets', 'risk_register', 'communication_plan',
+    'owner_id', 'scenario_ids',
 )
 
 def plan_snapshot(plan):
-    return {
-        **{field: plan.get(field) for field in PLAN_SNAPSHOT_FIELDS},
-        **{
-            field: plan[field]
-            for field in ('test_data_plan', 'defect_management')
-            if field in plan
-        },
-    }
+    return {field: plan.get(field) for field in PLAN_SNAPSHOT_FIELDS}
 
 def plan_snapshot_hash(plan):
     canonical = json.dumps(
@@ -69,7 +69,7 @@ def plan_snapshot_hash(plan):
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 async def _validate_assignment_capacity(plan, plan_id, session):
-    from src.modules.projects.services.skill_profiles import (
+    from src.modules.projects.services.assignment_capacity import (
         _check_test_plan_assignment_capacity,
     )
 
@@ -98,6 +98,27 @@ def _legacy_plan_snapshot_hash(snapshot):
     )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
+def _prior_plan_snapshot_hash(snapshot):
+    fields = (
+        *LEGACY_PLAN_SNAPSHOT_FIELDS,
+        'test_suite_snapshots',
+        'device_matrix_id', 'device_profile_keys', 'device_matrix_snapshot',
+    )
+    canonical_snapshot = {field: snapshot.get(field) for field in fields}
+    canonical_snapshot.update({
+        field: snapshot[field]
+        for field in ('test_data_plan', 'defect_management', 'owner_id', 'scenario_ids')
+        if field in snapshot
+    })
+    canonical = json.dumps(
+        canonical_snapshot,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(',', ':'),
+        default=str,
+    )
+    return hashlib.sha256(canonical.encode('utf-8')).hexdigest()
+
 def verified_approved_plan_snapshot(plan, project_id):
     """Return the immutable approved scope only when its stored digest matches."""
     if not plan or plan.get("status") != "APPROVED":
@@ -117,6 +138,8 @@ def verified_approved_plan_snapshot(plan, project_id):
     has_device_snapshot = all(field in snapshot for field in device_snapshot_fields)
     if 'test_suite_snapshots' in snapshot:
         digest = plan_snapshot_hash(snapshot)
+        if digest != approved_digest:
+            digest = _prior_plan_snapshot_hash(snapshot)
     elif has_device_snapshot:
         legacy_snapshot = {
             field: snapshot.get(field)
@@ -150,9 +173,7 @@ def verified_approved_plan_snapshot(plan, project_id):
         )
     return snapshot, digest
 
-def plan_completeness(plan, settings=None):
-    settings = settings or {}
-    
+def plan_completeness(plan):
     checks = [
         (
             'TEST_PLAN_STRATEGY_REQUIRED',
@@ -178,16 +199,6 @@ def plan_completeness(plan, settings=None):
             ),
         ),
     ]
-    for requirement in [{'setting': 'require_release_for_test_plan',
-  'default': True,
-  'code': 'TEST_PLAN_RELEASE_REQUIRED',
-  'field': 'release_id'},
- {'setting': 'require_environment_for_test_plan',
-  'default': True,
-  'code': 'TEST_PLAN_ENVIRONMENT_REQUIRED',
-  'field': 'environment_id'}]:
-        if settings.get(requirement["setting"], requirement["default"]):
-            checks.append((requirement["code"], bool(plan.get(requirement["field"]))))
     findings = [
         {"code": code, "blocks_approval": True}
         for code, passed in checks
@@ -214,12 +225,21 @@ async def validate_effort_allocation_members(project_id, estimation, session=Non
             detail={"code": "TEST_PLAN_EFFORT_MEMBER_NOT_ACTIVE", "user_ids": unknown},
         )
 
-async def validate_plan_data_owner(project_id, data_plan):
-    if not data_plan.owner_id:
-        return
-    members = await project_repository.list_members(project_id)
-    if not any(item.get('user_id') == data_plan.owner_id and item.get('status') == 'ACTIVE' for item in members):
-        raise HTTPException(422, detail={'code': 'TEST_PLAN_DATA_OWNER_NOT_ACTIVE'})
+async def validate_plan_links(project_id, owner_id, scenario_ids):
+    if owner_id:
+        members = await project_repository.list_members(project_id)
+        if not any(
+            member.get("user_id") == owner_id and member.get("status") == "ACTIVE"
+            for member in members
+        ):
+            raise HTTPException(status_code=422, detail={"code": "TEST_PLAN_OWNER_NOT_ACTIVE"})
+    scenario_ids = list(dict.fromkeys(scenario_ids or []))
+    if scenario_ids and await database.value.test_scenarios.count_documents(
+        {"project_id": project_id, "_id": {"$in": scenario_ids}, "status": {"$ne": "archived"}}
+    ) != len(scenario_ids):
+        raise HTTPException(status_code=422, detail={"code": "INVALID_TEST_PLAN_SCENARIO_SCOPE"})
+    return scenario_ids
+
 
 async def validate_plan_scope(project_id, requirement_version_ids, test_suite_ids, test_case_version_ids):
     requirement_ids = list(dict.fromkeys(requirement_version_ids or []))
@@ -316,8 +336,8 @@ async def create_test_plan_record(payload, project_id, user):
         build=payload.build,
         environment=payload.environment,
     )
+    scenario_ids = await validate_plan_links(payload.project_id, payload.owner_id, payload.scenario_ids)
     await validate_effort_allocation_members(payload.project_id, payload.estimation)
-    await validate_plan_data_owner(payload.project_id, payload.test_data_plan)
     strategy_binding = await resolve_strategy_binding(
         payload.project_id,
         payload.strategy_version_id,
@@ -340,6 +360,7 @@ async def create_test_plan_record(payload, project_id, user):
     plan = {
         "_id": new_id('TP'),
         **payload.model_dump(),
+        "scenario_ids": scenario_ids,
         "test_level": payload.test_level
         or next(iter((strategy or {}).get("test_levels") or []), None),
         "test_types": payload.test_types
@@ -360,7 +381,7 @@ async def create_test_plan_record(payload, project_id, user):
 
     async with await database.client.start_session() as session:
         async with session.start_transaction():
-            from src.modules.projects.services.skill_profiles import (
+            from src.modules.projects.services.assignment_capacity import (
                 _check_test_plan_assignment_capacity,
             )
 
@@ -425,8 +446,7 @@ async def get_test_plan_record(plan_id, user, permission="testplan.read"):
 
 async def validate_test_plan_record(plan_id, user):
     plan = await get_test_plan_record(plan_id, user, "testplan.read")
-    settings = await test_plan_repository.find_project_settings(plan["project_id"])
-    return plan_completeness(plan, settings)
+    return plan_completeness(plan)
 
 async def update_test_plan_record(plan_id, payload, user):
     
@@ -435,9 +455,6 @@ async def update_test_plan_record(plan_id, payload, user):
         raise HTTPException(status_code=409, detail={"code": 'TEST_PLAN_NOT_DRAFT'})
     changes = payload.model_dump(exclude_unset=True)
     changes.pop("expected_revision", None)
-    if 'test_data_plan' in changes:
-        validated = TestPlanCreate.model_validate({**plan, **changes})
-        await validate_plan_data_owner(plan['project_id'], validated.test_data_plan)
     if "estimation" in changes:
         await validate_effort_allocation_members(
             plan["project_id"], TestPlanCreate.model_validate({**plan, **changes}).estimation
@@ -450,17 +467,7 @@ async def update_test_plan_record(plan_id, payload, user):
                 auto_bind=False,
             )
         )
-    if {"requirement_version_ids", "test_suite_ids", "test_case_version_ids"} & set(changes):
-        scope = await validate_plan_scope(
-            plan["project_id"],
-            changes.get("requirement_version_ids", plan.get("requirement_version_ids", [])),
-            changes.get("test_suite_ids", plan.get("test_suite_ids", [])),
-            changes.get("test_case_version_ids", plan.get("test_case_version_ids", [])),
-        )
-        changes.update(scope)
-    if {"release_id", "build_id", "environment_id", "release", "build", "environment"} & set(
-        changes
-    ):
+    if {"release_id", "build_id", "environment_id", "release", "build", "environment"} & set(changes):
         changes.update(
             await resolve_execution_context(
                 plan["project_id"],
@@ -473,6 +480,22 @@ async def update_test_plan_record(plan_id, payload, user):
                 environment=changes.get("environment", plan.get("environment", "")),
             )
         )
+    if {"requirement_version_ids", "test_suite_ids", "test_case_version_ids"} & set(changes):
+        scope = await validate_plan_scope(
+            plan["project_id"],
+            changes.get("requirement_version_ids", plan.get("requirement_version_ids", [])),
+            changes.get("test_suite_ids", plan.get("test_suite_ids", [])),
+            changes.get("test_case_version_ids", plan.get("test_case_version_ids", [])),
+        )
+        changes.update(scope)
+    if {"owner_id", "scenario_ids"} & changes.keys():
+        scenario_ids = await validate_plan_links(
+            plan["project_id"],
+            changes.get("owner_id", plan.get("owner_id")),
+            changes.get("scenario_ids", plan.get("scenario_ids")),
+        )
+        if "scenario_ids" in changes:
+            changes["scenario_ids"] = scenario_ids
     validation_data = {}
     for field in TestPlanCreate.model_fields:
         if field in changes:
@@ -485,7 +508,7 @@ async def update_test_plan_record(plan_id, payload, user):
     async with await database.client.start_session() as session:
         async with session.start_transaction():
             if {"schedule", "estimation"}.intersection(changes):
-                from src.modules.projects.services.skill_profiles import (
+                from src.modules.projects.services.assignment_capacity import (
                     _check_test_plan_assignment_capacity,
                 )
 
@@ -572,8 +595,7 @@ async def approve_test_plan_record(plan_id, payload, user):
             detail={"code": "TEST_SET_CHANGED_REVIEW_REQUIRED"},
         )
     plan = {**plan, **scope}
-    settings = await test_plan_repository.find_project_settings(plan["project_id"])
-    completeness = plan_completeness(plan, settings)
+    completeness = plan_completeness(plan)
     if not completeness["ready_for_approval"]:
         raise HTTPException(
             status_code=409,
@@ -717,9 +739,7 @@ def validate_test_plan_ai_field_grounding(proposal, source_text):
     fields = (
         "objective", "scope_in", "scope_out", "test_approach", "test_level", "test_types",
         "environment", "entry_criteria", "exit_criteria", "risks", "assumptions",
-        "constraints", "data_sources", "data_preparation", "data_privacy", "data_reset",
-        "role_guidance", "milestones", "deliverables", "tools", "defect_reporting",
-        "defect_classification", "defect_triage", "defect_retest", "defect_closure",
+        "constraints",
     )
     field_evidence = {}
     unsupported_fields = []
@@ -816,78 +836,11 @@ async def generate_test_plan_draft_suggestion(project_id, payload, user):
         raise HTTPException(422, detail={"code": "TEST_PLAN_EVIDENCE_REQUIRED"})
     if len(evidence) > 100:
         raise HTTPException(422, detail={"code": "TEST_PLAN_EVIDENCE_LIMIT_EXCEEDED"})
-    saved_blueprints = []
-    if payload.testability_mode != "OFF":
-        from src.modules.design.services.testability_blueprint_workflow import (
-            blueprint_for_requirement,
-        )
-
-        for version in versions:
-            criteria_for_version = [
-                item for item in criteria
-                if item.get("requirement_version_id") == version["_id"]
-            ]
-            processed = await blueprint_for_requirement(
-                project_id, version, criteria_for_version, payload.testability_mode, user
-            )
-            blueprint = processed["blueprint"] if processed else {}
-            benchmark = (processed or {}).get("benchmark") or {}
-            self_review = (processed or {}).get("self_review") or {}
-            relevant_obligations = blueprint.get("obligations", [])
-            relevant_clarifications = blueprint.get("clarifications", [])
-            saved_blueprints.append({
-                "requirement_version_id": version["_id"],
-                "blueprint_result_id": processed.get("blueprint_result_id"),
-                "obligations": [
-                    {"key": str(item.get("key") or ""), "obligation": str(item.get("obligation") or "")[:220]}
-                    for item in relevant_obligations[:8]
-                ],
-                "clarifications": [
-                    {"code": str(item.get("code") or ""), "question": str(item.get("question") or "")[:220]}
-                    for item in relevant_clarifications[:4]
-                ],
-                "self_review": (
-                    {
-                        "assessment_type": "SELF_REVIEW",
-                        "summary": str(self_review.get("summary") or "")[:300],
-                        "findings": [
-                            {
-                                "finding_type": item.get("finding_type"),
-                                "item_ref": item.get("item_ref"),
-                                "observation": str(item.get("observation") or "")[:160],
-                            }
-                            for item in self_review.get("findings", [])[:3]
-                            if isinstance(item, dict)
-                        ],
-                    }
-                    if payload.testability_mode == "BLUEPRINT_BENCHMARK"
-                    else None
-                ),
-                "benchmark": (
-                    {
-                        "assessment_type": benchmark.get("assessment_type", "NOT_AVAILABLE"),
-                        "independently_validated": bool(
-                            benchmark.get("independently_validated")
-                        ),
-                        "dataset_id": benchmark.get("dataset_id"),
-                        "dataset_revision": benchmark.get("dataset_revision"),
-                        "reason": str(benchmark.get("reason") or "")[:240],
-                    }
-                    if payload.testability_mode == "BLUEPRINT_BENCHMARK"
-                    else None
-                ),
-            })
-            if len(json.dumps(saved_blueprints, ensure_ascii=False)) > 4500:
-                saved_blueprints.pop()
-                break
     ai_instruction = json.dumps({
         "user_instruction": payload.instruction,
-        "testability_mode": payload.testability_mode,
         "current_test_plan_draft": current_plan,
-        "saved_testability_blueprints": saved_blueprints,
         "consistency_rules": [
-            "Use only the exact source versions and the current user draft supplied in this request. OFF means no saved Blueprint may be used.",
-            "When enabled, a saved Blueprint is a coverage aid tied to the exact Requirement version; do not regenerate it or assume it is certainly correct.",
+            "Use only the exact requirement versions, acceptance criteria, and current draft supplied in this request.",
             "Use the current Test Plan draft as context for suggestions. Preserve entered values unless the user explicitly applies a field suggestion.",
             "If sources disagree and none explicitly establishes which value governs, report the conflict and ask for clarification; do not silently choose a side or assume the Test Plan is wrong.",
         ],
@@ -918,10 +871,6 @@ async def generate_test_plan_draft_suggestion(project_id, payload, user):
             + ", ".join(unsupported_fields)
         )
         proposal["warnings"] = list(dict.fromkeys(warnings))
-    if len(saved_blueprints) < len(requirement_ids):
-        warnings = list(proposal.get("warnings") or [])
-        warnings.append("Một số yêu cầu chưa có Blueprint đã lưu; kế hoạch vẫn được đề xuất từ yêu cầu đã duyệt.")
-        proposal["warnings"] = list(dict.fromkeys(warnings))
     if not any(
         any(str(item or "").strip() for item in value)
         if isinstance(value, list)
@@ -930,9 +879,7 @@ async def generate_test_plan_draft_suggestion(project_id, payload, user):
         if field_name in {
             "objective", "scope_in", "scope_out", "test_approach", "test_level", "test_types",
             "environment", "entry_criteria", "exit_criteria", "risks", "assumptions",
-            "constraints", "data_sources", "data_preparation", "data_privacy", "data_reset",
-            "role_guidance", "milestones", "deliverables", "tools", "defect_reporting",
-            "defect_classification", "defect_triage", "defect_retest", "defect_closure",
+            "constraints",
         }
     ):
         raise HTTPException(502, detail={"code": "TEST_PLAN_AI_NO_GROUNDED_FIELDS"})
@@ -968,8 +915,6 @@ async def generate_test_plan_draft_suggestion(project_id, payload, user):
     return {
         "project_id": project_id,
         "requirement_version_ids": requirement_ids,
-        "saved_blueprint_refs": [item["blueprint_result_id"] for item in saved_blueprints],
-        "blueprint_assessments": saved_blueprints,
         "suggestion": proposal,
         "evidence": [
             {"artifact_type": item["artifact_type"], "artifact_version_id": item["artifact_version_id"]}

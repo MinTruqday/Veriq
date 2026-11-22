@@ -14,9 +14,7 @@ from src.schemas.ai_runs import (
     AIRunPhase,
     AIRun,
     AIRunStatus,
-    BlueprintSourceRevision,
     DerivationReceipt,
-    ProjectTestabilityBlueprint,
     SourceFact,
 )
 
@@ -464,13 +462,6 @@ class AIRunRepository:
     ) -> None:
         await self.save_source_facts(facts)
         await self.save_receipt(receipt)
-        if receipt.testability_blueprint is not None:
-            await self.save_project_blueprint(
-                receipt.ai_run_id,
-                receipt.project_id,
-                facts,
-                receipt.testability_blueprint.model_dump(mode="json"),
-            )
         fact_ids = [fact.source_fact_id for fact in facts]
         await self._database.ai_run_source_facts.delete_many(
             {
@@ -478,160 +469,6 @@ class AIRunRepository:
                 "_id": {"$nin": fact_ids},
             }
         )
-
-    async def save_project_blueprint(
-        self,
-        ai_run_id: str,
-        project_id: str,
-        facts: list[SourceFact],
-        compilation: dict,
-    ) -> ProjectTestabilityBlueprint:
-        from src.schemas.inference_requirements import TestabilityBlueprintCompilationOutput
-
-        validated = TestabilityBlueprintCompilationOutput.model_validate(compilation)
-        facts_by_reference: dict[str, list[SourceFact]] = {}
-        for fact in facts:
-            if fact.project_id != project_id or fact.ai_run_id != ai_run_id:
-                continue
-            quote_digest = hashlib.sha256(fact.quote.encode("utf-8")).hexdigest()
-            if fact.quote_sha256 and fact.quote_sha256 != quote_digest:
-                raise ValueError("BLUEPRINT_SOURCE_QUOTE_DIGEST_INVALID")
-            if fact.source_start is None or fact.source_end is None:
-                raise ValueError("BLUEPRINT_SOURCE_POSITION_MISSING")
-            reference = fact.artifact_version_id or fact.artifact_id
-            if reference in validated.evidence_refs:
-                facts_by_reference.setdefault(reference, []).append(fact)
-
-        if set(validated.evidence_refs) - set(facts_by_reference):
-            raise ValueError("BLUEPRINT_SOURCE_FACTS_MISSING")
-
-        revisions = []
-        for reference in sorted(validated.evidence_refs):
-            source_facts = facts_by_reference[reference]
-            artifact_ids = {fact.artifact_id for fact in source_facts}
-            artifact_types = {fact.artifact_type for fact in source_facts}
-            if len(artifact_ids) != 1 or len(artifact_types) != 1:
-                raise ValueError("BLUEPRINT_SOURCE_REVISION_AMBIGUOUS")
-            revisions.append(
-                BlueprintSourceRevision(
-                    artifact_type=next(iter(artifact_types)),
-                    artifact_id=next(iter(artifact_ids)),
-                    artifact_version_id=reference,
-                    source_fact_ids=sorted({fact.source_fact_id for fact in source_facts}),
-                    quote_sha256=sorted(
-                        {
-                            hashlib.sha256(fact.quote.encode("utf-8")).hexdigest()
-                            for fact in source_facts
-                        }
-                    ),
-                )
-            )
-
-        source_fact_ids = sorted(
-            {
-                fact_id
-                for revision in revisions
-                for fact_id in revision.source_fact_ids
-            }
-        )
-        digest_input = {
-            "project_id": project_id,
-            "compilation": validated.model_dump(mode="json"),
-            "source_revisions": [
-                {
-                    "artifact_type": item.artifact_type,
-                    "artifact_id": item.artifact_id,
-                    "artifact_version_id": item.artifact_version_id,
-                    "quote_sha256": item.quote_sha256,
-                }
-                for item in revisions
-            ],
-        }
-        source_digest = hashlib.sha256(
-            json.dumps(digest_input, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        ).hexdigest()
-        collection = self._database.project_testability_blueprints
-
-        async def attach_run(existing):
-            if not existing:
-                return None
-            if ai_run_id not in existing.get("ai_run_ids", []):
-                await collection.update_one(
-                    {"_id": existing["_id"]},
-                    {"$addToSet": {"ai_run_ids": ai_run_id}},
-                )
-                existing = await collection.find_one({"_id": existing["_id"]}) or existing
-            return self._parse_project_blueprint(existing)
-
-        existing_run = await collection.find_one(
-            {"project_id": project_id, "ai_run_ids": ai_run_id}
-        )
-        if existing_run:
-            if existing_run.get("source_digest") != source_digest:
-                raise ValueError("AI_RUN_BLUEPRINT_CONFLICT")
-            return self._parse_project_blueprint(existing_run)
-
-        existing_digest = await collection.find_one(
-            {"project_id": project_id, "source_digest": source_digest}
-        )
-        if existing_digest:
-            return await attach_run(existing_digest)
-
-        for _ in range(5):
-            latest = await collection.find_one(
-                {"project_id": project_id}, sort=[("version", DESCENDING)]
-            )
-            version = int((latest or {}).get("version", 0)) + 1
-            record = ProjectTestabilityBlueprint(
-                project_id=project_id,
-                version=version,
-                ai_run_ids=[ai_run_id],
-                source_fact_ids=source_fact_ids,
-                source_revisions=revisions,
-                source_digest=source_digest,
-                compilation=validated,
-            )
-            payload = record.model_dump(mode="python")
-            payload["_id"] = payload.pop("blueprint_id")
-            try:
-                await collection.insert_one(payload)
-                return record
-            except DuplicateKeyError:
-                existing_run = await collection.find_one(
-                    {"project_id": project_id, "ai_run_ids": ai_run_id}
-                )
-                if existing_run:
-                    if existing_run.get("source_digest") != source_digest:
-                        raise ValueError("AI_RUN_BLUEPRINT_CONFLICT")
-                    return self._parse_project_blueprint(existing_run)
-                existing_digest = await collection.find_one(
-                    {"project_id": project_id, "source_digest": source_digest}
-                )
-                if existing_digest:
-                    return await attach_run(existing_digest)
-        raise RuntimeError("PROJECT_BLUEPRINT_VERSION_CONFLICT")
-
-    @staticmethod
-    def _parse_project_blueprint(payload: dict) -> ProjectTestabilityBlueprint:
-        value = dict(payload)
-        value["blueprint_id"] = str(value.pop("_id"))
-        return ProjectTestabilityBlueprint.model_validate(value)
-
-    async def find_project_blueprint_for_run(
-        self, project_id: str, ai_run_id: str
-    ) -> ProjectTestabilityBlueprint | None:
-        value = await self._database.project_testability_blueprints.find_one(
-            {"project_id": project_id, "ai_run_ids": ai_run_id}
-        )
-        return self._parse_project_blueprint(value) if value else None
-
-    async def list_project_blueprints(
-        self, project_id: str, limit: int = 50
-    ) -> list[ProjectTestabilityBlueprint]:
-        values = await self._database.project_testability_blueprints.find(
-            {"project_id": project_id}
-        ).sort([("version", DESCENDING), ("created_at", DESCENDING)]).to_list(length=limit)
-        return [self._parse_project_blueprint(value) for value in values]
 
     async def save_receipt(self, receipt: DerivationReceipt) -> None:
         payload = receipt.model_dump(mode="python")

@@ -15,8 +15,6 @@ from src.schemas.contracts.design import (
     TestCaseVersionDraftInput,
     TestCaseMergeSave,
     TestCaseBatchAccept,
-    TestCaseCustomFieldCreate,
-    TestCaseCustomFieldPatch,
 )
 from src.schemas.contracts.project import ProjectArchiveInput
 from src.schemas.contracts.requirements import ReviewTransitionInput
@@ -68,48 +66,7 @@ from src.modules.design.services.test_scenario import (
     update_test_scenario_record,
     transition_test_scenario_record,
 )
-from src.modules.design.services.test_case_custom_fields import (
-    create_test_case_custom_field,
-    list_all_test_case_custom_fields,
-    list_test_case_custom_fields,
-    update_test_case_custom_field,
-)
-
 router = APIRouter(prefix="/kiem-thu", tags=["Thiết kế kiểm thử"])
-
-
-@router.get("/du-an/{project_id}/truong-ca-kiem-thu")
-async def list_test_case_fields(project_id: str, user: CurrentUser = Depends(get_current_user)):
-    return envelope(await list_test_case_custom_fields(project_id, user))
-
-
-@router.get("/du-an/{project_id}/truong-ca-kiem-thu/quan-ly")
-async def list_managed_test_case_fields(
-    project_id: str, user: CurrentUser = Depends(get_current_user)
-):
-    return envelope(await list_all_test_case_custom_fields(project_id, user))
-
-
-@router.post("/du-an/{project_id}/truong-ca-kiem-thu", status_code=201)
-async def create_test_case_field(
-    project_id: str,
-    payload: TestCaseCustomFieldCreate,
-    user: CurrentUser = Depends(get_current_user),
-):
-    return envelope(await create_test_case_custom_field(project_id, payload, user))
-
-
-@router.patch("/du-an/{project_id}/truong-ca-kiem-thu/{field_id}")
-async def update_test_case_field(
-    project_id: str,
-    field_id: str,
-    payload: TestCaseCustomFieldPatch,
-    user: CurrentUser = Depends(get_current_user),
-):
-    return envelope(
-        await update_test_case_custom_field(project_id, field_id, payload, user),
-        revision=payload.expected_revision + 1,
-    )
 
 
 @router.get("/ban-nhap-ca-kiem-thu/{draft_id}/so-sanh")
@@ -516,8 +473,6 @@ async def generate_project_test_cases(
             count_per_category=payload.count_per_category,
             max_cases=payload.max_cases,
             instruction=payload.instruction,
-            challenge_hypotheses=payload.challenge_hypotheses,
-            challenge_suite_signature=payload.challenge_suite_signature,
             preview_only=payload.preview_only,
         ),
         user,

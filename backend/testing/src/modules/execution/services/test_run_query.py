@@ -14,22 +14,6 @@ from src.core.common import (
 from src.repositories.test_run import test_run_repository
 
 
-def _public_assignment_decisions(run):
-    decisions = {}
-    for version_id, decision in (run.get("test_case_assignment_decisions") or {}).items():
-        safe_decision = dict(decision)
-        safe_decision["matched_skill_evidence"] = [
-            {
-                key: item[key]
-                for key in ("name", "level", "source_kind", "confirmed")
-                if key in item
-            }
-            for item in decision.get("matched_skill_evidence") or []
-        ]
-        decisions[version_id] = safe_decision
-    return decisions
-
-
 async def list_test_run_records(
     project_id,
     user,
@@ -104,12 +88,7 @@ async def get_test_run_record(run_id, user):
     defects = await test_run_repository.list_defects_for_results(
         run["project_id"], [item["_id"] for item in results], 10000
     )
-    decision_assignees = {
-        decision.get("assignee_id")
-        for decision in (run.get("test_case_assignment_decisions") or {}).values()
-        if decision.get("assignee_id")
-    }
-    assigned_users = set((run.get("test_case_assignments") or {}).values()) | decision_assignees
+    assigned_users = set((run.get("test_case_assignments") or {}).values())
     try:
         identities = await load_user_identities(assigned_users)
     except HTTPException as error:
@@ -118,7 +97,6 @@ async def get_test_run_record(run_id, user):
         identities = {}
     return {
         **run,
-        "test_case_assignment_decisions": _public_assignment_decisions(run),
         "test_case_versions": versions,
         "results": results,
         "defects": defects,
@@ -151,7 +129,6 @@ async def get_test_result_record(result_id, user):
         **result,
         "test_run": {
             **run,
-            "test_case_assignment_decisions": _public_assignment_decisions(run),
         },
         "test_case_version": versions[0] if versions else None,
         "defects": defects,

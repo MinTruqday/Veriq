@@ -18,19 +18,6 @@ class DelegatedJobEnqueueInput(BaseModel):
     model_version: str = Field(min_length=1, max_length=200)
     payload: dict[str, Any] = Field(default_factory=dict)
 
-class TestDesignChallengeInput(BaseModel):
-    technique: Literal[
-        "equivalence_partitioning", "boundary_value", "decision_table",
-        "state_transition", "error_guessing",
-    ]
-    source_ref: str = Field(min_length=1, max_length=200)
-    source_quote: str = Field(min_length=2, max_length=1000)
-    hypothetical_fault: str = Field(min_length=2, max_length=2000)
-    distinguishing_input: str = Field(min_length=2, max_length=2000)
-    expected_result: str = Field(min_length=2, max_length=2000)
-    existing_case_refs: list[str] = Field(min_length=1, max_length=100)
-
-
 class GenerateInput(BaseModel):
     categories: list[str] = Field(default_factory=list, max_length=20)
     acceptance_criterion_ids: list[str] = Field(default_factory=list, max_length=500)
@@ -41,10 +28,7 @@ class GenerateInput(BaseModel):
     count_per_category: int = Field(default=1, ge=1, le=20)
     max_cases: int | None = Field(default=None, ge=1, le=100)
     instruction: str = Field(default="", max_length=5000)
-    challenge_hypotheses: list[TestDesignChallengeInput] = Field(default_factory=list, max_length=5)
-    challenge_suite_signature: str | None = Field(default=None, max_length=128)
     preview_only: bool = False
-    testability_mode: Literal["OFF", "BLUEPRINT_ONLY", "BLUEPRINT_BENCHMARK"] = "OFF"
 
 
 class TechniqueRecommendationInput(BaseModel):

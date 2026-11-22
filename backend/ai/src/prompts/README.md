@@ -13,12 +13,8 @@ Prompt text and prompt-building logic belong to the capability module that owns 
 | `test_generation.py` | Requirement test-generation instructions | Requirement ingestion and change workflows | Generate source-grounded Test Cases for the requested scope and avoid duplicates. |
 | `test_design.py` | Test Case, technique, and condition contracts | `prompts/testing.py`, `tools/test_design_tools.py` | Define test-design output contracts and evidence rules. |
 | `quality_capabilities.py` | Security, performance, automation-script, analysis, report, and assistance contracts | `prompts/testing.py` | Define specialized testing and reporting outputs. |
-| `testability_blueprint.py` | `TESTABILITY_BLUEPRINT_COMPILATION` | `blueprint/compiler.py` | Compile verified facts and exact quotations into test obligations and clarification questions. |
-| `testability_blueprint_review.py` | Blueprint grounding review | `blueprint/compiler.py` | Identify unsupported claims without rewriting the candidate Blueprint. |
-| `testability_benchmark.py` | Clarification and direct-generation baselines | `benchmark/pipelines.py` | Compare evaluation methods; it is not required for ordinary project work. |
 | `change_simulation.py` | Change-impact report contract | `agents/runner/nodes.py`, `prompts/testing.py` | Compare a proposed source change with the exact baseline and linked Test Case versions in read-only mode. |
 | `project_assistance.py` | Project-question contract | `prompts/testing.py` | Answer project questions only from retrieved evidence. |
-| `staffing_recommendation.py` | Staffing recommendation prompt | `services/staffing_recommendation.py` | Rank eligible candidates using role, skills, experience, availability, and workload. Compensation is not sent to the model. |
 | `defect_analysis.py` | Causal hypothesis instruction | `tools/execution_workflows.py` | Produce evidence-grounded hypotheses without presenting an unconfirmed cause as fact. |
 | `requirement_analysis.py` | Requirement quality-analysis instruction | `tools/requirement_change_workflow.py` | Analyze Requirement quality within the explicitly requested workflow. |
 | `prompt_data.py` | `prompt_json` | Prompt builders | Serialize untrusted data safely before embedding it in a prompt. |

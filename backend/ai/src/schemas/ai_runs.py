@@ -6,7 +6,6 @@ from uuid import uuid4
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from src.schemas.agent import AgentResult, AgentTask, EvidenceItem, VeriqRunState
-from src.schemas.inference_requirements import TestabilityBlueprintCompilationOutput
 
 
 def utc_now() -> datetime:
@@ -266,20 +265,6 @@ class DerivationStep(BaseModel):
     reason_code: str | None = None
 
 
-class BlueprintClaimLineage(BaseModel):
-    claim_type: Literal["OBLIGATION", "CLARIFICATION"]
-    claim_key: str = Field(min_length=1, max_length=160)
-    source_fact_ids: list[str] = Field(min_length=1)
-    source_quote_sha256: str = Field(min_length=64, max_length=64)
-
-
-class BlueprintArtifactLineage(BaseModel):
-    obligation_key: str = Field(min_length=1, max_length=160)
-    source_fact_ids: list[str] = Field(min_length=1)
-    artifact_type: Literal["requirement_version", "test_case", "test_case_version"]
-    artifact_id: str = Field(min_length=1, max_length=200)
-
-
 class DerivationReceipt(BaseModel):
     receipt_id: str = Field(default_factory=lambda: f"DR-{uuid4().hex}")
     ai_run_id: str
@@ -288,45 +273,10 @@ class DerivationReceipt(BaseModel):
     transformation_steps: list[str] = Field(default_factory=list)
     steps: list[DerivationStep] = Field(default_factory=list)
     output_evidence_refs: list[str] = Field(default_factory=list)
-    testability_blueprint: TestabilityBlueprintCompilationOutput | None = None
-    blueprint_claim_lineage: list[BlueprintClaimLineage] = Field(default_factory=list)
-    blueprint_artifact_lineage: list[BlueprintArtifactLineage] = Field(default_factory=list)
     model_metadata: dict[str, Any] = Field(default_factory=dict)
     outcome: str
     created_at: datetime = Field(default_factory=utc_now)
 
-
-class BlueprintSourceRevision(BaseModel):
-    artifact_type: str = Field(min_length=1, max_length=100)
-    artifact_id: str = Field(min_length=1, max_length=200)
-    artifact_version_id: str = Field(min_length=1, max_length=200)
-    source_fact_ids: list[str] = Field(min_length=1)
-    quote_sha256: list[str] = Field(min_length=1)
-
-
-class ProjectTestabilityBlueprint(BaseModel):
-    """Immutable, project-scoped history of source-grounded blueprint compilations."""
-
-    blueprint_id: str = Field(default_factory=lambda: f"PTB-{uuid4().hex}")
-    project_id: str = Field(min_length=1, max_length=200)
-    version: int = Field(ge=1)
-    ai_run_ids: list[str] = Field(min_length=1)
-    source_fact_ids: list[str] = Field(min_length=1)
-    source_revisions: list[BlueprintSourceRevision] = Field(min_length=1)
-    source_digest: str = Field(min_length=64, max_length=64)
-    compilation: TestabilityBlueprintCompilationOutput
-    created_at: datetime = Field(default_factory=utc_now)
-
-    @model_validator(mode="after")
-    def validate_revision_references(self):
-        references = {revision.artifact_version_id for revision in self.source_revisions}
-        if not set(self.compilation.evidence_refs).issubset(references):
-            raise ValueError("blueprint_evidence_must_resolve_to_source_revision")
-        if not set(self.source_fact_ids).issuperset(
-            fact_id for revision in self.source_revisions for fact_id in revision.source_fact_ids
-        ):
-            raise ValueError("blueprint_source_fact_reference_invalid")
-        return self
 
 
 class AIRun(BaseModel):

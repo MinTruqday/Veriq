@@ -3,21 +3,20 @@
 
 TEST_CASE_GENERATION_CONTRACT = """<test_case_generation_rules>
 When categories are supplied, return exactly the requested count for each category. When selected techniques are supplied without categories, generate only evidence-supported cases up to the requested maximum and label only techniques each case actually demonstrates.
-When the instruction includes a saved Blueprint or an approved upstream Test Plan/Scenario, use it to check coverage and consistency without rerunning or changing it. Requirement evidence remains authoritative. Report concrete conflicts in warnings, and do not silently resolve a conflict or turn upstream suggestions into new business rules.
+When the instruction includes an approved upstream Test Plan or Scenario, use it to check coverage and consistency. Requirement evidence remains authoritative. Report concrete conflicts in warnings, and do not silently resolve a conflict or turn upstream suggestions into new business rules.
 Every case must contain a concrete input, a verifiable outcome, a source reference, and an exact contiguous quotation that directly supports the behavior. Use only acceptance-criterion identifiers present in the supplied evidence.
 When the instruction supplies the active project's risk and priority levels, assign each case only a listed level when the supplied evidence supports the assessment; otherwise use "unassessed". Never invent a level or use defect-severity levels as risk levels. When no project levels are supplied, use "unassessed".
-Set required_skills only when the source explicitly names a skill needed to execute the case. Use the exact skill wording found inside one of that case's cited quotations. Do not infer a skill from the test category, technique, API, or technology. Leave the list empty when no skill is explicitly supported.
+Only describe alternate or exception flows supported by the cited source. Leave them empty if absent. A branch requiring its own execution result should be a separate case.
 For a step with no separate test data, use an empty object for its test_data field.
 Derive equivalence classes, boundaries, decision rules, states, and error hypotheses only from evidence. A successful flow does not establish undocumented failure behavior. If a technique needs an undocumented prerequisite, omit it and name the missing information in warnings. Use interface-neutral actions when the source does not identify an interface.
-Challenge hypotheses are unverified proposals, never product facts or evidence. Include a challenge only when a cited source supports both a distinguishing input and the expected outcome, and when the proposed case differs concretely from every cited existing case. Record its technique only when the case executes that distinguishing input and checks the source-supported outcome. Never copy or paraphrase the hypothetical fault into ordinary case fields. If the evidence cannot support a distinguishing case, omit it and explain the limitation.
 Do not invent values, behavior, generic templates, messages, limits, or implementation details. Do not create a separate duplicate case for each technique when one case's same steps, input, and expected result genuinely demonstrate multiple techniques.
 </test_case_generation_rules>"""
 
 
 TECHNIQUE_RECOMMENDATION_CONTRACT = """<technique_recommendation_rules>
-Assess each supplied test-design technique against the cited Requirement evidence and existing coverage. Only evidence explicitly typed as an existing Test Case counts as active coverage; drafts are not active coverage and cannot be cited as existing cases in a challenge.
+Assess each supplied test-design technique against the cited Requirement evidence and existing coverage. Only evidence explicitly typed as an existing Test Case counts as active coverage; drafts are not active coverage.
 Recommend a technique only when the source defines enough input classes, rules, boundaries, or states to apply it concretely. Otherwise mark it possible, insufficient_evidence, or not_applicable and state the missing prerequisite. Expected and incremental coverage must remain source-supported. Do not assume empty input, unchanged data, extra states, reverse transitions, numeric limits, or defect history.
-For each supported technique, propose at most one challenge only if a concrete hypothetical fault could pass at least one cited existing case while violating an exact source quotation. Copy the quote as one contiguous exact substring of the cited source, without deleting or joining fragments. Cite only existing case identifiers present in evidence. A challenge is an unverified hypothesis, not a defect finding or completed test. Omit it when the source cannot establish a distinguishing input and correct outcome. This capability must never create or save Test Cases.
+This capability must never create or save Test Cases.
 </technique_recommendation_rules>"""
 
 

@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Archive,
   Copy,
@@ -45,12 +45,9 @@ import ApiArtifactsPanel from "./test-design/ApiArtifactsPanel";
 import DataSetsPanel from "./test-design/DataSetsPanel";
 import ScenariosPanel from "./test-design/ScenariosPanel";
 import ManualTestGenerationPanel from "../../components/ManualTestGenerationPanel";
-import TestCaseCreateModal from "./test-design/TestCaseCreateModal";
+import TestCaseCreateForm from "./test-design/TestCaseCreateForm";
 import RequirementCoverageSelector from "./test-design/RequirementCoverageSelector";
-import TestCaseOwnerRecommendation from "./test-design/TestCaseOwnerRecommendation";
 import TestSetEditorModal from "./test-design/TestSetEditorModal";
-import TestCaseCustomValues from "./test-design/TestCaseCustomValues";
-import TestCaseCustomFieldManager from "./test-design/TestCaseCustomFieldManager";
 import TestCaseCompareWorkspace from "./test-design/TestCaseCompareWorkspace";
 import StructuredValueEditor from "../../components/StructuredValueEditor";
 import {
@@ -95,25 +92,7 @@ function draftConditionValues(draft, conditions, field, currentValue) {
   return [...new Set([...values, String(currentValue || "").trim()].filter(Boolean))];
 }
 
-function ChallengeProvenance({ challenges }) {
-  return (
-    <div className="space-y-3 text-sm">
-      {challenges.map((challenge) => (
-        <div className="rounded-control border border-border p-3" key={challenge.technique}>
-          <p>Kỹ thuật {valueLabel(challenge.technique)}</p>
-          <p>Hành vi sai giả định {challenge.hypothetical_fault}</p>
-          <p>Đầu vào phân biệt {challenge.distinguishing_input}</p>
-          <p>Kết quả cần đối chiếu {challenge.expected_result}</p>
-          <p>Đoạn nguồn {challenge.source_quote}</p>
-          <p>Ca được đối chiếu {challenge.existing_case_refs.join("  ")}</p>
-        </div>
-      ))}
-      <p className="text-ink-muted">Đây là giả thuyết thiết kế chưa chứng minh lỗi thực tế</p>
-    </div>
-  );
-}
-
-export default function TestDesignPage({ project, workspaceView }) {
+export default function TestDesignPage({ project, workspaceView, section }) {
   const dateTimeOptions = useDateTimeOptions(project);
   const formatDate = (value) => formatDateValue(value, dateTimeOptions);
   const currentUserId = project.current_membership?.user_id;
@@ -125,6 +104,9 @@ export default function TestDesignPage({ project, workspaceView }) {
       !(item.content_author_ids || []).includes(currentUserId));
   const { ask, dialog } = useActionDialog();
   const pathname = usePathname();
+  const router = useRouter();
+  const caseListPath = `/du-an/${project._id}/ca-kiem-thu`;
+  const creatingCase = workspaceView === "cases" && section?.[0] === "tao-moi";
   const searchParams = useSearchParams();
   const linkedCaseId = searchParams.get("case") || "";
   const [requirements, setRequirements] = useState([]);
@@ -138,10 +120,8 @@ export default function TestDesignPage({ project, workspaceView }) {
   const [suiteSearch, setSuiteSearch] = useState("");
   const [testSetDialog, setTestSetDialog] = useState(null);
   const [repositoryNodes, setRepositoryNodes] = useState([]);
-  const [testCaseCustomFields, setTestCaseCustomFields] = useState([]);
   const [projectMembers, setProjectMembers] = useState([]);
   const [projectMembersUnavailable, setProjectMembersUnavailable] = useState(false);
-  const [customFieldManagerOpen, setCustomFieldManagerOpen] = useState(false);
   const [reusableSteps, setReusableSteps] = useState([]);
   const [selectedTestIds, setSelectedTestIds] = useState([]);
   const [testPage, setTestPage] = useState(1);
@@ -210,7 +190,6 @@ export default function TestDesignPage({ project, workspaceView }) {
   const loadSequence = useRef(0);
   const currentProjectId = useRef(project._id);
   currentProjectId.current = project._id;
-  const [creatingTest, setCreatingTest] = useState(false);
   const [creatingScenario, setCreatingScenario] = useState(false);
   const [creatingDataSet, setCreatingDataSet] = useState(false);
   const [savingCreation, setSavingCreation] = useState(false);
@@ -226,7 +205,6 @@ export default function TestDesignPage({ project, workspaceView }) {
     ? scenarios
     : assignedScenarios.filter((scenario) => canDraft("testscenario.update", scenario));
   const canCreateCase = canCreateUnassignedCase || availableScenarios.length > 0;
-  const canManageTestCaseFields = can("testcase.template.manage");
   const designSectionItems = useMemo(() => testDesignSectionItems(project._id), [project._id]);
   const permissions = useMemo(
     () => project.current_permissions || [],
@@ -266,10 +244,8 @@ export default function TestDesignPage({ project, workspaceView }) {
       pendingGroupRequest.current = null;
       setTestImport(null);
       setTestSetDialog(null);
-      setCreatingTest(false);
       setCreatingScenario(false);
       setCreatingDataSet(false);
-      setCustomFieldManagerOpen(false);
       setSavingCreation(false);
       setForm(createTestCaseForm());
       setScenarioForm(createScenarioForm());
@@ -286,7 +262,6 @@ export default function TestDesignPage({ project, workspaceView }) {
       setSuiteSearch("");
       setRepositoryNodes([]);
       setReusableSteps([]);
-      setTestCaseCustomFields([]);
       setProjectMembers([]);
       setProjectMembersUnavailable(false);
       setApiArtifacts([]);
@@ -325,7 +300,6 @@ export default function TestDesignPage({ project, workspaceView }) {
         suiteValues,
         repositoryValues,
         reusableStepValues,
-        customFieldValues,
         apiArtifactValues,
         operationValues,
         memberResult,
@@ -369,9 +343,6 @@ export default function TestDesignPage({ project, workspaceView }) {
         access.canLoadRepository
           ? testingApi.listReusableTestSteps(project._id)
           : Promise.resolve([]),
-        showCases && permissions.includes("testcase.read")
-          ? testingApi.listTestCaseCustomFields(project._id)
-          : Promise.resolve([]),
         showApi && permissions.includes("apiartifact.read")
           ? testingApi.listApiArtifacts(project._id)
           : Promise.resolve([]),
@@ -408,7 +379,6 @@ export default function TestDesignPage({ project, workspaceView }) {
       setSuites(suiteValues);
       setRepositoryNodes(repositoryValues);
       setReusableSteps(reusableStepValues);
-      setTestCaseCustomFields(customFieldValues);
       setProjectMembers((memberResult.items || []).filter((item) => item.status === "ACTIVE"));
       setProjectMembersUnavailable(memberResult.unavailable);
       setApiArtifacts(apiArtifactValues);
@@ -551,8 +521,6 @@ export default function TestDesignPage({ project, workspaceView }) {
       risk: selectedDraft.risk,
       test_level: selectedDraft.test_level || "",
       test_kind: selectedDraft.test_kind || "",
-      expected_impact: selectedDraft.expected_impact || UNASSESSED_VALUE,
-      assessment_reason: selectedDraft.assessment_reason || "",
       scenarioId: selectedDraft.scenario_id || "",
       requirementVersionIds: selectedDraft.requirement_version_ids || [],
       acceptanceCriterionIds: selectedDraft.acceptance_criterion_ids || [],
@@ -572,7 +540,6 @@ export default function TestDesignPage({ project, workspaceView }) {
             })),
           }
         : null,
-      requiredSkills: (selectedDraft.required_skills || []).join(", "),
       objective: docText(selectedDraft.objective_doc),
       preconditions: docText(selectedDraft.preconditions_doc),
       steps: (selectedDraft.steps || []).map((step) => ({
@@ -584,6 +551,8 @@ export default function TestDesignPage({ project, workspaceView }) {
       testData: selectedDraft.test_data || {},
       expected: docText(selectedDraft.expected_result_doc),
       postconditions: docText(selectedDraft.postconditions_doc),
+      alternateFlows: docText(selectedDraft.alternate_flows_doc),
+      exceptionFlows: docText(selectedDraft.exception_flows_doc),
       techniques: (selectedDraft.techniques || []).join(", "),
       tags: (selectedDraft.tags || []).join(", "),
       ownerId: selectedDraft.owner_id || "",
@@ -591,7 +560,6 @@ export default function TestDesignPage({ project, workspaceView }) {
       attachments: selectedDraft.attachments || [],
       dataSetVersionIds: selectedDraft.data_set_version_ids || [],
       testConditionIds: selectedDraft.test_condition_ids || [],
-      customValues: selectedDraft.custom_values || {},
     });
     setDraftDirty(false);
     setDraftSaveState("saved");
@@ -653,17 +621,10 @@ export default function TestDesignPage({ project, workspaceView }) {
         risk: form.risk,
         test_level: form.testLevel || null,
         test_kind: form.testKind || null,
-        expected_impact: form.expectedImpact,
-        assessment_reason: form.assessmentReason,
-        required_skills: form.requiredSkills
-          .split(",")
-          .map((value) => value.trim())
-          .filter(Boolean),
         owner_id:
           permissions.includes("project.members.read") && !projectMembersUnavailable
             ? form.ownerId || null
             : null,
-        custom_values: form.customValues || {},
         objective_doc: form.objective,
         preconditions_doc: form.preconditions,
         steps:
@@ -679,6 +640,8 @@ export default function TestDesignPage({ project, workspaceView }) {
         test_data: testDataEntriesToObject(form.testData),
         expected_result_doc: form.expectedResult,
         postconditions_doc: form.postconditions,
+        alternate_flows_doc: form.alternateFlows,
+        exception_flows_doc: form.exceptionFlows,
         tags: form.tags
           .split(",")
           .map((value) => value.trim())
@@ -724,7 +687,7 @@ export default function TestDesignPage({ project, workspaceView }) {
             : null,
       });
       setForm(createTestCaseForm());
-      setCreatingTest(false);
+      router.replace(caseListPath);
     });
   const createScenario = (event) =>
     submitCreation(event, async () => {
@@ -748,59 +711,6 @@ export default function TestDesignPage({ project, workspaceView }) {
       setDataSetForm(createDataSetForm());
       setCreatingDataSet(false);
     });
-  const configureTestCaseField = async () => {
-    await ask({
-      title: "Thêm trường mở rộng cho ca kiểm thử",
-      description: "Trường được lưu có kiểu dữ liệu và áp dụng cho các ca trong dự án này.",
-      confirmLabel: "Tạo trường",
-      fields: [
-        { name: "key", label: "Mã trường (chữ thường, số, gạch dưới)", required: true },
-        { name: "label", label: "Tên hiển thị", required: true },
-        {
-          name: "value_type",
-          label: "Kiểu dữ liệu",
-          options: [
-            { value: "text", label: "Văn bản" },
-            { value: "number", label: "Số" },
-            { value: "boolean", label: "Có / Không" },
-            { value: "date", label: "Ngày" },
-            { value: "choice", label: "Danh sách lựa chọn" },
-          ],
-        },
-        {
-          name: "required",
-          label: "Bắt buộc khi duyệt",
-          options: [
-            { value: "false", label: "Không" },
-            { value: "true", label: "Có" },
-          ],
-        },
-        {
-          name: "choices",
-          label: "Các lựa chọn (mỗi dòng một giá trị, chỉ dùng cho kiểu danh sách)",
-          multiline: true,
-        },
-      ],
-      onConfirm: async (answer) => {
-        try {
-          const choices = (answer.choices || "")
-            .split("\n")
-            .map((value) => value.trim())
-            .filter(Boolean);
-          await testingApi.createTestCaseCustomField(project._id, {
-            key: answer.key.trim(),
-            label: answer.label.trim(),
-            value_type: answer.value_type,
-            required: answer.required === "true",
-            choices,
-          });
-          await load();
-        } catch (reason) {
-          throw new Error(messageOf(reason));
-        }
-      },
-    });
-  };
   const createTestSet = async () => {
     setTestSetDialog({ mode: "create", suite: null });
   };
@@ -1206,6 +1116,41 @@ export default function TestDesignPage({ project, workspaceView }) {
       </WorkspacePage>
     );
   }
+  if (creatingCase) {
+    return (
+      <WorkspacePage title="Tạo ca kiểm thử">
+        {error && <ErrorState message={error} />}
+        {canCreateCase ? (
+          <Panel title="Thông tin ca kiểm thử">
+            <TestCaseCreateForm
+              onClose={() => router.push(caseListPath)}
+              saving={savingCreation}
+              form={form}
+              setForm={setForm}
+              dataSets={dataSets}
+              testConditions={testConditions}
+              strategyTestLevels={strategyTestLevels}
+              strategyTestTypes={strategyTestTypes}
+              strategyPriorityLevels={strategyPriorityLevels}
+              strategyRiskLevels={strategyRiskLevels}
+              repositoryNodes={repositoryNodes}
+              reusableSteps={reusableSteps}
+              requirements={requirements}
+              scenarios={availableScenarios}
+              scenarioRequired={!canCreateUnassignedCase}
+              members={projectMembers}
+              canReadMembers={permissions.includes("project.members.read")}
+              membersUnavailable={projectMembersUnavailable}
+              onRetryMembers={() => load()}
+              onSubmit={create}
+            />
+          </Panel>
+        ) : (
+          <ErrorState message="Bạn không có quyền tạo ca kiểm thử trong dự án này." />
+        )}
+      </WorkspacePage>
+    );
+  }
   return (
     <WorkspacePage
       title={pageTitle}
@@ -1213,24 +1158,13 @@ export default function TestDesignPage({ project, workspaceView }) {
         <div className="flex flex-wrap items-center gap-3">
           <ProjectCrumb projectId={project._id} />
           {showCases && canCreateCase && (
-            <button className="apple-button" type="button" onClick={() => setCreatingTest(true)}>
+            <button
+              className="apple-button"
+              type="button"
+              onClick={() => router.push(`${caseListPath}/tao-moi`)}
+            >
               Tạo ca kiểm thử
             </button>
-          )}
-          {showCases && canManageTestCaseFields && (
-            <>
-              <button className="secondary-button" type="button" onClick={configureTestCaseField}>
-                Thêm trường cho ca
-              </button>
-              <button
-                className="secondary-button"
-                type="button"
-                aria-expanded={customFieldManagerOpen}
-                onClick={() => setCustomFieldManagerOpen((open) => !open)}
-              >
-                {customFieldManagerOpen ? "Đóng quản lý trường" : "Quản lý trường"}
-              </button>
-            </>
           )}
         </div>
       }
@@ -1260,20 +1194,6 @@ export default function TestDesignPage({ project, workspaceView }) {
             items={testCaseSubsectionItems(project._id).filter((item) => item.id !== "cases")}
           />
         </div>
-      )}
-      {showCases && canManageTestCaseFields && customFieldManagerOpen && (
-        <TestCaseCustomFieldManager
-          projectId={project._id}
-          onUpdated={(updatedField) =>
-            setTestCaseCustomFields((current) =>
-              updatedField.status === "ACTIVE"
-                ? current.some((field) => field._id === updatedField._id)
-                  ? current.map((field) => (field._id === updatedField._id ? updatedField : field))
-                  : [...current, updatedField]
-                : current.filter((field) => field._id !== updatedField._id),
-            )
-          }
-        />
       )}
       {showAdequacy && selectedRequirement && (
         <TestAdequacyPanel
@@ -2073,18 +1993,6 @@ export default function TestDesignPage({ project, workspaceView }) {
             ]}
           />
           {testVersions
-            .filter((version) => version.challenge_hypotheses?.length)
-            .map((version) => (
-              <details className="border-t border-border p-4 text-sm" key={version._id}>
-                <summary className="cursor-pointer font-medium">
-                  Giả thuyết thiết kế của phiên bản v{version.version}
-                </summary>
-                <div className="mt-3">
-                  <ChallengeProvenance challenges={version.challenge_hypotheses} />
-                </div>
-              </details>
-            ))}
-          {testVersions
             .filter((version) => version.evidence_quotes?.length)
             .map((version) => (
               <details
@@ -2139,12 +2047,6 @@ export default function TestDesignPage({ project, workspaceView }) {
             <div className="border-b border-border px-5 py-3">
               <ContentOriginBadge origin={selectedDraft.origin || "manual"} />
             </div>
-            {!!selectedDraft.challenge_hypotheses?.length && (
-              <div className="space-y-2 border-b border-border p-5 text-sm">
-                <p className="font-medium">Giả thuyết dùng để thiết kế ca này</p>
-                <ChallengeProvenance challenges={selectedDraft.challenge_hypotheses} />
-              </div>
-            )}
             {!!selectedDraft.evidence_quotes?.length && (
               <div className="space-y-2 border-b border-border p-5 text-sm">
                 <p className="font-medium">Căn cứ nguồn của ca kiểm thử</p>
@@ -2171,15 +2073,6 @@ export default function TestDesignPage({ project, workspaceView }) {
                     className="apple-input mt-2"
                     value={draftEdit.title}
                     onChange={(event) => changeDraftEdit({ title: event.target.value })}
-                  />
-                </label>
-                <label className="field-label lg:col-span-2">
-                  Kỹ năng cần có để thực hiện ca (phân cách bằng dấu phẩy)
-                  <input
-                    className="apple-input mt-2"
-                    value={draftEdit.requiredSkills}
-                    onChange={(event) => changeDraftEdit({ requiredSkills: event.target.value })}
-                    placeholder="Ví dụ: kiểm thử API, bảo mật"
                   />
                 </label>
                 <div className="grid gap-3 lg:col-span-2 sm:grid-cols-3">
@@ -2263,26 +2156,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                       </span>
                     )}
                   </label>
-                  <label className="field-label">
-                    Ảnh hưởng dự kiến
-                    <input
-                      aria-label="Ảnh hưởng dự kiến bản nháp"
-                      className="apple-input mt-2"
-                      maxLength={100}
-                      value={draftEdit.expected_impact ? valueLabel(draftEdit.expected_impact) : ""}
-                      onChange={(event) => changeDraftEdit({ expected_impact: event.target.value })}
-                    />
-                  </label>
                 </div>
-                <label className="field-label lg:col-span-2">
-                  Lý do đánh giá ảnh hưởng
-                  <textarea
-                    className="apple-input mt-2 min-h-20"
-                    maxLength={2000}
-                    value={draftEdit.assessment_reason}
-                    onChange={(event) => changeDraftEdit({ assessment_reason: event.target.value })}
-                  />
-                </label>
                 <div className="grid gap-4 lg:col-span-2">
                   <label className="field-label">
                     Kịch bản liên kết
@@ -2605,6 +2479,19 @@ export default function TestDesignPage({ project, workspaceView }) {
                     onChange={(event) => changeDraftEdit({ postconditions: event.target.value })}
                   />
                 </label>
+                {[
+                  ["alternateFlows", "Luồng thay thế"],
+                  ["exceptionFlows", "Luồng ngoại lệ"],
+                ].map(([field, label]) => (
+                  <label className="field-label" key={field}>
+                    {label}
+                    <textarea
+                      className="apple-input mt-2 min-h-24"
+                      value={draftEdit[field]}
+                      onChange={(event) => changeDraftEdit({ [field]: event.target.value })}
+                    />
+                  </label>
+                ))}
                 <label className="field-label">
                   Kỹ thuật kiểm thử phân tách bằng dấu phẩy
                   <input
@@ -2683,25 +2570,10 @@ export default function TestDesignPage({ project, workspaceView }) {
                       </p>
                     )}
                   </label>
-                  {permissions.includes("project.members.read") && (
-                    <TestCaseOwnerRecommendation
-                      projectId={project._id}
-                      draftId={selectedDraft._id}
-                      requiredSkills={draftEdit.requiredSkills}
-                      onSelect={(candidate) => changeDraftEdit({ ownerId: candidate.user_id })}
-                    />
-                  )}
                   <p className="mt-2 text-sm text-ink-muted">
                     Người phụ trách gắn với bản Test Case; người thực chạy được phân công riêng theo
                     từng Test Run.
                   </p>
-                </div>
-                <div className="lg:col-span-2">
-                  <TestCaseCustomValues
-                    fields={testCaseCustomFields}
-                    values={draftEdit.customValues || {}}
-                    onChange={(customValues) => changeDraftEdit({ customValues })}
-                  />
                 </div>
                 <div className="min-w-0">
                   <FilePicker
@@ -2760,6 +2632,8 @@ export default function TestDesignPage({ project, workspaceView }) {
                   ["Điều kiện trước", draftEdit.preconditions],
                   ["Kết quả mong đợi", draftEdit.expected],
                   ["Điều kiện sau", draftEdit.postconditions],
+                  ["Luồng thay thế", draftEdit.alternateFlows],
+                  ["Luồng ngoại lệ", draftEdit.exceptionFlows],
                   ["Kỹ thuật kiểm thử", draftEdit.techniques],
                   ["Nhãn", draftEdit.tags],
                   [
@@ -2771,14 +2645,6 @@ export default function TestDesignPage({ project, workspaceView }) {
                   <div className="min-w-0 space-y-1" key={label}>
                     <dt className="text-xs font-semibold text-ink-muted">{label}</dt>
                     <dd className="break-words text-sm text-ink">{value || "Chưa có thông tin"}</dd>
-                  </div>
-                ))}
-                {testCaseCustomFields.map((field) => (
-                  <div className="min-w-0 space-y-1" key={field._id}>
-                    <dt className="text-xs font-semibold text-ink-muted">{field.label}</dt>
-                    <dd className="break-words text-sm text-ink">
-                      {String(draftEdit.customValues?.[field.key] ?? "Chưa có thông tin")}
-                    </dd>
                   </div>
                 ))}
                 <div className="space-y-2 sm:col-span-2">
@@ -2876,35 +2742,6 @@ export default function TestDesignPage({ project, workspaceView }) {
             setDrafts((values) => values.map((item) => (item._id === draft._id ? draft : item)));
             setTestLint(null);
           }}
-        />
-      )}
-      {showCases && canCreateCase && (
-        <TestCaseCreateModal
-          projectId={project._id}
-          isOpen={creatingTest}
-          onClose={() => {
-            if (!savingCreation) setCreatingTest(false);
-          }}
-          saving={savingCreation}
-          form={form}
-          setForm={setForm}
-          dataSets={dataSets}
-          testConditions={testConditions}
-          strategyTestLevels={strategyTestLevels}
-          strategyTestTypes={strategyTestTypes}
-          strategyPriorityLevels={strategyPriorityLevels}
-          strategyRiskLevels={strategyRiskLevels}
-          repositoryNodes={repositoryNodes}
-          reusableSteps={reusableSteps}
-          customFields={testCaseCustomFields}
-          requirements={requirements}
-          scenarios={availableScenarios}
-          scenarioRequired={!canCreateUnassignedCase}
-          members={projectMembers}
-          canReadMembers={permissions.includes("project.members.read")}
-          membersUnavailable={projectMembersUnavailable}
-          onRetryMembers={() => load()}
-          onSubmit={create}
         />
       )}
       {testSetDialog && (

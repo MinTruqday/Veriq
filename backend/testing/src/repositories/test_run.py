@@ -184,5 +184,54 @@ class TestRunRepository:
         )
         return await self.find_run(run_id)
 
+    async def iter_active_runs_for_members(
+        self, user_ids, session=None, exclude_run_id=None, include_drafts=False
+    ):
+        if not user_ids:
+            return
+        query = {
+            "status": {
+                "$in": ["DRAFT", "READY", "IN_PROGRESS"]
+                if include_drafts
+                else ["READY", "IN_PROGRESS"]
+            },
+            "$or": [
+                {"assignee_id": {"$in": user_ids}},
+                {
+                    "$expr": {
+                        "$gt": [
+                            {
+                                "$size": {
+                                    "$filter": {
+                                        "input": {
+                                            "$objectToArray": {
+                                                "$ifNull": ["$test_case_assignments", {}]
+                                            }
+                                        },
+                                        "as": "assignment",
+                                        "cond": {"$in": ["$$assignment.v", user_ids]},
+                                    }
+                                }
+                            },
+                            0,
+                        ]
+                    }
+                },
+            ],
+        }
+        if exclude_run_id:
+            query["_id"] = {"$ne": exclude_run_id}
+        cursor = database.value.test_runs.find(
+            query,
+            {
+                "project_id": 1,
+                "assignee_id": 1,
+                "test_case_assignments": 1,
+                "test_plan_schedule_snapshot": 1,
+            },
+            session=session,
+        )
+        async for run in cursor:
+            yield run
 
 test_run_repository = TestRunRepository()

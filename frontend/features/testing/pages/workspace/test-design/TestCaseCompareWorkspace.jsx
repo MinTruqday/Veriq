@@ -31,18 +31,16 @@ const fields = [
     kind: "text",
   },
   { key: "test_kind", label: "Loại kiểm thử", kind: "text" },
-  { key: "expected_impact", label: "Ảnh hưởng dự kiến", kind: "text", maxLength: 100 },
-  { key: "assessment_reason", label: "Lý do đánh giá", kind: "text" },
   { key: "bdd", label: "Kịch bản BDD", kind: "bdd" },
   { key: "preconditions_doc", label: "Điều kiện trước", kind: "document" },
   { key: "test_data", label: "Dữ liệu chung", kind: "data" },
-  { key: "custom_values", label: "Thông tin mở rộng", kind: "custom" },
   { key: "expected_result_doc", label: "Kết quả mong đợi chung", kind: "document" },
   { key: "postconditions_doc", label: "Điều kiện sau", kind: "document" },
+  { key: "alternate_flows_doc", label: "Luồng thay thế", kind: "document" },
+  { key: "exception_flows_doc", label: "Luồng ngoại lệ", kind: "document" },
   { key: "tags", label: "Nhãn", kind: "list" },
   { key: "owner_id", label: "Người phụ trách", kind: "member", optional: true },
   { key: "attachments", label: "Tệp đính kèm", kind: "attachments" },
-  { key: "required_skills", label: "Kỹ năng cần có", kind: "list" },
   { key: "techniques", label: "Kỹ thuật kiểm thử", kind: "list" },
   {
     key: "automation_status",
@@ -84,6 +82,8 @@ const lineageSensitiveFields = new Set([
   "test_data",
   "expected_result_doc",
   "postconditions_doc",
+  "alternate_flows_doc",
+  "exception_flows_doc",
   "techniques",
   "requirement_version_ids",
   "acceptance_criterion_ids",
@@ -93,7 +93,7 @@ const lineageSensitiveFields = new Set([
   "bdd",
 ]);
 
-function ReadValue({ value, kind, customFields = [], members = [] }) {
+function ReadValue({ value, kind, members = [] }) {
   if (kind === "member" && (value === undefined || value === null || value === ""))
     return <p className="text-ink-muted">Chưa phân công</p>;
   if (value === undefined || value === null) return <p className="text-ink-muted">Không có</p>;
@@ -144,35 +144,6 @@ function ReadValue({ value, kind, customFields = [], members = [] }) {
   }
   if (kind === "reference")
     return <p className="text-ink-muted">{value ? "Đã liên kết" : "Chưa liên kết"}</p>;
-  if (kind === "custom") {
-    const fieldByKey = new Map(customFields.map((field) => [field.key, field]));
-    const entries = Object.entries(value || {});
-    return entries.length ? (
-      <dl className="space-y-2">
-        {entries.map(([key, item]) => {
-          const field = fieldByKey.get(key);
-          return (
-            <div className="min-w-0" key={key}>
-              <dt className="font-medium break-words">
-                {field?.label || key}
-                {field?.status === "INACTIVE" ? " · Ngừng dùng" : ""}
-              </dt>
-              <dd className="break-words">
-                {typeof item === "boolean"
-                  ? item
-                    ? "Có"
-                    : "Không"
-                  : valueLabel(String(item ?? ""))}
-                {!field && <span className="ml-1 text-amber-700">(không còn cấu hình)</span>}
-              </dd>
-            </div>
-          );
-        })}
-      </dl>
-    ) : (
-      <p className="text-ink-muted">Chưa có thông tin mở rộng.</p>
-    );
-  }
   if (Array.isArray(value))
     return (
       <p className="break-words">
@@ -307,111 +278,6 @@ function DataEditor({ value = {}, onChange, label }) {
   );
 }
 
-function CustomValuesEditor({ value = {}, fields = [], onChange }) {
-  const knownKeys = new Set(fields.map((item) => item.key));
-  const unknownEntries = Object.entries(value || {}).filter(([key]) => !knownKeys.has(key));
-  const update = (key, nextValue) => {
-    const next = { ...value };
-    if (nextValue === "" || nextValue === null) delete next[key];
-    else next[key] = nextValue;
-    onChange(next);
-  };
-
-  return (
-    <div className="space-y-3">
-      {fields.map((item) => {
-        const current = value?.[item.key] ?? "";
-        const disabled = item.status === "INACTIVE" && current === "";
-        return (
-          <label className="field-label min-w-0" key={item._id || item.key}>
-            <span>
-              {item.label}
-              {item.required && item.status !== "INACTIVE" ? " *" : ""}
-              {item.status === "INACTIVE" ? " · Trường cũ" : ""}
-            </span>
-            {item.value_type === "choice" ? (
-              <>
-                <select
-                  className="apple-input"
-                  value={current}
-                  disabled={disabled}
-                  onChange={(event) => update(item.key, event.target.value)}
-                >
-                  <option value="">Chưa chọn</option>
-                  {current !== "" && !(item.choices || []).includes(current) && (
-                    <option value={current}>Giá trị cũ: {String(current)}</option>
-                  )}
-                  {(item.choices || []).map((choice) => (
-                    <option key={choice} value={choice}>
-                      {choice}
-                    </option>
-                  ))}
-                </select>
-                {current !== "" && !(item.choices || []).includes(current) && (
-                  <span className="text-xs text-amber-800">
-                    Giá trị đang lưu không còn trong lựa chọn hiện tại; hãy chọn giá trị mới hoặc để
-                    trống để xóa.
-                  </span>
-                )}
-              </>
-            ) : item.value_type === "boolean" ? (
-              <select
-                className="apple-input"
-                value={current === "" ? "" : String(current)}
-                disabled={disabled}
-                onChange={(event) =>
-                  update(item.key, event.target.value === "" ? "" : event.target.value === "true")
-                }
-              >
-                <option value="">Chưa chọn</option>
-                <option value="true">Có</option>
-                <option value="false">Không</option>
-              </select>
-            ) : (
-              <input
-                className="apple-input"
-                type={item.value_type === "number" ? "number" : item.value_type}
-                step={item.value_type === "number" ? "any" : undefined}
-                value={current}
-                disabled={disabled}
-                onChange={(event) =>
-                  update(
-                    item.key,
-                    item.value_type === "number" && event.target.value !== ""
-                      ? Number(event.target.value)
-                      : event.target.value,
-                  )
-                }
-              />
-            )}
-          </label>
-        );
-      })}
-      {unknownEntries.map(([key, item]) => (
-        <div
-          className="flex min-w-0 items-start justify-between gap-2 rounded-control border border-amber-300 bg-amber-50 p-3"
-          key={key}
-        >
-          <p className="min-w-0 break-words text-sm">
-            {key}: {typeof item === "boolean" ? (item ? "Có" : "Không") : String(item ?? "")}
-            <span className="ml-1 text-amber-800">(không còn cấu hình)</span>
-          </p>
-          <button
-            className="secondary-button shrink-0"
-            type="button"
-            onClick={() => update(key, "")}
-          >
-            Bỏ trường cũ
-          </button>
-        </div>
-      ))}
-      {!fields.length && !unknownEntries.length && (
-        <p className="text-sm text-ink-muted">Dự án chưa cấu hình trường mở rộng.</p>
-      )}
-    </div>
-  );
-}
-
 function AttachmentEditor({ value = [], onChange, disabled = false }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
@@ -480,7 +346,6 @@ function AttachmentEditor({ value = [], onChange, disabled = false }) {
 function FieldEditor({
   field,
   value,
-  customFields,
   members,
   canReadMembers,
   membersLoaded,
@@ -596,8 +461,6 @@ function FieldEditor({
     return (
       <DocumentEditor value={value || emptyDoc()} onChange={onChange} ignoreUnfocusedUpdates />
     );
-  if (field.kind === "custom")
-    return <CustomValuesEditor value={value || {}} fields={customFields} onChange={onChange} />;
   if (field.kind === "data")
     return <DataEditor value={value} onChange={onChange} label={field.label} />;
   if (field.kind === "attachments")
@@ -753,14 +616,11 @@ function EvidenceValue({ value }) {
 }
 
 function CoverageLineageValue({ value, stale = false }) {
-  const obligations = value?.coverage_obligations || [];
   const snapshotIds = value?.acceptance_criteria_snapshot_ids || [];
   const sources = value?.source_evidence || [];
-  const obligationEvidence = value?.obligation_evidence || [];
-  const hypotheses = value?.challenge_hypotheses || [];
-  if (!obligations.length && !snapshotIds.length && !hypotheses.length) {
+  if (!snapshotIds.length && !sources.length) {
     return (
-      <p className="text-sm text-ink-muted">Chưa có dữ liệu liên kết nghĩa vụ hoặc giả thuyết.</p>
+      <p className="text-sm text-ink-muted">Chưa có dữ liệu nguồn được lưu tại thời điểm tạo.</p>
     );
   }
   return (
@@ -771,29 +631,6 @@ function CoverageLineageValue({ value, stale = false }) {
           bằng chứng hiệu lực; khi lưu, hệ thống sẽ yêu cầu đối chiếu lại trước khi duyệt.
         </p>
       )}
-      <div>
-        <p className="font-medium">Nghĩa vụ kiểm thử</p>
-        {obligations.length ? (
-          <ul className="mt-1 list-disc space-y-1 pl-5">
-            {obligations.map((item, index) => {
-              const evidence = obligationEvidence.find((entry) => entry.obligation_key === item);
-              const quote = evidence?.evidence_quotes?.[0];
-              return (
-                <li className="break-words" key={`${item}-${index}`}>
-                  {quote?.quote || `Nghĩa vụ liên kết ${index + 1}`}
-                  {quote && (
-                    <span className="ml-1 text-xs text-ink-muted">
-                      · {evidenceReferenceLabel(quote.evidence_ref, sources, index)}
-                    </span>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        ) : (
-          <p className="mt-1 text-ink-muted">Chưa liên kết.</p>
-        )}
-      </div>
       <div>
         <p className="font-medium">Tiêu chí yêu cầu tại thời điểm tạo</p>
         {snapshotIds.length ? (
@@ -809,29 +646,6 @@ function CoverageLineageValue({ value, stale = false }) {
           </ul>
         ) : (
           <p className="mt-1 text-ink-muted">Không lưu tiêu chí chấp nhận tại thời điểm tạo.</p>
-        )}
-      </div>
-      <div>
-        <p className="font-medium">Giả thuyết cần phân biệt</p>
-        {hypotheses.length ? (
-          <ul className="mt-1 space-y-2">
-            {hypotheses.map((item, index) => (
-              <li
-                className="min-w-0 rounded-control bg-surface-quiet p-2"
-                key={`${item.source_ref}-${item.technique}-${index}`}
-              >
-                <p>{valueLabel(item.technique)}</p>
-                <p className="mt-1 whitespace-pre-wrap break-words">{item.source_quote}</p>
-                {item.existing_case_refs?.length > 0 && (
-                  <p className="mt-1 text-xs text-ink-muted">
-                    Có {item.existing_case_refs.length} ca hiện hành liên quan
-                  </p>
-                )}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="mt-1 text-ink-muted">Không có giả thuyết được ghi nhận.</p>
         )}
       </div>
     </div>
@@ -1417,7 +1231,6 @@ export default function TestCaseCompareWorkspace({
                       <ReadValue
                         value={original?.[field.key]}
                         kind={field.kind}
-                        customFields={context.custom_fields || []}
                         members={members}
                       />
                       {editable &&
@@ -1444,7 +1257,6 @@ export default function TestCaseCompareWorkspace({
                       <ReadValue
                         value={proposal?.[field.key]}
                         kind={field.kind}
-                        customFields={context.custom_fields || []}
                         members={members}
                       />
                       {editable &&
@@ -1468,7 +1280,6 @@ export default function TestCaseCompareWorkspace({
                         <FieldEditor
                           field={field}
                           value={result[field.key]}
-                          customFields={context.custom_fields || []}
                           members={members}
                           canReadMembers={canReadMembers}
                           membersLoaded={membersLoaded}
@@ -1491,12 +1302,7 @@ export default function TestCaseCompareWorkspace({
                           disabled={!editable}
                         />
                       ) : (
-                        <ReadValue
-                          value={result[field.key]}
-                          kind={field.kind}
-                          customFields={context.custom_fields || []}
-                          members={members}
-                        />
+                        <ReadValue value={result[field.key]} kind={field.kind} members={members} />
                       )}
                     </div>
                   </div>

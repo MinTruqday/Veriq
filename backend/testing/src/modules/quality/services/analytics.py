@@ -1,4 +1,5 @@
 import re
+from asyncio import gather
 
 from src.clients.project_knowledge import search_project_with_status
 from src.core.ai_capabilities import ai_contract_metadata, request_ai_capability
@@ -72,6 +73,16 @@ class AnalyticsService:
         await get_project(project_id, user, "analytics.read")
         requirements = await analytics_repository.count_records(
             "requirements", {"project_id": project_id, "status": "BASELINED"}
+        )
+        requirements_total, test_plans, completion_reports, releases = await gather(
+            analytics_repository.count_records(
+                "requirements", {"project_id": project_id, "status": {"$ne": "OBSOLETE"}}
+            ),
+            analytics_repository.count_records(
+                "test_plans", {"project_id": project_id, "status": {"$ne": "ARCHIVED"}}
+            ),
+            analytics_repository.count_records("test_completion_reports", {"project_id": project_id}),
+            analytics_repository.count_records("releases", {"project_id": project_id}),
         )
         active_tests = await analytics_repository.count_records(
             "test_cases", {"project_id": project_id, "status": "ACTIVE"}
@@ -148,6 +159,10 @@ class AnalyticsService:
             )
         return {
             "requirements": requirements,
+            "requirements_total": requirements_total,
+            "test_plans": test_plans,
+            "completion_reports": completion_reports,
+            "releases": releases,
             "active_tests": active_tests,
             "tests_needing_update": stale_tests,
             "pending_proposals": pending_proposals,

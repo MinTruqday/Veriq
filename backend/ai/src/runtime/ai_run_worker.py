@@ -34,12 +34,8 @@ from src.services.source_provenance import (
     canonicalize_source_facts,
     carry_source_fact_lineage,
     has_provenance_gap,
-    missing_blueprint_artifact_coverage_count,
     source_fact_identity,
     verified_release_gate_mutation_refs,
-    verified_blueprint_artifact_lineage,
-    verified_blueprint_claim_lineage,
-    verified_blueprint_from_observations,
     verified_source_span,
 )
 from src.services.inference import model_metadata
@@ -879,45 +875,6 @@ class AIRunWorker:
             }
             derivation_steps = []
             unlinked_mutation_count = 0
-            testability_blueprint, rejected_blueprint_count = (
-                verified_blueprint_from_observations(
-                    completed.observations,
-                    source_facts,
-                    project_id=running.project_id,
-                    ai_run_id=ai_run_id,
-                )
-            )
-            persisted_blueprint = (
-                await ai_run_repository.find_project_blueprint_for_run(
-                    running.project_id, ai_run_id
-                )
-            )
-            if persisted_blueprint is not None:
-                testability_blueprint = persisted_blueprint.compilation.model_dump(
-                    mode="json"
-                )
-            blueprint_claim_lineage = verified_blueprint_claim_lineage(
-                testability_blueprint,
-                source_facts,
-                project_id=running.project_id,
-                ai_run_id=ai_run_id,
-            )
-            if testability_blueprint is not None and blueprint_claim_lineage is None:
-                rejected_blueprint_count += 1
-                testability_blueprint = None
-                blueprint_claim_lineage = []
-            blueprint_artifact_lineage, rejected_artifact_lineage_count = (
-                verified_blueprint_artifact_lineage(
-                    testability_blueprint,
-                    blueprint_claim_lineage,
-                    completed.observations,
-                    running.project_id,
-                )
-            )
-            rejected_blueprint_count += rejected_artifact_lineage_count
-            unmapped_blueprint_obligation_count = missing_blueprint_artifact_coverage_count(
-                testability_blueprint, blueprint_artifact_lineage
-            )
             if source_facts:
                 derivation_steps.append(
                     DerivationStep(
@@ -1059,8 +1016,6 @@ class AIRunWorker:
             if terminal_status == AIRunStatus.COMPLETED and has_provenance_gap(
                 rejected_source_fact_count,
                 unlinked_mutation_count,
-                rejected_blueprint_count,
-                unmapped_blueprint_obligation_count,
             ):
                 terminal_status = AIRunStatus.DEGRADED
                 completed.error_code = "DERIVATION_RECEIPT_INCOMPLETE"
@@ -1083,9 +1038,6 @@ class AIRunWorker:
                         transformation_steps=transformation_steps,
                         steps=derivation_steps,
                         output_evidence_refs=verified_outputs,
-                        testability_blueprint=testability_blueprint,
-                        blueprint_claim_lineage=blueprint_claim_lineage,
-                        blueprint_artifact_lineage=blueprint_artifact_lineage,
                         model_metadata=completed.model_metadata,
                         outcome=terminal_status.value,
                     ),
@@ -1127,7 +1079,6 @@ class AIRunWorker:
                 "provenance_rejections": {
                     "source_facts": rejected_source_fact_count,
                     "unlinked_mutations": unlinked_mutation_count,
-                    "testability_blueprints": rejected_blueprint_count,
                 },
             }
             proposal_refs = set((completed.proposal or {}).get("evidence_refs") or [])
@@ -1154,8 +1105,7 @@ class AIRunWorker:
                         "provenance_rejections": {
                             "source_facts": rejected_source_fact_count,
                             "unlinked_mutations": unlinked_mutation_count,
-                            "testability_blueprints": rejected_blueprint_count,
-                        },
+                                },
                     },
                     "error_code": completed.error_code,
                 },

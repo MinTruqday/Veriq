@@ -12,11 +12,9 @@ from src.core.common import (
 from src.core.database import database
 from src.repositories.test_run import test_run_repository
 from src.repositories.project import project_repository
-from src.modules.projects.services.skill_profiles import (
+from src.modules.projects.services.assignment_capacity import (
     _check_test_run_assignment_capacity,
-    automatically_assign_test_cases,
 )
-from src.repositories.skill_profile import skill_profile_repository
 from src.modules.execution.services.execution_context import resolve_execution_context
 from src.modules.execution.services.execution_state import validate_test_versions
 from src.modules.execution.services.test_plan import verified_approved_plan_snapshot
@@ -76,7 +74,6 @@ def _idempotent_run_matches(existing, payload, version_ids, context, actor_id):
         "test_plan_id": payload.test_plan_id,
         "test_suite_ids": list(dict.fromkeys(payload.test_suite_ids)),
         "test_case_version_ids": version_ids,
-        "assignment_strategy": payload.assignment_strategy,
         "release": context.get("release"),
         "build": context.get("build"),
         "environment": context.get("environment"),
@@ -93,7 +90,7 @@ def _idempotent_run_matches(existing, payload, version_ids, context, actor_id):
             == payload.expected_test_plan_snapshot_hash
         )
         and all(
-            existing.get(key, "MANUAL" if key == "assignment_strategy" else None) == value
+            existing.get(key) == value
             for key, value in expected.items()
         )
     )
@@ -181,15 +178,6 @@ def _require_plan_suite_snapshot(snapshot):
         )
 
 
-def _validate_plan_execution_context(context, snapshot):
-    for field in ("release_id", "build_id", "environment_id"):
-        if context.get(field) != snapshot.get(field):
-            raise HTTPException(
-                status_code=422,
-                detail={"code": "TEST_RUN_CONTEXT_OUTSIDE_PLAN_SCOPE", "field": field},
-            )
-
-
 async def create_test_run_record(payload, project_id, user):
     
     if project_id is not None and payload.project_id != project_id:
@@ -255,7 +243,6 @@ async def create_test_run_record(payload, project_id, user):
             version_ids = list(approved_scope)
         if not set(version_ids).issubset(approved_scope):
             raise HTTPException(status_code=422, detail={"code": "TEST_RUN_OUTSIDE_PLAN_SCOPE"})
-        _validate_plan_execution_context(context, approved_snapshot)
     await validate_test_versions(payload.project_id, version_ids)
     if payload.idempotency_key:
         existing = await test_run_repository.find_run_by_idempotency_key(
@@ -275,9 +262,6 @@ async def create_test_run_record(payload, project_id, user):
         }
         if not device_scope["device_matrix_id"]:
             device_scope = {}
-    test_case_assignments = {}
-    unassigned_reasons = []
-    assignment_decisions = {}
     run = {
         "_id": new_id('TRUN'),
         **payload.model_dump(exclude={"expected_test_plan_snapshot_hash"}),
@@ -285,9 +269,7 @@ async def create_test_run_record(payload, project_id, user):
         **context,
         **device_scope,
         "test_case_version_ids": version_ids,
-        "test_case_assignments": test_case_assignments,
-        "test_case_assignment_decisions": assignment_decisions,
-        "unassigned_assignment_reasons": unassigned_reasons,
+        "test_case_assignments": {},
         "status": 'DRAFT',
         "revision": 1,
         "created_by": user.id,
@@ -320,66 +302,6 @@ async def create_test_run_record(payload, project_id, user):
                         )
                     approved_snapshot = current_snapshot
                     _pin_run_to_plan(run, current_snapshot, current_snapshot_hash)
-                if payload.assignment_strategy in {"CONFIRMED_SKILLS", "PROFILE_EVIDENCE"} and version_ids:
-                    versions = await test_run_repository.list_versions(
-                        version_ids, len(version_ids), session=session
-                    )
-                    (
-                        test_case_assignments,
-                        unassigned_reasons,
-                        assignment_decisions,
-                    ) = await automatically_assign_test_cases(
-                        payload.project_id,
-                        versions,
-                        session=session,
-                        schedule=(approved_snapshot or {}).get("schedule"),
-                    )
-                    stale_members = await project_repository.fence_active_members_with_permission(
-                        payload.project_id,
-                        test_case_assignments.values(),
-                        "testrun.execute",
-                        session=session,
-                    )
-                    if stale_members:
-                        raise HTTPException(
-                            status_code=409,
-                            detail={
-                                "code": "ASSIGNEE_PERMISSION_CHANGED_RETRY_RUN_CREATION",
-                                "user_ids": stale_members,
-                            },
-                        )
-                    selected_profile_revisions = {
-                        decision["assignee_id"]: decision.get("skill_profile_revision", 0)
-                        for decision in assignment_decisions.values()
-                        if decision.get("assignee_id")
-                    }
-                    if selected_profile_revisions:
-                        try:
-                            stale_assignees = await skill_profile_repository.fence_assignment_revisions(
-                                payload.project_id,
-                                selected_profile_revisions,
-                                timestamp,
-                                session=session,
-                            )
-                        except DuplicateKeyError as exc:
-                            raise HTTPException(
-                                status_code=409,
-                                detail={
-                                    "code": "SKILL_PROFILE_CHANGED_RETRY_RUN_CREATION",
-                                    "user_ids": sorted(selected_profile_revisions),
-                                },
-                            ) from exc
-                        if stale_assignees:
-                            raise HTTPException(
-                                status_code=409,
-                                detail={
-                                    "code": "SKILL_PROFILE_CHANGED_RETRY_RUN_CREATION",
-                                    "user_ids": stale_assignees,
-                                },
-                            )
-                    run["test_case_assignments"] = test_case_assignments
-                    run["test_case_assignment_decisions"] = assignment_decisions
-                    run["unassigned_assignment_reasons"] = unassigned_reasons
                 await test_run_repository.insert_run(run, session=session)
                 if version_ids:
                     await test_run_repository.insert_results(
@@ -420,9 +342,7 @@ async def create_test_run_record(payload, project_id, user):
                     payload.project_id,
                     {
                         "test_count": len(version_ids),
-                        "assignment_strategy": payload.assignment_strategy,
-                        "automatically_assigned_count": len(test_case_assignments),
-                        "unassigned_count": len(unassigned_reasons),
+                        "unassigned_count": len(version_ids),
                     },
                     session=session,
                 )
@@ -438,14 +358,9 @@ async def create_test_run_record(payload, project_id, user):
         raise
     except PyMongoError as exc:
         if exc.has_error_label("TransientTransactionError"):
-            code = (
-                "SKILL_PROFILE_CHANGED_RETRY_RUN_CREATION"
-                if payload.assignment_strategy in {"CONFIRMED_SKILLS", "PROFILE_EVIDENCE"}
-                else "TEST_RUN_CREATION_CONFLICT"
-            )
             raise HTTPException(
                 status_code=409,
-                detail={"code": code, "retryable": True},
+                detail={"code": "TEST_RUN_CREATION_CONFLICT", "retryable": True},
             ) from exc
         raise
     await index_artifact(
@@ -505,9 +420,9 @@ async def rerun_test_run_record(project_id, run_id, payload, user):
     rerun = {
         key: source.get(key)
         for key in (
-            "project_id", "test_plan_id", "test_suite_ids", "assignment_strategy",
+            "project_id", "test_plan_id", "test_suite_ids",
             "environment", "environment_id", "release", "release_id", "build", "build_id",
-            "test_case_assignments", "test_case_assignment_decisions", "unassigned_assignment_reasons",
+            "test_case_assignments",
             "assignee_id", "test_plan_snapshot_hash", "device_matrix_id", "device_profile_keys", "device_matrix_snapshot",
         )
         if key in source
@@ -712,13 +627,6 @@ async def _update_test_run_record(project_id, run_id, payload, user):
             approved_scope
         ):
             raise HTTPException(status_code=422, detail={"code": "TEST_RUN_OUTSIDE_PLAN_SCOPE"})
-        _validate_plan_execution_context(
-            {
-                field: changes.get(field, run.get(field))
-                for field in ("release_id", "build_id", "environment_id")
-            },
-            approved_snapshot,
-        )
         _pin_run_to_plan(changes, approved_snapshot, plan_snapshot_hash)
     if "test_case_version_ids" in changes:
         changes["test_case_version_ids"] = version_ids
@@ -740,7 +648,6 @@ async def _update_test_run_record(project_id, run_id, payload, user):
         field in changes and changes[field] != run.get(field)
         for field in context_fields
     )
-    audit_details = None
 
     async with await database.client.start_session() as session:
         async with session.start_transaction():
@@ -872,121 +779,10 @@ async def _update_test_run_record(project_id, run_id, payload, user):
                 )
 
             if removed_version_ids:
-                for field in (
-                    "test_case_assignments",
-                    "test_case_assignment_decisions",
-                ):
-                    assignments = dict(effective_run.get(field) or {})
-                    for version_id in removed_version_ids:
-                        assignments.pop(version_id, None)
-                    changes[field] = assignments
-                changes["unassigned_assignment_reasons"] = [
-                    reason
-                    for reason in effective_run.get("unassigned_assignment_reasons", [])
-                    if not isinstance(reason, dict)
-                    or reason.get("test_case_version_id") not in removed_version_ids
-                ]
-
-            if added_version_ids and effective_run.get("assignment_strategy") in {"CONFIRMED_SKILLS", "PROFILE_EVIDENCE"}:
-                added_versions = await test_run_repository.list_versions(
-                    sorted(added_version_ids), len(added_version_ids), session=session
-                )
-                if {item.get("_id") for item in added_versions} != added_version_ids:
-                    raise HTTPException(
-                        status_code=409,
-                        detail={"code": "TEST_CASE_VERSION_CHANGED_RETRY_RUN"},
-                    )
-                current_assignments = dict(
-                    changes.get(
-                        "test_case_assignments",
-                        effective_run.get("test_case_assignments", {}),
-                    )
-                    or {}
-                )
-                current_decisions = dict(
-                    changes.get(
-                        "test_case_assignment_decisions",
-                        effective_run.get("test_case_assignment_decisions", {}),
-                    )
-                    or {}
-                )
+                assignments = dict(effective_run.get("test_case_assignments") or {})
                 for version_id in removed_version_ids:
-                    current_assignments.pop(version_id, None)
-                    current_decisions.pop(version_id, None)
-                assigned, unresolved, decisions = await automatically_assign_test_cases(
-                    project_id,
-                    added_versions,
-                    session=session,
-                    existing_case_assignments=current_assignments,
-                    existing_assignee_id=effective_run.get("assignee_id"),
-                    exclude_run_id=effective_run.get("_id"),
-                    schedule=effective_run.get("test_plan_schedule_snapshot"),
-                )
-                assigned_users = set(assigned.values())
-                stale_members = await project_repository.fence_active_members_with_permission(
-                    project_id, assigned_users, "testrun.execute", session=session
-                )
-                if stale_members:
-                    raise HTTPException(
-                        status_code=409,
-                        detail={
-                            "code": "ASSIGNEE_PERMISSION_CHANGED_RETRY_RUN_CREATION",
-                            "user_ids": stale_members,
-                        },
-                    )
-                selected_profile_revisions = {
-                    decision["assignee_id"]: decision.get("skill_profile_revision", 0)
-                    for decision in decisions.values()
-                    if decision.get("assignee_id")
-                }
-                if selected_profile_revisions:
-                    try:
-                        stale_assignees = await skill_profile_repository.fence_assignment_revisions(
-                            project_id,
-                            selected_profile_revisions,
-                            timestamp,
-                            session=session,
-                        )
-                    except DuplicateKeyError as exc:
-                        raise HTTPException(
-                            status_code=409,
-                            detail={
-                                "code": "SKILL_PROFILE_CHANGED_RETRY_RUN_CREATION",
-                                "user_ids": sorted(selected_profile_revisions),
-                            },
-                        ) from exc
-                    if stale_assignees:
-                        raise HTTPException(
-                            status_code=409,
-                            detail={
-                                "code": "SKILL_PROFILE_CHANGED_RETRY_RUN_CREATION",
-                                "user_ids": stale_assignees,
-                            },
-                        )
-
-                current_assignments.update(assigned)
-                current_decisions.update(decisions)
-                changes["test_case_assignments"] = current_assignments
-                changes["test_case_assignment_decisions"] = current_decisions
-                unassigned_reasons = [
-                    reason
-                    for reason in changes.get(
-                        "unassigned_assignment_reasons",
-                        effective_run.get("unassigned_assignment_reasons", []),
-                    )
-                    if not isinstance(reason, dict)
-                    or reason.get("test_case_version_id") not in added_version_ids
-                ]
-                changes["unassigned_assignment_reasons"] = [
-                    *unassigned_reasons,
-                    *unresolved,
-                ]
-                audit_details = {
-                    "assignment_strategy": effective_run.get("assignment_strategy", "MANUAL"),
-                    "new_case_count": len(added_version_ids),
-                    "automatically_assigned_count": len(assigned),
-                    "unassigned_count": len(unresolved),
-                }
+                    assignments.pop(version_id, None)
+                changes["test_case_assignments"] = assignments
 
             updated = await optimistic_patch(
                 "test_runs",
@@ -1002,7 +798,6 @@ async def _update_test_run_record(project_id, run_id, payload, user):
                 "TestRun",
                 run_id,
                 project_id,
-                audit_details,
                 session=session,
             )
     return updated
@@ -1058,13 +853,6 @@ async def assign_test_run_record(project_id, run_id, payload, user):
             status_code=422,
             detail={"code": 'TEST_NOT_IN_RUN_SNAPSHOT', "test_case_version_ids": sorted(unknown)},
         )
-    expected_profile_revisions = payload.expected_skill_profile_revisions
-    guarded_assignees = set(expected_profile_revisions)
-    if guarded_assignees - (assigned_users | {payload.assignee_id}):
-        raise HTTPException(
-            status_code=422,
-            detail={"code": "SKILL_PROFILE_REVISION_SCOPE_INVALID"},
-        )
     async with await database.client.start_session() as session:
         try:
             async with session.start_transaction():
@@ -1083,7 +871,7 @@ async def assign_test_run_record(project_id, run_id, payload, user):
                     raise HTTPException(
                         status_code=409,
                         detail={
-                            "code": "ASSIGNEE_PERMISSION_CHANGED_RECOMMEND_AGAIN",
+                            "code": "ASSIGNEE_PERMISSION_CHANGED_RETRY_ASSIGNMENT",
                             "user_ids": stale_members,
                         },
                     )
@@ -1100,21 +888,6 @@ async def assign_test_run_record(project_id, run_id, payload, user):
                     session=session,
                     existing_run_user_ids=current_run_users.intersection(proposed_users),
                 )
-                if expected_profile_revisions:
-                    stale_assignees = await skill_profile_repository.fence_assignment_revisions(
-                        project_id,
-                        expected_profile_revisions,
-                        now(),
-                        session=session,
-                    )
-                    if stale_assignees:
-                        raise HTTPException(
-                            status_code=409,
-                            detail={
-                                "code": "SKILL_PROFILE_CHANGED_RECOMMEND_AGAIN",
-                                "user_ids": stale_assignees,
-                            },
-                        )
                 updated = await optimistic_patch(
                     'test_runs',
                     run_id,
@@ -1123,10 +896,6 @@ async def assign_test_run_record(project_id, run_id, payload, user):
                     {
                         "assignee_id": payload.assignee_id,
                         "test_case_assignments": payload.test_case_assignments,
-                        "assignment_decision_source": payload.decision_source,
-                        "assignment_approved_by": user.id,
-                        "assignment_approved_at": now(),
-                        "assignment_skill_profile_revisions": expected_profile_revisions,
                     },
                     session=session,
                 )
@@ -1139,25 +908,17 @@ async def assign_test_run_record(project_id, run_id, payload, user):
                     {
                         "assignee_id": payload.assignee_id,
                         "case_count": len(payload.test_case_assignments),
-                        "decision_source": payload.decision_source,
+                        "decision_source": "MANUAL",
                     },
                     session=session,
                 )
-        except DuplicateKeyError as exc:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": "SKILL_PROFILE_CHANGED_RECOMMEND_AGAIN",
-                    "user_ids": sorted(expected_profile_revisions),
-                },
-            ) from exc
         except PyMongoError as exc:
             if exc.has_error_label("TransientTransactionError"):
                 raise HTTPException(
                     status_code=409,
                     detail={
-                        "code": "SKILL_PROFILE_CHANGED_RECOMMEND_AGAIN",
-                        "user_ids": sorted(expected_profile_revisions),
+                        "code": "TEST_RUN_ASSIGNMENT_CONFLICT",
+                        "retryable": True,
                     },
                 ) from exc
             raise

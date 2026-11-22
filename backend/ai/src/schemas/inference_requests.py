@@ -3,7 +3,7 @@ from typing import Annotated, Any, List, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-TESTABILITY_MAX_EVIDENCE_ITEMS = 100
+TESTING_MAX_EVIDENCE_ITEMS = 100
 TESTING_EVIDENCE_TEXT_MAX_LENGTH = 4000
 
 
@@ -101,7 +101,7 @@ class TestingCapabilityRequest(BaseModel):
     )
     evidence: List[TestingEvidence] = Field(
         min_length=1,
-        max_length=TESTABILITY_MAX_EVIDENCE_ITEMS,
+        max_length=TESTING_MAX_EVIDENCE_ITEMS,
         description="Artifact evidence already bounded to the project",
     )
 
@@ -139,11 +139,6 @@ class TestingCapabilityResult(BaseModel):
     summary: str = Field(default="", max_length=1500)
     improvement_suggestions: List[str] = Field(default_factory=list, max_length=30)
     semantic_matches: List[dict[str, Any]] = Field(default_factory=list, max_length=1000)
-    obligations: List[dict[str, Any]] = Field(
-        default_factory=list,
-        max_length=300,
-        description="Source-grounded testability obligations produced by the compiler capability",
-    )
     clarifications: List[dict[str, Any]] = Field(
         default_factory=list,
         max_length=100,

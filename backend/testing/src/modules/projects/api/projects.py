@@ -17,19 +17,8 @@ from src.schemas.contracts.project import (
     ProjectTaskDelete,
     ProjectTaskPatch,
 )
-from src.schemas.contracts.skill_profile import (
-    AssignmentRecommendationInput,
-    SkillProfilePatch,
-    TestCaseOwnerRecommendationInput,
-)
 from src.modules.projects.services.project import ProjectService
 from src.modules.projects.services.project_progress import ProjectProgressService
-from src.modules.projects.services.skill_profiles import (
-    get_own_skill_profile,
-    recommend_test_case_owner,
-    recommend_test_run_assignments,
-    update_own_skill_profile,
-)
 from src.modules.projects.services.project_complexity import (
     assess_project_complexity,
     get_project_complexity_scope,
@@ -70,45 +59,6 @@ async def run_project_complexity_assessment(
             user,
             payload,
             output_language=payload.output_language or _accept_language(request),
-        )
-    )
-
-
-@router.get("/du-an/{project_id}/ho-so-nang-luc/cua-toi")
-async def read_own_skill_profile(project_id: str, user: CurrentUser = Depends(get_current_user)):
-    return envelope(await get_own_skill_profile(project_id, user))
-
-
-@router.put("/du-an/{project_id}/ho-so-nang-luc/cua-toi")
-async def save_own_skill_profile(
-    project_id: str,
-    payload: SkillProfilePatch,
-    user: CurrentUser = Depends(get_current_user),
-):
-    value = await update_own_skill_profile(project_id, payload, user)
-    return envelope(value, revision=value["revision"])
-
-
-@router.post("/du-an/{project_id}/lan-chay-kiem-thu/{run_id}/goi-y-phan-cong")
-async def suggest_test_run_assignments(
-    project_id: str,
-    run_id: str,
-    payload: AssignmentRecommendationInput,
-    user: CurrentUser = Depends(get_current_user),
-):
-    return envelope(await recommend_test_run_assignments(project_id, run_id, payload, user))
-
-
-@router.post("/du-an/{project_id}/ca-kiem-thu/goi-y-nguoi-phu-trach")
-async def suggest_test_case_owner(
-    project_id: str,
-    payload: TestCaseOwnerRecommendationInput,
-    request: Request,
-    user: CurrentUser = Depends(get_current_user),
-):
-    return envelope(
-        await recommend_test_case_owner(
-            project_id, payload, user, output_language=_accept_language(request)
         )
     )
 

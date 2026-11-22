@@ -3,7 +3,6 @@ import { useDateTimeOptions } from "../../hooks/useDateTimeOptions";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DataTable from "../../components/DataTable";
 import ProjectNotificationsPanel from "../../components/ProjectNotificationsPanel";
-import MemberSkillProfilePanel from "../../components/MemberSkillProfilePanel";
 import ProjectAccessPanel from "../../components/ProjectAccessPanel";
 import EnvironmentManagementPanel from "../../components/EnvironmentManagementPanel";
 import {
@@ -38,8 +37,6 @@ function auditActionLabel(action) {
 const toggleSettings = [
   ["testcase_lint_blocking", "Chặn duyệt ca kiểm thử khi còn lỗi kiểm tra"],
   ["trace_before_testcase_approve", "Bắt buộc truy vết trước khi duyệt ca kiểm thử"],
-  ["require_release_for_test_plan", "Yêu cầu chọn bản phát hành trước khi phê duyệt kế hoạch"],
-  ["require_environment_for_test_plan", "Yêu cầu chọn môi trường trước khi phê duyệt kế hoạch"],
   ["partial_complete_allowed", "Cho phép hoàn tất một phần lần chạy kiểm thử"],
   ["allow_not_applicable_results", "Cho phép kết quả Không áp dụng khi có lý do"],
   [
@@ -55,12 +52,7 @@ const toggleSettingGroups = [
   },
   {
     label: "Lần chạy kiểm thử",
-    keys: [
-      "require_release_for_test_plan",
-      "require_environment_for_test_plan",
-      "partial_complete_allowed",
-      "allow_not_applicable_results",
-    ],
+    keys: ["partial_complete_allowed", "allow_not_applicable_results"],
   },
   {
     label: "Phê duyệt nội dung",
@@ -256,11 +248,6 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
       id: "members",
       label: "Thành viên",
       permissions: ["project.members.read", "project.members.manage"],
-    },
-    {
-      id: "my-profile",
-      label: "Năng lực của tôi",
-      permissions: ["project.read"],
     },
     {
       id: "notifications",
@@ -495,9 +482,6 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
       />
       <div className="min-w-0" role="tabpanel" aria-label="Cài đặt dự án">
         {visibleSettingsSection === "access" && <ProjectAccessPanel project={project} />}
-        {visibleSettingsSection === "my-profile" && (
-          <MemberSkillProfilePanel projectId={project._id} />
-        )}
         {visibleSettingsSection === "project" && (
           <Panel title="Thông tin dự án">
             <form

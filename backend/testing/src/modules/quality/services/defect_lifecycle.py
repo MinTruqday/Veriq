@@ -84,15 +84,6 @@ async def update_defect_record(defect_id, payload, project_id, user):
     if project_id is not None and defect["project_id"] != project_id:
         raise HTTPException(status_code=422, detail={"code": "PROJECT_MISMATCH"})
     permissions = await require_defect_editor_assignment(defect, user)
-    resolution_fields = {
-        "root_cause_category",
-        "root_cause_detail",
-        "injected_phase",
-        "escape_reason",
-        "prevention_candidate",
-    }
-    if "defect.transition.resolve" not in permissions and resolution_fields.intersection(payload):
-        raise HTTPException(status_code=403, detail={"code": "DEFECT_RESOLUTION_FIELDS_REQUIRED"})
     if "defect.triage" not in permissions and {"assignee", "severity", "priority"}.intersection(payload):
         raise HTTPException(status_code=403, detail={"code": "DEFECT_TRIAGE_AUTHORITY_REQUIRED"})
     expected_revision = payload.get("expected_revision")
@@ -169,12 +160,6 @@ async def update_defect_record(defect_id, payload, project_id, user):
             "linked_test_result_id",
             "linked_test_case_version_id",
             "linked_requirement_version_ids",
-            "root_cause_category",
-            "root_cause_detail",
-            "injected_phase",
-            "detected_phase",
-            "escape_reason",
-            "prevention_candidate",
         ]
     }
     if "severity" in changes:

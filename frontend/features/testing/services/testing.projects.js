@@ -58,17 +58,6 @@ export const projectTestingApi = {
       body: JSON.stringify(payload),
     }),
   listMembers: (id) => testingRequest(`/du-an/${id}/thanh-vien`),
-  getMySkillProfile: (id) => testingRequest(`/du-an/${id}/ho-so-nang-luc/cua-toi`),
-  recommendTestCaseOwner: (projectId, payload) =>
-    testingRequest(`/du-an/${projectId}/ca-kiem-thu/goi-y-nguoi-phu-trach`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  saveMySkillProfile: (id, payload) =>
-    testingRequest(`/du-an/${id}/ho-so-nang-luc/cua-toi`, {
-      method: "PUT",
-      body: JSON.stringify(payload),
-    }),
   listInvitations: () => testingRequest("/loi-moi-du-an"),
   addMember: (id, payload) =>
     testingRequest(`/du-an/${id}/thanh-vien`, { method: "POST", body: JSON.stringify(payload) }),

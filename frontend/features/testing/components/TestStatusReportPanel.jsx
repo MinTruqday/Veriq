@@ -167,8 +167,7 @@ export default function TestStatusReportPanel({ project }) {
         },
         {
           name: "build_id",
-          label: "Bản dựng",
-          required: true,
+          label: "Bản dựng nếu mốc giám sát có nhiều bản dựng",
           options: builds.map((item) => ({
             value: item._id,
             label: `${item.identifier} · ${item.version}`,
@@ -212,7 +211,7 @@ export default function TestStatusReportPanel({ project }) {
             testingApi.generateTestStatusReport(project._id, {
               idempotency_key: crypto.randomUUID(),
               snapshot_id: answer.snapshot_id,
-              build_id: answer.build_id,
+              build_id: answer.build_id || null,
               reporting_period: {
                 start_at: new Date(answer.start_at).toISOString(),
                 end_at: new Date(answer.end_at).toISOString(),

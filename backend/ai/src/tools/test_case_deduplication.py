@@ -77,7 +77,6 @@ def consolidate_duplicate_test_case_drafts(drafts, comparisons):
             for item in candidates
         }
         if len(requirement_scopes) > 1 or any(
-            item.get("challenge_hypotheses") for item in candidates
         ):
             unresolved.append(
                 {
@@ -89,7 +88,6 @@ def consolidate_duplicate_test_case_drafts(drafts, comparisons):
         representative = max(
             candidates,
             key=lambda item: (
-                len(item.get("coverage_obligations") or []),
                 len(item.get("acceptance_criterion_ids") or []),
                 len(item.get("evidence_quotes") or []),
             ),
@@ -98,7 +96,6 @@ def consolidate_duplicate_test_case_drafts(drafts, comparisons):
         for field in (
             "acceptance_criterion_ids",
             "coverage_item_ids",
-            "coverage_obligations",
             "evidence_refs",
             "evidence_quotes",
         ):
@@ -126,7 +123,6 @@ def consolidate_duplicate_test_case_drafts(drafts, comparisons):
         limits = {
             "acceptance_criterion_ids": 500,
             "coverage_item_ids": 500,
-            "coverage_obligations": 100,
             "evidence_refs": 200,
             "evidence_quotes": 20,
         }

@@ -40,7 +40,6 @@ async def _create(
         "coverage_item_id": payload.get("coverage_item_id"),
         "source_ref": payload.get("source_ref"),
         "source_quote": payload.get("source_quote"),
-        "unlocks_obligation_keys": list(dict.fromkeys(payload.get("unlocks_obligation_keys") or [])),
         "unlocks_source_quotes": list(dict.fromkeys(payload.get("unlocks_source_quotes") or [])),
         "unlocks_coverage_item_ids": list(dict.fromkeys(payload.get("unlocks_coverage_item_ids") or [])),
         "question": payload["question"],

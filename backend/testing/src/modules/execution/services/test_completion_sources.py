@@ -23,15 +23,15 @@ async def completion_sources(project_id, snapshot, plan, build_id):
     
     
     
-    release_id = snapshot.get("release_id") or plan.get("release_id")
-    if not release_id:
-        raise HTTPException(status_code=409, detail={"code": 'COMPLETION_RELEASE_REQUIRED'})
-    release = await find_release(project_id, release_id)
-    if not release:
-        raise HTTPException(status_code=422, detail={"code": 'INVALID_RELEASE'})
     build = await find_build(project_id, build_id)
     if not build:
-        raise HTTPException(status_code=422, detail={"code": 'INVALID_BUILD'})
+        raise HTTPException(status_code=422, detail={"code": "INVALID_BUILD"})
+    release_id = snapshot.get("release_id") or build.get("release_id") or plan.get("release_id")
+    if not release_id:
+        raise HTTPException(status_code=409, detail={"code": "COMPLETION_RELEASE_REQUIRED"})
+    release = await find_release(project_id, release_id)
+    if not release:
+        raise HTTPException(status_code=422, detail={"code": "INVALID_RELEASE"})
     if build.get("release_id") and build["release_id"] != release_id:
         raise HTTPException(status_code=422, detail={"code": 'BUILD_RELEASE_MISMATCH'})
     strategy_version_id = plan.get("strategy_version_id")

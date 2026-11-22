@@ -6,6 +6,7 @@ from src.core.human_decisions import require_ai_publication_authority
 
 from src.core.common import audit, get_project_entity, new_id, now
 from src.core.configuration import settings
+from src.schemas.contracts.common import validate_tiptap_document
 from src.schemas.contracts.design import TestCaseDraftCreate
 from src.repositories.proposal_application import proposal_application_repository
 from src.modules.quality.services.maintenance_proposal import (
@@ -354,6 +355,8 @@ async def create_test_version_from_proposal(proposal, patch, user):
  'test_data',
  'expected_result_doc',
  'postconditions_doc',
+ 'alternate_flows_doc',
+ 'exception_flows_doc',
  'tags',
  'techniques',
  'automation_status',
@@ -361,7 +364,20 @@ async def create_test_version_from_proposal(proposal, patch, user):
  'data_set_version_ids',
  'requirement_version_ids',
  'acceptance_criterion_ids'])
-    merged = {**base, **{key: value for key, value in patch.items() if key in allowed}}
+    changes = {key: value for key, value in patch.items() if key in allowed}
+    for field in ("alternate_flows_doc", "exception_flows_doc"):
+        if field not in changes:
+            continue
+        try:
+            validate_tiptap_document(changes[field])
+            if changes[field] is None:
+                raise ValueError
+        except ValueError as error:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "INVALID_TEST_CASE_DOCUMENT", "field": field},
+            ) from error
+    merged = {**base, **changes}
     if change_set and change_set.get("to_version_id"):
         current_requirement_version_id = change_set["to_version_id"]
         current_requirement_version = await proposal_application_repository.find_requirement_version(

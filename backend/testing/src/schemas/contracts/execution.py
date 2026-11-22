@@ -10,12 +10,8 @@ from src.schemas.contracts.common import (
     empty_doc,
 )
 from src.schemas.contracts.planning import (
-    DefectManagementPlan,
-    TestDataPlan,
     TestPlanCommunication,
     TestPlanEstimation,
-    TestPlanMilestone,
-    TestPlanResponsibility,
     TestPlanRisk,
     TestPlanSchedule,
 )
@@ -46,6 +42,8 @@ class ReleaseReadiness(BaseModel):
 
 
 class TestPlanPatch(BaseModel):
+    owner_id: str | None = Field(default=None, max_length=200)
+    scenario_ids: list[str] | None = Field(default=None, max_length=1000)
     expected_revision: int = Field(ge=1)
     name: str | None = Field(default=None, min_length=2, max_length=300)
     objective: str | None = Field(default=None, max_length=5000)
@@ -58,7 +56,6 @@ class TestPlanPatch(BaseModel):
     environment_id: str | None = Field(default=None, max_length=200)
     entry_criteria: list[str] | None = Field(default=None, max_length=200)
     exit_criteria: list[str] | None = Field(default=None, max_length=200)
-    risks: list[str] | None = Field(default=None, max_length=200)
     test_types: list[str] | None = Field(default=None, max_length=100)
     members: list[str] | None = Field(default=None, max_length=500)
     release: str | None = Field(default=None, max_length=200)
@@ -71,21 +68,11 @@ class TestPlanPatch(BaseModel):
     assumptions: list[str] | None = Field(default=None, max_length=200)
     constraints: list[str] | None = Field(default=None, max_length=200)
     dependencies: list[dict[str, Any]] | None = Field(default=None, max_length=500)
-    stakeholders: list[dict[str, Any]] | None = Field(default=None, max_length=500)
-    responsibility_matrix: list[TestPlanResponsibility] | None = Field(default=None, max_length=500)
     estimation: TestPlanEstimation | None = None
     schedule: TestPlanSchedule | None = None
-    milestones: list[TestPlanMilestone] | None = Field(default=None, max_length=500)
-    deliverables: list[dict[str, Any] | str] | None = Field(default=None, max_length=500)
-    tools: list[dict[str, Any] | str] | None = Field(default=None, max_length=200)
-    suspension_criteria: list[str] | None = Field(default=None, max_length=200)
-    resumption_criteria: list[str] | None = Field(default=None, max_length=200)
-    monitoring_metrics: list[dict[str, Any]] | None = Field(default=None, max_length=200)
     quality_targets: list[dict[str, Any]] | None = Field(default=None, max_length=200)
     risk_register: list[TestPlanRisk] | None = Field(default=None, max_length=500)
     communication_plan: TestPlanCommunication | None = None
-    test_data_plan: TestDataPlan | None = None
-    defect_management: DefectManagementPlan | None = None
 
 
 class TestSuiteCreate(BaseModel):
@@ -108,6 +95,8 @@ class TestSuitePatch(BaseModel):
 
 
 class TestRunCreate(BaseModel):
+    model_config = {"extra": "forbid"}
+
     project_id: str
     idempotency_key: str | None = Field(default=None, min_length=8, max_length=200)
     name: str = Field(min_length=2, max_length=300)
@@ -115,7 +104,6 @@ class TestRunCreate(BaseModel):
     expected_test_plan_snapshot_hash: str | None = Field(default=None, min_length=1, max_length=128)
     test_suite_ids: list[str] = Field(default_factory=list, max_length=500)
     test_case_version_ids: list[str] = Field(default_factory=list, max_length=5000)
-    assignment_strategy: Literal["MANUAL", "CONFIRMED_SKILLS", "PROFILE_EVIDENCE"] = "PROFILE_EVIDENCE"
     environment: str = Field(default="", max_length=200)
     environment_id: str | None = Field(default=None, max_length=200)
     release: str = Field(default="", max_length=200)
@@ -143,15 +131,11 @@ class TestRunPatch(BaseModel):
 
 
 class TestRunAssignmentInput(BaseModel):
+    model_config = {"extra": "forbid"}
+
     expected_revision: int = Field(ge=1)
     assignee_id: str = Field(min_length=1, max_length=200)
     test_case_assignments: dict[str, str] = Field(default_factory=dict)
-    expected_skill_profile_revisions: dict[str, int] = Field(default_factory=dict)
-    decision_source: Literal[
-        "MANUAL",
-        "HUMAN_APPROVED_RECOMMENDATION",
-        "HUMAN_ADJUSTED_RECOMMENDATION",
-    ] = "MANUAL"
 
 
 class TestRunResumeInput(BaseModel):

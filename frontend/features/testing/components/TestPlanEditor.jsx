@@ -19,19 +19,6 @@ const aiPlanFields = [
   ["risks", "Rủi ro và ứng phó", true],
   ["assumptions", "Giả định", true],
   ["constraints", "Ràng buộc", true],
-  ["data_sources", "Nguồn dữ liệu", true],
-  ["data_preparation", "Chuẩn bị dữ liệu", true],
-  ["data_privacy", "Quyền riêng tư dữ liệu", true],
-  ["data_reset", "Khôi phục dữ liệu", true],
-  ["role_guidance", "Gợi ý trách nhiệm theo vai trò", false],
-  ["milestones", "Mốc kiểm thử", true],
-  ["deliverables", "Bàn giao và báo cáo", true],
-  ["tools", "Công cụ", true],
-  ["defect_reporting", "Báo cáo lỗi", true],
-  ["defect_classification", "Phân loại lỗi", true],
-  ["defect_triage", "Rà soát và phân công lỗi", true],
-  ["defect_retest", "Kiểm thử lại lỗi", true],
-  ["defect_closure", "Đóng lỗi", true],
 ];
 
 function hasSuggestedValue(value) {
@@ -41,13 +28,7 @@ function hasSuggestedValue(value) {
 }
 
 function planFieldValue(plan, field) {
-  if (field === "data_sources") return plan.test_data_plan?.sources || [];
-  if (field === "data_preparation") return plan.test_data_plan?.preparation || "";
-  if (field === "data_privacy") return plan.test_data_plan?.privacy || "";
-  if (field === "data_reset") return plan.test_data_plan?.reset_procedure || "";
-  if (field === "milestones") return (plan.milestones || []).map((item) => item.name || "");
-  if (field.startsWith("defect_"))
-    return plan.defect_management?.[field.replace("defect_", "")] || "";
+  if (field === "risks") return (plan.risk_register || []).map((item) => item.title);
   return plan[field];
 }
 
@@ -64,33 +45,28 @@ const scopeFields = [
 const conditionFields = [
   ["entry_criteria", "Tiêu chí đầu vào"],
   ["exit_criteria", "Tiêu chí đầu ra"],
-  ["risks", "Rủi ro"],
   ["assumptions", "Giả định"],
   ["constraints", "Ràng buộc"],
-  ["suspension_criteria", "Tiêu chí đình chỉ"],
-  ["resumption_criteria", "Tiêu chí tiếp tục"],
 ];
 
 const structuredFields = [
   ["dependencies", "Phụ thuộc"],
-  ["stakeholders", "Các bên liên quan"],
-  ["responsibility_matrix", "Ma trận trách nhiệm"],
-  ["milestones", "Mốc"],
-  ["deliverables", "Sản phẩm bàn giao"],
-  ["tools", "Công cụ"],
-  ["monitoring_metrics", "Chỉ số giám sát"],
   ["quality_targets", "Mục tiêu chất lượng"],
   ["risk_register", "Sổ đăng ký rủi ro"],
-  ["communication_plan", "Kế hoạch truyền thông"],
 ];
 
 const defaults = {
   name: "",
+  owner_id: "",
+  scenario_ids: [],
   objective: "",
   strategy_version_id: "",
   test_level: "",
   test_approach: "",
   environment: "",
+  release_id: "",
+  build_id: "",
+  environment_id: "",
   scope_in: [],
   scope_out: [],
   requirement_version_ids: [],
@@ -98,36 +74,21 @@ const defaults = {
   test_case_version_ids: [],
   entry_criteria: [],
   exit_criteria: [],
-  risks: [],
   test_types: [],
   members: [],
   assumptions: [],
   constraints: [],
-  suspension_criteria: [],
-  resumption_criteria: [],
   dependencies: [],
-  stakeholders: [],
-  responsibility_matrix: [],
   estimation: {
     method: "expert_judgment",
     planned_effort_hours: 0,
-    planned_people: 0,
     basis: "",
     effort_allocations: [],
   },
   schedule: { planned_start_at: "", planned_end_at: "" },
-  milestones: [],
-  deliverables: [],
-  tools: [],
-  monitoring_metrics: [],
   quality_targets: [],
   risk_register: [],
-  communication_plan: {},
-  release_id: "",
-  build_id: "",
-  environment_id: "",
-  test_data_plan: { sources: [], preparation: "", privacy: "", reset_procedure: "", owner_id: "" },
-  defect_management: { reporting: "", classification: "", triage: "", retest: "", closure: "" },
+  communication_plan: { channel: "", status_report_frequency: "", recipients: [] },
 };
 
 export default function TestPlanEditor({
@@ -135,6 +96,7 @@ export default function TestPlanEditor({
   initialValue,
   strategies = [],
   requirements,
+  scenarios = [],
   suites,
   tests,
   members = [],
@@ -159,11 +121,6 @@ export default function TestPlanEditor({
     return {
       ...defaults,
       ...initialValue,
-      test_data_plan: { ...defaults.test_data_plan, ...(initialValue.test_data_plan || {}) },
-      defect_management: {
-        ...defaults.defect_management,
-        ...(initialValue.defect_management || {}),
-      },
       schedule: {
         ...defaults.schedule,
         ...(initialValue.schedule || {}),
@@ -207,13 +164,11 @@ export default function TestPlanEditor({
   const [saving, setSaving] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiInstruction, setAiInstruction] = useState("");
-  const [testabilityMode, setTestabilityMode] = useState("OFF");
   const [aiSuggestion, setAiSuggestion] = useState(null);
   const [selectedAiFields, setSelectedAiFields] = useState(() => new Set());
   const [appliedAiFields, setAppliedAiFields] = useState(() => new Set());
   const [aiError, setAiError] = useState("");
   const savingRef = useRef(false);
-  useEffect(() => setTestabilityMode("OFF"), [projectId]);
   const setField = (key, next) => setValue((current) => ({ ...current, [key]: next }));
   const requestAiPlanDraft = async () => {
     if (aiBusy || !value.requirement_version_ids.length) return;
@@ -224,7 +179,6 @@ export default function TestPlanEditor({
       const result = await testingApi.suggestTestPlanDraft(projectId, {
         requirement_version_ids: value.requirement_version_ids,
         instruction: aiInstruction,
-        testability_mode: testabilityMode,
         current_test_plan: {
           objective: value.objective,
           scope_in: value.scope_in,
@@ -235,11 +189,8 @@ export default function TestPlanEditor({
           environment: value.environment,
           entry_criteria: value.entry_criteria,
           exit_criteria: value.exit_criteria,
-          risks: value.risks,
           assumptions: value.assumptions,
           constraints: value.constraints,
-          test_data_plan: value.test_data_plan,
-          defect_management: value.defect_management,
         },
       });
       setAiSuggestion(result);
@@ -265,34 +216,16 @@ export default function TestPlanEditor({
     const selected = new Set(selectedAiFields);
     setValue((current) => {
       const next = { ...current };
-      const testDataPlan = { ...current.test_data_plan };
-      const defectManagement = { ...current.defect_management };
       for (const field of selected) {
-        if (field === "data_sources") testDataPlan.sources = suggestion[field];
-        else if (field === "data_preparation") testDataPlan.preparation = suggestion[field];
-        else if (field === "data_privacy") testDataPlan.privacy = suggestion[field];
-        else if (field === "data_reset") testDataPlan.reset_procedure = suggestion[field];
-        else if (field === "milestones")
-          next.milestones = suggestion[field].map((name) => ({
-            name,
-            planned_at: null,
-            actual_at: null,
-            status: "PLANNED",
-            evidence_refs: [],
+        if (field === "risks") {
+          next.risk_register = suggestion.risks.map((risk) => ({
+            risk_id: crypto.randomUUID(),
+            title: String(risk).slice(0, 500),
+            description: String(risk),
           }));
-        else if (field.startsWith("defect_"))
-          defectManagement[field.replace("defect_", "")] = suggestion[field];
-        else next[field] = suggestion[field];
-      }
-      if (
-        ["data_sources", "data_preparation", "data_privacy", "data_reset"].some((field) =>
-          selected.has(field),
-        )
-      ) {
-        next.test_data_plan = testDataPlan;
-      }
-      if ([...selected].some((field) => field.startsWith("defect_"))) {
-        next.defect_management = defectManagement;
+        } else {
+          next[field] = suggestion[field];
+        }
       }
       return next;
     });
@@ -308,10 +241,6 @@ export default function TestPlanEditor({
         if (savingRef.current) return;
         setError("");
         try {
-          if (!(value.test_types || []).length) {
-            setError("Chọn ít nhất một loại kiểm thử.");
-            return;
-          }
           const effortAllocations = value.estimation.effort_allocations || [];
           if (effortAllocations.some((item) => !item.user_id)) {
             setError("Chọn thành viên cho từng dòng phân bổ giờ.");
@@ -345,16 +274,18 @@ export default function TestPlanEditor({
             ),
             estimation: {
               ...value.estimation,
-              planned_people: effortAllocations.length || value.estimation.planned_people,
             },
             strategy_version_id: value.strategy_version_id || null,
+            test_level: value.test_level || null,
+            owner_id: value.owner_id || null,
             release_id: value.release_id || null,
             build_id: value.build_id || null,
             environment_id: value.environment_id || null,
-            test_data_plan: {
-              ...value.test_data_plan,
-              sources: value.test_data_plan.sources.map((item) => item.trim()).filter(Boolean),
-              owner_id: value.test_data_plan.owner_id || null,
+            communication_plan: {
+              ...value.communication_plan,
+              recipients: (value.communication_plan.recipients || [])
+                .map((item) => item.trim())
+                .filter(Boolean),
             },
           };
           if (!initialValue) {
@@ -393,25 +324,6 @@ export default function TestPlanEditor({
               {aiBusy ? "Đang tạo gợi ý" : "Tạo gợi ý"}
             </button>
           </div>
-          <label className="field-label block">
-            Chế độ hỗ trợ AI
-            <select
-              className="apple-input mt-2"
-              value={testabilityMode}
-              disabled={aiBusy}
-              onChange={(event) => setTestabilityMode(event.target.value)}
-            >
-              <option value="OFF">Thông thường · không dùng Blueprint</option>
-              <option value="BLUEPRINT_ONLY">Blueprint · dùng phân tích đã lưu</option>
-              <option value="BLUEPRINT_BENCHMARK">
-                Blueprint + Benchmark · rà soát AI, chấm khi có bộ tham chiếu
-              </option>
-            </select>
-            <span className="mt-1 block text-xs text-ink-muted">
-              Bạn vẫn có thể nhập và sửa kế hoạch thủ công. AI chỉ trả đề xuất để bạn chọn từng
-              trường.
-            </span>
-          </label>
           <label className="field-label block">
             Hướng dẫn bổ sung
             <textarea
@@ -630,6 +542,14 @@ export default function TestPlanEditor({
               </select>
             </label>
             <label className="field-label">
+              Ghi chú môi trường kiểm thử
+              <input
+                className="apple-input mt-2"
+                value={value.environment}
+                onChange={(event) => setField("environment", event.target.value)}
+              />
+            </label>
+            <label className="field-label">
               Tên kế hoạch
               <input
                 className="apple-input mt-2"
@@ -682,7 +602,6 @@ export default function TestPlanEditor({
                 value={value.test_level}
                 onChange={(event) => setField("test_level", event.target.value)}
                 aria-label="Cấp kiểm thử"
-                required
                 disabled={!selectedStrategy?.test_levels?.length && !value.test_level}
               >
                 <option value="">Chọn cấp kiểm thử</option>
@@ -732,15 +651,6 @@ export default function TestPlanEditor({
                 </Link>
               </p>
             )}
-            <label className="field-label">
-              Môi trường mặc định
-              <input
-                className="apple-input mt-2"
-                value={value.environment}
-                onChange={(event) => setField("environment", event.target.value)}
-                required
-              />
-            </label>
             <label className="field-label md:col-span-2">
               Mục tiêu
               <textarea
@@ -769,6 +679,17 @@ export default function TestPlanEditor({
             </h3>
           </div>
           <div className="grid min-w-0 gap-4 md:grid-cols-2">
+            <MultiSelect
+              label="Kịch bản kiểm thử liên kết"
+              options={scenarios
+                .filter((item) => item.status !== "archived")
+                .map((item) => ({
+                  value: item._id,
+                  label: `${item.scenario_key} · ${item.title}`,
+                }))}
+              value={value.scenario_ids}
+              onChange={(ids) => setField("scenario_ids", ids)}
+            />
             <MultiSelect
               className="md:col-span-2"
               label="Phiên bản yêu cầu trong phạm vi"
@@ -830,6 +751,26 @@ export default function TestPlanEditor({
             </h3>
           </div>
           <div className="grid min-w-0 gap-4 md:grid-cols-2">
+            <label className="field-label">
+              Người phụ trách
+              <select
+                className="apple-input mt-2"
+                value={value.owner_id || ""}
+                onChange={(event) => setField("owner_id", event.target.value)}
+              >
+                <option value="">Chưa phân công</option>
+                {members
+                  .filter((item) => item.status === "ACTIVE" || item.user_id === value.owner_id)
+                  .map((item) => (
+                    <option key={item.user_id} value={item.user_id}>
+                      {item.user_label ||
+                        item.user?.full_name ||
+                        item.user?.email ||
+                        "Thành viên dự án"}
+                    </option>
+                  ))}
+              </select>
+            </label>
             <MultiSelect
               className="md:col-span-2"
               label="Thành viên tham gia"
@@ -864,104 +805,6 @@ export default function TestPlanEditor({
           </div>
         </section>
         <section
-          className="space-y-4 border-t border-border pt-5"
-          aria-labelledby="test-plan-data-heading"
-        >
-          <h3 id="test-plan-data-heading" className="text-base font-semibold">
-            Dữ liệu kiểm thử
-          </h3>
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="field-label md:col-span-2">
-              Nguồn dữ liệu
-              <textarea
-                className="apple-input mt-2 min-h-20"
-                value={value.test_data_plan.sources.join("\n")}
-                onChange={(event) =>
-                  setField("test_data_plan", {
-                    ...value.test_data_plan,
-                    sources: event.target.value.split("\n"),
-                  })
-                }
-              />
-            </label>
-            {[
-              ["preparation", "Chuẩn bị dữ liệu"],
-              ["privacy", "Ẩn danh và quyền truy cập"],
-              ["reset_procedure", "Khôi phục dữ liệu sau kiểm thử"],
-            ].map(([key, label]) => (
-              <label className="field-label" key={key}>
-                {label}
-                <textarea
-                  className="apple-input mt-2 min-h-20"
-                  value={value.test_data_plan[key]}
-                  onChange={(event) =>
-                    setField("test_data_plan", {
-                      ...value.test_data_plan,
-                      [key]: event.target.value,
-                    })
-                  }
-                />
-              </label>
-            ))}
-            <label className="field-label">
-              Người chuẩn bị dữ liệu
-              <select
-                className="apple-input mt-2"
-                value={value.test_data_plan.owner_id || ""}
-                onChange={(event) =>
-                  setField("test_data_plan", {
-                    ...value.test_data_plan,
-                    owner_id: event.target.value,
-                  })
-                }
-              >
-                <option value="">Chưa phân công</option>
-                {members
-                  .filter((item) => item.status === "ACTIVE")
-                  .map((item) => (
-                    <option key={item.user_id} value={item.user_id}>
-                      {item.user_label ||
-                        item.user?.full_name ||
-                        item.user?.email ||
-                        "Thành viên chưa có tên"}
-                    </option>
-                  ))}
-              </select>
-            </label>
-          </div>
-        </section>
-        <section
-          className="space-y-4 border-t border-border pt-5"
-          aria-labelledby="test-plan-defect-heading"
-        >
-          <h3 id="test-plan-defect-heading" className="text-base font-semibold">
-            Quy trình xử lý lỗi
-          </h3>
-          <div className="grid gap-4 md:grid-cols-2">
-            {[
-              ["reporting", "Thông tin và bằng chứng khi báo lỗi"],
-              ["classification", "Phân loại mức độ và ưu tiên"],
-              ["triage", "Phân loại, giao xử lý và báo chậm tiến độ"],
-              ["retest", "Kiểm tra lại và hồi quy"],
-              ["closure", "Điều kiện đóng hoặc mở lại lỗi"],
-            ].map(([key, label]) => (
-              <label className="field-label" key={key}>
-                {label}
-                <textarea
-                  className="apple-input mt-2 min-h-20"
-                  value={value.defect_management[key]}
-                  onChange={(event) =>
-                    setField("defect_management", {
-                      ...value.defect_management,
-                      [key]: event.target.value,
-                    })
-                  }
-                />
-              </label>
-            ))}
-          </div>
-        </section>
-        <section
           className="min-w-0 space-y-4 border-t border-border pt-5"
           aria-labelledby="test-plan-coordination-heading"
         >
@@ -977,13 +820,44 @@ export default function TestPlanEditor({
                   label={label}
                   value={value[key] ?? defaults[key]}
                   fixedType={Array.isArray(defaults[key]) ? "array" : "object"}
-                  itemTypes={key === "deliverables" || key === "tools" ? undefined : ["object"]}
+                  itemTypes={["object"]}
                   onChange={(nextValue) => setField(key, nextValue)}
                 />
               </div>
             ))}
           </div>
         </section>
+        <details className="space-y-3 rounded-control border border-border p-4">
+          <summary className="cursor-pointer font-medium">Giao tiếp</summary>
+          <div className="grid gap-3 md:grid-cols-3">
+            {[
+              ["channel", "Kênh báo cáo"],
+              ["status_report_frequency", "Tần suất"],
+              ["recipients", "Người nhận"],
+            ].map(([field, label]) => (
+              <label className="field-label" key={field}>
+                {label}
+                <input
+                  className="apple-input mt-2"
+                  value={
+                    field === "recipients"
+                      ? (value.communication_plan.recipients || []).join(", ")
+                      : value.communication_plan[field] || ""
+                  }
+                  onChange={(event) =>
+                    setField("communication_plan", {
+                      ...value.communication_plan,
+                      [field]:
+                        field === "recipients"
+                          ? event.target.value.split(",").map((item) => item.trimStart())
+                          : event.target.value,
+                    })
+                  }
+                />
+              </label>
+            ))}
+          </div>
+        </details>
         <section
           className="min-w-0 space-y-3 rounded-control border border-border p-4 md:col-span-2"
           aria-labelledby="test-plan-effort-heading"

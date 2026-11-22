@@ -15,7 +15,6 @@ from src.modules.design.services.test_case_records import (
     project_test_index_metadata,
     project_test_text,
 )
-from src.modules.design.services.test_case_custom_fields import validate_test_case_custom_values
 from src.core.project_settings import resolve_testcase_duplicate_threshold
 
 def trace_is_missing_for_approval(draft, project_settings):
@@ -87,9 +86,6 @@ async def submit_test_case_review_record(project_id, draft_id, payload, user):
         return draft
     if draft["status"] != 'DRAFT':
         raise HTTPException(status_code=409, detail={"code": 'INVALID_STATE_TRANSITION'})
-    await validate_test_case_custom_values(
-        project_id, draft.get("custom_values", {}), enforce_required=True
-    )
     if draft["revision"] != payload.expected_revision:
         raise HTTPException(
             status_code=409,
@@ -197,9 +193,6 @@ async def approve_test_case_draft_record(draft_id, payload, user):
         )
     if not has_verifiable_steps(draft):
         raise HTTPException(status_code=409, detail={"code": "TEST_CASE_STEPS_REQUIRED", "message": "Cần bổ sung hành động và kết quả mong đợi cho từng bước trước khi phê duyệt"})
-    await validate_test_case_custom_values(
-        draft["project_id"], draft.get("custom_values", {}), enforce_required=True
-    )
     findings = lint_test_case(draft)
     project_settings = await test_design_repository.find_project_settings(draft["project_id"])
     if trace_is_missing_for_approval(draft, project_settings):
@@ -251,12 +244,6 @@ async def approve_test_case_draft_record(draft_id, payload, user):
         if not current_draft:
             raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
         await assert_sources_current_in_session(current_draft, session)
-        await validate_test_case_custom_values(
-            current_draft["project_id"],
-            current_draft.get("custom_values", {}),
-            enforce_required=True,
-            session=session,
-        )
         await validate_test_case_publication_uniqueness(
             current_draft,
             resolve_testcase_duplicate_threshold(project_settings),
@@ -521,8 +508,6 @@ def build_test_case_version(draft, test_case_id, version_number, parent_version_
         "type": draft["type"],
         "test_level": draft.get("test_level"),
         "test_kind": draft.get("test_kind"),
-        "expected_impact": draft.get("expected_impact", "unassessed"),
-        "assessment_reason": draft.get("assessment_reason", ""),
         "priority": draft["priority"],
         "risk": draft["risk"],
         "objective_doc": draft.get("objective_doc", {"type": "doc", "content": []}),
@@ -531,9 +516,9 @@ def build_test_case_version(draft, test_case_id, version_number, parent_version_
         "test_data": draft["test_data"],
         "expected_result_doc": draft["expected_result_doc"],
         "postconditions_doc": draft["postconditions_doc"],
+        "alternate_flows_doc": draft.get("alternate_flows_doc") or {"type": "doc", "content": []},
+        "exception_flows_doc": draft.get("exception_flows_doc") or {"type": "doc", "content": []},
         "tags": draft["tags"],
-        "required_skills": draft.get("required_skills", []),
-        "custom_values": draft.get("custom_values", {}),
         "owner_id": draft.get("owner_id") or draft.get("created_by"),
         "techniques": draft.get("techniques", []),
         "automation_status": draft["automation_status"],
@@ -572,11 +557,8 @@ def build_test_case_version(draft, test_case_id, version_number, parent_version_
             if draft.get("origin") != "ai_generated" or draft.get("evidence_refs")
             else []
         ),
-        "coverage_obligations": draft.get("coverage_obligations", []),
-        "obligation_evidence": draft.get("obligation_evidence", []),
         "evidence_refs": draft.get("evidence_refs", []),
         "evidence_quotes": draft.get("evidence_quotes", []),
-        "challenge_hypotheses": draft.get("challenge_hypotheses", []),
         "plain_text_projection": project_test_text(draft),
         "parent_version_id": parent_version_id,
         "change_reason": draft.get("change_reason") or payload.change_reason,

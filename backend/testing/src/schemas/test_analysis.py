@@ -28,11 +28,6 @@ class GeneratedEvidenceQuote(BaseModel):
     quote: str = Field(min_length=2, max_length=1000)
 
 
-class GeneratedObligationEvidence(BaseModel):
-    obligation_key: str = Field(min_length=1, max_length=200)
-    evidence_quotes: list[GeneratedEvidenceQuote] = Field(min_length=1, max_length=20)
-
-
 class SecurityCandidate(BaseModel):
     category: str
     title: str = Field(min_length=2, max_length=300)
@@ -75,14 +70,12 @@ class GeneratedCase(BaseModel):
     priority: str = Field(default="unassessed", min_length=1, max_length=100)
     objective: str = Field(min_length=2, max_length=5000)
     preconditions: str = Field(default="", max_length=5000)
+    alternate_flows: str = Field(default="", max_length=5000)
+    exception_flows: str = Field(default="", max_length=5000)
     steps: list[GeneratedStep] = Field(min_length=1, max_length=50)
     expected: str = Field(min_length=2, max_length=5000)
     acceptance_criterion_ids: list[str] = Field(default_factory=list)
-    required_skills: list[str] = Field(default_factory=list, max_length=50)
     techniques: list[str] = Field(default_factory=list)
-    challenge_techniques: list[str] = Field(default_factory=list)
-    coverage_obligations: list[str] = Field(default_factory=list)
-    obligation_evidence: list[GeneratedObligationEvidence] = Field(default_factory=list)
     evidence_refs: list[str] = Field(default_factory=list)
     evidence_quotes: list[GeneratedEvidenceQuote] = Field(min_length=1, max_length=20)
 
@@ -101,55 +94,6 @@ class GeneratedCase(BaseModel):
         if not value:
             raise ValueError("test_case_assessment_required")
         return value
-
-    @field_validator("required_skills")
-    @classmethod
-    def validate_required_skills(cls, values):
-        normalized = [" ".join(value.split()) for value in values]
-        if any(not value or len(value) > 120 for value in normalized):
-            raise ValueError("test_case_required_skill_invalid")
-        if len({value.casefold() for value in normalized}) != len(normalized):
-            raise ValueError("test_case_required_skills_must_be_unique")
-        return normalized
-
-    @field_validator("coverage_obligations")
-    @classmethod
-    def unique_coverage_obligations(cls, value):
-        if len(value) != len(set(value)):
-            raise ValueError("test_case_coverage_obligations_must_be_unique")
-        return value
-
-    @field_validator("obligation_evidence")
-    @classmethod
-    def unique_obligation_evidence(cls, value):
-        keys = [item.obligation_key for item in value]
-        if len(keys) != len(set(keys)):
-            raise ValueError("test_case_obligation_evidence_keys_must_be_unique")
-        return value
-
-    @model_validator(mode="after")
-    def validate_obligation_evidence(self):
-        coverage_obligations = set(self.coverage_obligations)
-        evidence_keys = {item.obligation_key for item in self.obligation_evidence}
-        if not evidence_keys <= coverage_obligations:
-            raise ValueError("test_case_obligation_evidence_must_reference_case_obligations")
-        case_quotes = {
-            (item.evidence_ref, item.quote)
-            for item in self.evidence_quotes
-        }
-        if any(
-            (quote.evidence_ref, quote.quote) not in case_quotes
-            for item in self.obligation_evidence
-            for quote in item.evidence_quotes
-        ):
-            raise ValueError("test_case_obligation_evidence_must_reference_case_evidence")
-        if self.coverage_obligations and evidence_keys != coverage_obligations:
-            raise ValueError("test_case_obligation_evidence_must_cover_each_obligation")
-        quote_text = " ".join(item.quote.casefold() for item in self.evidence_quotes)
-        if any(skill.casefold() not in quote_text for skill in self.required_skills):
-            raise ValueError("test_case_required_skill_must_appear_in_cited_evidence")
-        return self
-
 
 class TestBasisRef(BaseModel):
     artifact_type: Literal[
@@ -274,7 +218,6 @@ class FindingResolutionInput(BaseModel):
 class TestAnalysisAIInput(BaseModel):
     basis_refs: list[TestBasisRef] = Field(min_length=1, max_length=100)
     instruction: str = Field(default="", max_length=5000)
-    testability_mode: Literal["OFF", "BLUEPRINT_ONLY", "BLUEPRINT_BENCHMARK"] = "OFF"
     idempotency_key: str = Field(min_length=8, max_length=200)
     source_event_id: str | None = Field(default=None, min_length=1, max_length=200)
     source_event_revision: int | None = Field(default=None, ge=1)

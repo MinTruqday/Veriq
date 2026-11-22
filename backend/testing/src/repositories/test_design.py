@@ -4,45 +4,6 @@ from src.core.database import database
 
 
 class TestDesignRepository:
-    async def list_test_case_custom_fields(self, project_id):
-        return await database.value.test_case_custom_fields.find(
-            {"project_id": project_id, "status": "ACTIVE"}
-        ).sort([("created_at", 1), ("_id", 1)]).to_list(200)
-
-    async def list_all_test_case_custom_fields(self, project_id, session=None):
-        options = {"session": session} if session is not None else {}
-        return await database.value.test_case_custom_fields.find(
-            {"project_id": project_id}, **options
-        ).sort([("created_at", 1), ("_id", 1)]).to_list(200)
-
-    async def insert_test_case_custom_field(self, value):
-        await database.value.test_case_custom_fields.insert_one(value)
-        return value
-
-    async def update_test_case_custom_field(
-        self, project_id, field_id, expected_revision, changes
-    ):
-        revision_filter = (
-            {"revision": expected_revision}
-            if expected_revision > 1
-            else {"$or": [{"revision": 1}, {"revision": {"$exists": False}}]}
-        )
-        return await database.value.test_case_custom_fields.find_one_and_update(
-            {
-                "_id": field_id,
-                "project_id": project_id,
-                "status": {"$in": ["ACTIVE", "INACTIVE"]},
-                **revision_filter,
-            },
-            {"$set": changes, "$inc": {"revision": 1}},
-            return_document=ReturnDocument.AFTER,
-        )
-
-    async def find_test_case_custom_field(self, project_id, field_id):
-        return await database.value.test_case_custom_fields.find_one(
-            {"_id": field_id, "project_id": project_id}
-        )
-
     async def list_repository_nodes(self, project_id):
         return await database.value.test_repository_nodes.find(
             {"project_id": project_id, "status": "ACTIVE"}

@@ -1,7 +1,7 @@
 "use client";
 import { useDateTimeOptions } from "../../hooks/useDateTimeOptions";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Eye, Pencil } from "lucide-react";
+import { Eye } from "lucide-react";
 import { uploadAssetAPI } from "@/features/cloud/services/upload.service";
 import DataTable from "../../components/DataTable";
 import FilePicker from "../../components/FilePicker";
@@ -393,30 +393,6 @@ export default function DefectsPage({ project }) {
         } catch (reason) {
           throw new Error(messageOf(reason));
         }
-      },
-    });
-  };
-  const editTechnicalDetails = async (item) => {
-    if (!defectActionAccess(project, item).canEditTechnical) return;
-    const fields = [
-      { name: "root_cause_detail", label: "Phân tích nguyên nhân", multiline: true },
-      { name: "injected_phase", label: "Giai đoạn phát sinh lỗi" },
-      { name: "escape_reason", label: "Nguyên nhân chưa phát hiện sớm", multiline: true },
-    ];
-    await ask({
-      title: "Cập nhật phân tích lỗi",
-      description: `${item.defect_key} · Mức độ: ${item.severity} · Ưu tiên: ${item.priority}`,
-      confirmLabel: "Lưu phân tích",
-      fields: fields.map((field) => ({ ...field, initialValue: item[field.name] || "" })),
-      onConfirm: async (answer) => {
-        const changes = Object.fromEntries(
-          fields
-            .filter((field) => answer[field.name] !== (item[field.name] || ""))
-            .map((field) => [field.name, answer[field.name]]),
-        );
-        if (!Object.keys(changes).length) return;
-        await testingApi.updateDefect(item._id, { expected_revision: item.revision, ...changes });
-        await load();
       },
     });
   };
@@ -1232,17 +1208,6 @@ export default function DefectsPage({ project }) {
                         }}
                       >
                         Thu hồi liên kết
-                      </button>
-                    )}
-                    {defectActionAccess(project, item).canEditTechnical && (
-                      <button
-                        type="button"
-                        className="icon-button h-9 w-9"
-                        title="Cập nhật phân tích lỗi"
-                        aria-label={`Cập nhật phân tích ${item.defect_key}`}
-                        onClick={() => void editTechnicalDetails(item)}
-                      >
-                        <Pencil aria-hidden="true" size={16} />
                       </button>
                     )}
                     {item.updated_at && (

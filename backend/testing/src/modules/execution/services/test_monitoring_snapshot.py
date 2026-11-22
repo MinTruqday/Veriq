@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+from fastapi import HTTPException
+
 from src.modules.quality.services.defect_classification import (
     defect_is_blocking,
     defect_is_critical,
@@ -24,6 +26,24 @@ def parse_datetime(value):
         return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
     except ValueError:
         return None
+
+
+def resolve_report_build(snapshot, selected_build_id):
+    build_ids = {
+        run["build_id"]
+        for run in (snapshot.get("source_state") or {}).get("runs", [])
+        if run.get("build_id")
+    }
+    source_build_id = snapshot.get("build_id")
+    if selected_build_id:
+        if build_ids and selected_build_id not in build_ids:
+            raise HTTPException(status_code=422, detail={"code": "REPORT_BUILD_OUTSIDE_SNAPSHOT"})
+        return selected_build_id
+    if len(build_ids) == 1:
+        return next(iter(build_ids))
+    if not build_ids and source_build_id:
+        return source_build_id
+    raise HTTPException(status_code=422, detail={"code": "REPORT_BUILD_REQUIRED"})
 
 
 async def monitoring_sources(project_id, plan, release_id, payload):

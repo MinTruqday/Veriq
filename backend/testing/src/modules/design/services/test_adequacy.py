@@ -198,7 +198,6 @@ async def _snapshot(requirement_version):
                     "techniques": case.get("techniques", []),
                     "evidence_refs": case.get("evidence_refs", []),
                     "evidence_quotes": case.get("evidence_quotes", []),
-                    "challenge_hypotheses": case.get("challenge_hypotheses", []),
                     "assurance_evidence_complete": _case_has_assurance_evidence(case),
                     "assurance_evidence_gaps": _assurance_evidence_gaps(case),
                 }

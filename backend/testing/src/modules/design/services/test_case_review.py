@@ -152,26 +152,6 @@ def validate_merge_choices(choices, result, original, proposal):
             raise HTTPException(422, detail={"code": "MERGE_CHOICE_VALUE_MISMATCH", "field": field})
 
 
-def merge_invalidates_coverage(changed_fields):
-    return bool(
-        set(changed_fields)
-        & {
-            "title",
-            "objective_doc",
-            "preconditions_doc",
-            "steps",
-            "test_data",
-            "expected_result_doc",
-            "postconditions_doc",
-            "requirement_version_ids",
-            "acceptance_criterion_ids",
-            "coverage_item_ids",
-            "test_condition_ids",
-            "bdd",
-        }
-    )
-
-
 def ensure_unique_step_ids(test_case):
     steps = test_case.get("steps") or []
     ids = [step.get("id") for step in steps if isinstance(step, dict)]
@@ -388,12 +368,9 @@ async def comparison_sources(draft):
 
 async def review_context(draft_id, user, permission="testcase.read"):
     draft = await get_project_entity("test_case_drafts", draft_id, user, permission)
-    draft = {"test_level": None, "test_kind": None, "expected_impact": "unassessed", "assessment_reason": "", **draft}
+    draft = {"test_level": None, "test_kind": None, **draft}
     sources = await comparison_sources(draft)
     settings = await test_design_repository.find_project_settings(draft["project_id"])
-    custom_fields = await test_design_repository.list_all_test_case_custom_fields(
-        draft["project_id"]
-    )
     threshold = resolve_testcase_duplicate_threshold(settings)
     duplicates = []
     parent_case_id = (sources["parent"] or {}).get("test_case_id")
@@ -420,14 +397,12 @@ async def review_context(draft_id, user, permission="testcase.read"):
             "sources": sources["sources"],
             "parent_version_id": (sources["parent"] or {}).get("_id"),
             "proposal": draft.get("ai_proposal_snapshot"),
-            "custom_fields": custom_fields,
         }
     )
     return {
         "draft": draft, "original": sources["parent"], "proposal": draft.get("ai_proposal_snapshot"),
         "proposal_available": bool(draft.get("ai_proposal_snapshot")),
         "source_evidence": draft.get("source_evidence", []),
-        "custom_fields": custom_fields,
         "comparison_token": token, "stale_reasons": sources["stale_reasons"],
         "is_new": not bool(draft.get("parent_version_id")),
         "duplicates": sorted(duplicates, key=lambda item: (-item["score"], item.get("test_case_key") or "")),
@@ -503,22 +478,16 @@ async def save_merged_test_case(draft_id, payload, user):
     if "attachments" in changes:
         await get_project(draft["project_id"], user, "attachment.manage")
     from src.modules.design.services.test_case_records import validate_design_sources, validate_data_set_versions, validate_test_design_structure, validate_coverage_items
-    from src.modules.design.services.test_case_custom_fields import validate_test_case_custom_values
     await validate_design_sources(draft["project_id"], values["requirement_version_ids"], values["acceptance_criterion_ids"], values["scenario_id"], values["test_condition_ids"])
     await validate_data_set_versions(draft["project_id"], values["data_set_version_ids"])
     await validate_test_design_structure(draft["project_id"], values["repository_node_id"], payload.result.bdd)
     await validate_coverage_items(draft["project_id"], values["requirement_version_ids"], values["coverage_item_ids"])
-    await validate_test_case_custom_values(draft["project_id"], values["custom_values"])
     merged = {**draft, **changes}
     proposal = draft.get("ai_proposal_snapshot")
     if proposal and not merged.get("evidence_refs"):
         for key in ("evidence_refs", "evidence_quotes", "source_evidence"):
             changes[key] = deepcopy(proposal.get(key, []))
             merged[key] = changes[key]
-    if merge_invalidates_coverage(changes):
-        merged["coverage_obligations"] = []
-        merged["challenge_hypotheses"] = []
-        changes.update({"coverage_obligations": [], "challenge_hypotheses": []})
     try:
         TestCaseDraftCreate.model_validate(merged)
     except ValidationError as error:
@@ -540,8 +509,6 @@ async def validate_review_sources_before_approval(draft):
     except ValidationError as error:
         raise HTTPException(422, detail={"code": "TEST_CASE_MERGE_INVALID"}) from error
     ensure_unique_step_ids(draft)
-    if draft.get("expected_impact", "unassessed") != "unassessed" and not str(draft.get("assessment_reason") or "").strip():
-        raise HTTPException(409, detail={"code": "TEST_CASE_IMPACT_REASON_REQUIRED", "message": "Cần ghi lý do đánh giá ảnh hưởng trước khi duyệt."})
     state = await comparison_sources(draft)
     if state["stale_reasons"]:
         raise HTTPException(409, detail={"code": "TEST_CASE_COMPARISON_STALE", "reasons": state["stale_reasons"]})

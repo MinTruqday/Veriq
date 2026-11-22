@@ -62,8 +62,13 @@ export default function ExecutionPage({ project, section, workspaceView }) {
   const searchParams = useSearchParams();
   const sourceRequirementId = searchParams.get("requirementVersionId") || "";
   const openedRequirement = useRef("");
-  const runId = section[0] || "";
+  const planRoute = workspaceView === "test-plans" ? section[0] : "";
+  const planPath = projectRoute(project._id, PROJECT_SECTION_SLUGS.testPlans);
+  const runId = workspaceView === "test-plans" ? "" : section[0] || "";
+  const openPlan = (id, action) =>
+    router.push([planPath, encodeURIComponent(id), action].filter(Boolean).join("/"));
   const [plans, setPlans] = useState([]);
+  const [scenarios, setScenarios] = useState([]);
   const [strategies, setStrategies] = useState([]);
   const [suites, setSuites] = useState([]);
   const [releases, setReleases] = useState([]);
@@ -82,7 +87,6 @@ export default function ExecutionPage({ project, section, workspaceView }) {
   });
   const [planFilters, setPlanFilters] = useState({
     q: "",
-    release: "",
     status: "",
     sort: "-updated_at",
   });
@@ -105,9 +109,6 @@ export default function ExecutionPage({ project, section, workspaceView }) {
   const loadedRunRoute = useRef(`${project._id}:${runId}`);
   const loadGeneration = useRef(0);
   const [planValidation, setPlanValidation] = useState(null);
-  const [creatingPlan, setCreatingPlan] = useState(false);
-  const [editingPlan, setEditingPlan] = useState(null);
-  const [viewingPlan, setViewingPlan] = useState(null);
   const [creatingSuite, setCreatingSuite] = useState(false);
   const [creatingRun, setCreatingRun] = useState(false);
   const [savingRun, setSavingRun] = useState(false);
@@ -129,7 +130,6 @@ export default function ExecutionPage({ project, section, workspaceView }) {
     testPlanId: "",
     suiteIds: [],
     versionIds: [],
-    assignmentStrategy: "MANUAL",
   });
   const [actuals, setActuals] = useState({});
   const [stepResults, setStepResults] = useState({});
@@ -183,10 +183,11 @@ export default function ExecutionPage({ project, section, workspaceView }) {
         environmentValues,
         strategyValues,
         requirementValues,
+        scenarioValues,
         memberValues,
       ] = await Promise.all([
         permissions.includes("testplan.read")
-          ? testingApi.listPlans(project._id, planFilters)
+          ? testingApi.listPlans(project._id, planRoute ? {} : planFilters)
           : Promise.resolve([]),
         permissions.includes("testsuite.read")
           ? testingApi.listSuites(project._id, suiteFilters)
@@ -211,6 +212,9 @@ export default function ExecutionPage({ project, section, workspaceView }) {
           : Promise.resolve({ items: [] }),
         permissions.includes("requirement.read")
           ? testingApi.listRequirements(project._id, { page_size: 500, status: "BASELINED" })
+          : Promise.resolve([]),
+        workspaceView === "test-plans" && permissions.includes("testscenario.read")
+          ? testingApi.listScenarios(project._id)
           : Promise.resolve([]),
         permissions.includes("project.members.read") &&
         (permissions.includes("testrun.assign") ||
@@ -238,6 +242,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
       setBuilds(buildValues);
       setEnvironments(environmentValues);
       setStrategies(strategyValues.items || []);
+      setScenarios(scenarioValues);
       setRequirements(requirementValues);
       setMembers(memberValues);
       setRun(runValue);
@@ -254,12 +259,14 @@ export default function ExecutionPage({ project, section, workspaceView }) {
     initialDataLoaded,
     loadedProjectId,
     planFilters,
+    planRoute,
     project._id,
     permissions,
     runFilters,
     runId,
     runPage,
     suiteFilters,
+    workspaceView,
   ]);
   useEffect(() => {
     void load();
@@ -284,15 +291,27 @@ export default function ExecutionPage({ project, section, workspaceView }) {
     const key = `${project._id}:${sourceRequirementId}`;
     if (
       workspaceView === "test-plans" &&
+      !planRoute &&
       sourceRequirementId &&
       openedRequirement.current !== key &&
       project.current_permissions?.includes("testplan.create") &&
       requirements.some((item) => item.current_version_id === sourceRequirementId)
     ) {
       openedRequirement.current = key;
-      setCreatingPlan(true);
+      router.replace(
+        `${planPath}/tao-moi?requirementVersionId=${encodeURIComponent(sourceRequirementId)}`,
+      );
     }
-  }, [project._id, project.current_permissions, sourceRequirementId, requirements, workspaceView]);
+  }, [
+    planPath,
+    planRoute,
+    project._id,
+    project.current_permissions,
+    sourceRequirementId,
+    requirements,
+    router,
+    workspaceView,
+  ]);
   const versions = tests.map((item) => item.current_version_id).filter(Boolean);
   const selectRunPlan = (planId) => {
     const plan = plans.find((item) => item._id === planId);
@@ -304,12 +323,6 @@ export default function ExecutionPage({ project, section, workspaceView }) {
         ? {
             versionIds: scope.test_case_version_ids || [],
             suiteIds: [],
-            releaseId: scope.release_id || "",
-            release: scope.release || "",
-            buildId: scope.build_id || "",
-            build: scope.build || "",
-            environmentId: scope.environment_id || "",
-            environment: scope.environment || "",
           }
         : {}),
     }));
@@ -325,7 +338,6 @@ export default function ExecutionPage({ project, section, workspaceView }) {
         plans.find((item) => item._id === runForm.testPlanId)?.approved_snapshot_hash || null,
       test_suite_ids: runForm.suiteIds,
       test_case_version_ids: runForm.versionIds,
-      assignment_strategy: runForm.assignmentStrategy,
       environment: runForm.environment || undefined,
       environment_id: runForm.environmentId || null,
       release: runForm.release,
@@ -358,7 +370,6 @@ export default function ExecutionPage({ project, section, workspaceView }) {
         testPlanId: "",
         suiteIds: [],
         versionIds: [],
-        assignmentStrategy: "MANUAL",
       });
       setCreatingRun(false);
       await load();
@@ -582,7 +593,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
     });
   };
   const updatePlan = async (item) => {
-    setEditingPlan(item);
+    openPlan(item._id, "chinh-sua");
   };
   const transitionPlan = async (item, action) => {
     if (action === "approve" && can("testplan.review")) {
@@ -824,6 +835,77 @@ export default function ExecutionPage({ project, section, workspaceView }) {
         savingExecution={savingExecution}
       />
     );
+  if (planRoute) {
+    const creating = planRoute === "tao-moi";
+    const editing = section[1] === "chinh-sua";
+    const plan = plans.find((item) => item._id === planRoute);
+    const editable = plan?.status === "DRAFT" && can("testplan.update");
+    const title = creating
+      ? "Tạo kế hoạch kiểm thử"
+      : editing
+        ? "Sửa kế hoạch kiểm thử"
+        : plan?.name || "Chi tiết kế hoạch kiểm thử";
+    const goBack = () => router.push(planPath);
+    const allowed = creating
+      ? can("testplan.create")
+      : Boolean(plan && can("testplan.read") && (!editing || editable));
+    return (
+      <WorkspacePage
+        title={title}
+        actions={
+          <>
+            <Link className="secondary-button" href={planPath}>
+              Quay lại danh sách
+            </Link>
+            {!creating && !editing && editable && (
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => openPlan(plan._id, "chinh-sua")}
+              >
+                Sửa kế hoạch
+              </button>
+            )}
+          </>
+        }
+      >
+        {allowed ? (
+          <TestPlanEditor
+            key={creating ? project._id : `${plan._id}:${plan.revision}:${editing}`}
+            projectId={project._id}
+            initialValue={plan}
+            initialRequirementVersionIds={
+              creating && sourceRequirementId ? [sourceRequirementId] : []
+            }
+            readOnly={!creating && !editing}
+            strategies={strategies}
+            requirements={requirements}
+            scenarios={scenarios}
+            suites={suites}
+            tests={tests}
+            members={members}
+            releases={releases}
+            builds={builds}
+            environments={environments}
+            onCancel={goBack}
+            onSave={async (payload) => {
+              const saved = creating
+                ? await testingApi.createPlan(payload)
+                : await testingApi.updatePlan(plan._id, {
+                    ...payload,
+                    expected_revision: plan.revision,
+                  });
+              await load();
+              if (saved?._id) openPlan(saved._id);
+              else goBack();
+            }}
+          />
+        ) : (
+          <ErrorState message="Không tìm thấy kế hoạch hoặc bạn không có quyền thực hiện thao tác này." />
+        )}
+      </WorkspacePage>
+    );
+  }
   return (
     <WorkspacePage
       title={pageTitle}
@@ -831,11 +913,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
         <div className="flex flex-wrap items-center gap-2">
           <ProjectCrumb projectId={project._id} />
           {(workspaceView === "" || workspaceView === "test-plans") && can("testplan.create") && (
-            <button
-              className="secondary-button"
-              type="button"
-              onClick={() => setCreatingPlan(true)}
-            >
+            <button className="secondary-button" type="button" onClick={() => openPlan("tao-moi")}>
               Tạo kế hoạch
             </button>
           )}
@@ -930,136 +1008,6 @@ export default function ExecutionPage({ project, section, workspaceView }) {
         </Panel>
       )}
       <>
-        {viewingPlan && (
-          <Modal
-            isOpen
-            onClose={() => setViewingPlan(null)}
-            ariaLabel="Chi tiết kế hoạch kiểm thử"
-            className="max-h-[94dvh] max-w-5xl overflow-y-auto"
-          >
-            <ModalHeader>
-              <ModalTitle>{viewingPlan.name}</ModalTitle>
-            </ModalHeader>
-            <TestPlanEditor
-              key={`${viewingPlan._id}:${viewingPlan.revision}`}
-              readOnly
-              projectId={project._id}
-              initialValue={viewingPlan}
-              strategies={strategies}
-              requirements={requirements}
-              suites={suites}
-              tests={tests}
-              members={members}
-              releases={releases}
-              builds={builds}
-              environments={environments}
-              onCancel={() => setViewingPlan(null)}
-            />
-            <nav
-              aria-label="Tiếp tục kế hoạch kiểm thử"
-              className="flex flex-wrap gap-3 border-t border-border p-5"
-            >
-              {can("testcondition.read") && (
-                <Link
-                  className="secondary-button"
-                  href={`/du-an/${project._id}/phan-tich-kiem-thu`}
-                >
-                  Phân tích kiểm thử
-                </Link>
-              )}
-              {can("testscenario.read") && can("testcase.read") && (
-                <Link
-                  className="secondary-button"
-                  href={`/du-an/${project._id}/ca-kiem-thu/kich-ban`}
-                >
-                  Kịch bản kiểm thử
-                </Link>
-              )}
-              {can("testcase.read") && (
-                <Link className="secondary-button" href={`/du-an/${project._id}/ca-kiem-thu`}>
-                  Ca kiểm thử
-                </Link>
-              )}
-              {viewingPlan.status === "APPROVED" && can("testrun.create") && (
-                <button
-                  type="button"
-                  className="apple-button"
-                  onClick={() => {
-                    selectRunPlan(viewingPlan._id);
-                    setViewingPlan(null);
-                    setCreatingRun(true);
-                  }}
-                >
-                  Tạo đợt chạy từ kế hoạch
-                </button>
-              )}
-            </nav>
-          </Modal>
-        )}
-        {can("testplan.create") && (
-          <Modal
-            isOpen={creatingPlan}
-            onClose={() => setCreatingPlan(false)}
-            ariaLabel="Tạo kế hoạch kiểm thử"
-            className="max-h-[94dvh] max-w-5xl overflow-y-auto"
-          >
-            <ModalHeader>
-              <ModalTitle>Tạo kế hoạch kiểm thử</ModalTitle>
-            </ModalHeader>
-            <TestPlanEditor
-              projectId={project._id}
-              initialRequirementVersionIds={sourceRequirementId ? [sourceRequirementId] : []}
-              strategies={strategies}
-              requirements={requirements}
-              suites={suites}
-              tests={tests}
-              members={members}
-              releases={releases}
-              builds={builds}
-              environments={environments}
-              onCancel={() => setCreatingPlan(false)}
-              onSave={async (payload) => {
-                await testingApi.createPlan(payload);
-                setCreatingPlan(false);
-                await load();
-              }}
-            />
-          </Modal>
-        )}
-        {editingPlan && can("testplan.update") && (
-          <Modal
-            isOpen
-            onClose={() => setEditingPlan(null)}
-            ariaLabel="Sửa kế hoạch kiểm thử"
-            className="max-h-[94dvh] max-w-5xl overflow-y-auto"
-          >
-            <ModalHeader>
-              <ModalTitle>Sửa kế hoạch kiểm thử</ModalTitle>
-            </ModalHeader>
-            <TestPlanEditor
-              key={`${editingPlan._id}:${editingPlan.revision}`}
-              projectId={project._id}
-              initialValue={editingPlan}
-              strategies={strategies}
-              requirements={requirements}
-              suites={suites}
-              tests={tests}
-              members={members}
-              releases={releases}
-              builds={builds}
-              environments={environments}
-              onCancel={() => setEditingPlan(null)}
-              onSave={async (payload) => {
-                await testingApi.updatePlan(editingPlan._id, {
-                  ...payload,
-                  expected_revision: editingPlan.revision,
-                });
-                setEditingPlan(null);
-                await load();
-              }}
-            />
-          </Modal>
-        )}
         {can("testsuite.create") && (
           <Modal
             isOpen={creatingSuite}
@@ -1229,25 +1177,6 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                       </option>
                     ))}
                 </select>
-                <div className="space-y-1">
-                  <label className="text-sm font-medium" htmlFor="run-assignment-strategy">
-                    Cách phân công
-                  </label>
-                  <select
-                    id="run-assignment-strategy"
-                    className="apple-input"
-                    value={runForm.assignmentStrategy}
-                    onChange={(event) =>
-                      setRunForm({ ...runForm, assignmentStrategy: event.target.value })
-                    }
-                  >
-                    <option value="MANUAL">Tạo lần chạy chưa phân công</option>
-                  </select>
-                  <p className="text-xs text-ink-muted">
-                    Sau khi tạo, người có quyền phân công có thể yêu cầu AI gợi ý người thực hiện
-                    dựa trên kỹ năng và số ca đang phụ trách, rồi duyệt gợi ý hoặc tự phân công.
-                  </p>
-                </div>
                 <MultiSelect
                   label="Bộ kiểm thử"
                   options={suites.map((item) => ({ value: item._id, label: item.name }))}
@@ -1323,15 +1252,6 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                     placeholder="Tìm tên hoặc mục tiêu"
                     value={planFilters.q}
                   />
-                  <input
-                    aria-label="Lọc bản phát hành kế hoạch"
-                    className="apple-input"
-                    placeholder="Bản phát hành"
-                    value={planFilters.release}
-                    onChange={(event) =>
-                      setPlanFilters({ ...planFilters, release: event.target.value })
-                    }
-                  />
                   <select
                     aria-label="Lọc trạng thái kế hoạch"
                     className="apple-input"
@@ -1372,15 +1292,6 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                     onChange={(event) => setPlanFilters({ ...planFilters, q: event.target.value })}
                     placeholder="Tìm tên hoặc mục tiêu"
                     value={planFilters.q}
-                  />
-                  <input
-                    aria-label="Lọc bản phát hành kế hoạch"
-                    className="apple-input"
-                    placeholder="Bản phát hành"
-                    value={planFilters.release}
-                    onChange={(event) =>
-                      setPlanFilters({ ...planFilters, release: event.target.value })
-                    }
                   />
                   <select
                     aria-label="Lọc trạng thái kế hoạch"
@@ -1427,7 +1338,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                         <button
                           className="min-w-0 flex-1 text-left text-[15px] font-semibold leading-6 text-ink hover:text-brand"
                           type="button"
-                          onClick={() => setViewingPlan(item)}
+                          onClick={() => openPlan(item._id)}
                         >
                           <span className="line-clamp-2 break-words [overflow-wrap:anywhere]">
                             {item.name}
@@ -1441,18 +1352,6 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                         </p>
                       )}
                       <dl className="mt-3 grid min-w-0 gap-x-6 gap-y-2 text-[12px] sm:grid-cols-2 xl:grid-cols-4">
-                        <div className="min-w-0">
-                          <dt className="text-ink-faint">Bản phát hành</dt>
-                          <dd className="mt-0.5 break-words font-medium text-ink">
-                            {item.release || "Chưa chọn"}
-                          </dd>
-                        </div>
-                        <div className="min-w-0">
-                          <dt className="text-ink-faint">Bản dựng</dt>
-                          <dd className="mt-0.5 break-all font-medium text-ink">
-                            {item.build || "Chưa chọn"}
-                          </dd>
-                        </div>
                         <div className="min-w-0">
                           <dt className="text-ink-faint">Thời gian dự kiến</dt>
                           <dd className="mt-0.5 break-words font-medium text-ink">

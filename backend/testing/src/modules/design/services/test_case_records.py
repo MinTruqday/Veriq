@@ -23,10 +23,6 @@ from src.repositories.analysis import (
 from src.repositories.common import common_repository
 from src.modules.design.services.linters import duplicate_score
 from src.modules.design.services.test_evidence import requirement_test_evidence_text
-from src.modules.design.services.test_case_custom_fields import (
-    inherit_custom_values,
-    validate_test_case_custom_values,
-)
 from src.schemas.contracts.design import TestCaseDraftCreate
 from src.core.human_decisions import content_authorship_changes
 from src.modules.design.services.design_authorization import require_assigned_design_draft, require_test_case_creation_scope
@@ -54,7 +50,6 @@ def project_test_text(value):
             str(value.get("test_kind") or ""),
             " ".join(value.get("techniques", [])),
             " ".join(value.get("tags", [])),
-            " ".join(value.get("required_skills", [])),
             plain_text(value.get("objective_doc", {})),
             plain_text(value.get("preconditions_doc", {})),
             steps,
@@ -62,7 +57,8 @@ def project_test_text(value):
             bdd_text,
             plain_text(value.get("expected_result_doc", {})),
             plain_text(value.get("postconditions_doc", {})),
-            " ".join(str(item) for item in (value.get("custom_values") or {}).values()),
+            plain_text(value.get("alternate_flows_doc", {})),
+            plain_text(value.get("exception_flows_doc", {})),
         ]
     ).strip()
 
@@ -72,12 +68,10 @@ def project_test_index_metadata(value):
         "test_case_type": value.get("type"),
         "test_level": value.get("test_level"),
         "test_kind": value.get("test_kind"),
-        "expected_impact": value.get("expected_impact"),
         "priority": value.get("priority"),
         "risk": value.get("risk"),
         "techniques": value.get("techniques", []),
         "tags": value.get("tags", []),
-        "required_skills": value.get("required_skills", []),
         "automation_status": value.get("automation_status"),
         "repository_node_id": value.get("repository_node_id"),
         "requirement_version_ids": value.get("requirement_version_ids", []),
@@ -411,8 +405,6 @@ async def create_test_case_draft_record(
     owner_id = await validate_test_case_owner(project_id, payload.owner_id)
     if owner_id != payload.owner_id:
         payload = payload.model_copy(update={"owner_id": owner_id})
-    if payload.custom_values:
-        await validate_test_case_custom_values(project_id, payload.custom_values)
     if payload.target_version_id:
         if payload.origin != "ai_generated" or parent_version_id or len((payload.version_reason or "").strip()) < 2:
             raise HTTPException(status_code=422, detail={"code": "TEST_CASE_VERSION_RESOLUTION_INVALID"})
@@ -431,7 +423,6 @@ async def create_test_case_draft_record(
         payload = payload.model_copy(
             update={
                 "test_case_key": target_case["test_case_key"],
-                "custom_values": inherit_custom_values(payload.custom_values, target),
             }
         )
     elif payload.version_reason:
@@ -470,24 +461,6 @@ async def create_test_case_draft_record(
         existing, threshold = await comparison_cases(project_id)
         if payload.suite_signature != active_suite_signature(existing, payload.requirement_version_ids):
             raise HTTPException(409, detail={"code": "TEST_DESIGN_PREVIEW_STALE", "message": "Bộ ca đang hiệu lực đã thay đổi  Hãy tạo lại bản xem trước trước khi lưu"})
-        active_refs = {
-            item["_id"]
-            for item in existing
-            if item.get("status") == "ACTIVE"
-            and set(item.get("requirement_version_ids", [])) & set(payload.requirement_version_ids)
-        }
-        source_text_by_ref = {
-            item.get("artifact_version_id"): item.get("text", "")
-            for item in payload.source_evidence
-        }
-        if any(
-            challenge.technique not in payload.techniques
-            or challenge.source_ref not in payload.evidence_refs
-            or challenge.source_quote.strip() not in source_text_by_ref.get(challenge.source_ref, "")
-            or not set(challenge.existing_case_refs) <= active_refs
-            for challenge in payload.challenge_hypotheses
-        ):
-            raise HTTPException(409, detail={"code": "TEST_DESIGN_CHALLENGE_SOURCE_CHANGED", "message": "Giả thuyết thiết kế không còn khớp với nguồn hoặc ca đang hiệu lực  Hãy tạo lại bản xem trước"})
         matches = sorted(
             (
                 (score, item)
@@ -502,7 +475,7 @@ async def create_test_case_draft_record(
         if matches and not ((payload.duplicate_reason or "").strip() or change_reason):
             raise HTTPException(status_code=409, detail={"code": "TEST_CASE_DUPLICATE_REVIEW_REQUIRED", "message": "Cần bỏ qua ca gần giống hoặc ghi lý do tạo ca riêng", "matches": [{"id": item["_id"], "title": item.get("title"), "score": score} for score, item in matches]})
     source_evidence = payload.source_evidence
-    if payload.evidence_refs or payload.coverage_obligations:
+    if payload.evidence_refs:
         version_ids = list(dict.fromkeys(payload.requirement_version_ids))
         versions = await analysis_repository.list_requirement_versions(
             project_id, version_ids, len(version_ids)
@@ -817,26 +790,19 @@ async def update_test_case_draft_record(draft_id, payload, user, project_id=None
     )
     changes = payload.model_dump(exclude_unset=True)
     changes.pop("expected_revision", None)
-    effective_custom_values = (
-        payload.custom_values if payload.custom_values is not None else draft.get("custom_values", {})
-    )
-    if effective_custom_values:
-        await validate_test_case_custom_values(draft["project_id"], effective_custom_values)
-    if (draft.get("evidence_refs") or draft.get("coverage_obligations") or draft.get("obligation_evidence") or draft.get("challenge_hypotheses")) and any(
+    if draft.get("evidence_refs") and any(
         changes.get(field) is not None and changes[field] != draft.get(field)
         for field in (
             "title", "type", "objective_doc", "preconditions_doc", "steps", "test_data",
-            "expected_result_doc", "postconditions_doc", "techniques",
+            "expected_result_doc", "postconditions_doc",
+            "alternate_flows_doc", "exception_flows_doc", "techniques",
             "requirement_version_ids", "acceptance_criterion_ids",
             "coverage_item_ids", "data_set_version_ids", "test_condition_ids",
         )
     ):
-        changes["coverage_obligations"] = []
-        changes["obligation_evidence"] = []
         changes["evidence_refs"] = []
         changes["evidence_quotes"] = []
         changes["source_evidence"] = []
-        changes["challenge_hypotheses"] = []
     effective_acceptance_criterion_ids = (
         changes.get("acceptance_criterion_ids")
         if changes.get("acceptance_criterion_ids") is not None

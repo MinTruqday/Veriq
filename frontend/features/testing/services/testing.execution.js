@@ -252,11 +252,6 @@ export const executionTestingApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
-  recommendRunAssignment: (projectId, runId, payload) =>
-    testingRequest(`/du-an/${projectId}/lan-chay-kiem-thu/${runId}/goi-y-phan-cong`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
   assignRun: (projectId, runId, payload) =>
     testingRequest(`/du-an/${projectId}/lan-chay-kiem-thu/${runId}/phan-cong`, {
       method: "POST",

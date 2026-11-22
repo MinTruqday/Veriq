@@ -396,11 +396,9 @@ class ProjectArtifactChunkMetadata(BaseModel):
     test_case_type: str | None = None
     test_level: str | None = None
     test_kind: str | None = None
-    expected_impact: str | None = None
     priority: str | None = None
     risk: str | None = None
     techniques: list[str] = Field(default_factory=list)
-    required_skills: list[str] = Field(default_factory=list)
     automation_status: str | None = None
     repository_node_id: str | None = None
     coverage_item_ids: list[str] = Field(default_factory=list)

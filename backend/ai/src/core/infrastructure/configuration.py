@@ -29,9 +29,6 @@ class Settings:
     FALLBACK_LLM_MODEL: str = os.getenv("FALLBACK_LLM_MODEL", "").strip()
     FALLBACK_MODEL_TOKEN: str = os.getenv("FALLBACK_MODEL_TOKEN", "").strip()
     MODEL_TIMEOUT_SECONDS: int = int(os.environ["MODEL_TIMEOUT_SECONDS"])
-    TESTABILITY_BLUEPRINT_MAX_OUTPUT_TOKENS: int = int(
-        os.getenv("TESTABILITY_BLUEPRINT_MAX_OUTPUT_TOKENS", "4096")
-    )
     RERANKER_TIMEOUT_SECONDS: int = int(os.getenv("RERANKER_TIMEOUT_SECONDS", "30"))
     RERANKER_RETRY_DELAY_SECONDS: int = int(
         os.getenv("RERANKER_RETRY_DELAY_SECONDS", "3")

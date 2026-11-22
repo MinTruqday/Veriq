@@ -139,35 +139,6 @@ async def setup_indexes():
                     name="dead_letter_recovery_pending_actions",
                 ),
             ],
-            "project_testability_blueprints": [
-                IndexModel(
-                    [("project_id", ASCENDING), ("version", ASCENDING)],
-                    unique=True,
-                    name="one_project_testability_blueprint_version",
-                ),
-                IndexModel(
-                    [("project_id", ASCENDING), ("source_digest", ASCENDING)],
-                    unique=True,
-                    name="one_project_blueprint_per_compilation",
-                ),
-                IndexModel(
-                    [("project_id", ASCENDING), ("ai_run_ids", ASCENDING)],
-                    unique=True,
-                    name="one_project_blueprint_per_ai_run",
-                ),
-            ],
-            "testability_benchmark_datasets": [
-                IndexModel(
-                    [("created_at", DESCENDING), ("_id", ASCENDING)],
-                    name="benchmark_dataset_history",
-                ),
-            ],
-            "testability_benchmark_runs": [
-                IndexModel(
-                    [("dataset_id", ASCENDING), ("created_at", DESCENDING), ("_id", ASCENDING)],
-                    name="benchmark_run_history",
-                ),
-            ],
             "document_ingestion_page_checkpoints": [
                 IndexModel(
                     [

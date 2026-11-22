@@ -7,7 +7,6 @@ export function defectActionAccess(project, defect) {
   const owned = Boolean(membership?.user_id && defect?.assignee === membership.user_id);
   const can = (permission) => project.current_permissions?.includes(permission);
   return {
-    canEditTechnical: Boolean(active && owned && can("defect.update")),
     canManageTrace: Boolean(
       active && can("defect.trace.manage") && (owned || can("defect.triage")),
     ),

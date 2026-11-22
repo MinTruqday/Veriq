@@ -9,7 +9,6 @@ from loguru import logger
 from src.core.infrastructure.configuration import settings
 from src.core.security.guardrails import guardrails_engine
 from src.prompts.test_case_grounding import build_generated_cases_grounding_prompt
-from src.prompts.testability_blueprint_review import build_testability_blueprint_grounding_prompt
 from src.prompts.testing import (
     build_testing_prompt,
     prompt_contract_fingerprint,
@@ -23,7 +22,6 @@ from src.schemas.inference_requests import (
     TestingCapabilityResult,
     TestingCapabilityStatus,
 )
-from src.schemas.inference_requirements import TestabilityBlueprintGroundingReview
 from src.schemas.inference_test_design import GeneratedCasesGroundingReview
 from src.services.source_provenance import source_quote_spans
 from src.services.inference import model_metadata, structured
@@ -227,7 +225,6 @@ def generated_cases_have_grounded_citations(cases, evidence):
         quotes = case.get("evidence_quotes") or []
         if not quotes:
             return False
-        valid_quotes = []
         for item in quotes:
             reference = item.get("evidence_ref")
             quote = str(item.get("quote") or "").strip()
@@ -238,13 +235,6 @@ def generated_cases_have_grounded_citations(cases, evidence):
                 or not source_quote_spans(source_text[reference], quote)
             ):
                 return False
-            valid_quotes.append(quote.casefold())
-        quoted_text = " ".join(valid_quotes)
-        if any(
-            not source_quote_spans(quoted_text, str(skill).strip().casefold())
-            for skill in case.get("required_skills") or []
-        ):
-            return False
     return True
 
 
@@ -332,11 +322,9 @@ async def _generate_ai_capability(req: TestingCapabilityRequest):
         generated = await structured(
             prompt,
             schema,
-            max_tokens=settings.TESTABILITY_BLUEPRINT_MAX_OUTPUT_TOKENS
-            if req.capability == "testability_blueprint_compilation"
-            else 4096,
+            max_tokens=4096,
             timeout_seconds=settings.MODEL_TIMEOUT_SECONDS,
-            provider_schema=req.capability == "testability_blueprint_compilation",
+            provider_schema=False,
             prompt_attempt_observer=observe_prompt_attempt("generation"),
         )
         generated_data = normalize_narrative_payload(generated.model_dump())
@@ -407,96 +395,6 @@ async def _generate_ai_capability(req: TestingCapabilityRequest):
                     *generated_data.get("warnings", []),
                     "AI_UNGROUNDED_CANDIDATES_REJECTED",
                 ]
-        if req.capability == "testability_blueprint_compilation" and (
-            generated_data.get("obligations") or generated_data.get("clarifications")
-        ):
-            review_prompt = build_testability_blueprint_grounding_prompt(
-                evidence,
-                generated_data.get("obligations", []),
-                generated_data.get("clarifications", []),
-            )
-            review = await structured(
-                review_prompt,
-                TestabilityBlueprintGroundingReview,
-                max_tokens=settings.TESTABILITY_BLUEPRINT_MAX_OUTPUT_TOKENS,
-                timeout_seconds=settings.MODEL_TIMEOUT_SECONDS,
-                provider_schema=False,
-                prompt_attempt_observer=observe_prompt_attempt("blueprint_grounding"),
-            )
-            expected_obligation_indexes = list(range(len(generated_data.get("obligations", []))))
-            expected_clarification_indexes = list(range(len(generated_data.get("clarifications", []))))
-            if (
-                [item.index for item in review.obligations] != expected_obligation_indexes
-                or [item.index for item in review.clarifications] != expected_clarification_indexes
-            ):
-                raise ValueError("AI_BLUEPRINT_GROUNDING_REVIEW_INVALID")
-            rejected_obligation_indexes = {
-                item.index for item in review.obligations if item.unsupported_claims
-            }
-            rejected_clarification_indexes = {
-                item.index for item in review.clarifications if item.unsupported_claims
-            }
-            rejected_obligation_keys = {
-                generated_data["obligations"][index]["key"]
-                for index in rejected_obligation_indexes
-            }
-            rejected_claims = [
-                {
-                    "claim_type": claim_type,
-                    "index": item.index,
-                    "unsupported_claims": item.unsupported_claims[:10],
-                }
-                for claim_type, items in (
-                    ("OBLIGATION", review.obligations),
-                    ("CLARIFICATION", review.clarifications),
-                )
-                for item in items
-                if item.unsupported_claims
-            ]
-            retained_obligations = [
-                item
-                for index, item in enumerate(generated_data.get("obligations", []))
-                if index not in rejected_obligation_indexes
-            ]
-            retained_clarifications = [
-                item
-                for index, item in enumerate(generated_data.get("clarifications", []))
-                if index not in rejected_clarification_indexes
-                and not set(item.get("unlocks_obligation_keys", []))
-                & rejected_obligation_keys
-            ]
-            if rejected_claims and (retained_obligations or retained_clarifications):
-                generated_data["obligations"] = retained_obligations
-                generated_data["clarifications"] = retained_clarifications
-                generated_data["findings"] = [
-                    *generated_data.get("findings", []),
-                    *rejected_claims[:100],
-                ]
-                generated_data["warnings"] = list(
-                    dict.fromkeys(
-                        [
-                            *generated_data.get("warnings", []),
-                            "AI_UNGROUNDED_CANDIDATES_REJECTED",
-                        ]
-                    )
-                )
-                retained_refs = {
-                    str(item.get("source_ref") or "")
-                    for item in retained_obligations
-                }
-                retained_refs.update(
-                    str(reference)
-                    for item in retained_clarifications
-                    for reference in item.get("evidence_refs", [])
-                )
-                generated_data["evidence_refs"] = [
-                    reference
-                    for reference in generated_data.get("evidence_refs", [])
-                    if reference in retained_refs
-                ]
-            elif rejected_claims:
-                unsupported_details = rejected_claims[:100]
-                raise ValueError("AI_BLUEPRINT_UNGROUNDED_OUTPUT")
         if req.capability == "test_condition_generation":
             generated_data["suggestions"] = generated_data.pop("condition_candidates")
         generated_data.update(
@@ -521,11 +419,9 @@ async def _generate_ai_capability(req: TestingCapabilityRequest):
         }
         failure_code = (
             "AI_UNGROUNDED_OUTPUT"
-            if error_message in {"AI_UNGROUNDED_OUTPUT", "AI_BLUEPRINT_UNGROUNDED_OUTPUT"}
+            if error_message == "AI_UNGROUNDED_OUTPUT"
             else "AI_TEST_CASE_CITATION_INVALID"
             if error_message == "AI_TEST_CASE_CITATION_INVALID"
-            else "AI_GROUNDING_REVIEW_INVALID"
-            if error_message == "AI_BLUEPRINT_GROUNDING_REVIEW_INVALID"
             else "AI_OUTPUT_INVALID" if output_invalid else "AI_PROVIDER_UNAVAILABLE"
         )
         logger.warning(
@@ -552,7 +448,6 @@ async def _generate_ai_capability(req: TestingCapabilityRequest):
             if failure_code
             in {
                 "AI_UNGROUNDED_OUTPUT",
-                "AI_BLUEPRINT_UNGROUNDED_OUTPUT",
                 "AI_GROUNDING_REVIEW_INVALID",
             }
             else [],

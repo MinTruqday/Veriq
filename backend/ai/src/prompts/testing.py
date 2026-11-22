@@ -17,18 +17,8 @@ from src.prompts.requirement_templates import (
 )
 from src.prompts.test_case_grounding import build_generated_cases_grounding_prompt
 from src.prompts.test_design import TEST_DESIGN_CAPABILITY_CONTRACTS
-from src.prompts.testability_benchmark import (
-    CLARIFICATION_BASELINE,
-    TESTABILITY_BENCHMARK_SEMANTIC_EVALUATION,
-)
-from src.prompts.testability_blueprint import (
-    TESTABILITY_BLUEPRINT_COMPILATION,
-    TESTABILITY_BLUEPRINT_SELF_REVIEW,
-)
-from src.prompts.testability_blueprint_review import build_testability_blueprint_grounding_prompt
 from src.prompts.testing_contract import STRUCTURED_TESTING_TEMPLATE
 from src.prompts.work_reporting import WORK_REPORT_NARRATIVE_CONTRACT
-from src.schemas.inference_requirements import TestabilityBlueprintGroundingReview
 
 
 def _capability_contracts():
@@ -38,10 +28,6 @@ def _capability_contracts():
         "requirement_quality_analysis": requirement_quality_analysis_instruction(),
         "requirement_template_synthesis": REQUIREMENT_TEMPLATE_SYNTHESIS_INSTRUCTIONS,
         "requirement_template_review": REQUIREMENT_TEMPLATE_REVIEW_INSTRUCTIONS,
-        "testability_blueprint_compilation": TESTABILITY_BLUEPRINT_COMPILATION,
-        "testability_blueprint_self_review": TESTABILITY_BLUEPRINT_SELF_REVIEW,
-        "clarification_baseline": CLARIFICATION_BASELINE,
-        "testability_benchmark_semantic_evaluation": TESTABILITY_BENCHMARK_SEMANTIC_EVALUATION,
         "impact_analysis": IMPACT_ANALYSIS_CONTRACT,
         "change_simulation_report": IMPACT_ANALYSIS_CONTRACT,
         "project_question": PROJECT_QUESTION_CONTRACT,
@@ -110,9 +96,6 @@ def prompt_contract_fingerprint(capability, schema):
     ]
     if capability == "test_generation":
         contract_parts.append(build_generated_cases_grounding_prompt([], []))
-    if capability == "testability_blueprint_compilation":
-        contract_parts.append(build_testability_blueprint_grounding_prompt([], [], []))
-        contract_parts.append(schema_instruction(TestabilityBlueprintGroundingReview.model_json_schema()))
     canonical = json.dumps(
         contract_parts,
         ensure_ascii=False,

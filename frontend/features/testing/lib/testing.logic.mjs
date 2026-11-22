@@ -271,7 +271,6 @@ const valueLabels = {
   IMPACT_ANALYSIS: "Phân tích ảnh hưởng",
   STATUS_REPORT: "Báo cáo trạng thái",
   COMPLETION_REPORT: "Báo cáo hoàn tất",
-  COMPILE_BLUEPRINT: "Lập blueprint kiểm thử",
   CREATE_REQUIREMENT_CANDIDATES: "Đề xuất yêu cầu",
   CREATE_TEST_CASE_CANDIDATES: "Đề xuất ca kiểm thử",
   CREATE_FINDINGS: "Phát hiện điểm thiếu hoặc mâu thuẫn",
@@ -497,7 +496,6 @@ const valueLabels = {
   test_status_report: "Báo cáo trạng thái kiểm thử",
   test_completion_report: "Báo cáo hoàn tất kiểm thử",
   work_report: "Báo cáo công việc",
-  OBLIGATION: "Nghĩa vụ kiểm thử",
   CLARIFICATION: "Điểm cần làm rõ",
   test_case_versions: "Phiên bản ca kiểm thử",
   test_run: "Lần chạy kiểm thử",
@@ -708,12 +706,6 @@ export function messageOf(reason) {
       "Yêu cầu đã thay đổi hoặc chưa còn được duyệt. Tải lại phiên bản yêu cầu trước khi tạo hoặc lưu ca.",
     TEST_DESIGN_PREVIEW_STALE:
       "Yêu cầu hoặc bộ ca hiện có đã thay đổi sau lần xem trước. Tạo lại bản xem trước trước khi lưu.",
-    TEST_DESIGN_CHALLENGE_SOURCE_CHANGED:
-      "Giả thuyết kiểm thử không còn khớp với nguồn hoặc kỹ thuật đã chọn. Nhận lại gợi ý rồi thử lại.",
-    TEST_DESIGN_CHALLENGE_NOT_ADDRESSED:
-      "Chưa có ca kiểm thử cho mọi giả thuyết đã chọn. Bổ sung căn cứ hoặc thu hẹp giả thuyết.",
-    TEST_DESIGN_CHALLENGE_NOT_DISTINGUISHING:
-      "Ca đề xuất chưa phân biệt được với ca hiện có. Nhận gợi ý mới hoặc điều chỉnh phạm vi kiểm thử.",
     TEST_CASE_PREVIEW_REQUIRED: "Hãy xem trước và chọn các ca cần lưu trước khi tiếp tục.",
     TEST_CASE_DRAFT_REVISION_REQUIRED:
       "Thiếu thông tin phiên bản bản nháp. Tải lại ca rồi thử lại.",
@@ -955,12 +947,6 @@ export function messageOf(reason) {
       "Tệp này đã có trong dự án với phạm vi chia sẻ hoặc cấu hình AI khác.",
     SOURCE_EXTRACTION_INCOMPLETE:
       "Xử lý tài liệu bằng AI đã dừng an toàn vì còn phần chưa trích xuất đầy đủ. Xem chi tiết vị trí trong kết quả lượt chạy.",
-    TEST_CASE_CUSTOM_FIELD_VALUE_INVALID:
-      "Một hoặc nhiều trường mở rộng chưa khớp kiểu dữ liệu hoặc lựa chọn đã cấu hình.",
-    TEST_CASE_CUSTOM_FIELD_REQUIRED:
-      "Cần điền các trường mở rộng bắt buộc trước khi gửi duyệt hoặc duyệt ca.",
-    TEST_CASE_CUSTOM_FIELD_UNKNOWN:
-      "Có trường mở rộng không còn cấu hình trong dự án. Hãy bỏ trường cũ hoặc tải lại dữ liệu.",
     TEST_CASE_OWNER_ROLE_INVALID: "Người phụ trách phải là thành viên đang hoạt động của dự án.",
     TEST_CASE_COMPARISON_STALE:
       "Bản so sánh hoặc nguồn đã thay đổi. Mở lại ca để đối chiếu trước khi duyệt.",

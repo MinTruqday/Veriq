@@ -1,8 +1,7 @@
 from typing import Any, List, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from src.core.text_matching import source_quote_spans
 
 
 class GeneratedStepOutput(BaseModel):
@@ -27,12 +26,6 @@ class GeneratedEvidenceQuoteOutput(BaseModel):
     quote: str = Field(min_length=2, max_length=1000)
 
 
-class GeneratedObligationEvidenceOutput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    obligation_key: str = Field(min_length=1, max_length=200)
-    evidence_quotes: List[GeneratedEvidenceQuoteOutput] = Field(min_length=1, max_length=20)
-
 class GeneratedCaseOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -42,6 +35,8 @@ class GeneratedCaseOutput(BaseModel):
     priority: str = Field(default="unassessed", min_length=1, max_length=100)
     objective: str = Field(min_length=2, max_length=5000)
     preconditions: str = Field(default="", max_length=5000)
+    alternate_flows: str = Field(default="", max_length=5000)
+    exception_flows: str = Field(default="", max_length=5000)
     steps: List[GeneratedStepOutput] = Field(min_length=1, max_length=50)
     expected: str = Field(min_length=2, max_length=5000)
     acceptance_criterion_ids: List[str] = Field(default_factory=list, max_length=100)
@@ -49,15 +44,6 @@ class GeneratedCaseOutput(BaseModel):
         "equivalence_partitioning", "boundary_value", "decision_table",
         "state_transition", "error_guessing",
     ]] = Field(default_factory=list, max_length=5)
-    required_skills: List[str] = Field(default_factory=list, max_length=50)
-    challenge_techniques: List[Literal[
-        "equivalence_partitioning", "boundary_value", "decision_table",
-        "state_transition", "error_guessing",
-    ]] = Field(default_factory=list, max_length=5)
-    coverage_obligations: List[str] = Field(default_factory=list, max_length=20)
-    obligation_evidence: List[GeneratedObligationEvidenceOutput] = Field(
-        default_factory=list, max_length=20
-    )
     evidence_refs: List[str] = Field(default_factory=list, max_length=100)
     evidence_quotes: List[GeneratedEvidenceQuoteOutput] = Field(min_length=1, max_length=20)
 
@@ -68,51 +54,6 @@ class GeneratedCaseOutput(BaseModel):
         if not normalized:
             raise ValueError("test_case_category_must_not_be_empty")
         return normalized
-
-    @field_validator("required_skills")
-    @classmethod
-    def validate_required_skills(cls, values):
-        normalized = [" ".join(value.split()) for value in values]
-        if any(not value or len(value) > 120 for value in normalized):
-            raise ValueError("test_case_required_skill_invalid")
-        if len({value.casefold() for value in normalized}) != len(normalized):
-            raise ValueError("test_case_required_skills_must_be_unique")
-        return normalized
-
-    @field_validator("coverage_obligations")
-    @classmethod
-    def unique_coverage_obligations(cls, value):
-        if len(value) != len(set(value)):
-            raise ValueError("test_case_coverage_obligations_must_be_unique")
-        return value
-
-    @model_validator(mode="after")
-    def validate_obligation_evidence(self):
-        evidence_by_obligation = {
-            item.obligation_key: item for item in self.obligation_evidence
-        }
-        if len(evidence_by_obligation) != len(self.obligation_evidence):
-            raise ValueError("test_case_obligation_evidence_keys_must_be_unique")
-        if not set(evidence_by_obligation).issubset(self.coverage_obligations):
-            raise ValueError("test_case_obligation_evidence_must_reference_case_obligations")
-        test_case_quotes = {
-            (item.evidence_ref, item.quote) for item in self.evidence_quotes
-        }
-        if any(
-            not any(
-                source_quote_spans(item.quote.casefold(), skill.casefold())
-                for item in self.evidence_quotes
-            )
-            for skill in self.required_skills
-        ):
-            raise ValueError("test_case_required_skill_must_appear_in_cited_evidence")
-        if any(
-            (quote.evidence_ref, quote.quote) not in test_case_quotes
-            for item in self.obligation_evidence
-            for quote in item.evidence_quotes
-        ):
-            raise ValueError("test_case_obligation_evidence_must_reference_case_evidence")
-        return self
 
 class GeneratedCasesOutput(BaseModel):
     """Structured response containing generated Test Case candidates."""
@@ -135,16 +76,6 @@ class GeneratedCasesGroundingReview(BaseModel):
 
     cases: List[GeneratedCaseGroundingReview] = Field(min_length=1, max_length=100)
 
-class TestDesignChallengeOutput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    source_ref: str = Field(min_length=1, max_length=200)
-    source_quote: str = Field(min_length=2, max_length=1000)
-    hypothetical_fault: str = Field(min_length=2, max_length=2000)
-    distinguishing_input: str = Field(min_length=2, max_length=2000)
-    expected_result: str = Field(min_length=2, max_length=2000)
-    existing_case_refs: List[str] = Field(default_factory=list, max_length=100)
-
 class TechniqueRecommendationItemOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -159,8 +90,6 @@ class TechniqueRecommendationItemOutput(BaseModel):
     existing_coverage_refs: List[str] = Field(default_factory=list, max_length=100)
     missing_information: List[str] = Field(default_factory=list, max_length=20)
     evidence_refs: List[str] = Field(default_factory=list, max_length=100)
-    challenge: TestDesignChallengeOutput | None = None
-
 class TechniqueRecommendationsOutput(BaseModel):
     """Structured recommendations for evidence-supported test-design techniques."""
     model_config = ConfigDict(extra="forbid")

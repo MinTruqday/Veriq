@@ -53,8 +53,6 @@ def _same_authored_test_case_content(draft, version):
         "type": "happy_path",
         "test_level": None,
         "test_kind": None,
-        "expected_impact": "unassessed",
-        "assessment_reason": "",
         "priority": "unassessed",
         "risk": "unassessed",
         "objective_doc": {"type": "doc", "content": []},
@@ -63,9 +61,9 @@ def _same_authored_test_case_content(draft, version):
         "test_data": {},
         "expected_result_doc": {"type": "doc", "content": []},
         "postconditions_doc": {"type": "doc", "content": []},
+        "alternate_flows_doc": {"type": "doc", "content": []},
+        "exception_flows_doc": {"type": "doc", "content": []},
         "tags": [],
-        "required_skills": [],
-        "custom_values": {},
         "owner_id": None,
         "techniques": [],
         "automation_status": "manual",
@@ -78,10 +76,8 @@ def _same_authored_test_case_content(draft, version):
         "scenario_id": None,
         "repository_node_id": None,
         "bdd": None,
-        "coverage_obligations": [],
         "evidence_refs": [],
         "evidence_quotes": [],
-        "challenge_hypotheses": [],
         "ai_proposal_snapshot": None,
         "review_acceptance_criteria_snapshot_ids": None,
         "merge_decision_ids": [],
@@ -145,7 +141,7 @@ def verified_test_case_publication_readback(
         return False
     return all(
         _same_unique_values(expected_version.get(field), version_readback.get(field))
-        for field in ("requirement_version_ids", "coverage_obligations", "evidence_refs")
+        for field in ("requirement_version_ids", "evidence_refs")
     ) and _same_evidence_quotes(
         expected_version.get("evidence_quotes"), version_readback.get("evidence_quotes")
     ) and _same_authored_test_case_content(expected_version, version_readback)
@@ -282,10 +278,6 @@ async def publish_grounded_test_case(project_id, draft, config, before_write=Non
         or not _same_unique_values(
             draft.get("requirement_version_ids", []),
             version.get("requirement_version_ids", []),
-        )
-        or not _same_unique_values(
-            draft.get("coverage_obligations", []),
-            version.get("coverage_obligations", []),
         )
         or not _same_unique_values(
             draft.get("evidence_refs", []), version.get("evidence_refs", [])

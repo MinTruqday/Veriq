@@ -7,7 +7,6 @@ from pydantic import BaseModel, Field, model_validator
 class TestPlanAIDraftInput(BaseModel):
     requirement_version_ids: list[str] = Field(min_length=1, max_length=200)
     instruction: str = Field(default="", max_length=5000)
-    testability_mode: Literal["OFF", "BLUEPRINT_ONLY", "BLUEPRINT_BENCHMARK"] = "OFF"
     current_test_plan: dict[str, Any] = Field(default_factory=dict)
 
 from src.schemas.contracts.common import TestPlanRiskStatus
@@ -28,7 +27,6 @@ class TestPlanSuiteSnapshot(BaseModel):
 class TestPlanEstimation(BaseModel):
     method: Literal["expert_judgment", "three_point", "historical", "custom"] = "expert_judgment"
     planned_effort_hours: float = Field(default=0, ge=0)
-    planned_people: int = Field(default=0, ge=0)
     basis: str = Field(default="", max_length=5000)
     effort_allocations: list["TestPlanEffortAllocation"] = Field(default_factory=list, max_length=500)
 
@@ -70,29 +68,14 @@ class TestPlanSchedule(BaseModel):
         return self
 
 
-class TestPlanMilestone(BaseModel):
-    name: str = Field(min_length=1, max_length=300)
-    planned_at: str | None = Field(default=None, max_length=80)
-    actual_at: str | None = Field(default=None, max_length=80)
-    status: str = Field(default="PLANNED", min_length=1, max_length=80)
-    evidence_refs: list[str] = Field(default_factory=list, max_length=500)
-
-
-class TestPlanResponsibility(BaseModel):
-    activity: str = Field(min_length=1, max_length=500)
-    responsible_user_ids: list[str] = Field(default_factory=list, max_length=500)
-    accountable_user_id: str | None = Field(default=None, max_length=200)
-    consulted_user_ids: list[str] = Field(default_factory=list, max_length=500)
-    informed_user_ids: list[str] = Field(default_factory=list, max_length=500)
-
-
 class TestPlanRisk(BaseModel):
+    category: Literal["PRODUCT", "PROJECT"] | None = None
     risk_id: str = Field(min_length=1, max_length=200)
     title: str = Field(min_length=1, max_length=500)
     description: str = Field(default="", max_length=5000)
-    probability: float = Field(ge=0)
-    impact: float = Field(ge=0)
-    exposure: float = Field(ge=0)
+    probability: float | None = Field(default=None, ge=0)
+    impact: float | None = Field(default=None, ge=0)
+    exposure: float | None = Field(default=None, ge=0)
     response: str = Field(default="", max_length=5000)
     owner_id: str | None = Field(default=None, max_length=200)
     status: TestPlanRiskStatus = TestPlanRiskStatus.OPEN
@@ -100,28 +83,15 @@ class TestPlanRisk(BaseModel):
 
 
 class TestPlanCommunication(BaseModel):
+    channel: str = Field(default="", max_length=200)
     status_report_frequency: str = Field(default="", max_length=200)
     recipients: list[str] = Field(default_factory=list, max_length=500)
     escalation_roles: list[str] = Field(default_factory=list, max_length=100)
 
 
-class TestDataPlan(BaseModel):
-    sources: list[str] = Field(default_factory=list, max_length=200)
-    preparation: str = Field(default="", max_length=5000)
-    privacy: str = Field(default="", max_length=5000)
-    reset_procedure: str = Field(default="", max_length=5000)
-    owner_id: str | None = Field(default=None, max_length=200)
-
-
-class DefectManagementPlan(BaseModel):
-    reporting: str = Field(default="", max_length=5000)
-    classification: str = Field(default="", max_length=5000)
-    triage: str = Field(default="", max_length=5000)
-    retest: str = Field(default="", max_length=5000)
-    closure: str = Field(default="", max_length=5000)
-
-
 class TestPlanCreate(BaseModel):
+    owner_id: str | None = Field(default=None, max_length=200)
+    scenario_ids: list[str] = Field(default_factory=list, max_length=1000)
     project_id: str
     name: str = Field(min_length=2, max_length=300)
     objective: str = Field(default="", max_length=5000)
@@ -134,7 +104,6 @@ class TestPlanCreate(BaseModel):
     environment_id: str | None = Field(default=None, max_length=200)
     entry_criteria: list[str] = Field(default_factory=list, max_length=200)
     exit_criteria: list[str] = Field(default_factory=list, max_length=200)
-    risks: list[str] = Field(default_factory=list, max_length=200)
     test_types: list[str] = Field(default_factory=list, max_length=100)
     members: list[str] = Field(default_factory=list, max_length=500)
     release: str = Field(default="", max_length=200)
@@ -147,26 +116,8 @@ class TestPlanCreate(BaseModel):
     assumptions: list[str] = Field(default_factory=list, max_length=200)
     constraints: list[str] = Field(default_factory=list, max_length=200)
     dependencies: list[dict[str, Any]] = Field(default_factory=list, max_length=500)
-    stakeholders: list[dict[str, Any]] = Field(default_factory=list, max_length=500)
-    responsibility_matrix: list[TestPlanResponsibility] = Field(
-        default_factory=list, max_length=500
-    )
     estimation: TestPlanEstimation = Field(default_factory=TestPlanEstimation)
     schedule: TestPlanSchedule = Field(default_factory=TestPlanSchedule)
-    milestones: list[TestPlanMilestone] = Field(default_factory=list, max_length=500)
-    deliverables: list[dict[str, Any] | str] = Field(default_factory=list, max_length=500)
-    tools: list[dict[str, Any] | str] = Field(default_factory=list, max_length=200)
-    suspension_criteria: list[str] = Field(default_factory=list, max_length=200)
-    resumption_criteria: list[str] = Field(default_factory=list, max_length=200)
-    monitoring_metrics: list[dict[str, Any]] = Field(default_factory=list, max_length=200)
     quality_targets: list[dict[str, Any]] = Field(default_factory=list, max_length=200)
     risk_register: list[TestPlanRisk] = Field(default_factory=list, max_length=500)
     communication_plan: TestPlanCommunication = Field(default_factory=TestPlanCommunication)
-    test_data_plan: TestDataPlan = Field(default_factory=TestDataPlan)
-    defect_management: DefectManagementPlan = Field(default_factory=DefectManagementPlan)
-
-    @model_validator(mode="after")
-    def validate_test_plan_management_fields(self):
-        if bool(self.suspension_criteria) != bool(self.resumption_criteria):
-            raise ValueError("Tiêu chí đình chỉ và tiếp tục phải được khai báo cùng nhau")
-        return self

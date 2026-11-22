@@ -1,5 +1,4 @@
 import json
-import re
 from typing import Annotated
 from urllib.parse import urlencode
 
@@ -8,13 +7,6 @@ from pydantic import Field
 
 from src.core.infrastructure.configuration import settings
 from src.prompts.test_generation import requirement_test_generation_instruction
-from src.schemas.ai_runs import AgentFact
-from src.blueprint import (
-    compile_testability_blueprint,
-    obligations_supported_by_requirement_version,
-    requirement_version_source_segments,
-    requirement_version_source_text,
-)
 from src.tools.grounded_publication import (
     publish_grounded_requirement,
     publish_grounded_test_case,
@@ -31,86 +23,6 @@ from src.tools.testing import (
     response_items,
 )
 from src.tools.testing_api import ToolOperationError, require_operation
-
-
-def requirement_version_source_facts(version, event_facts=()):
-    version_id = str(version.get("_id") or "")
-    segments = requirement_version_source_segments(version)
-    text = requirement_version_source_text(version)
-    if not version_id or not text.strip():
-        return [], {}
-
-    facts = []
-    cursor = 0
-    for fact_kind, source_segment in segments:
-        for sentence in re.split(r"(?<=[.!?。！？])\s+", source_segment):
-            quote = sentence.strip()
-            if not quote:
-                continue
-            start = text.find(quote, cursor)
-            if start < 0:
-                continue
-            cursor = start + len(quote)
-            facts.append(
-                AgentFact(
-                    artifact_type="requirement_version",
-                    artifact_id=version_id,
-                    artifact_version_id=version_id,
-                    source="requirement_version_readback",
-                    authority="PROJECT_REQUIREMENT",
-                    quote=quote,
-                    fact_kind=fact_kind,
-                    source_start=start,
-                    source_end=start + len(quote),
-                    source_offset_basis="CANONICAL_TEXT",
-                )
-            )
-    for item in event_facts:
-        if item.artifact_version_id != version_id or not item.quote:
-            continue
-        start, end = item.source_start, item.source_end
-        if start is not None or end is not None:
-            if (
-                start is None
-                or end is None
-                or end - start != len(item.quote)
-                or text[start:end] != item.quote
-            ):
-                continue
-        else:
-            start = text.find(item.quote)
-            if start < 0 or text.find(item.quote, start + 1) >= 0:
-                continue
-            end = start + len(item.quote)
-        facts.append(
-            AgentFact(
-                artifact_type="requirement_version",
-                artifact_id=version_id,
-                artifact_version_id=version_id,
-                source="requirement_version_readback",
-                authority="PROJECT_REQUIREMENT",
-                quote=item.quote,
-                fact_kind=item.fact_kind,
-                source_start=start,
-                source_end=end,
-                source_offset_basis="CANONICAL_TEXT",
-            )
-        )
-    facts = list(
-        {(item.source_start, item.source_end, item.quote): item for item in facts}.values()
-    )
-    evidence = {
-        version_id: {
-            "artifact_type": "requirement_version",
-            "artifact_id": version_id,
-            "artifact_version_id": version_id,
-            "text": text,
-            "source": "requirement_version_readback",
-            "authority": "PROJECT_REQUIREMENT",
-            "source_offset_basis": "CANONICAL_TEXT",
-        }
-    }
-    return facts, evidence
 
 
 def finalized_generation_warnings(attempts, *, coverage_complete):
@@ -366,9 +278,6 @@ async def process_changed_requirement_version(
     requirement_version_id: Annotated[
         str, Field(min_length=1, description="Changed Requirement version identifier")
     ],
-    source_facts: Annotated[
-        list[AgentFact], Field(description="Verified facts from the changed Requirement event")
-    ] = Field(default_factory=list),
     config: RunnableConfig = None,
 ) -> str:
     """Continue the Requirement lifecycle after a version change using only its linked evidence"""
@@ -409,43 +318,6 @@ async def process_changed_requirement_version(
     current_version = requirement.get("current_version") or version
     if current_version.get("_id") != requirement_version_id:
         raise RuntimeError("REQUIREMENT_VERSION_NOT_CURRENT")
-    blueprint_facts, evidence_by_ref = requirement_version_source_facts(
-        current_version, source_facts
-    )
-    allowed_source_ids = {item.artifact_id for item in blueprint_facts}
-    blueprint = await compile_testability_blueprint(
-        project_id,
-        blueprint_facts,
-        evidence_by_ref,
-        allowed_source_ids,
-        output_language=(config or {}).get("configurable", {}).get("output_language"),
-    )
-    if blueprint.get("status") != "SUCCESS":
-        return json.dumps(
-            {
-                "status": "partial_failure",
-                "reason_code": "TESTABILITY_BLUEPRINT_COMPILATION_FAILED",
-                "requirement_version_id": requirement_version_id,
-                "blueprint_reason_codes": blueprint.get("reason_codes", []),
-                "blueprint_warnings": blueprint.get("warnings", []),
-                "unresolved": [{"reason": "TESTABILITY_BLUEPRINT_COMPILATION_FAILED"}],
-            },
-            ensure_ascii=False,
-        )
-    version_obligations, unlinked_obligations = obligations_supported_by_requirement_version(
-        current_version, blueprint.get("obligations", []), evidence_by_ref
-    )
-    if unlinked_obligations:
-        return json.dumps(
-            {
-                "status": "partial_failure",
-                "reason_code": "BLUEPRINT_OBLIGATIONS_NOT_SUPPORTED_BY_REQUIREMENT_VERSION",
-                "requirement_version_id": requirement_version_id,
-                "obligation_keys": [item.get("key") for item in unlinked_obligations],
-                "testability_blueprint": blueprint,
-            },
-            ensure_ascii=False,
-        )
     if current_version.get("status") == "DRAFT":
         await require_operation(
             "POST",
@@ -690,9 +562,14 @@ async def process_changed_requirement_version(
                 {"requirement_version_id": requirement_version_id, "reason": str(error)}
             )
 
-    criteria_ids = version.get("acceptance_criterion_ids") or [
-        item.get("_id") for item in version.get("acceptance_criteria", []) if item.get("_id")
-    ]
+    criteria_ids = list(dict.fromkeys(
+        str(value)
+        for value in (
+            version.get("acceptance_criterion_ids")
+            or [item.get("_id") for item in version.get("acceptance_criteria", []) if item.get("_id")]
+        )
+        if value
+    ))
     if not criteria_ids:
         return json.dumps(
             {
@@ -705,36 +582,27 @@ async def process_changed_requirement_version(
         project_id, version["requirement_id"], config
     )
     covered_by_active_cases = {
-        criterion_id
+        str(criterion_id)
         for item in existing_cases
         if item.get("status") == "ACTIVE" and item.get("stale_status") != "STALE"
         for criterion_id in (item.get("current_version") or {}).get("acceptance_criterion_ids", [])
-    }
-    covered_by_active_obligations = {
-        str(key)
-        for item in existing_cases
-        if item.get("status") == "ACTIVE" and item.get("stale_status") != "STALE"
-        for key in (item.get("current_version") or {}).get("coverage_obligations", [])
     }
     pending_drafts = await list_resumable_ai_test_case_drafts(
         project_id, requirement_version_id, config
     )
     covered_by_pending_drafts = {
-        criterion_id
+        str(criterion_id)
         for item in pending_drafts
         for criterion_id in item.get("acceptance_criterion_ids", [])
-    }
-    covered_by_pending_obligations = {
-        str(key) for item in pending_drafts for key in item.get("coverage_obligations", [])
     }
     already_covered = covered_by_active_cases | covered_by_pending_drafts
     missing_before_generation = set(criteria_ids) - already_covered
     request = {
         "categories": [],
-        "max_cases": len(missing_before_generation),
+        "max_cases": min(len(missing_before_generation), 50),
         "preview_only": True,
         "acceptance_criterion_ids": sorted(missing_before_generation),
-        "instruction": requirement_test_generation_instruction(version_obligations),
+        "instruction": requirement_test_generation_instruction(),
     }
     preview = {"items": [], "warnings": []}
     if missing_before_generation:
@@ -745,72 +613,49 @@ async def process_changed_requirement_version(
             request,
             timeout=settings.MODEL_TIMEOUT_SECONDS,
         )
+    generation_warning_attempts = [list(preview.get("warnings") or [])]
     generated = preview.get("items") or []
-    required_ids = missing_before_generation
     covered_ids = set()
     novel = []
     version_updates = []
     version_targets = set()
     skipped_duplicates = len(already_covered)
     warnings = []
-    generation_warning_attempts = [list(preview.get("warnings") or [])]
-    obligation_keys = {str(item.get("key")) for item in version_obligations if item.get("key")}
-    covered_obligation_keys = (
-        covered_by_active_obligations | covered_by_pending_obligations
-    ) & obligation_keys
-    blueprint_artifact_coverage = {
-        key: {
-            "obligation_key": key,
-            "requirement_version_ids": [requirement_version_id],
-            "test_case_ids": [],
-            "test_case_version_ids": [],
-        }
-        for key in obligation_keys
-    }
-    for case in existing_cases:
-        if case.get("status") != "ACTIVE" or case.get("stale_status") == "STALE":
-            continue
-        current_version = case.get("current_version") or {}
-        for key in current_version.get("coverage_obligations") or []:
-            entry = blueprint_artifact_coverage.get(str(key))
-            if not entry:
-                continue
-            if case.get("_id"):
-                entry["test_case_ids"].append(str(case["_id"]))
-            if current_version.get("_id"):
-                entry["test_case_version_ids"].append(str(current_version["_id"]))
     for item in generated:
         draft = item.get("draft") or {}
         matches = item.get("similar_cases") or []
-        mapped_obligations = set(
-            item.get("coverage_obligations") or draft.get("coverage_obligations") or []
-        )
-        if obligation_keys and (
-            not mapped_obligations or not mapped_obligations <= obligation_keys
-        ):
-            warnings.append("BLUEPRINT_OBLIGATION_MAPPING_INVALID")
+        new_criteria = set(map(str, item.get("new_criterion_ids") or []))
+        draft_criteria = set(map(str, draft.get("acceptance_criterion_ids") or []))
+        if not draft or not draft_criteria <= set(criteria_ids):
+            warnings.append("TEST_CASE_ACCEPTANCE_CRITERION_LINK_INVALID")
             skipped_duplicates += 1
-            continue
-        target = next((match for match in matches if match.get("target_version_id")), None)
-        new_criteria = set(item.get("new_criterion_ids") or [])
-        if target and draft and new_criteria and target["target_version_id"] not in version_targets:
-            version_targets.add(target["target_version_id"])
+        elif (
+            matches
+            and next((match for match in matches if match.get("target_version_id")), None)
+            and new_criteria
+            and next(match["target_version_id"] for match in matches if match.get("target_version_id")) not in version_targets
+        ):
+            target_version_id = next(
+                match["target_version_id"] for match in matches if match.get("target_version_id")
+            )
+            version_targets.add(target_version_id)
             version_updates.append(
                 {
                     **draft,
-                    "target_version_id": target["target_version_id"],
-                    "version_reason": 'Tự động cập nhật liên kết và nội dung ca theo Requirement version mới sau khi đối chiếu trùng và bằng chứng nguồn.',
+                    "target_version_id": target_version_id,
+                    "version_reason": "Update the Test Case to cover the changed Requirement version.",
                 }
             )
-            covered_ids.update(draft.get("acceptance_criterion_ids", []))
-            covered_obligation_keys.update(mapped_obligations)
+            covered_ids.update(draft_criteria)
         elif matches:
             skipped_duplicates += 1
-        elif draft:
+        else:
             novel.append(draft)
-            covered_ids.update(draft.get("acceptance_criterion_ids", []))
-            covered_obligation_keys.update(mapped_obligations)
-    missing_ids = required_ids - covered_ids
+            covered_ids.update(draft_criteria)
+
+    required_ids = set(map(str, preview.get("criterion_coverage", {}).get("criterion_ids") or missing_before_generation))
+    already_linked_ids = set(map(str, preview.get("criterion_coverage", {}).get("linked_criterion_ids") or []))
+    missing_ids = required_ids - already_linked_ids - covered_by_pending_drafts - covered_ids
     if missing_ids:
         focused = await require_operation(
             "POST",
@@ -819,7 +664,8 @@ async def process_changed_requirement_version(
             {
                 **request,
                 "acceptance_criterion_ids": sorted(missing_ids),
-                "max_cases": len(missing_ids),
+                "max_cases": min(len(missing_ids), 50),
+                "instruction": focused_requirement_test_generation_instruction(),
             },
             timeout=settings.MODEL_TIMEOUT_SECONDS,
         )
@@ -827,98 +673,31 @@ async def process_changed_requirement_version(
         for item in focused.get("items") or []:
             draft = item.get("draft") or {}
             matches = item.get("similar_cases") or []
-            mapped_obligations = set(
-                item.get("coverage_obligations") or draft.get("coverage_obligations") or []
-            )
-            if obligation_keys and (
-                not mapped_obligations or not mapped_obligations <= obligation_keys
-            ):
-                warnings.append("BLUEPRINT_OBLIGATION_MAPPING_INVALID")
-                skipped_duplicates += 1
-                continue
+            draft_criteria = set(map(str, draft.get("acceptance_criterion_ids") or []))
             target = next((match for match in matches if match.get("target_version_id")), None)
-            new_criteria = set(item.get("new_criterion_ids") or [])
-            if (
-                target
-                and draft
-                and new_criteria
-                and target["target_version_id"] not in version_targets
-            ):
+            if target and draft and draft_criteria.intersection(missing_ids) and target["target_version_id"] not in version_targets:
                 version_targets.add(target["target_version_id"])
-                version_updates.append(
-                    {
-                        **draft,
-                        "target_version_id": target["target_version_id"],
-                        "version_reason": 'Tự động cập nhật liên kết và nội dung ca theo Requirement version mới sau khi đối chiếu trùng và bằng chứng nguồn.',
-                    }
-                )
-                covered_ids.update(draft.get("acceptance_criterion_ids", []))
-                covered_obligation_keys.update(mapped_obligations)
+                version_updates.append({
+                    **draft,
+                    "target_version_id": target["target_version_id"],
+                    "version_reason": "Update the Test Case to cover the changed Requirement version.",
+                })
+                covered_ids.update(draft_criteria)
             elif matches:
                 skipped_duplicates += 1
-            elif draft and normalized_text(draft.get("title")) not in {
-                normalized_text(case.get("title")) for case in novel
-            }:
-                novel.append(draft)
-                covered_ids.update(draft.get("acceptance_criterion_ids", []))
-                covered_obligation_keys.update(mapped_obligations)
-        missing_ids = required_ids - covered_ids
+            elif draft and draft_criteria.intersection(missing_ids) and draft_criteria <= set(criteria_ids):
+                if normalized_text(draft.get("title")) not in {
+                    normalized_text(case.get("title")) for case in novel
+                }:
+                    novel.append(draft)
+                    covered_ids.update(draft_criteria)
+        missing_ids = required_ids - already_linked_ids - covered_by_pending_drafts - covered_ids
     if missing_ids:
-        unresolved.append(
-            {
-                "requirement_version_id": requirement_version_id,
-                "reason": "ACCEPTANCE_CRITERIA_NOT_COVERED",
-                "missing_acceptance_criterion_ids": sorted(missing_ids),
-            }
-        )
-
-    missing_obligations = [
-        item for item in version_obligations if str(item.get("key")) not in covered_obligation_keys
-    ]
-    if missing_obligations:
-        obligation_preview = await require_operation(
-            "POST",
-            f"/phien-ban-yeu-cau/{requirement_version_id}/ai/sinh-ca-kiem-thu",
-            config,
-            {
-                **request,
-                "acceptance_criterion_ids": criteria_ids,
-                "max_cases": len(missing_obligations),
-                "instruction": requirement_test_generation_instruction(missing_obligations),
-            },
-            timeout=settings.MODEL_TIMEOUT_SECONDS,
-        )
-        generation_warning_attempts.append(list(obligation_preview.get("warnings") or []))
-        for item in obligation_preview.get("items") or []:
-            draft = item.get("draft") or {}
-            mapped_obligations = set(
-                item.get("coverage_obligations") or draft.get("coverage_obligations") or []
-            )
-            matches = item.get("similar_cases") or []
-            if not draft or not mapped_obligations or not mapped_obligations <= obligation_keys:
-                warnings.append("BLUEPRINT_OBLIGATION_MAPPING_INVALID")
-                continue
-            if matches or normalized_text(draft.get("title")) in {
-                normalized_text(case.get("title")) for case in novel
-            }:
-                skipped_duplicates += 1
-                continue
-            novel.append(draft)
-            covered_ids.update(draft.get("acceptance_criterion_ids", []))
-            covered_obligation_keys.update(mapped_obligations)
-        missing_obligations = [
-            item
-            for item in version_obligations
-            if str(item.get("key")) not in covered_obligation_keys
-        ]
-    if missing_obligations:
-        unresolved.append(
-            {
-                "requirement_version_id": requirement_version_id,
-                "reason": "TESTABILITY_BLUEPRINT_OBLIGATIONS_NOT_COVERED",
-                "obligation_keys": [item.get("key") for item in missing_obligations],
-            }
-        )
+        unresolved.append({
+            "requirement_version_id": requirement_version_id,
+            "reason": "ACCEPTANCE_CRITERIA_NOT_COVERED",
+            "missing_acceptance_criterion_ids": sorted(missing_ids),
+        })
 
     created_drafts = list(pending_drafts)
     approved_cases = []
@@ -940,52 +719,6 @@ async def process_changed_requirement_version(
         )
         skipped_duplicates += consolidated_count
         unresolved.extend(duplicate_conflicts)
-        covered_ids = (
-            covered_by_active_cases
-            | covered_by_pending_drafts
-            | {
-                str(criterion_id)
-                for draft in drafts_to_save
-                for criterion_id in draft.get("acceptance_criterion_ids", [])
-            }
-        )
-        covered_obligation_keys = (
-            covered_by_active_obligations
-            | covered_by_pending_obligations
-            | {
-                str(key)
-                for draft in drafts_to_save
-                for key in draft.get("coverage_obligations", [])
-            }
-        ) & obligation_keys
-        missing_ids = required_ids - covered_ids
-        missing_obligations = [
-            item
-            for item in version_obligations
-            if str(item.get("key")) not in covered_obligation_keys
-        ]
-        if missing_ids and not any(
-            item.get("reason") == "ACCEPTANCE_CRITERIA_NOT_COVERED"
-            for item in unresolved
-        ):
-            unresolved.append(
-                {
-                    "requirement_version_id": requirement_version_id,
-                    "reason": "ACCEPTANCE_CRITERIA_NOT_COVERED",
-                    "missing_acceptance_criterion_ids": sorted(missing_ids),
-                }
-            )
-        if missing_obligations and not any(
-            item.get("reason") == "TESTABILITY_BLUEPRINT_OBLIGATIONS_NOT_COVERED"
-            for item in unresolved
-        ):
-            unresolved.append(
-                {
-                    "requirement_version_id": requirement_version_id,
-                    "reason": "TESTABILITY_BLUEPRINT_OBLIGATIONS_NOT_COVERED",
-                    "obligation_keys": [item.get("key") for item in missing_obligations],
-                }
-            )
     if drafts_to_save:
         saved = await require_operation(
             "POST", f"/du-an/{project_id}/ban-nhap-ca-kiem-thu/lo", config, drafts_to_save
@@ -1006,25 +739,10 @@ async def process_changed_requirement_version(
             )
             approved_cases.append(case)
             approved_case_versions.append(frozen_version)
-            case_obligation_keys = list(
-                draft.get("coverage_obligations")
-                or frozen_version.get("coverage_obligations")
-                or []
-            )
-            for key in case_obligation_keys:
-                entry = blueprint_artifact_coverage.get(str(key))
-                if entry:
-                    entry["test_case_ids"].append(str(case["_id"]))
-                    entry["test_case_version_ids"].append(str(frozen_version["_id"]))
             if publication_status != "SUCCESS":
-                warnings.append(
-                    f"TEST_CASE_PUBLICATION_DEGRADED:{case['_id']}"
-                )
+                warnings.append(f"TEST_CASE_PUBLICATION_DEGRADED:{case['_id']}")
         except ToolOperationError as error:
-            unresolved.append({
-                "test_case_draft_id": draft["_id"],
-                "reason": error.reason_code,
-            })
+            unresolved.append({"test_case_draft_id": draft["_id"], "reason": error.reason_code})
         except (KeyError, RuntimeError) as error:
             unresolved.append({
                 "test_case_draft_id": draft["_id"],
@@ -1056,21 +774,13 @@ async def process_changed_requirement_version(
             "artifact_type": "requirement_quality_analysis",
         }
     )
-    for coverage in blueprint_artifact_coverage.values():
-        for artifact_type, field in (
-            ("test_case", "test_case_ids"),
-            ("test_case_version", "test_case_version_ids"),
-        ):
-            artifacts.extend(
-                {"artifact_id": artifact_id, "artifact_type": artifact_type}
-                for artifact_id in coverage[field]
-            )
-        for field in (
-            "requirement_version_ids",
-            "test_case_ids",
-            "test_case_version_ids",
-        ):
-            coverage[field] = list(dict.fromkeys(coverage[field]))
+    for case, frozen_version in zip(approved_cases, approved_case_versions, strict=True):
+        artifacts.extend(
+            [
+                {"artifact_id": case["_id"], "artifact_type": "test_case"},
+                {"artifact_id": frozen_version["_id"], "artifact_type": "test_case_version"},
+            ]
+        )
     artifacts = list(
         {
             (item["artifact_type"], str(item["artifact_id"])): item
@@ -1087,12 +797,6 @@ async def process_changed_requirement_version(
             **({"reason_code": unresolved[0]["reason"]} if unresolved else {}),
             "requirement_version_id": requirement_version_id,
             "requirement_quality": requirement_quality,
-            "testability_blueprint": blueprint,
-            "source_facts": [item.model_dump(mode="json") for item in blueprint_facts],
-            "source_evidence": [evidence_by_ref[requirement_version_id]],
-            "blueprint_obligation_keys": [item.get("key") for item in version_obligations],
-            "covered_blueprint_obligation_keys": sorted(covered_obligation_keys),
-            "blueprint_artifact_coverage": list(blueprint_artifact_coverage.values()),
             "approved_test_case_ids": [item["_id"] for item in approved_cases],
             "test_case_draft_ids": [item["_id"] for item in created_drafts],
             "maintenance_artifact_ids": list(dict.fromkeys(maintenance_artifact_ids)),
@@ -1104,7 +808,7 @@ async def process_changed_requirement_version(
                         *warnings,
                         *finalized_generation_warnings(
                             generation_warning_attempts,
-                            coverage_complete=not missing_ids and not missing_obligations,
+                            coverage_complete=not missing_ids,
                         ),
                     ]
                 )

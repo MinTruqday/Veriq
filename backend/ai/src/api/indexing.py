@@ -10,7 +10,6 @@ from src.core.dependency import (
     get_current_user_optional,
     verify_internal_token,
 )
-from src.schemas.inference_staffing import StaffingRecommendationRequest
 from src.schemas.ingestion import (
     AttachmentConversionRequest,
     ConversionCheckpointCleanupRequest,
@@ -21,7 +20,6 @@ from src.services.ingestion import convert_attachment as convert_attachment_data
 from src.services.ingestion import index_document as index_document_data
 from src.services.ingestion import remove_document as remove_document_data
 from src.services.conversion import document_parser
-from src.services.staffing_recommendation import recommend_staffing
 from src.core.infrastructure.mq import mq
 from src.runtime.queue_names import DOCUMENT_INGESTION_QUEUE
 
@@ -175,15 +173,6 @@ async def read_document_picture_asset(
             "X-Content-Type-Options": "nosniff",
         },
     )
-
-
-@indexing_router.post(
-    "/kiem-thu/goi-y-phan-cong",
-    description="Rank assignees by capability evidence, availability, and workload",
-)
-async def staffing_recommendation(req: StaffingRecommendationRequest):
-    result = await recommend_staffing(req)
-    return APIResponse(data=result, message="Evidence-based staffing recommendations generated")
 
 
 @indexing_router.delete(

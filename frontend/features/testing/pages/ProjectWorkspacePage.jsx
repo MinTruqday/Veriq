@@ -109,7 +109,10 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
     section[1] &&
     testCaseSubsectionItems(projectId).find((item) => item.href.split("/").at(-1) === section[1]);
   const invalidCaseSubsection = Boolean(
-    section[0] === PROJECT_SECTION_SLUGS.testCases && section[1] && !caseSubsectionItem,
+    section[0] === PROJECT_SECTION_SLUGS.testCases &&
+      section[1] &&
+      section[1] !== "tao-moi" &&
+      !caseSubsectionItem,
   );
   const planningSubsections = ["list", "backlog", "board", "sprint", "roadmap"];
   const invalidPlanningSubsection = Boolean(

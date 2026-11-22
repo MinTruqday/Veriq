@@ -44,8 +44,6 @@ export default function RunExecutionWorkspace({
   const [assignmentDraft, setAssignmentDraft] = useState({});
   const [runAssigneeDraft, setRunAssigneeDraft] = useState("");
   const [savingAssignment, setSavingAssignment] = useState(false);
-  const [assignmentProposal, setAssignmentProposal] = useState(null);
-  const [loadingAssignmentProposal, setLoadingAssignmentProposal] = useState(false);
   const [executionAssistanceByResult, setExecutionAssistanceByResult] = useState({});
   const [executionAssistanceErrors, setExecutionAssistanceErrors] = useState({});
   const [loadingExecutionAssistanceIds, setLoadingExecutionAssistanceIds] = useState(
@@ -66,15 +64,9 @@ export default function RunExecutionWorkspace({
     });
   };
   const beginAssignmentEdit = () => {
-    setAssignmentProposal(null);
     const assignments = { ...(run.test_case_assignments || {}) };
     setAssignmentDraft(assignments);
-    setRunAssigneeDraft(
-      run.assignee_id ||
-        Object.values(assignments).find(Boolean) ||
-        eligibleExecutors[0]?.user_id ||
-        "",
-    );
+    setRunAssigneeDraft(run.assignee_id || "");
     setAssignmentEditing(true);
   };
   const saveAssignments = async () => {
@@ -82,33 +74,6 @@ export default function RunExecutionWorkspace({
       Object.entries(assignmentDraft).filter(
         ([versionId, assigneeId]) =>
           run.test_case_version_ids?.includes(versionId) && Boolean(assigneeId),
-      ),
-    );
-    const proposedAssignments = Object.fromEntries(
-      (assignmentProposal?.case_recommendations || [])
-        .filter((item) => item.status === "PROPOSED" && item.assignee_id)
-        .map((item) => [item.test_case_version_id, item.assignee_id]),
-    );
-    const effectiveProposal = { ...(run.test_case_assignments || {}), ...proposedAssignments };
-    const proposalWasAccepted =
-      assignmentProposal &&
-      Object.entries(effectiveProposal).every(
-        ([versionId, assigneeId]) => testCaseAssignments[versionId] === assigneeId,
-      );
-    const proposalWasAdjusted =
-      assignmentProposal &&
-      Object.entries(proposedAssignments).some(
-        ([versionId, assigneeId]) => testCaseAssignments[versionId] !== assigneeId,
-      );
-    const assignmentDecisionSource =
-      proposalWasAccepted && !proposalWasAdjusted
-        ? "HUMAN_APPROVED_RECOMMENDATION"
-        : assignmentProposal
-          ? "HUMAN_ADJUSTED_RECOMMENDATION"
-          : "MANUAL";
-    const assignedProfileRevisions = Object.fromEntries(
-      Object.entries(assignmentProposal?.skill_profile_revisions || {}).filter(([userId]) =>
-        new Set([...Object.values(testCaseAssignments), runAssigneeDraft]).has(userId),
       ),
     );
     if (!runAssigneeDraft) {
@@ -121,41 +86,13 @@ export default function RunExecutionWorkspace({
         expected_revision: run.revision,
         assignee_id: runAssigneeDraft,
         test_case_assignments: testCaseAssignments,
-        expected_skill_profile_revisions: assignmentProposal ? assignedProfileRevisions : {},
-        decision_source: assignmentDecisionSource,
       });
       onRunChange(updatedRun);
       setAssignmentEditing(false);
-      setAssignmentProposal(null);
     } catch (reason) {
       onError(messageOf(reason));
     } finally {
       setSavingAssignment(false);
-    }
-  };
-  const proposeAssignments = async () => {
-    setLoadingAssignmentProposal(true);
-    onError("");
-    try {
-      const proposal = await testingApi.recommendRunAssignment(projectId, run._id, {
-        expected_run_revision: run.revision,
-      });
-      setAssignmentProposal(proposal);
-      const recommended = Object.fromEntries(
-        (proposal.case_recommendations || [])
-          .filter((item) => item.status === "PROPOSED" && item.assignee_id)
-          .map((item) => [item.test_case_version_id, item.assignee_id]),
-      );
-      setAssignmentDraft((current) => ({ ...current, ...recommended }));
-      setRunAssigneeDraft(
-        (current) =>
-          current || Object.values(recommended)[0] || eligibleExecutors[0]?.user_id || "",
-      );
-      setAssignmentEditing(true);
-    } catch (reason) {
-      onError(messageOf(reason));
-    } finally {
-      setLoadingAssignmentProposal(false);
     }
   };
   const analyzeExecutionResult = async (result) => {
@@ -198,14 +135,6 @@ export default function RunExecutionWorkspace({
           <div className="flex flex-wrap gap-2">
             {can("testrun.assign") && can("project.members.read") && (
               <>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  disabled={!eligibleExecutors.length || loadingAssignmentProposal}
-                  onClick={() => void proposeAssignments()}
-                >
-                  {loadingAssignmentProposal ? "Đang lập đề xuất" : "Đề xuất người thực hiện"}
-                </button>
                 <button
                   className="secondary-button"
                   type="button"
@@ -412,15 +341,6 @@ export default function RunExecutionWorkspace({
       {can("testrun.assign") && can("project.members.read") && assignmentEditing && (
         <Panel title="Phân công lần chạy">
           <div className="space-y-4 p-5">
-            {assignmentProposal && (
-              <div className="rounded-control border border-border bg-surface-raised p-3 text-sm">
-                <p className="font-medium">Đề xuất phân công</p>
-                <p className="mt-1 text-ink-muted">
-                  Gợi ý chưa được áp dụng. Kiểm tra từng ca, có thể đổi người hoặc chọn thủ công rồi
-                  bấm “Duyệt và lưu phân công”.
-                </p>
-              </div>
-            )}
             <label className="field-label block">
               Người phụ trách lần chạy
               <select
@@ -442,6 +362,20 @@ export default function RunExecutionWorkspace({
                 ))}
               </select>
             </label>
+            {runAssigneeDraft && testCaseVersions.length > 1 && (
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={savingAssignment}
+                onClick={() =>
+                  setAssignmentDraft(
+                    Object.fromEntries(testCaseVersions.map(({ _id }) => [_id, runAssigneeDraft])),
+                  )
+                }
+              >
+                Gán người này cho tất cả ca
+              </button>
+            )}
             <div className="space-y-3">
               {(run.test_case_versions || []).map((version) => (
                 <div
@@ -476,55 +410,6 @@ export default function RunExecutionWorkspace({
                       ))}
                     </select>
                   </label>
-                  {assignmentProposal &&
-                    (() => {
-                      const item = assignmentProposal.case_recommendations?.find(
-                        (candidate) => candidate.test_case_version_id === version._id,
-                      );
-                      if (!item) return null;
-                      const suggestedMember = eligibleExecutors.find(
-                        (candidate) => candidate.user_id === item.assignee_id,
-                      );
-                      return (
-                        <div className="space-y-1 text-xs text-ink-muted">
-                          <p>
-                            {item.status === "PROPOSED" ? (
-                              <>
-                                Veriq đề xuất theo hồ sơ kỹ năng và tải công việc:{" "}
-                                <span className="font-medium text-ink">
-                                  {suggestedMember?.user_label ||
-                                    suggestedMember?.user?.label ||
-                                    suggestedMember?.user?.full_name ||
-                                    suggestedMember?.user?.email ||
-                                    item.assignee_label ||
-                                    "Thành viên không còn trong dự án"}
-                                </span>
-                                {item.required_skills?.length
-                                  ? ` · Kỹ năng yêu cầu: ${item.required_skills.join(", ")}`
-                                  : " · Không yêu cầu kỹ năng cụ thể"}
-                              </>
-                            ) : item.status === "EXISTING_ASSIGNMENT_PRESERVED" ? (
-                              "Giữ nguyên phân công hiện tại"
-                            ) : item.status === "MAX_CONCURRENT_PROJECTS_REACHED" ? (
-                              "Ứng viên đủ kỹ năng đã chạm mức dự án tối đa được cấu hình. Hãy xem lại giới hạn trước khi phân công thủ công."
-                            ) : (
-                              "Chưa có người khớp điều kiện; hãy chọn thủ công nếu cần."
-                            )}
-                          </p>
-                          {item.near_matches?.length > 0 && (
-                            <p>
-                              Ứng viên còn thiếu kỹ năng yêu cầu:{" "}
-                              {item.near_matches
-                                .map(
-                                  (candidate) =>
-                                    `${candidate.user_label} (${candidate.unmatched_skills.join(", ") || "chưa có hồ sơ kỹ năng"})`,
-                                )
-                                .join("; ")}
-                            </p>
-                          )}
-                        </div>
-                      );
-                    })()}
                 </div>
               ))}
             </div>
@@ -548,94 +433,12 @@ export default function RunExecutionWorkspace({
                 disabled={!eligibleExecutors.length || savingAssignment}
                 onClick={saveAssignments}
               >
-                {savingAssignment
-                  ? "Đang lưu"
-                  : assignmentProposal
-                    ? "Duyệt và lưu phân công"
-                    : "Lưu phân công"}
+                {savingAssignment ? "Đang lưu" : "Lưu phân công"}
               </button>
             </div>
           </div>
         </Panel>
       )}
-      {!!run.unassigned_assignment_reasons?.length && (
-        <Panel title="Ca chưa được tự phân công">
-          <div className="space-y-2 p-5">
-            <p className="text-sm text-ink-muted">
-              Không có thành viên khả dụng khớp đủ kỹ năng đã xác nhận. Các ca này vẫn thuộc lần
-              chạy nhưng cần người quản lý phân công.
-            </p>
-            {run.unassigned_assignment_reasons.map((item) => {
-              const version = run.test_case_versions?.find(
-                (candidate) => candidate._id === item.test_case_version_id,
-              );
-              return (
-                <p className="break-words text-sm" key={item.test_case_version_id}>
-                  {version?.test_case_key || "Ca kiểm thử không còn khả dụng"} ·{" "}
-                  {version?.title || "Ca kiểm thử"}
-                  {" — "}
-                  {item.reason === "NO_FULL_SKILL_MATCH"
-                    ? "Chưa có người khớp đủ kỹ năng"
-                    : "Chưa có người kiểm thử khả dụng trong dự án"}
-                </p>
-              );
-            })}
-          </div>
-        </Panel>
-      )}
-      {run.assignment_strategy === "CONFIRMED_SKILLS" &&
-        Object.keys(run.test_case_assignment_decisions || {}).length > 0 && (
-          <Panel title="Vì sao Veriq đề xuất phân công này">
-            <div className="space-y-3 p-5">
-              <p className="text-sm text-ink-muted">
-                Đây là thông tin được ghi lại tại thời điểm tạo lần chạy; thay đổi hồ sơ thành viên
-                sau đó không làm thay đổi lịch sử phân công.
-              </p>
-              {Object.entries(run.test_case_assignment_decisions).map(([versionId, decision]) => {
-                const version = run.test_case_versions?.find(
-                  (candidate) => candidate._id === versionId,
-                );
-                const reasonLabel = [
-                  "CONFIRMED_SKILLS_THEN_LOWEST_ACTIVE_CASE_AND_RUN_LOAD",
-                  "CONFIRMED_SKILLS_THEN_AVAILABILITY_AND_LOWEST_ACTIVE_CASE_AND_RUN_LOAD",
-                ].includes(decision.reason)
-                  ? "Khớp kỹ năng đã xác nhận, sau đó cân bằng tải ca và lần chạy"
-                  : "Không yêu cầu kỹ năng cụ thể; cân bằng tải ca và lần chạy";
-
-                return (
-                  <section
-                    className="grid min-w-0 gap-1 border-b border-border pb-3 text-sm last:border-b-0 last:pb-0"
-                    key={versionId}
-                  >
-                    <h3 className="break-words font-medium">
-                      {version?.test_case_key || "Ca kiểm thử không còn khả dụng"} ·{" "}
-                      {version?.title || ""}
-                    </h3>
-                    <p className="break-words text-ink-muted">
-                      Người thực hiện:{" "}
-                      {run.test_case_assignment_identities?.[decision.assignee_id]?.display_name ||
-                        "Thành viên không còn trong dự án"}
-                      {" · "}
-                      {reasonLabel}
-                    </p>
-                    <p className="break-words text-ink-muted">
-                      Kỹ năng yêu cầu: {decision.required_skills?.join(", ") || "Không yêu cầu"}
-                      {" · "}
-                      Kỹ năng khớp: {decision.matched_skills?.join(", ") || "Không có"}
-                    </p>
-                    <p className="break-words text-ink-muted">
-                      Trước khi phân công: {decision.active_run_count_before_assignment ?? 0} lần
-                      chạy đang hoạt động, {decision.active_case_count_before_assignment ?? 0} ca
-                      đang phụ trách
-                      {" · "}
-                      Khả dụng: {decision.availability_at_assignment || "Chưa ghi nhận"}
-                    </p>
-                  </section>
-                );
-              })}
-            </div>
-          </Panel>
-        )}
       <div className="w-full">
         <Panel
           title="Kết quả từng ca"

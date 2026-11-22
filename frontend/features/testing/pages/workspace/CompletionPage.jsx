@@ -202,8 +202,7 @@ export default function CompletionPage({ project }) {
         },
         {
           name: "build_id",
-          label: "Bản dựng",
-          required: true,
+          label: "Bản dựng nếu mốc giám sát có nhiều bản dựng",
           options: builds.map((item) => ({
             value: item._id,
             label: `${item.identifier} · ${item.version}`,
@@ -218,7 +217,7 @@ export default function CompletionPage({ project }) {
           testingApi.createTestCompletionReport(project._id, {
             idempotency_key: crypto.randomUUID(),
             snapshot_id: answer.snapshot_id,
-            build_id: answer.build_id,
+            build_id: answer.build_id || null,
             lessons_learned: [
               ...lines(answer.worked, "WORKED"),
               ...lines(answer.failed, "FAILED"),

@@ -17,7 +17,6 @@ const levels = {
 
 const followUps = {
   REQUIREMENT_CLARIFICATION: ["Yêu cầu", "yeu-cau"],
-  TEST_OBLIGATION_ANALYSIS: ["Phân tích nghĩa vụ kiểm thử", "ca-kiem-thu"],
   TEST_PLAN_DRAFT: ["Kế hoạch kiểm thử", "ke-hoach-kiem-thu"],
   SCENARIO_OR_TEST_CASE_DRAFT: ["Thiết kế kiểm thử", "ca-kiem-thu"],
   CHANGE_IMPACT_REVIEW: ["Phân tích thay đổi", "thay-doi"],

@@ -481,8 +481,6 @@ async def generate_api_tests(operation_id: str, user: CurrentUser):
         if (
             set(case.evidence_refs) != {operation_id}
             or case.acceptance_criterion_ids
-            or case.coverage_obligations
-            or case.challenge_techniques
             or not case.evidence_quotes
             or any(
                 quote.evidence_ref != operation_id

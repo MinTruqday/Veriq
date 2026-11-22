@@ -5,7 +5,6 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from src.core.sensitive_data import secret_pattern
 from src.schemas.contracts.common import empty_doc, validate_tiptap_document
-from src.schemas.contracts.utility import TestDesignChallengeInput
 
 TestScenarioCategory: TypeAlias = str
 TestCaseType: TypeAlias = str
@@ -156,55 +155,6 @@ class EvidenceQuote(BaseModel):
     quote: str = Field(min_length=2, max_length=1000)
 
 
-class TestCaseObligationEvidence(BaseModel):
-    obligation_key: str = Field(min_length=1, max_length=200)
-    evidence_quotes: list[EvidenceQuote] = Field(min_length=1, max_length=20)
-
-
-class TestCaseCustomFieldCreate(BaseModel):
-    key: str = Field(min_length=2, max_length=80, pattern=r"^[a-z][a-z0-9_]*$")
-    label: str = Field(min_length=2, max_length=200)
-    value_type: Literal["text", "number", "boolean", "date", "choice"]
-    required: bool = False
-    choices: list[str] = Field(default_factory=list, max_length=100)
-
-    @model_validator(mode="after")
-    def validate_choices(self):
-        if self.value_type == "choice" and not self.choices:
-            raise ValueError("Trường lựa chọn phải có ít nhất một giá trị")
-        if self.value_type != "choice" and self.choices:
-            raise ValueError("Chỉ trường lựa chọn mới được khai báo danh sách giá trị")
-        if len(self.choices) != len(set(self.choices)):
-            raise ValueError("Giá trị lựa chọn không được trùng")
-        return self
-
-
-class TestCaseCustomFieldPatch(BaseModel):
-    expected_revision: int = Field(ge=1)
-    label: str | None = Field(default=None, min_length=2, max_length=200)
-    required: bool | None = None
-    status: Literal["ACTIVE", "INACTIVE"] | None = None
-
-    @field_validator("label")
-    @classmethod
-    def normalize_label(cls, value):
-        if value is None:
-            return value
-        normalized = " ".join(value.split())
-        if len(normalized) < 2:
-            raise ValueError("Tên trường phải có ít nhất 2 ký tự")
-        return normalized
-
-    @model_validator(mode="after")
-    def require_update(self):
-        fields = self.model_fields_set - {"expected_revision"}
-        if not fields:
-            raise ValueError("Cần có ít nhất một thay đổi")
-        if any(getattr(self, name) is None for name in fields):
-            raise ValueError("Không thể xóa giá trị cấu hình bằng null")
-        return self
-
-
 class TestImportVersionResolution(BaseModel):
     target_version_id: str = Field(min_length=1, max_length=200)
     reason: str = Field(min_length=2, max_length=2000)
@@ -224,8 +174,6 @@ class TestCaseDraftCreate(BaseModel):
     type: TestCaseType = Field(min_length=1, max_length=100)
     test_level: str | None = Field(default=None, max_length=100)
     test_kind: str | None = Field(default=None, max_length=100)
-    expected_impact: str = Field(default="unassessed", min_length=1, max_length=100)
-    assessment_reason: str = Field(default="", max_length=2000)
     priority: str = Field(default="unassessed", min_length=1, max_length=100)
     risk: str = Field(default="unassessed", min_length=1, max_length=100)
     objective_doc: dict[str, Any] = Field(default_factory=empty_doc)
@@ -234,9 +182,9 @@ class TestCaseDraftCreate(BaseModel):
     test_data: dict[str, Any] = Field(default_factory=dict)
     expected_result_doc: dict[str, Any] = Field(default_factory=empty_doc)
     postconditions_doc: dict[str, Any] = Field(default_factory=empty_doc)
+    alternate_flows_doc: dict[str, Any] = Field(default_factory=empty_doc)
+    exception_flows_doc: dict[str, Any] = Field(default_factory=empty_doc)
     tags: list[str] = Field(default_factory=list, max_length=100)
-    required_skills: list[str] = Field(default_factory=list, max_length=50)
-    custom_values: dict[str, Any] = Field(default_factory=dict, max_length=100)
     owner_id: str | None = Field(default=None, max_length=200)
     techniques: list[str] = Field(default_factory=list, max_length=50)
     automation_status: AIRunStatus = "manual"
@@ -252,11 +200,8 @@ class TestCaseDraftCreate(BaseModel):
     origin: Literal["manual", "ai_generated", "clone", "import", "maintenance"] = "manual"
     source_evidence: list[dict[str, Any]] = Field(default_factory=list, max_length=200)
     acceptance_criteria_snapshot_ids: list[str] | None = Field(default=None, max_length=500)
-    coverage_obligations: list[str] = Field(default_factory=list, max_length=100)
-    obligation_evidence: list[TestCaseObligationEvidence] = Field(default_factory=list, max_length=100)
     evidence_refs: list[str] = Field(default_factory=list, max_length=200)
     evidence_quotes: list[EvidenceQuote] = Field(default_factory=list, max_length=20)
-    challenge_hypotheses: list[TestDesignChallengeInput] = Field(default_factory=list, max_length=5)
     suite_signature: str | None = Field(default=None, max_length=128)
     duplicate_reason: str | None = Field(default=None, min_length=2, max_length=2000)
     target_version_id: str | None = Field(default=None, min_length=1, max_length=200)
@@ -270,7 +215,7 @@ class TestCaseDraftCreate(BaseModel):
             raise ValueError("Test case type must not be empty")
         return normalized
 
-    @field_validator("expected_impact", "priority", "risk")
+    @field_validator("priority", "risk")
     @classmethod
     def normalize_assessment_labels(cls, value):
         normalized = " ".join(value.split())
@@ -279,7 +224,8 @@ class TestCaseDraftCreate(BaseModel):
         return normalized
 
     @field_validator(
-        "preconditions_doc", "objective_doc", "expected_result_doc", "postconditions_doc"
+        "preconditions_doc", "objective_doc", "expected_result_doc", "postconditions_doc",
+        "alternate_flows_doc", "exception_flows_doc",
     )
     @classmethod
     def validate_documents(cls, value):
@@ -306,38 +252,7 @@ class TestCaseDraftCreate(BaseModel):
             for quote in self.evidence_quotes
         ):
             raise ValueError("Trích dẫn không nằm trong nguồn của ca kiểm thử")
-        obligation_keys = [item.obligation_key for item in self.obligation_evidence]
-        if len(obligation_keys) != len(set(obligation_keys)):
-            raise ValueError("Dẫn chứng nghĩa vụ không được trùng")
-        if not set(obligation_keys) <= set(self.coverage_obligations):
-            raise ValueError("Dẫn chứng phải thuộc nghĩa vụ của ca kiểm thử")
-        if self.origin == "ai_generated" and self.coverage_obligations and set(
-            obligation_keys
-        ) != set(self.coverage_obligations):
-            raise ValueError("Mỗi nghĩa vụ AI phải có dẫn chứng riêng")
-        case_quotes = {(item.evidence_ref, item.quote) for item in self.evidence_quotes}
-        if any(
-            (quote.evidence_ref, quote.quote) not in case_quotes
-            for item in self.obligation_evidence
-            for quote in item.evidence_quotes
-        ):
-            raise ValueError("Dẫn chứng nghĩa vụ không nằm trong trích dẫn của ca")
         return self
-
-    @field_validator("required_skills")
-    @classmethod
-    def normalize_required_skills(cls, values):
-        normalized = []
-        seen = set()
-        for value in values:
-            item = " ".join(str(value).split())
-            key = item.casefold()
-            if item and key not in seen:
-                normalized.append(item)
-                seen.add(key)
-        if any(len(value) > 120 for value in normalized):
-            raise ValueError("Kỹ năng yêu cầu không được dài quá 120 ký tự")
-        return normalized
 
 
 class TestCaseDraftBatchComparisonInput(BaseModel):
@@ -350,8 +265,6 @@ class TestCaseDraftPatch(BaseModel):
     type: TestCaseType | None = None
     test_level: str | None = Field(default=None, max_length=100)
     test_kind: str | None = Field(default=None, max_length=100)
-    expected_impact: str | None = Field(default=None, min_length=1, max_length=100)
-    assessment_reason: str | None = Field(default=None, max_length=2000)
     priority: str | None = Field(default=None, min_length=1, max_length=100)
     risk: str | None = Field(default=None, min_length=1, max_length=100)
     objective_doc: dict[str, Any] | None = None
@@ -360,9 +273,9 @@ class TestCaseDraftPatch(BaseModel):
     test_data: dict[str, Any] | None = None
     expected_result_doc: dict[str, Any] | None = None
     postconditions_doc: dict[str, Any] | None = None
+    alternate_flows_doc: dict[str, Any] | None = None
+    exception_flows_doc: dict[str, Any] | None = None
     tags: list[str] | None = None
-    required_skills: list[str] | None = Field(default=None, max_length=50)
-    custom_values: dict[str, Any] | None = Field(default=None, max_length=100)
     owner_id: str | None = Field(default=None, max_length=200)
     techniques: list[str] | None = None
     automation_status: AIRunStatus | None = None
@@ -387,7 +300,7 @@ class TestCaseDraftPatch(BaseModel):
             raise ValueError("Test case type must not be empty")
         return normalized
 
-    @field_validator("expected_impact", "priority", "risk")
+    @field_validator("priority", "risk")
     @classmethod
     def normalize_assessment_labels(cls, value):
         if value is None:
@@ -398,28 +311,12 @@ class TestCaseDraftPatch(BaseModel):
         return normalized
 
     @field_validator(
-        "preconditions_doc", "objective_doc", "expected_result_doc", "postconditions_doc"
+        "preconditions_doc", "objective_doc", "expected_result_doc", "postconditions_doc",
+        "alternate_flows_doc", "exception_flows_doc",
     )
     @classmethod
     def validate_documents(cls, value):
         return validate_tiptap_document(value)
-
-    @field_validator("required_skills")
-    @classmethod
-    def normalize_required_skills(cls, values):
-        if values is None:
-            return values
-        normalized = []
-        seen = set()
-        for value in values:
-            item = " ".join(str(value).split())
-            key = item.casefold()
-            if item and key not in seen:
-                normalized.append(item)
-                seen.add(key)
-        if any(len(value) > 120 for value in normalized):
-            raise ValueError("Kỹ năng yêu cầu không được dài quá 120 ký tự")
-        return normalized
 
 
 class TestCaseFreezeInput(BaseModel):

@@ -15,34 +15,6 @@ from src.core.database import database
 logger = logging.getLogger(__name__)
 
 class AICapabilityClient:
-    async def evaluate_blueprint_against_reference(
-        self,
-        project_id: str,
-        requester_user_id: str,
-        sources: list[dict],
-        blueprint: dict,
-        output_language: str | None = None,
-    ) -> dict:
-        async with httpx.AsyncClient(timeout=60) as client:
-            response = await client.post(
-                f"{settings.AI_URL.rstrip('/')}/suy-luan/noi-bo/danh-gia/blueprint",
-                headers={"X-Internal-Token": settings.SECRET_KEY},
-                json={
-                    "project_id": project_id,
-                    "requester_user_id": requester_user_id,
-                    "output_language": output_language or "auto",
-                    "sources": sources,
-                    "blueprint": blueprint,
-                },
-            )
-            response.raise_for_status()
-        value = response.json()
-        if not isinstance(value, dict) or value.get("assessment_type") not in {
-            "NOT_AVAILABLE", "INDEPENDENT_REFERENCE", "SELF_PREPARED_REFERENCE"
-        }:
-            raise RuntimeError("BLUEPRINT_BENCHMARK_RESPONSE_INVALID")
-        return value
-
     async def summarize_knowledge_text(self, text: str, output_language: str) -> str:
         async with httpx.AsyncClient(timeout=300) as client:
             response = await client.post(
@@ -74,31 +46,6 @@ class AICapabilityClient:
         value = payload.get("data") if isinstance(payload, dict) else None
         if not isinstance(value, dict) or not isinstance(value.get("markdown"), str):
             raise RuntimeError("DOCUMENT_CONVERSION_RESPONSE_INVALID")
-        return value
-
-    async def recommend_test_case_owners(
-        self,
-        output_language: str,
-        required_skills: list[str],
-        candidates: list[dict],
-        task_context: str = "",
-    ) -> dict:
-        async with httpx.AsyncClient(timeout=180) as client:
-            response = await client.post(
-                f"{settings.AI_URL.rstrip('/')}/tri-thuc/kiem-thu/goi-y-phan-cong",
-                headers={"X-Internal-Token": settings.SECRET_KEY},
-                json={
-                    "output_language": output_language,
-                    "task_context": task_context,
-                    "required_skills": required_skills,
-                    "candidates": candidates,
-                },
-            )
-            response.raise_for_status()
-        payload = response.json()
-        value = payload.get("data") if isinstance(payload, dict) else None
-        if not isinstance(value, dict):
-            raise RuntimeError("OWNER_RECOMMENDATION_RESPONSE_INVALID")
         return value
 
     async def request(

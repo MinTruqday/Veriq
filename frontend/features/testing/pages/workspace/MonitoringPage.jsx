@@ -169,10 +169,28 @@ export default function MonitoringPage({ project }) {
     );
   const createSnapshot = async () => {
     if (!selectedPlanId) return;
+    let releases = [];
+    if (can("release.read")) {
+      try {
+        releases = await testingApi.listReleases(project._id);
+      } catch (reason) {
+        setError(messageOf(reason));
+        return;
+      }
+    }
     await ask({
       title: "Lưu mốc giám sát",
       confirmLabel: "Lưu mốc giám sát",
       fields: [
+        ...(releases.length
+          ? [
+              {
+                name: "release_id",
+                label: "Bản phát hành nếu kế hoạch có nhiều bản phát hành",
+                options: releases.map(({ _id, name }) => ({ value: _id, label: name })),
+              },
+            ]
+          : []),
         { name: "actual_effort", label: "Nỗ lực thực tế theo giờ", type: "number" },
         {
           name: "expected_completion",
@@ -184,6 +202,7 @@ export default function MonitoringPage({ project }) {
         try {
           const value = await testingApi.createMonitoringSnapshot(project._id, {
             test_plan_id: selectedPlanId,
+            release_id: answer.release_id || null,
             actual_effort: answer.actual_effort === "" ? null : Number(answer.actual_effort),
             expected_completion: answer.expected_completion || null,
             risks: [],

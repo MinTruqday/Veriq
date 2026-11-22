@@ -9,7 +9,6 @@ import CompletionPage from "./CompletionPage";
 import MetricDefinitionPanel from "../../components/MetricDefinitionPanel";
 import ReleaseQualityPanel from "../../components/ReleaseQualityPanel";
 import ProjectAIEvaluationPanel from "../../components/ProjectAIEvaluationPanel";
-import RealTestabilityBenchmarkPanel from "../../components/RealTestabilityBenchmarkPanel";
 import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
 import {
   ErrorState,
@@ -76,7 +75,6 @@ const aiCapabilityLabels = {
   requirement_quality_analysis: "Rà soát yêu cầu",
   requirement_template_synthesis: "Tạo mẫu yêu cầu",
   requirement_template_review: "Rà soát mẫu yêu cầu",
-  testability_blueprint_compilation: "Lập bản đồ điều kiện kiểm thử",
   scenario_generation: "Tạo kịch bản kiểm thử",
   test_generation: "Tạo ca kiểm thử",
   test_condition_generation: "Đề xuất điều kiện kiểm thử",
@@ -424,7 +422,6 @@ export default function ReportsPage({ project }) {
       {visibleTab === "ai" && (
         <div className="space-y-5">
           <ProjectAIEvaluationPanel analytics={value?.ai} loading={loading} />
-          <RealTestabilityBenchmarkPanel project={project} />
         </div>
       )}
       {visibleTab === "summary" && (

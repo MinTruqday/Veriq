@@ -10,19 +10,6 @@ import {
 
 export const designTestingApi = {
   listTestStrategies: (projectId, query = "") => listPage(`/du-an/${projectId}/chien-luoc`, query),
-  listTestCaseCustomFields: (projectId) => testingRequest(`/du-an/${projectId}/truong-ca-kiem-thu`),
-  listManagedTestCaseCustomFields: (projectId) =>
-    testingRequest(`/du-an/${projectId}/truong-ca-kiem-thu/quan-ly`),
-  createTestCaseCustomField: (projectId, payload) =>
-    testingRequest(`/du-an/${projectId}/truong-ca-kiem-thu`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  updateTestCaseCustomField: (projectId, fieldId, payload) =>
-    testingRequest(`/du-an/${projectId}/truong-ca-kiem-thu/${fieldId}`, {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-    }),
   listTestRepository: (projectId) => testingRequest(`/du-an/${projectId}/kho-ca-kiem-thu`),
   createTestRepositoryNode: (projectId, payload) =>
     testingRequest(`/du-an/${projectId}/kho-ca-kiem-thu`, {

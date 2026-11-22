@@ -79,7 +79,15 @@ async def create_monitoring_snapshot(project_id, payload: MonitoringSnapshotCrea
                 "reason_code": 'TEST_PLAN_NOT_APPROVED',
             },
         )
-    release_id = payload.release_id or plan.get("release_id")
+    release_id = payload.release_id
+    if not release_id:
+        plan_runs = await test_monitoring_repository.list_test_runs(
+            project_id, plan["_id"], None, 10000
+        )
+        release_ids = {run["release_id"] for run in plan_runs if run.get("release_id")}
+        if len(release_ids) > 1:
+            raise HTTPException(status_code=422, detail={"code": "MONITORING_RELEASE_SCOPE_REQUIRED"})
+        release_id = next(iter(release_ids), None) or plan.get("release_id")
     if release_id and not await test_monitoring_repository.release_exists(release_id, project_id):
         raise HTTPException(status_code=422, detail={"code": 'INVALID_RELEASE'})
     if payload.idempotency_key:
@@ -218,6 +226,7 @@ async def create_monitoring_snapshot(project_id, payload: MonitoringSnapshotCrea
             key=lambda item: item["id"],
         ),
     }
+    build_ids = {run["build_id"] for run in sources["runs"] if run.get("build_id")}
     snapshot = {
         "_id": new_id('MONS'),
         "project_id": project_id,
@@ -229,7 +238,7 @@ async def create_monitoring_snapshot(project_id, payload: MonitoringSnapshotCrea
         ),
         "test_plan_id": plan["_id"],
         "release_id": release_id,
-        "build_id": plan.get("build_id"),
+        "build_id": next(iter(build_ids)) if len(build_ids) == 1 else None,
         "snapshot_at": timestamp,
         "plan_revision": plan["revision"],
         "plan_snapshot_hash": plan["approved_snapshot_hash"],

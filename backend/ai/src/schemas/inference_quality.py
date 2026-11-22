@@ -182,9 +182,7 @@ class TestPlanFieldEvidenceOutput(BaseModel):
     field: Literal[
         "objective", "scope_in", "scope_out", "test_approach", "test_level", "test_types",
         "environment", "entry_criteria", "exit_criteria", "risks", "assumptions",
-        "constraints", "data_sources", "data_preparation", "data_privacy", "data_reset",
-        "role_guidance", "milestones", "deliverables", "tools", "defect_reporting",
-        "defect_classification", "defect_triage", "defect_retest", "defect_closure",
+        "constraints",
     ]
     evidence_quotes: List[EvidenceQuoteOutput] = Field(min_length=1, max_length=20)
 
@@ -204,19 +202,6 @@ class TestPlanDraftSuggestionOutput(BaseModel):
     risks: List[str] = Field(default_factory=list, max_length=100)
     assumptions: List[str] = Field(default_factory=list, max_length=100)
     constraints: List[str] = Field(default_factory=list, max_length=100)
-    data_sources: List[str] = Field(default_factory=list, max_length=100)
-    data_preparation: str = Field(default="", max_length=5000)
-    data_privacy: str = Field(default="", max_length=5000)
-    data_reset: str = Field(default="", max_length=5000)
-    role_guidance: List[str] = Field(default_factory=list, max_length=100)
-    milestones: List[str] = Field(default_factory=list, max_length=100)
-    deliverables: List[str] = Field(default_factory=list, max_length=100)
-    tools: List[str] = Field(default_factory=list, max_length=100)
-    defect_reporting: str = Field(default="", max_length=5000)
-    defect_classification: str = Field(default="", max_length=5000)
-    defect_triage: str = Field(default="", max_length=5000)
-    defect_retest: str = Field(default="", max_length=5000)
-    defect_closure: str = Field(default="", max_length=5000)
     field_evidence: List[TestPlanFieldEvidenceOutput] = Field(default_factory=list, max_length=100)
     evidence_quotes: List[EvidenceQuoteOutput] = Field(default_factory=list, max_length=100)
 
@@ -296,7 +281,6 @@ class ProjectComplexityAssessmentSuggestionOutput(BaseModel):
     recommended_follow_ups: List[
         Literal[
             "REQUIREMENT_CLARIFICATION",
-            "TEST_OBLIGATION_ANALYSIS",
             "TEST_PLAN_DRAFT",
             "SCENARIO_OR_TEST_CASE_DRAFT",
             "CHANGE_IMPACT_REVIEW",

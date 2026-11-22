@@ -179,27 +179,6 @@ async def list_ai_runs(
     return [run.model_dump(mode="json") for run in runs]
 
 
-@router.get("/du-an/{project_id}/ho-so-kha-nang-kiem-thu")
-async def list_project_testability_blueprints(
-    project_id: str,
-    limit: int = 50,
-    token: str = Depends(oauth2_scheme),
-    user: CurrentUser = Depends(get_current_user),
-):
-    if user.system_role != SystemRole.ADMIN:
-        _, permissions = await project_access(project_id, token)
-        if "requirement.read" not in permissions:
-            raise HTTPException(status_code=403, detail={"code": "PROJECT_ACCESS_DENIED"})
-    versions = await ai_run_repository.list_project_blueprints(
-        project_id, max(1, min(limit, 100))
-    )
-    return {
-        "project_id": project_id,
-        "current_version": versions[0].version if versions else None,
-        "versions": versions,
-    }
-
-
 @router.post("/luot-chay/{ai_run_id}/uy-quyen-lai")
 async def retry_ai_run(
     ai_run_id: str,

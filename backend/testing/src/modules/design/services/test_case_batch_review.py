@@ -7,7 +7,6 @@ from src.core.project_settings import resolve_testcase_duplicate_threshold
 from src.core.human_decisions import require_ai_publication_authority
 from src.core.human_decisions import require_independent_review
 from src.modules.design.services.linters import duplicate_score, has_verifiable_steps, lint_test_case
-from src.modules.design.services.test_case_custom_fields import validate_test_case_custom_values
 from src.modules.design.services.test_case_lifecycle import build_test_case_version, finalize_test_case_derivatives
 from src.modules.design.services.test_case_review import (
     assert_sources_current_in_session,
@@ -51,9 +50,6 @@ async def accept_test_case_group(project_id, payload, user):
             detail = error.detail if isinstance(error.detail, dict) else {}
             raise HTTPException(403, detail={**detail, "draft_id": item.draft_id}) from error
         await validate_review_sources_before_approval(draft)
-        await validate_test_case_custom_values(
-            project_id, draft.get("custom_values", {}), enforce_required=True
-        )
         if not has_verifiable_steps(draft):
             raise HTTPException(409, detail={"code": "TEST_CASE_STEPS_REQUIRED", "draft_id": item.draft_id, "message": "Ca kiểm thử cần có ít nhất một bước với kết quả mong đợi trước khi duyệt."})
         if draft.get("origin") == "ai_generated" and not draft.get("evidence_refs"):
@@ -141,12 +137,6 @@ async def accept_test_case_group(project_id, payload, user):
             if not current:
                 raise HTTPException(409, detail={"code": "REVISION_CONFLICT", "draft_id": draft["_id"]})
             await assert_sources_current_in_session(current, session)
-            await validate_test_case_custom_values(
-                project_id,
-                current.get("custom_values", {}),
-                enforce_required=True,
-                session=session,
-            )
             await validate_test_case_publication_uniqueness(
                 current, duplicate_threshold, session
             )

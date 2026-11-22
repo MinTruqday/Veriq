@@ -4,6 +4,7 @@ import json
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
+from src.modules.execution.services.test_monitoring_snapshot import resolve_report_build
 from src.core.ai_capabilities import ai_contract_metadata, request_ai_capability
 from src.core.common import audit, get_project, new_id, now
 from src.core.common import idempotency_request_hash as _create_request_hash
@@ -146,7 +147,7 @@ async def generate_status_report(project_id, payload, user):
     plan = await find_plan(snapshot["test_plan_id"], project_id)
     if not plan:
         raise HTTPException(status_code=422, detail={"code": "TEST_PLAN_NOT_FOUND"})
-    build = await find_build(payload.build_id, project_id)
+    build = await find_build(resolve_report_build(snapshot, payload.build_id), project_id)
     if not build:
         raise HTTPException(status_code=422, detail={"code": "INVALID_BUILD"})
     release_id = snapshot.get("release_id")

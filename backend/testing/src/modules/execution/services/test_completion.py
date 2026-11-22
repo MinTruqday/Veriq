@@ -2,6 +2,7 @@
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
+from src.modules.execution.services.test_monitoring_snapshot import resolve_report_build
 from src.core.auth import sign_off_has_permission
 from src.core.common import audit, get_project, new_id, now
 from src.core.common import idempotency_request_hash as _create_request_hash
@@ -71,7 +72,8 @@ async def create_completion_report(project_id, payload, user):
         or plan.get("approved_snapshot_hash") != snapshot.get("plan_snapshot_hash")
     ):
         raise HTTPException(status_code=409, detail={"code": "COMPLETION_PLAN_SNAPSHOT_INVALID"})
-    sources = await completion_sources(project_id, snapshot, plan, payload.build_id)
+    build_id = resolve_report_build(snapshot, payload.build_id)
+    sources = await completion_sources(project_id, snapshot, plan, build_id)
     (
         release,
         build,

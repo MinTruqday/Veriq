@@ -2,7 +2,6 @@ from fastapi import HTTPException
 
 from src.core.common import get_project, get_project_entity, plain_text
 from src.core.database import database
-from src.core.rich_text import text_document
 from src.core.project_settings import resolve_testcase_duplicate_threshold
 from src.repositories.analysis import analysis_repository
 from src.repositories.test_design import test_design_repository
@@ -62,8 +61,6 @@ async def generate_test_case_draft_records(version_id, payload, user):
         raise HTTPException(409, detail={"code": "TEST_DESIGN_PREVIEW_STALE", "message": "Nguồn yêu cầu đã thay đổi trong lúc AI tạo ca  Hãy tạo lại bản xem trước"})
     related, similarity_threshold = await comparison_cases(version["project_id"])
     suite_signature = active_suite_signature(related, [version_id])
-    if payload.challenge_hypotheses and suite_signature != payload.challenge_suite_signature:
-        raise HTTPException(409, detail={"code": "TEST_DESIGN_PREVIEW_STALE", "message": "Bộ ca đang hiệu lực đã thay đổi trong lúc AI tạo ca  Hãy nhận gợi ý mới"})
     await require_current_design_source(version, user)
     criterion_ids = {item["_id"] for item in criteria}
     scenario_candidates = await database.value.test_scenarios.find(
@@ -132,10 +129,8 @@ async def generate_test_case_draft_records(version_id, payload, user):
             matches[-1] = preview_match
         items.append({
             "draft": {**draft.model_dump(), "suite_signature": suite_signature},
-            "coverage_obligations": generated.get("coverage_obligations", []),
             "evidence_refs": generated.get("evidence_refs", []),
             "evidence_quotes": generated.get("evidence_quotes", []),
-            "challenge_techniques": generated.get("challenge_techniques", []),
             "new_criterion_ids": sorted(set(draft.acceptance_criterion_ids) - linked_criterion_ids),
             "similar_cases": [{
                 "id": item["_id"],
@@ -148,7 +143,6 @@ async def generate_test_case_draft_records(version_id, payload, user):
     return {
         "items": items,
         "evidence": criteria,
-        "challenge_hypotheses": [item.model_dump() for item in payload.challenge_hypotheses],
         "suite_signature": suite_signature,
         "criterion_coverage": {
             "criterion_ids": sorted(criterion_ids),
@@ -251,21 +245,7 @@ async def recommend_test_design_techniques(version_id, payload, user):
     ):
         raise HTTPException(409, detail={"code": "TEST_DESIGN_PREVIEW_STALE", "message": "Nguồn yêu cầu hoặc bộ ca đã thay đổi trong lúc AI xử lý  Hãy nhận gợi ý mới"})
     allowed_refs = {item["artifact_version_id"] for item in evidence}
-    existing_refs = {
-        item["artifact_version_id"] for item in evidence
-        if item["artifact_type"] == "existing_test_case"
-    }
-    source_text_by_ref = {
-        item["artifact_version_id"]: item["text"]
-        for item in evidence
-        if item["artifact_type"] in {"requirement_version", "acceptance_criterion"}
-    }
-    case_by_ref = {item["_id"]: item for item in cases}
-    similarity_threshold = resolve_testcase_duplicate_threshold(
-        await test_design_repository.find_project_settings(version["project_id"])
-    )
     suggestions = result.get("suggestions") or []
-    challenge_warnings = []
     if not suggestions or len({item.get("technique") for item in suggestions}) != len(suggestions):
         raise HTTPException(502, detail={"code": "AI_RECOMMENDATION_INVALID"})
     for item in suggestions:
@@ -277,51 +257,12 @@ async def recommend_test_design_techniques(version_id, payload, user):
             not item.get("evidence_refs") or not item.get("expected_coverage")
         ):
             raise HTTPException(502, detail={"code": "AI_RECOMMENDATION_INVALID"})
-        challenge = item.get("challenge")
-        if challenge:
-            if challenge.get("source_quote", "").strip() not in source_text_by_ref.get(challenge.get("source_ref"), ""):
-                item["challenge"] = None
-                challenge_warnings.append("AI trích dẫn không đúng nguyên văn yêu cầu nên giả thuyết lỗi chưa được dùng  Hãy nhận gợi ý lại")
-            elif (
-                item.get("suitability") not in {"recommended", "possible"}
-                or not challenge.get("existing_case_refs")
-                or challenge.get("source_ref") not in item.get("evidence_refs", [])
-                or not set(challenge.get("existing_case_refs") or []) <= existing_refs
-            ):
-                item["challenge"] = None
-                challenge_warnings.append("Giả thuyết lỗi không được hiển thị vì không đối chiếu được với ca đang hiệu lực hoặc nguồn dẫn")
-            else:
-                challenge_candidate = {
-                    "title": challenge["distinguishing_input"],
-                    "objective_doc": text_document(challenge["distinguishing_input"]),
-                    "preconditions_doc": text_document(""),
-                    "steps": [{
-                        "action_doc": text_document(challenge["distinguishing_input"]),
-                        "expected_doc": text_document(challenge["expected_result"]),
-                        "test_data": {},
-                    }],
-                    "expected_result_doc": text_document(challenge["expected_result"]),
-                    "requirement_version_ids": [version_id],
-                    "acceptance_criterion_ids": [challenge["source_ref"]]
-                    if challenge["source_ref"] in {criterion["_id"] for criterion in criteria}
-                    else [],
-                }
-                if any(
-                    duplicate_score(
-                        challenge_candidate,
-                        case_by_ref[existing_ref],
-                        similarity_threshold,
-                    )[0] >= similarity_threshold
-                    for existing_ref in challenge["existing_case_refs"]
-                ):
-                    item["challenge"] = None
-                    challenge_warnings.append("Giả thuyết lỗi không tạo thêm phạm vi kiểm thử so với ca đang hiệu lực nên chưa được dùng")
     return {
         "items": suggestions,
         "evidence": evidence,
         "suite_signature": active_suite_signature(cases, [version_id]),
         **ai_contract_metadata(result),
-        "warnings": list(dict.fromkeys(result.get("warnings", []) + challenge_warnings)),
+        "warnings": result.get("warnings", []),
     }
 
 

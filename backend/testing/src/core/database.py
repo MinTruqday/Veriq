@@ -1,4 +1,5 @@
 from motor.motor_asyncio import AsyncIOMotorClient
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from src.core.configuration import settings
 
@@ -125,8 +126,6 @@ async def create_indexes():
     await db.projects.create_index([("created_by", 1), ("updated_at", -1)])
     await db.project_members.create_index([("project_id", 1), ("user_id", 1)], unique=True)
     await db.project_members.create_index([("user_id", 1), ("status", 1)])
-    await db.member_skill_profiles.create_index([("project_id", 1), ("user_id", 1)], unique=True)
-    await db.member_skill_profiles.create_index([("user_id", 1), ("updated_at", -1)])
     await db.resource_capacity_periods.create_index([("period_start", 1), ("period_end", 1)], unique=True)
     await db.project_tasks.create_index([("project_id", 1), ("updated_at", -1)])
     await db.project_tasks.create_index([("project_id", 1), ("status", 1), ("updated_at", -1)])
@@ -176,7 +175,6 @@ async def create_indexes():
     )
     await db.requirement_templates.create_index([("project_id", 1), ("updated_at", -1)])
     await db.requirement_templates.create_index([("status", 1), ("updated_at", -1)])
-    await db.test_case_custom_fields.create_index([("project_id", 1), ("key", 1)], unique=True)
     await db.requirement_template_versions.create_index([("template_id", 1), ("version", -1)], unique=True)
     await db.requirement_custom_fields.create_index([("project_id", 1), ("key", 1)], unique=True)
     await db.import_jobs.update_many(
@@ -582,3 +580,241 @@ async def create_indexes():
     await db.test_imports.create_index([("project_id", 1), ("created_at", -1)])
     await db.worker_events.create_index([("project_id", 1), ("event", 1), ("completed_at", -1)])
     await db.bulk_operations.create_index([("project_id", 1), ("created_at", -1)])
+    await migrate_test_plan_fields(db)
+    await migrate_test_case_draft_fields(db)
+    await migrate_test_case_version_fields(db)
+    await migrate_test_run_assignment_fields(db)
+    await migrate_requirement_clarification_fields(db)
+
+
+async def migrate_test_plan_fields(db):
+    removed_fields = (
+        "risks",
+        "stakeholders",
+        "responsibility_matrix",
+        "milestones",
+        "deliverables",
+        "tools",
+        "suspension_criteria",
+        "resumption_criteria",
+        "monitoring_metrics",
+        "test_data_plan",
+        "defect_management",
+        "planned_people",
+    )
+    query = {"$or": [{field: {"$exists": True}} for field in removed_fields]}
+    async for plan in db.test_plans.find(query):
+        if plan.get("status") == "APPROVED" and not isinstance(plan.get("approved_snapshot"), dict):
+            continue
+        changes = {}
+        archived = {
+            field: plan[field]
+            for field in removed_fields
+            if field in plan and plan[field] not in (None, "", [], {})
+        }
+        legacy_risks = plan.get("risks") or []
+        risk_register = list(plan.get("risk_register") or [])
+        known_titles = {
+            str(item.get("title") or "").strip().casefold()
+            for item in risk_register
+            if isinstance(item, dict)
+        }
+        for index, item in enumerate(legacy_risks):
+            risk = item if isinstance(item, dict) else {"title": str(item)}
+            title = str(risk.get("title") or risk.get("risk") or "").strip()
+            if not title or title.casefold() in known_titles:
+                continue
+            entry = {
+                key: risk[key]
+                for key in (
+                    "risk_id",
+                    "title",
+                    "description",
+                    "probability",
+                    "impact",
+                    "exposure",
+                    "response",
+                    "owner_id",
+                    "status",
+                    "due_at",
+                    "category",
+                )
+                if key in risk
+            }
+            entry["title"] = title
+            entry.setdefault(
+                "risk_id",
+                str(uuid5(NAMESPACE_URL, f"veriq:test-plan:{plan['_id']}:risk:{index}:{title}")),
+            )
+            entry.setdefault("description", "")
+            entry.setdefault("response", "")
+            entry.setdefault("status", "OPEN")
+            risk_register.append(entry)
+            known_titles.add(title.casefold())
+        if risk_register != plan.get("risk_register", []):
+            changes["risk_register"] = risk_register
+        if archived:
+            await db.audit_events.replace_one(
+                {"_id": f"TEST-PLAN-FIELDS-{plan['_id']}"},
+                {
+                    "_id": f"TEST-PLAN-FIELDS-{plan['_id']}",
+                    "project_id": plan.get("project_id"),
+                    "actor_id": "system:migration",
+                    "action": "test_plan_fields_migrated",
+                    "entity_type": "TestPlan",
+                    "entity_id": plan["_id"],
+                    "details": {"removed_fields": archived},
+                    "created_at": plan.get("updated_at") or plan.get("created_at"),
+                },
+                upsert=True,
+            )
+        await db.test_plans.update_one(
+            {"_id": plan["_id"]},
+            {"$set": changes, "$unset": {field: "" for field in removed_fields}},
+        )
+
+
+async def migrate_test_case_draft_fields(db):
+    removed_fields = (
+        "custom_values",
+        "required_skills",
+        "expected_impact",
+        "challenge_hypotheses",
+        "coverage_obligations",
+        "obligation_evidence",
+    )
+    query = {"$or": [{field: {"$exists": True}} for field in removed_fields]}
+    async for draft in db.test_case_drafts.find(query):
+        archived = {
+            field: draft[field]
+            for field in removed_fields
+            if field in draft and draft[field] not in (None, "", [], {})
+        }
+        if archived:
+            await db.audit_events.replace_one(
+                {"_id": f"TEST-CASE-FIELDS-{draft['_id']}"},
+                {
+                    "_id": f"TEST-CASE-FIELDS-{draft['_id']}",
+                    "project_id": draft.get("project_id"),
+                    "actor_id": "system:migration",
+                    "action": "test_case_fields_migrated",
+                    "entity_type": "TestCaseDraft",
+                    "entity_id": draft["_id"],
+                    "details": {"removed_fields": archived},
+                    "created_at": draft.get("updated_at") or draft.get("created_at"),
+                },
+                upsert=True,
+            )
+        await db.test_case_drafts.update_one(
+            {"_id": draft["_id"]},
+            {"$unset": {field: "" for field in removed_fields}},
+        )
+    async for definition in db.test_case_custom_fields.find({}):
+        await db.audit_events.replace_one(
+            {"_id": f"TEST-CASE-CUSTOM-FIELD-{definition['_id']}"},
+            {
+                "_id": f"TEST-CASE-CUSTOM-FIELD-{definition['_id']}",
+                "project_id": definition.get("project_id"),
+                "actor_id": "system:migration",
+                "action": "test_case_custom_field_removed",
+                "entity_type": "TestCaseCustomField",
+                "entity_id": definition["_id"],
+                "details": {"definition": definition},
+                "created_at": definition.get("updated_at") or definition.get("created_at"),
+            },
+            upsert=True,
+        )
+        await db.test_case_custom_fields.delete_one({"_id": definition["_id"]})
+
+
+async def migrate_test_case_version_fields(db):
+    removed_fields = (
+        "custom_values",
+        "required_skills",
+        "expected_impact",
+        "challenge_hypotheses",
+        "coverage_obligations",
+        "obligation_evidence",
+    )
+    query = {"$or": [{field: {"$exists": True}} for field in removed_fields]}
+    async for version in db.test_case_versions.find(query):
+        archived = {
+            field: version[field]
+            for field in removed_fields
+            if field in version and version[field] not in (None, "", [], {})
+        }
+        if archived:
+            await db.audit_events.replace_one(
+                {"_id": f"TEST-CASE-VERSION-FIELDS-{version['_id']}"},
+                {
+                    "_id": f"TEST-CASE-VERSION-FIELDS-{version['_id']}",
+                    "project_id": version.get("project_id"),
+                    "actor_id": "system:migration",
+                    "action": "test_case_version_fields_migrated",
+                    "entity_type": "TestCaseVersion",
+                    "entity_id": version["_id"],
+                    "details": {"removed_fields": archived},
+                    "created_at": version.get("updated_at") or version.get("created_at"),
+                },
+                upsert=True,
+            )
+        await db.test_case_versions.update_one(
+            {"_id": version["_id"]},
+            {"$unset": {field: "" for field in removed_fields}},
+        )
+
+
+async def migrate_test_run_assignment_fields(db):
+    removed_fields = (
+        "test_case_assignment_decisions",
+        "unassigned_assignment_reasons",
+        "assignment_decision_source",
+        "assignment_approved_by",
+        "assignment_approved_at",
+    )
+    query = {"$or": [{field: {"$exists": True}} for field in removed_fields]}
+    async for run in db.test_runs.find(query):
+        await db.audit_events.replace_one(
+            {"_id": f"TEST-RUN-ASSIGNMENT-FIELDS-{run['_id']}"},
+            {
+                "_id": f"TEST-RUN-ASSIGNMENT-FIELDS-{run['_id']}",
+                "project_id": run.get("project_id"),
+                "actor_id": "system:migration",
+                "action": "test_run_assignment_fields_migrated",
+                "entity_type": "TestRun",
+                "entity_id": run["_id"],
+                "details": {"removed_fields": list(removed_fields)},
+                "created_at": run.get("updated_at") or run.get("created_at"),
+            },
+            upsert=True,
+        )
+        await db.test_runs.update_one(
+            {"_id": run["_id"]},
+            {"$unset": {field: "" for field in removed_fields}},
+        )
+
+
+async def migrate_requirement_clarification_fields(db):
+    async for clarification in db.requirement_clarifications.find(
+        {"unlocks_obligation_keys": {"$exists": True}}
+    ):
+        values = clarification.get("unlocks_obligation_keys")
+        if values:
+            await db.audit_events.replace_one(
+                {"_id": f"CLARIFICATION-OBLIGATIONS-{clarification['_id']}"},
+                {
+                    "_id": f"CLARIFICATION-OBLIGATIONS-{clarification['_id']}",
+                    "project_id": clarification.get("project_id"),
+                    "actor_id": "system:migration",
+                    "action": "requirement_clarification_fields_migrated",
+                    "entity_type": "RequirementClarification",
+                    "entity_id": clarification["_id"],
+                    "details": {"unlocks_obligation_keys": values},
+                    "created_at": clarification.get("updated_at") or clarification.get("created_at"),
+                },
+                upsert=True,
+            )
+        await db.requirement_clarifications.update_one(
+            {"_id": clarification["_id"]},
+            {"$unset": {"unlocks_obligation_keys": ""}},
+        )

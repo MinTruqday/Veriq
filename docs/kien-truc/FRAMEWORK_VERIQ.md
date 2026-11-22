@@ -470,11 +470,9 @@ flowchart TD
     READBACK --> END
 ```
 
-### Đánh giá đối chứng
+### Phạm vi đánh giá AI
 
-Benchmark là thao tác đánh giá có chủ đích trên bộ tình huống và đáp án chuẩn; chỉ người có quyền mới khởi chạy. Benchmark so sánh các cấu hình truy xuất/sinh trên dữ liệu đánh giá, lưu kết quả riêng và không sửa dữ liệu dự án. Nó không phải bước chạy nền sau mỗi lần nhập tài liệu.
-
-Bản thiết kế kiểm thử là danh sách nghĩa vụ cần kiểm thử có dẫn nguồn và câu hỏi cần làm rõ. Agent có thể đề xuất bản thiết kế từ tài liệu/Requirement trong thao tác riêng. Người dùng xem và quyết định; chỉ nghĩa vụ khớp đúng nguồn và phiên bản mới được nối sang Requirement/Scenario/Test Case.
+Blueprint và Benchmark không thuộc luồng sản phẩm hiện tại. Chất lượng đầu ra được xử lý bằng các bước kiểm tra căn cứ nguồn, tính hợp lệ và rà soát của người dùng trong từng nghiệp vụ; không có màn hình, capability hay bước chạy Benchmark riêng.
 
 ## 9  Chi tiết kỹ thuật thực thi một lượt AI Agent
 

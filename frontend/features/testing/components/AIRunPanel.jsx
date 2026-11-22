@@ -664,8 +664,6 @@ export default function AIRunPanel({
   const proposal = run?.result?.proposal;
   const documentWorkflow = documentWorkflowResult(run);
   const documentWorkflowStages = documentWorkflow?.workflow_stages || null;
-  const blueprintClaims = receipt?.blueprint_claim_lineage || [];
-  const blueprintArtifacts = receipt?.blueprint_artifact_lineage || [];
   const sourceFactsById = new Map(
     sourceFacts.flatMap((fact) =>
       [fact.source_fact_id, fact.artifact_id, fact.artifact_version_id]
@@ -717,13 +715,8 @@ export default function AIRunPanel({
   const proposalEvidenceFactIds = new Set(
     proposalEvidenceReferences.map((item) => item.fact?.source_fact_id).filter(Boolean),
   );
-  const linkedSourceFactIds = new Set(
-    blueprintClaims.flatMap((claim) => claim.source_fact_ids || []),
-  );
   const unlinkedSourceFacts = sourceFacts.filter(
-    (fact) =>
-      !linkedSourceFactIds.has(fact.source_fact_id) &&
-      !proposalEvidenceFactIds.has(fact.source_fact_id),
+    (fact) => !proposalEvidenceFactIds.has(fact.source_fact_id),
   );
   const busyRun = run && activeStatuses.has(run.status);
   const visibleRuns = recentRuns.filter(canViewRun);
@@ -1363,10 +1356,7 @@ export default function AIRunPanel({
                   )}
                 </div>
               )}
-              {(checkpoints.length > 0 ||
-                receipt ||
-                blueprintClaims.length > 0 ||
-                unlinkedSourceFacts.length > 0) && (
+              {(checkpoints.length > 0 || receipt || unlinkedSourceFacts.length > 0) && (
                 <details className="rounded-control border border-border bg-surface-quiet p-4">
                   <summary className="cursor-pointer font-semibold text-ink">
                     Xem nguồn và quá trình tạo kết quả
@@ -1417,119 +1407,6 @@ export default function AIRunPanel({
                           {receipt.source_fact_ids?.length || 0} nguồn được dùng để tạo kết quả này
                         </p>
                       </div>
-                    )}
-                    {blueprintClaims.length > 0 && (
-                      <section
-                        aria-label="Liên kết bản thiết kế kiểm thử với nguồn và kết quả"
-                        className="grid gap-3"
-                      >
-                        <div>
-                          <h3 className="font-semibold text-ink">
-                            Liên kết với yêu cầu và ca kiểm thử
-                          </h3>
-                          <p className="mt-1 text-ink-muted">
-                            Các mục dưới đây được tạo từ nội dung trích dẫn trong tài liệu.
-                          </p>
-                        </div>
-                        <ul className="grid gap-3">
-                          {blueprintClaims.map((claim) => {
-                            const claimFacts = (claim.source_fact_ids || [])
-                              .map((factId) => sourceFactsById.get(factId))
-                              .filter(Boolean);
-                            const linkedArtifacts = blueprintArtifacts.filter(
-                              (artifact) =>
-                                claim.claim_type === "OBLIGATION" &&
-                                artifact.obligation_key === claim.claim_key &&
-                                (artifact.source_fact_ids || []).some((factId) =>
-                                  claim.source_fact_ids?.includes(factId),
-                                ),
-                            );
-                            return (
-                              <li
-                                className="grid min-w-0 gap-3 rounded-control border border-border bg-surface p-3"
-                                key={`${claim.claim_type}-${claim.claim_key}`}
-                              >
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <span className="status-badge">
-                                    {claim.claim_type === "OBLIGATION"
-                                      ? "Nghĩa vụ kiểm thử"
-                                      : "Yêu cầu làm rõ"}
-                                  </span>
-                                  <span className="font-medium text-ink">
-                                    {claim.claim_type === "OBLIGATION"
-                                      ? "Điểm cần kiểm thử"
-                                      : "Điểm cần làm rõ"}
-                                  </span>
-                                </div>
-                                <div className="grid gap-2">
-                                  <h4 className="text-sm font-semibold text-ink-muted">
-                                    Căn cứ nguồn
-                                  </h4>
-                                  {claimFacts.length > 0 ? (
-                                    claimFacts.map((fact) => (
-                                      <div
-                                        className="min-w-0 rounded-control bg-surface-quiet p-3"
-                                        key={fact.source_fact_id}
-                                      >
-                                        <p className="break-words text-xs text-ink-muted">
-                                          {sourceFactSummary(fact)}
-                                        </p>
-                                        <blockquote className="mt-2 break-words whitespace-pre-wrap border-l-2 border-accent/40 pl-3 text-ink">
-                                          {displayEvidenceQuote(fact.quote)}
-                                        </blockquote>
-                                      </div>
-                                    ))
-                                  ) : (
-                                    <p className="text-ink-muted">
-                                      Không đọc được trích dẫn đã lưu cho nghĩa vụ này.
-                                    </p>
-                                  )}
-                                </div>
-                                {claim.claim_type === "OBLIGATION" && (
-                                  <div className="grid gap-2">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <h4 className="text-sm font-semibold text-ink-muted">
-                                        Đã ghi nhận trong dự án
-                                      </h4>
-                                      {linkedArtifacts.length > 0 && (
-                                        <ContentOriginBadge
-                                          origin="ai_generated"
-                                          aiLabel="AI tạo · đã đọc lại"
-                                        />
-                                      )}
-                                    </div>
-                                    {linkedArtifacts.length > 0 ? (
-                                      <ul className="grid gap-1">
-                                        {linkedArtifacts.map((artifact) => (
-                                          <li
-                                            className="break-all rounded-control bg-surface-quiet px-3 py-2 text-ink"
-                                            key={`${artifact.artifact_type}-${artifact.artifact_id}`}
-                                          >
-                                            {valueLabel(artifact.artifact_type)}
-                                            <details className="mt-1 text-xs text-ink-muted">
-                                              <summary className="cursor-pointer">
-                                                Mã liên kết
-                                              </summary>
-                                              <span className="mt-1 block break-all">
-                                                {artifact.artifact_id}
-                                              </span>
-                                            </details>
-                                          </li>
-                                        ))}
-                                      </ul>
-                                    ) : (
-                                      <p className="text-ink-muted">
-                                        Chưa có yêu cầu hoặc ca kiểm thử được xác minh cho nghĩa vụ
-                                        này.
-                                      </p>
-                                    )}
-                                  </div>
-                                )}
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      </section>
                     )}
                     {unlinkedSourceFacts.length > 0 && (
                       <section aria-label="Trích dẫn nguồn đã kiểm chứng" className="grid gap-2">

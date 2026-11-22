@@ -45,10 +45,12 @@ def with_tool_access(
 
 
 def tool_access(value) -> ToolAccess | None:
-    if not value or not value.metadata:
+    metadata = getattr(value, "metadata", None)
+    name = getattr(value, "name", None)
+    if not isinstance(metadata, dict) or not name:
         return None
     try:
-        return ToolAccess(name=value.name, **value.metadata)
+        return ToolAccess(name=name, **metadata)
     except Exception:
         return None
 
@@ -320,7 +322,6 @@ async def invoke_tool(
             if active_run.intent == "process_ingested_requirement_document":
                 configurable["allow_test_case_generation"] = True
                 configurable["allow_test_design_handoff"] = False
-                configurable["testability_mode"] = "BLUEPRINT_BENCHMARK"
             source_event_verified = bool(
                 getattr(active_run, "source_event_verified", False)
             )

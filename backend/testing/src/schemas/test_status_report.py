@@ -32,7 +32,7 @@ class StatusForecast(BaseModel):
 class TestStatusReportGenerate(BaseModel):
     idempotency_key: str | None = Field(default=None, min_length=8, max_length=200)
     snapshot_id: str = Field(min_length=1, max_length=200)
-    build_id: str = Field(min_length=1, max_length=200)
+    build_id: str | None = Field(default=None, min_length=1, max_length=200)
     reporting_period: ReportingPeriod
     executive_summary: str = Field(default="", max_length=10000)
     forecast: StatusForecast | str = Field(default_factory=StatusForecast)

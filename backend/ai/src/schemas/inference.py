@@ -50,8 +50,6 @@ from src.schemas.inference_requests import (
     VerifiedSourceFactCitation,
 )
 from src.schemas.inference_requirements import (
-    ClarificationBaselineOutput,
-    ClarificationBaselineQuestionOutput,
     RequirementAcceptanceCriterionSuggestionOutput,
     RequirementQualityModelOutput,
     RequirementQualityRecommendationOutput,
@@ -62,12 +60,6 @@ from src.schemas.inference_requirements import (
     RequirementTemplateReviewOutput,
     RequirementTemplateSuggestionOutput,
     RequirementTemplateSynthesisOutput,
-    TestabilityBlueprintClarificationOutput,
-    TestabilityBlueprintCompilationOutput,
-    TestabilityBlueprintObligationOutput,
-    TestabilityBlueprintReviewFinding,
-    TestabilityBlueprintSelfReviewOutput,
-    TestabilityBenchmarkSemanticEvaluationOutput,
 )
 from src.schemas.inference_shared import ProjectQuestionOutput
 from src.schemas.inference_test_design import (
@@ -81,7 +73,6 @@ from src.schemas.inference_test_design import (
     TechniqueRecommendationsOutput,
     TestConditionSuggestionOutput,
     TestConditionSuggestionsOutput,
-    TestDesignChallengeOutput,
 )
 
 __all__ = [
@@ -90,8 +81,6 @@ __all__ = [
     "CausalHypothesesOutput",
     "CausalHypothesisSuggestionOutput",
     "ChangeSimulationReportOutput",
-    "ClarificationBaselineOutput",
-    "ClarificationBaselineQuestionOutput",
     "CompletionReportNarrativeOutput",
     "CompletionReportNarrativeSuggestionOutput",
     "ExecutionAssistanceDefectDraftOutput",
@@ -140,15 +129,8 @@ __all__ = [
     "TestDataSuggestionsOutput",
     "TechniqueRecommendationItemOutput",
     "TechniqueRecommendationsOutput",
-    "TestabilityBlueprintClarificationOutput",
-    "TestabilityBlueprintCompilationOutput",
-    "TestabilityBlueprintObligationOutput",
-    "TestabilityBlueprintReviewFinding",
-    "TestabilityBlueprintSelfReviewOutput",
-    "TestabilityBenchmarkSemanticEvaluationOutput",
     "TestConditionSuggestionOutput",
     "TestConditionSuggestionsOutput",
-    "TestDesignChallengeOutput",
     "TestingAIDegradedMode",
     "TestingCapabilityRequest",
     "TestingCapabilityResult",

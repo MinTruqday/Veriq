@@ -380,9 +380,7 @@ export default function TestAdequacyPanel({
           </div>
         ))
       : "Chưa liên kết ca kiểm thử đã duyệt";
-  const challenges = (item) => {
-    const values =
-      item.test_case_versions?.flatMap((test) => test.challenge_hypotheses || []) || [];
+  const testEvidence = (item) => {
     const evidence =
       item.test_case_versions?.flatMap((test) =>
         (test.evidence_quotes || []).map((entry) => ({
@@ -403,21 +401,6 @@ export default function TestAdequacyPanel({
             ))
           ) : (
             <p className="mt-1">Chưa có trích dẫn trong ca kiểm thử</p>
-          )}
-        </div>
-        <div>
-          <p className="text-xs font-medium text-ink">Giả thuyết phản chứng</p>
-          {values.length ? (
-            values.map((challenge, index) => (
-              <p
-                className="mt-1 break-words"
-                key={`${challenge.technique || "challenge"}:${index}`}
-              >
-                {challenge.hypothetical_fault}
-              </p>
-            ))
-          ) : (
-            <p className="mt-1">Chưa có giả thuyết phản chứng</p>
           )}
         </div>
       </div>
@@ -680,7 +663,7 @@ export default function TestAdequacyPanel({
                       <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
                         Bằng chứng kiểm thử
                       </p>
-                      <div className="mt-1 text-ink-muted">{challenges(item)}</div>
+                      <div className="mt-1 text-ink-muted">{testEvidence(item)}</div>
                     </div>
                   </div>
                   {(item.execution_feedback || []).length > 0 && (

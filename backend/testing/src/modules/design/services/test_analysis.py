@@ -13,7 +13,6 @@ from src.core.auth import (
     responsibility_allows,
     roles_for_membership,
 )
-from src.clients.ai_capabilities import ai_capability_client
 from src.core.common import audit, get_project, new_id, next_key, now, page_payload
 from src.core.database import database
 from src.core.ai_capabilities import ai_contract_metadata, request_ai_capability
@@ -34,8 +33,6 @@ __all__ = ["list_test_basis"]
 
 def _analysis_request_hash(payload, user, basis_snapshots):
     request = payload.model_dump(mode="json", exclude={"idempotency_key"})
-    if request.get("testability_mode") == "OFF":
-        request.pop("testability_mode", None)
     request["actor_id"] = user.id
     request["basis_sources"] = [
         {"resolved_id": item.get("resolved_id"), "source_hash": item.get("source_hash")}
@@ -43,204 +40,6 @@ def _analysis_request_hash(payload, user, basis_snapshots):
     ]
     canonical = json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-
-
-def _blueprint_evidence(basis_snapshots):
-    evidence = []
-    source_text_by_ref = {}
-    for item in basis_snapshots:
-        artifact_id = str(item.get("artifact_id") or item.get("resolved_id") or "")
-        version_id = str(item.get("artifact_version_id") or item.get("resolved_id") or artifact_id)
-        text = str(item.get("text") or "").strip()
-        if not artifact_id or not version_id or not text:
-            continue
-        source_text_by_ref[version_id] = text
-        source_text_by_ref[artifact_id] = text
-        chunks = []
-        remaining = text
-        while remaining:
-            if len(remaining) <= 4000:
-                chunks.append(remaining)
-                break
-            split_at = remaining.rfind("\n", 0, 4000)
-            if split_at < 1000:
-                split_at = 4000
-            chunks.append(remaining[:split_at])
-            remaining = remaining[split_at:].lstrip("\n")
-        for chunk in chunks:
-            if not chunk:
-                continue
-            evidence.append(
-                {
-                    "artifact_type": item["artifact_type"],
-                    "artifact_id": artifact_id,
-                    "artifact_version_id": version_id,
-                    "source_version": item.get("source_version"),
-                    "authority": "PROJECT_BASELINE",
-                    "verified_facts": [
-                        {"fact_kind": "requirement_source_text", "quote": chunk}
-                    ],
-                    "text": chunk,
-                }
-            )
-    if not evidence or len(evidence) > 100:
-        raise HTTPException(422, detail={"code": "BLUEPRINT_EVIDENCE_LIMIT_EXCEEDED"})
-    return evidence, source_text_by_ref
-
-
-def _validate_blueprint_output(value, source_text_by_ref):
-    if (
-        not isinstance(value, dict)
-        or value.get("status") != "SUCCESS"
-        or value.get("degraded_mode")
-        or value.get("capability") != "testability_blueprint_compilation"
-    ):
-        raise HTTPException(
-            503,
-            detail={"code": "BLUEPRINT_COMPILATION_UNAVAILABLE", "retryable": True},
-        )
-    allowed_refs = set(source_text_by_ref)
-    obligations = value.get("obligations")
-    clarifications = value.get("clarifications")
-    if (
-        not isinstance(obligations, list)
-        or not isinstance(clarifications, list)
-        or not obligations and not clarifications
-    ):
-        raise HTTPException(502, detail={"code": "BLUEPRINT_OUTPUT_INVALID"})
-    obligation_keys = set()
-    for item in obligations:
-        if not isinstance(item, dict):
-            raise HTTPException(502, detail={"code": "BLUEPRINT_OUTPUT_INVALID"})
-        key = str(item.get("key") or "")
-        reference = str(item.get("source_ref") or "")
-        quote = str(item.get("source_quote") or "")
-        if (
-            not key
-            or key in obligation_keys
-            or reference not in allowed_refs
-            or len(quote) < 2
-            or quote not in source_text_by_ref[reference]
-        ):
-            raise HTTPException(502, detail={"code": "BLUEPRINT_CITATION_INVALID"})
-        obligation_keys.add(key)
-    clarification_codes = set()
-    for item in clarifications:
-        if not isinstance(item, dict):
-            raise HTTPException(502, detail={"code": "BLUEPRINT_OUTPUT_INVALID"})
-        code = str(item.get("code") or "")
-        refs = item.get("evidence_refs")
-        quote = str(item.get("source_quote") or "")
-        unlocks = item.get("unlocks_obligation_keys") or []
-        if (
-            not code
-            or code in clarification_codes
-            or not isinstance(refs, list)
-            or not refs
-            or len(quote) < 2
-            or any(str(reference) not in allowed_refs for reference in refs)
-            or not any(quote in source_text_by_ref[str(reference)] for reference in refs)
-            or not set(unlocks).issubset(obligation_keys)
-        ):
-            raise HTTPException(502, detail={"code": "BLUEPRINT_CITATION_INVALID"})
-        clarification_codes.add(code)
-    refs = value.get("evidence_refs")
-    if not isinstance(refs, list) or not refs or any(str(ref) not in allowed_refs for ref in refs):
-        raise HTTPException(502, detail={"code": "BLUEPRINT_CITATION_INVALID"})
-    return value
-
-
-def _bounded_blueprint_context(blueprint):
-    context = {
-        "obligations": [
-            {
-                "key": str(item.get("key") or ""),
-                "obligation": str(item.get("obligation") or "")[:500],
-                "source_ref": str(item.get("source_ref") or ""),
-            }
-            for item in blueprint.get("obligations", [])
-        ],
-        "clarifications": [
-            {
-                "code": str(item.get("code") or ""),
-                "category": item.get("category"),
-                "question": str(item.get("question") or "")[:500],
-                "evidence_refs": item.get("evidence_refs", []),
-                "unlocks_obligation_keys": item.get("unlocks_obligation_keys", []),
-            }
-            for item in blueprint.get("clarifications", [])
-        ],
-    }
-    serialized = json.dumps(context, ensure_ascii=False, separators=(",", ":"))
-    if len(serialized) > 4200:
-        raise HTTPException(
-            422,
-            detail={"code": "BLUEPRINT_CONTEXT_LIMIT_EXCEEDED", "retryable": False},
-        )
-    return context
-
-
-def _blueprint_instruction(value):
-    serialized = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
-    if len(serialized) > 5000:
-        raise HTTPException(
-            422,
-            detail={"code": "BLUEPRINT_INSTRUCTION_LIMIT_EXCEEDED", "retryable": False},
-        )
-    return serialized
-
-
-def _blueprint_digest(blueprint):
-    serialized = json.dumps(
-        blueprint, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-    )
-    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
-
-
-async def _run_blueprint_review(project_id, blueprint, evidence, source_text_by_ref):
-    review_result = await request_ai_capability(
-        "testability_blueprint_self_review",
-        project_id,
-        _blueprint_instruction({"blueprint": _bounded_blueprint_context(blueprint)}),
-        evidence,
-    )
-    if review_result.get("status") != "SUCCESS" or review_result.get("degraded_mode"):
-        raise HTTPException(
-            503,
-            detail={"code": "BLUEPRINT_SELF_REVIEW_UNAVAILABLE", "retryable": True},
-        )
-    review = {
-        key: review_result.get(key)
-        for key in ("summary", "findings", "improvement_suggestions", "warnings")
-    }
-    if (
-        not isinstance(review["summary"], str)
-        or not isinstance(review["findings"], list)
-        or not isinstance(review["improvement_suggestions"], list)
-    ):
-        raise HTTPException(502, detail={"code": "BLUEPRINT_SELF_REVIEW_INVALID"})
-    allowed_refs = set(source_text_by_ref)
-    known_items = {
-        str(item.get("key") or "") for item in blueprint.get("obligations", [])
-    } | {str(item.get("code") or "") for item in blueprint.get("clarifications", [])}
-    for finding in review["findings"]:
-        item_ref = str(finding.get("item_ref") or "") if isinstance(finding, dict) else ""
-        if (
-            not isinstance(finding, dict)
-            or (item_ref not in known_items and not item_ref.startswith("GAP:"))
-            or not isinstance(finding.get("evidence_refs"), list)
-            or not finding["evidence_refs"]
-            or any(str(ref) not in allowed_refs for ref in finding["evidence_refs"])
-        ):
-            raise HTTPException(502, detail={"code": "BLUEPRINT_SELF_REVIEW_INVALID"})
-    return review, review_result
-
-
-async def _compile_user_blueprint(project_id, evidence, source_text_by_ref, instruction=""):
-    result = await request_ai_capability(
-        "testability_blueprint_compilation", project_id, instruction, evidence
-    )
-    return _validate_blueprint_output(result, source_text_by_ref), result
 
 
 def _verify_analysis_replay(existing, payload, user, basis_snapshots):
@@ -560,8 +359,6 @@ async def run_ai_analysis(project_id, payload, user):
         or payload.basis_refs[0].artifact_type != "REQUIREMENT_VERSION"
     ):
         raise HTTPException(403, detail={"code": "VERIFIED_REQUIREMENT_EVENT_REQUIRED"})
-    if event_scoped and payload.testability_mode != "OFF":
-        raise HTTPException(422, detail={"code": "BLUEPRINT_MODE_NOT_ALLOWED_FOR_EVENT_RUN"})
     if event_scoped:
         source_version_id = str(
             payload.basis_refs[0].artifact_version_id or payload.basis_refs[0].artifact_id
@@ -628,98 +425,7 @@ async def run_ai_analysis(project_id, payload, user):
         }
         for item in basis_snapshots
     ]
-    testability_blueprint = None
-    blueprint_before_review = None
-    blueprint_self_review = None
-    blueprint_contracts = {}
-    if payload.testability_mode != "OFF":
-        blueprint_evidence, source_text_by_ref = _blueprint_evidence(basis_snapshots)
-        reusable_blueprint = await test_analysis_repository.find_blueprint_for_sources(
-            project_id, basis_snapshots
-        )
-        if reusable_blueprint:
-            testability_blueprint = reusable_blueprint.get("testability_blueprint")
-            blueprint_contracts = dict(
-                reusable_blueprint.get("blueprint_ai_metadata") or {}
-            )
-            blueprint_self_review = reusable_blueprint.get("blueprint_self_review")
-            blueprint_before_review = reusable_blueprint.get(
-                "testability_blueprint_before_review"
-            )
-        else:
-            testability_blueprint, compilation_result = await _compile_user_blueprint(
-                project_id, blueprint_evidence, source_text_by_ref
-            )
-            blueprint_contracts["compilation"] = ai_contract_metadata(compilation_result)
-        if payload.testability_mode == "BLUEPRINT_BENCHMARK":
-            if not blueprint_self_review:
-                blueprint_before_review = testability_blueprint
-                blueprint_self_review, review_result = await _run_blueprint_review(
-                    project_id,
-                    testability_blueprint,
-                    blueprint_evidence,
-                    source_text_by_ref,
-                )
-                blueprint_contracts["self_review"] = ai_contract_metadata(review_result)
-                suggestions = list(blueprint_self_review.get("improvement_suggestions") or [])
-                suggestions.extend(
-                    str(item.get("suggested_change") or "")
-                    for item in blueprint_self_review.get("findings") or []
-                    if item.get("suggested_change")
-                )
-                if suggestions:
-                    refinement_instruction = _blueprint_instruction(
-                        {
-                            "task": "Revise the draft blueprint using only these review suggestions and the cited source evidence. Keep supported content, do not invent behavior, and preserve source citations.",
-                            "current_blueprint": _bounded_blueprint_context(testability_blueprint),
-                            "improvement_suggestions": list(dict.fromkeys(suggestions))[:50],
-                        }
-                    )
-                    testability_blueprint, refinement_result = await _compile_user_blueprint(
-                        project_id, blueprint_evidence, source_text_by_ref, refinement_instruction
-                    )
-                    blueprint_contracts["refinement"] = ai_contract_metadata(refinement_result)
-            if blueprint_contracts.get("benchmark_blueprint_hash") != _blueprint_digest(testability_blueprint):
-                try:
-                    benchmark = await ai_capability_client.evaluate_blueprint_against_reference(
-                        project_id,
-                        user.id,
-                        [
-                            {
-                                "source_id": str(item.get("artifact_id") or item.get("resolved_id") or ""),
-                                "artifact_type": str(item.get("artifact_type") or "requirement_version").lower(),
-                                "artifact_version_id": str(item.get("artifact_version_id") or item.get("resolved_id") or ""),
-                                "authority": "APPROVED_SOURCE",
-                                "text": str(item.get("text") or ""),
-                            }
-                            for item in basis_snapshots
-                            if item.get("text")
-                        ],
-                        testability_blueprint,
-                        getattr(user, "locale", None) or "auto",
-                    )
-                except Exception:
-                    benchmark = {
-                        "assessment_type": "NOT_AVAILABLE",
-                        "independently_validated": False,
-                        "reason": "Không thể truy cập bộ tham chiếu Benchmark; Blueprint vẫn được lưu và sử dụng.",
-                    }
-                blueprint_contracts["benchmark"] = benchmark
-                blueprint_contracts["benchmark_blueprint_hash"] = _blueprint_digest(
-                    testability_blueprint
-                )
-    generation_instruction = {"user_instruction": payload.instruction}
-    if testability_blueprint is not None:
-        generation_instruction["testability_blueprint"] = _bounded_blueprint_context(
-            testability_blueprint
-        )
-        if blueprint_self_review is not None:
-            generation_instruction["blueprint_review_type"] = "AI_SELF_REVIEW_NOT_INDEPENDENT_BENCHMARK"
-    instruction = (
-        json.dumps(generation_instruction, ensure_ascii=False)
-        if testability_blueprint is None
-        else _blueprint_instruction(generation_instruction)
-    )
+    instruction = json.dumps({"user_instruction": payload.instruction}, ensure_ascii=False)
     ai_result = await request_ai_capability(
         "test_condition_generation", project_id, instruction, evidence
     )
@@ -817,19 +523,6 @@ async def run_ai_analysis(project_id, payload, user):
         "project_id": project_id,
         "result_type": 'TEST_CONDITION_CANDIDATES',
         "candidates": candidates,
-        "testability_mode": payload.testability_mode,
-        "testability_blueprint": testability_blueprint,
-        "testability_blueprint_before_review": blueprint_before_review,
-        "blueprint_self_review": (
-            {
-                "assessment_type": "SELF_REVIEW",
-                "independently_validated": False,
-                **blueprint_self_review,
-            }
-            if blueprint_self_review is not None
-            else None
-        ),
-        "blueprint_ai_metadata": blueprint_contracts,
         "basis_snapshots": basis_snapshots,
         "requirement_version_id": source_version_id if event_scoped else None,
         "source_event_id": payload.source_event_id,
@@ -858,8 +551,7 @@ async def run_ai_analysis(project_id, payload, user):
                     {
                         "candidate_count": len(candidates),
                         "status": value["status"],
-                        "testability_mode": payload.testability_mode,
-                    },
+                                    },
                     session=session,
                 )
     except DuplicateKeyError:

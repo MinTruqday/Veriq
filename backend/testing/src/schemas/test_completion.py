@@ -112,7 +112,7 @@ class ImprovementAction(BaseModel):
 class TestCompletionCreate(BaseModel):
     idempotency_key: str | None = Field(default=None, min_length=8, max_length=200)
     snapshot_id: str = Field(min_length=1, max_length=200)
-    build_id: str = Field(min_length=1, max_length=200)
+    build_id: str | None = Field(default=None, min_length=1, max_length=200)
     unresolved_items: list[dict[str, Any] | str] = Field(default_factory=list, max_length=1000)
     unexecuted_scope: list[UnexecutedScopeItem] = Field(default_factory=list, max_length=1000)
     residual_risks: list[ResidualRisk] = Field(default_factory=list, max_length=500)

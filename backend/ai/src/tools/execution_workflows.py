@@ -561,7 +561,7 @@ async def process_approved_test_plan(
                 "reason_code": "TEST_RUN_EXECUTION_PERMISSION_REQUIRED",
             }
         )
-    return await _start_test_run_from_approved_plan(
+    return await _create_test_run_draft_from_approved_plan(
         project_id,
         test_plan_id,
         plan,
@@ -670,83 +670,7 @@ async def process_approved_performance_configuration(
     return json.dumps(result, ensure_ascii=False, default=str)
 
 
-def _valid_confirmed_assignment_snapshot(run: dict, version_ids: list[str]) -> bool:
-    assignments = run.get("test_case_assignments")
-    decisions = run.get("test_case_assignment_decisions")
-    unresolved = run.get("unassigned_assignment_reasons")
-    if (
-        not isinstance(assignments, dict)
-        or not isinstance(decisions, dict)
-        or not isinstance(unresolved, list)
-    ):
-        return False
-
-    expected_ids = set(version_ids)
-    assigned_ids = set(assignments)
-    decision_ids = set(decisions)
-    unresolved_by_case = {
-        str(item.get("test_case_version_id")): item
-        for item in unresolved
-        if isinstance(item, dict) and item.get("test_case_version_id")
-    }
-    unresolved_ids = set(unresolved_by_case)
-    if (
-        len(unresolved_by_case) != len(unresolved)
-        or assigned_ids - expected_ids
-        or decision_ids != assigned_ids
-        or unresolved_ids - expected_ids
-        or assigned_ids & unresolved_ids
-        or assigned_ids | unresolved_ids != expected_ids
-    ):
-        return False
-
-    allowed_unassigned_reasons = {
-        "NO_FULL_SKILL_MATCH",
-        "NO_ELIGIBLE_MEMBER",
-        "PROFILE_NOT_CONFIRMED",
-        "NO_AVAILABLE_MEMBER",
-    }
-    if any(
-        item.get("reason") not in allowed_unassigned_reasons for item in unresolved_by_case.values()
-    ):
-        return False
-
-    for version_id, assignee_id in assignments.items():
-        decision = decisions.get(version_id)
-        if not isinstance(decision, dict) or not assignee_id:
-            return False
-        if decision.get("assignee_id") != assignee_id:
-            return False
-        if decision.get("availability_at_assignment") not in {
-            "AVAILABLE",
-            "LIMITED",
-            "PROFILE_NOT_SET",
-        }:
-            return False
-        if type(decision.get("skill_profile_revision")) is not int:
-            return False
-        if decision["skill_profile_revision"] < 0:
-            return False
-        if not isinstance(decision.get("required_skills"), list) or not isinstance(
-            decision.get("matched_skills"), list
-        ):
-            return False
-        if type(decision.get("active_run_count_before_assignment")) is not int:
-            return False
-        if type(decision.get("active_case_count_before_assignment")) is not int:
-            return False
-
-        def normalize(value):
-            return " ".join(str(value).strip().casefold().split())
-
-        required = {normalize(value) for value in decision["required_skills"] if normalize(value)}
-        matched = {normalize(value) for value in decision["matched_skills"] if normalize(value)}
-        if not required.issubset(matched):
-            return False
-    return True
-
-
-async def _start_test_run_from_approved_plan(
+async def _create_test_run_draft_from_approved_plan(
     project_id: str,
     test_plan_id: str,
     plan: dict,
@@ -771,11 +695,10 @@ async def _start_test_run_from_approved_plan(
         "project_id": project_id,
         "name": (
             f"{plan.get('name') or test_plan_id} - "
-            f"{'lần chạy tự động'}"
+            "bản nháp lần chạy"
         ),
         "test_plan_id": test_plan_id,
         "test_case_version_ids": version_ids,
-        "assignment_strategy": "PROFILE_EVIDENCE",
         "environment": snapshot.get("environment") or "",
         "environment_id": snapshot.get("environment_id"),
         "release": snapshot.get("release") or "",
@@ -791,37 +714,6 @@ async def _start_test_run_from_approved_plan(
             {"status": "partial_failure", "reason_code": "TEST_RUN_CREATE_FAILED"}
         )
     run_id = str(run["_id"])
-    if not _valid_confirmed_assignment_snapshot(run, version_ids):
-        return json.dumps(
-            {
-                "status": "partial_failure",
-                "test_run_id": run_id,
-                "reason_code": "TEST_RUN_ASSIGNMENT_SNAPSHOT_INVALID",
-            }
-        )
-    unassigned_reasons = run.get("unassigned_assignment_reasons") or []
-    assignments = run.get("test_case_assignments") or {}
-    if unassigned_reasons and not assignments:
-        return json.dumps(
-            {
-                "status": "blocked",
-                "test_run_id": run_id,
-                "reason_code": "TEST_RUN_HAS_UNASSIGNED_CASES",
-                "unassigned_assignment_reasons": unassigned_reasons,
-            },
-            ensure_ascii=False,
-            default=str,
-        )
-    if run.get("status") in {"DRAFT", "READY"}:
-        started = parse(await call("POST", f"/lan-chay-kiem-thu/{run_id}/bat-dau", config))
-        if not started or started.get("status") != "IN_PROGRESS":
-            return json.dumps(
-                {
-                    "status": "partial_failure",
-                    "test_run_id": run_id,
-                    "reason_code": "TEST_RUN_START_FAILED",
-                }
-            )
     readback = parse(await call("GET", f"/lan-chay-kiem-thu/{run_id}", config))
     if (
         not readback
@@ -829,9 +721,8 @@ async def _start_test_run_from_approved_plan(
         or readback.get("project_id") != project_id
         or readback.get("test_plan_id") != test_plan_id
         or readback.get("test_plan_snapshot_hash") != expected_snapshot_hash
-        or readback.get("status") not in {"IN_PROGRESS", "COMPLETED"}
+        or readback.get("status") != "DRAFT"
         or set(readback.get("test_case_version_ids", [])) != set(version_ids)
-        or not _valid_confirmed_assignment_snapshot(readback, version_ids)
     ):
         return json.dumps(
             {
@@ -840,15 +731,13 @@ async def _start_test_run_from_approved_plan(
                 "reason_code": "TEST_RUN_READBACK_MISMATCH",
             }
         )
-    readback_unassigned_reasons = readback.get("unassigned_assignment_reasons") or []
     return json.dumps(
         {
             "status": "completed",
             "test_run_id": run_id,
             "test_plan_id": test_plan_id,
-            "status_after_start": readback.get("status"),
+            "run_status": readback.get("status"),
             "test_case_version_ids": readback.get("test_case_version_ids", []),
-            "unassigned_assignment_reasons": readback_unassigned_reasons,
             "verification": {
                 "status": "COMPLETED",
                 "project_id": project_id,
@@ -856,13 +745,10 @@ async def _start_test_run_from_approved_plan(
                 "checks": [
                     "approved_plan",
                     "approved_scope",
-                    "confirmed_assignment_snapshot",
-                    "run_started",
+                    "run_draft_created",
                     "run_readback",
                 ],
-                "warnings": ["TEST_RUN_HAS_UNASSIGNED_CASES"]
-                if readback_unassigned_reasons
-                else [],
+                "warnings": ["TEST_RUN_REQUIRES_MANUAL_ASSIGNMENT"],
             },
         },
         ensure_ascii=False,
@@ -991,7 +877,7 @@ async def process_changed_test_plan(
         )
     snapshot = readback["approved_snapshot"]
     result = parse(
-        await _start_test_run_from_approved_plan(
+        await _create_test_run_draft_from_approved_plan(
             project_id,
             test_plan_id,
             readback,

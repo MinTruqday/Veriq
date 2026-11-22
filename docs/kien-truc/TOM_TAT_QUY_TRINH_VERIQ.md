@@ -82,11 +82,10 @@ Các năng lực dưới đây là danh mục nghiệp vụ AI được thiết 
 | AI-04 | Đề xuất Scenario và Test Case có liên kết Requirement, tiêu chí và nguồn; cảnh báo nội dung tương tự. | Người phụ trách thiết kế chọn, ghép, sửa; người có quyền và được chỉ định duyệt. |
 | AI-05 | Phân tích ảnh hưởng khi Requirement hoặc tài liệu đổi; chỉ ra tài sản kiểm thử cần xem lại. | Người được giao xác nhận phạm vi và tạo phiên bản mới khi có quyền. |
 | AI-06 | Đề xuất bộ dữ liệu kiểm thử tổng hợp, gồm trường hợp biên và trường hợp lỗi. | Người được giao kiểm tra trước khi lưu hoặc sử dụng. |
-| AI-07 | Gợi ý người phụ trách ca hoặc phương án nhân lực theo kỹ năng đã xác nhận, vai trò, khả dụng và tải công việc. | Người có quyền chọn hoặc sửa phân công. Người chạy Test Run được phân riêng. |
 | AI-08 | Giải thích bước kiểm thử và gợi ý nội dung Defect dựa trên kết quả đã nhập. | Người thực thi xác nhận kết quả và nội dung lỗi. |
 | AI-09 | Soạn phần diễn giải báo cáo từ số liệu và snapshot đã lưu. | Người rà soát được chỉ định xem lại báo cáo; dữ liệu gốc không bị AI thay đổi. |
 | AI-10 | Tổng hợp chất lượng các đề xuất AI đã được chấp nhận, sửa hoặc từ chối. | Người quản lý xem số liệu; phản hồi không tự huấn luyện hay đổi hành vi mô hình. |
-| AI-11 | Đánh giá mức độ khó và mức sẵn sàng kiểm thử của dự án theo nhiều chiều. | Người dùng xem từng căn cứ rồi bấm riêng để yêu cầu tạo Plan, Scenario/Case hoặc phương án nhân lực. |
+| AI-11 | Đánh giá mức độ khó và mức sẵn sàng kiểm thử của dự án theo nhiều chiều. | Người dùng xem từng căn cứ rồi bấm riêng để yêu cầu tạo kế hoạch, kịch bản hoặc ca kiểm thử. |
 | AI-12 | Rà mức đầy đủ của bộ tài liệu theo loại dự án; chỉ ra tài liệu, thông tin hoặc quyết định có thể còn thiếu. | Người phụ trách nghiệp vụ và người phụ trách kiểm thử xác nhận mục nào thực sự áp dụng, rồi bổ sung nguồn theo quyền được cấp. |
 
 Mọi đề xuất cần chỉ ra căn cứ. Nếu không có nguồn phù hợp, tài liệu chưa đọc đủ hoặc các nguồn mâu thuẫn, AI phải thể hiện giới hạn thay vì tự điền dữ kiện.
@@ -106,15 +105,9 @@ AI-11 không kết luận bằng một điểm tổng duy nhất. Hồ sơ nên 
 
 Giá khách hàng là một đầu vào để xem xét tính khả thi về phạm vi, thời gian và chi phí; giá cao hay thấp tự nó không chứng minh dự án dễ hay khó. Mặc định chỉ phân tích dự án hiện tại. Dữ liệu dự án cũ chỉ được dùng nếu đã được cho phép, đủ tin cậy và tương đồng.
 
-### CV, kỹ năng và bảng lương dùng ra sao?
+### Phân công kiểm thử
 
-CV có thể giúp trích xuất kỹ năng, công cụ, lĩnh vực và kinh nghiệm liên quan. Nhân viên cần xem và xác nhận thông tin trước khi hệ thống dùng để gợi ý. AI không được biến việc một người từng dùng công cụ thành kết luận rằng người đó thành thạo.
-
-Bảng lương là dữ liệu nhạy cảm. Chỉ người có capability tương ứng trong phạm vi được phép mới được nhập và xem đơn giá; không suy quyền này từ tên role. Bảng có kỳ hiệu lực; hệ thống cần xem trước dữ liệu, phát hiện dòng trùng hoặc kỳ bị chồng lấn, hỗ trợ nhập bổ sung có kiểm soát và lưu dấu người nhập. Bảng lương hỗ trợ dự toán chi phí, không phải thước đo năng lực.
-
-Khi đề xuất nhân sự, cần xét riêng năng lực đã xác nhận, vai trò phù hợp, mức sẵn sàng, tải công việc, giới hạn tham gia nhiều dự án và ngân sách. Không tự gán người lương cao cho dự án lớn. Người quản lý xem lý do và quyết định phương án cuối cùng.
-
-Phân công **người phụ trách Test Case** khác với phân công **người thực thi Test Run**. Ca có thể có người phụ trách nội dung; mỗi đợt chạy có người thực thi và kết quả riêng.
+Người có quyền chọn thành viên đang hoạt động để phụ trách nội dung Ca kiểm thử hoặc thực thi trong một Lần chạy. Có thể áp dụng cùng người thực thi cho nhiều ca bằng thao tác phân công trên Lần chạy.
 
 ### Tài liệu được tìm trong Qdrant như thế nào?
 

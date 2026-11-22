@@ -376,13 +376,25 @@ class ExecutionContextRepository:
         return False
 
     async def list_approved_test_plan_scopes(self, project_id, release_id, session=None):
-        return await database.value.test_plans.find(
+        run_plan_ids = await database.value.test_runs.distinct(
+            "test_plan_id",
             {
                 "project_id": project_id,
                 "release_id": release_id,
-                "status": "APPROVED",
+                "test_plan_id": {"$type": "string"},
             },
-            **({"session": session} if session is not None else {}),
+            session=session,
+        )
+        return await database.value.test_plans.find(
+            {
+                "project_id": project_id,
+                "status": "APPROVED",
+                "$or": [
+                    {"_id": {"$in": run_plan_ids}},
+                    {"release_id": release_id},
+                ],
+            },
+            session=session,
         ).to_list(None)
 
     async def list_adequacy_assessments(self, project_id, requirement_version_ids, session=None):

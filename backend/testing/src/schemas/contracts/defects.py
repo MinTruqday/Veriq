@@ -27,22 +27,6 @@ class DefectCreate(BaseModel):
     linked_test_result_id: str | None = None
     linked_test_case_version_id: str | None = None
     linked_requirement_version_ids: list[str] = Field(default_factory=list, max_length=200)
-    root_cause_category: str | None = Field(default=None, min_length=1, max_length=200)
-    root_cause_detail: str = Field(default="", max_length=5000)
-    injected_phase: str = Field(default="", max_length=200)
-    detected_phase: str = Field(default="", max_length=200)
-    escape_reason: str = Field(default="", max_length=5000)
-    prevention_candidate: bool = False
-
-    @field_validator("root_cause_category")
-    @classmethod
-    def normalize_root_cause_category(cls, value):
-        if value is None:
-            return value
-        value = value.strip()
-        if not value:
-            raise ValueError("root_cause_category_required")
-        return value
 
     @field_validator("severity", "priority")
     @classmethod
@@ -73,22 +57,6 @@ class DefectPatch(BaseModel):
     linked_test_result_id: str | None = Field(default=None, max_length=200)
     linked_test_case_version_id: str | None = Field(default=None, max_length=200)
     linked_requirement_version_ids: list[str] | None = Field(default=None, max_length=200)
-    root_cause_category: str | None = Field(default=None, min_length=1, max_length=200)
-    root_cause_detail: str | None = Field(default=None, max_length=5000)
-    injected_phase: str | None = Field(default=None, max_length=200)
-    detected_phase: str | None = Field(default=None, max_length=200)
-    escape_reason: str | None = Field(default=None, max_length=5000)
-    prevention_candidate: bool | None = None
-
-    @field_validator("root_cause_category")
-    @classmethod
-    def normalize_root_cause_category(cls, value):
-        if value is None:
-            return value
-        value = value.strip()
-        if not value:
-            raise ValueError("root_cause_category_required")
-        return value
 
     @field_validator("severity", "priority")
     @classmethod

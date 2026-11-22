@@ -3,11 +3,6 @@ from typing import Any, List, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
-TESTABILITY_BLUEPRINT_MAX_OBLIGATIONS = 300
-TESTABILITY_BLUEPRINT_MAX_CLARIFICATIONS = 100
-TESTABILITY_BLUEPRINT_MAX_EVIDENCE_REFS = 200
-TESTABILITY_BLUEPRINT_MAX_WARNINGS = 50
-
 RequirementQualityCategory = Literal[
     "AMBIGUITY", "OMISSION", "INCONSISTENCY", "CONTRADICTION", "UNTESTABLE",
     "MISSING_ACCEPTANCE_CRITERIA", "MISSING_ERROR_BEHAVIOR",
@@ -178,7 +173,7 @@ class RequirementTemplateSynthesisOutput(BaseModel):
     evidence_refs: List[str] = Field(min_length=1, max_length=200)
     confidence: float = Field(ge=0, le=1)
     warnings: List[str] = Field(
-        default_factory=list, max_length=TESTABILITY_BLUEPRINT_MAX_WARNINGS
+        default_factory=list, max_length=50
     )
 
 class RequirementTemplateReviewFindingOutput(BaseModel):
@@ -200,158 +195,3 @@ class RequirementTemplateReviewOutput(BaseModel):
     evidence_refs: List[str] = Field(min_length=1, max_length=100)
     confidence: float = Field(ge=0, le=1)
     warnings: List[str] = Field(default_factory=list, max_length=20)
-
-
-class TestabilityBlueprintObligationOutput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    key: str = Field(min_length=1, max_length=160)
-    obligation: str = Field(min_length=2, max_length=2000)
-    source_ref: str = Field(min_length=1, max_length=200)
-    source_quote: str = Field(min_length=2, max_length=2000)
-
-
-class TestabilityBlueprintClarificationOutput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    code: str = Field(min_length=1, max_length=160)
-    category: RequirementQualityCategory
-    question: str = Field(min_length=2, max_length=1000)
-    reason: str = Field(
-        default="",
-        max_length=1000,
-    )
-    priority: str | None = Field(default=None, max_length=80)
-    evidence_refs: List[str] = Field(min_length=1, max_length=20)
-    source_quote: str = Field(min_length=2, max_length=2000)
-    unlocks_obligation_keys: List[str] = Field(
-        default_factory=list,
-        max_length=100,
-    )
-
-
-class TestabilityBlueprintCompilationOutput(BaseModel):
-    """Structured testability blueprint compilation result."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    capability: Literal["testability_blueprint_compilation"] = "testability_blueprint_compilation"
-    obligations: List[TestabilityBlueprintObligationOutput] = Field(
-        default_factory=list, max_length=TESTABILITY_BLUEPRINT_MAX_OBLIGATIONS
-    )
-    clarifications: List[TestabilityBlueprintClarificationOutput] = Field(
-        default_factory=list, max_length=TESTABILITY_BLUEPRINT_MAX_CLARIFICATIONS
-    )
-    evidence_refs: List[str] = Field(
-        min_length=1, max_length=TESTABILITY_BLUEPRINT_MAX_EVIDENCE_REFS
-    )
-    confidence: float = Field(ge=0, le=1)
-    warnings: List[str] = Field(default_factory=list, max_length=50)
-
-    @model_validator(mode="after")
-    def validate_blueprint_links(self):
-        obligation_keys = [item.key for item in self.obligations]
-        clarification_codes = [item.code for item in self.clarifications]
-        if len(set(obligation_keys)) != len(obligation_keys):
-            raise ValueError("benchmark_obligation_keys_must_be_unique")
-        if len(set(clarification_codes)) != len(clarification_codes):
-            raise ValueError("benchmark_clarification_codes_must_be_unique")
-        known_obligations = set(obligation_keys)
-        for item in self.clarifications:
-            if not set(item.unlocks_obligation_keys).issubset(known_obligations):
-                raise ValueError("blueprint_clarification_unknown_obligation_link")
-        return self
-
-
-class TestabilityBlueprintReviewFinding(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    finding_type: Literal[
-        "MISSING_COVERAGE",
-        "UNSUPPORTED_CLAIM",
-        "DUPLICATE_ITEM",
-        "BROKEN_LINK",
-        "CLARIFICATION_GAP",
-    ]
-    item_ref: str = Field(min_length=1, max_length=160)
-    observation: str = Field(min_length=2, max_length=1000)
-    suggested_change: str = Field(min_length=2, max_length=1000)
-    evidence_refs: List[str] = Field(min_length=1, max_length=20)
-
-
-class TestabilityBlueprintSelfReviewOutput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    capability: Literal["testability_blueprint_self_review"] = (
-        "testability_blueprint_self_review"
-    )
-    summary: str = Field(min_length=2, max_length=1500)
-    findings: List[TestabilityBlueprintReviewFinding] = Field(
-        default_factory=list, max_length=50
-    )
-    improvement_suggestions: List[str] = Field(default_factory=list, max_length=30)
-    warnings: List[str] = Field(default_factory=list, max_length=20)
-
-
-class TestabilityBenchmarkSemanticMatch(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    candidate: Literal["BEFORE_SELF_REVIEW", "AFTER_SELF_REVIEW"]
-    prediction_index: int = Field(ge=0)
-    expected_obligation_key: str | None = Field(default=None, min_length=1, max_length=160)
-    judgment: Literal["MATCH", "NO_MATCH", "UNCERTAIN"]
-    rationale: str = Field(min_length=2, max_length=800)
-
-
-class TestabilityBenchmarkSemanticEvaluationOutput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    capability: Literal["testability_benchmark_semantic_evaluation"] = (
-        "testability_benchmark_semantic_evaluation"
-    )
-    semantic_matches: List[TestabilityBenchmarkSemanticMatch] = Field(
-        default_factory=list, max_length=1000
-    )
-    warnings: List[str] = Field(default_factory=list, max_length=20)
-
-
-class TestabilityBlueprintClaimReviewItem(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    index: int = Field(ge=0)
-    unsupported_claims: List[str] = Field(default_factory=list, max_length=20)
-
-
-class TestabilityBlueprintGroundingReview(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    obligations: List[TestabilityBlueprintClaimReviewItem] = Field(
-        default_factory=list, max_length=TESTABILITY_BLUEPRINT_MAX_OBLIGATIONS
-    )
-    clarifications: List[TestabilityBlueprintClaimReviewItem] = Field(
-        default_factory=list, max_length=TESTABILITY_BLUEPRINT_MAX_CLARIFICATIONS
-    )
-
-
-class ClarificationBaselineQuestionOutput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    code: str = Field(min_length=1, max_length=160)
-    category: RequirementQualityCategory
-    question: str = Field(min_length=2, max_length=1000)
-    priority: str | None = Field(default=None, max_length=80)
-    evidence_refs: List[str] = Field(min_length=1, max_length=20)
-    source_quote: str = Field(min_length=2, max_length=2000)
-
-
-class ClarificationBaselineOutput(BaseModel):
-    """Structured clarification-only benchmark baseline."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    capability: Literal["clarification_baseline"] = "clarification_baseline"
-    clarifications: List[ClarificationBaselineQuestionOutput] = Field(default_factory=list, max_length=100)
-    evidence_refs: List[str] = Field(min_length=1, max_length=200)
-    confidence: float = Field(ge=0, le=1)
-    warnings: List[str] = Field(default_factory=list, max_length=50)
-
