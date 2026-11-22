@@ -16,11 +16,6 @@ export const projectTestingApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
-  answerAgentClarification: (runId, payload) =>
-    aiRunRequest(`/luot-chay/${runId}/tra-loi-lam-ro`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
   cancelAIRun: (runId, payload) =>
     aiRunRequest(`/luot-chay/${runId}/huy`, {
       method: "POST",

@@ -199,7 +199,7 @@ async def execute_task(
             item.get("status") == "awaiting_input"
             for item in decision_outcomes
         )
-        warning = "CLARIFICATION_REQUIRED" if awaiting_input else "USER_DECISION_REQUIRED"
+        warning = "SOURCE_INPUT_REQUIRED" if awaiting_input else "USER_DECISION_REQUIRED"
         result.warnings = list(dict.fromkeys([*result.warnings, warning]))
     partial_failure_outcomes = [
         item.get("result") or {}

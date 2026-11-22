@@ -335,11 +335,9 @@ async def extract_source_facts(state: AgentExecutionState):
             uncertainties.append(
                 {
                     "code": "SOURCE_SAFETY_CHECK_UNAVAILABLE",
-                    "question": 'Có thể tiếp tục sau khi dịch vụ kiểm tra an toàn nguồn hoạt động lại không?',
                     "reason": 'Không xác minh được độ an toàn của nguồn nên nội dung chưa được chuyển cho AI.',
                     "evidence_refs": [],
                     "blocking": True,
-                    "response_allowed": False,
                 }
             )
         if inspected is not None and not inspected.get("is_safe", False):
@@ -353,11 +351,6 @@ async def extract_source_facts(state: AgentExecutionState):
                         if safety_check_unavailable
                         else "SOURCE_INJECTION_REJECTED"
                     ),
-                    "question": (
-                        'Có thể tiếp tục sau khi dịch vụ kiểm tra an toàn nguồn hoạt động lại không?'
-                        if safety_check_unavailable
-                        else 'Có thể rà soát tài liệu nguồn và gửi lại sau khi loại bỏ chỉ dẫn không liên quan không?'
-                    ),
                     "reason": (
                         'Không xác minh được độ an toàn của nguồn nên nội dung chưa được chuyển cho AI.'
                         if safety_check_unavailable
@@ -365,7 +358,6 @@ async def extract_source_facts(state: AgentExecutionState):
                     ),
                     "evidence_refs": [],
                     "blocking": True,
-                    "response_allowed": False,
                 }
             )
         elif inspected is not None:
@@ -406,22 +398,18 @@ async def extract_source_facts(state: AgentExecutionState):
                         uncertainties.append(
                             {
                                 "code": "FACT_EXTRACTION_UNAVAILABLE",
-                                "question": 'Có thể tiếp tục sau khi dịch vụ phân tích nguồn hoạt động lại không?',
                                 "reason": 'Không trích xuất được dữ kiện và cũng không có đoạn nguồn đủ điều kiện làm căn cứ.',
                                 "evidence_refs": [],
                                 "blocking": True,
-                                "response_allowed": False,
                             }
                         )
             elif not release_controls and not document_ingestion_intent:
                 uncertainties.append(
                     {
                         "code": "NO_PERMITTED_SOURCE_EVIDENCE",
-                        "question": 'Tài liệu hoặc Requirement nào trong dự án được phép dùng làm căn cứ cho AI?',
                         "reason": 'Câu trả lời làm rõ không thay thế được tài liệu hoặc Requirement có nguồn được phép.',
                         "evidence_refs": [],
                         "blocking": True,
-                        "response_allowed": False,
                     }
                 )
             if (
@@ -433,7 +421,6 @@ async def extract_source_facts(state: AgentExecutionState):
                 uncertainties.append(
                     {
                         "code": "NO_VERIFIABLE_SOURCE_FACTS",
-                        "question": 'Có thể cung cấp hoặc xác nhận đoạn nguồn làm căn cứ cho yêu cầu này không?',
                         "reason": 'Không có trích dẫn khớp nguyên văn với nguồn được phép đọc.',
                         "evidence_refs": [],
                         "blocking": True,
@@ -443,11 +430,9 @@ async def extract_source_facts(state: AgentExecutionState):
         uncertainties.append(
             {
                 "code": "NO_PERMITTED_SOURCE_EVIDENCE",
-                "question": 'Tài liệu hoặc Requirement nào trong dự án được phép dùng làm căn cứ cho AI?',
                 "reason": 'Câu trả lời làm rõ không thay thế được tài liệu hoặc Requirement có nguồn được phép.',
                 "evidence_refs": [],
                 "blocking": True,
-                "response_allowed": False,
             }
         )
     checkpoint_state = {
@@ -476,26 +461,6 @@ async def assess_uncertainty(state: AgentExecutionState):
         run.get("intent") == "process_ingested_requirement_document"
     )
     uncertainties = list(state.get("uncertainties", []))
-    clarification_responses = {
-        str(item.get("uncertainty_code") or ""): item
-        for item in (state.get("constraints") or {}).get("clarification_responses", [])
-        if isinstance(item, dict) and item.get("uncertainty_code")
-    }
-    uncertainties = [
-        {
-            **item,
-            "resolution_status": (
-                "USER_ANSWERED" if not item.get("blocking") else "OPEN"
-            ),
-            "answer": clarification_responses[str(item.get("code"))].get("answer"),
-            "answered_by": clarification_responses[str(item.get("code"))].get("answered_by"),
-            "answered_at": clarification_responses[str(item.get("code"))].get("answered_at"),
-        }
-        if item.get("response_allowed", True)
-        and str(item.get("code") or "") in clarification_responses
-        else item
-        for item in uncertainties
-    ]
     if (
         not document_ingestion_intent
         and not state.get("source_facts")
@@ -506,9 +471,8 @@ async def assess_uncertainty(state: AgentExecutionState):
     ):
         uncertainties.append(
             {
-                "code": "CLARIFICATION_REQUIRED",
-                "question": 'Nguồn nào trong dự án cần được xác nhận trước khi tiếp tục?',
-                "reason": 'Không có dữ kiện nào được trích dẫn và xác minh từ nguồn được phép đọc.',
+                "code": "SOURCE_INPUT_REQUIRED",
+                "reason": 'Không có dữ kiện nào được trích dẫn và xác minh từ nguồn được phép đọc. Cần chọn nguồn phù hợp rồi chạy lại.',
                 "evidence_refs": [],
                 "blocking": True,
             }
@@ -517,7 +481,6 @@ async def assess_uncertainty(state: AgentExecutionState):
         uncertainties.append(
             {
                 "code": str(flag),
-                "question": 'Có thể bổ sung hoặc xác nhận nguồn còn thiếu để hoàn tất đối chiếu không?',
                 "reason": 'Việc truy xuất bằng chứng chưa đầy đủ; các nguồn có thẩm quyền đã lấy được vẫn có thể sử dụng.',
                 "evidence_refs": [],
                 "blocking": False,
