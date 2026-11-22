@@ -21,7 +21,6 @@ import { PROJECTS_ROUTE, PROJECT_SECTION_SLUGS, projectRoute } from "@/features/
 import {
   canOpenRoleRestrictedPath,
   canRenderProtectedRoute,
-  legacyProjectRouteItems,
   projectSearchRouteItem,
 } from "./navigationAccess.mjs";
 import {
@@ -59,20 +58,11 @@ function initialNavigationGroups(groups, pathname) {
   );
 }
 
-function NavigationList({
-  onNavigate,
-  projectPermissions,
-  collapsed = false,
-  globalOnly = false,
-}) {
+function NavigationList({ onNavigate, projectPermissions, collapsed = false, globalOnly = false }) {
   const pathname = usePathname();
   const { user } = useAuth();
   const groups = useMemo(() => {
-    const available = availableNavigation(
-      navigationGroupsFor(pathname),
-      user,
-      projectPermissions,
-    );
+    const available = availableNavigation(navigationGroupsFor(pathname), user, projectPermissions);
     return globalOnly
       ? available.filter((group) => ["Không gian làm việc", "Tài khoản"].includes(group.label))
       : available;
@@ -357,12 +347,8 @@ export default function AppShell({ children, requireAuth }) {
   const projectAccessReady =
     !projectId || (permissionsProjectId === projectId && Array.isArray(currentProjectPermissions));
   const projectRouteItem = projectId
-      ? navigationItemForPath(navigationGroupsFor(pathname), pathname, [
+    ? navigationItemForPath(navigationGroupsFor(pathname), pathname, [
         ...testCaseSubsectionItems(projectId),
-        ...legacyProjectRouteItems(projectId, {
-          projectTasksSlug: PROJECT_SECTION_SLUGS.projectTasks,
-          testDesignSlug: PROJECT_SECTION_SLUGS.testDesign,
-        }),
         projectSearchRouteItem(projectId),
         {
           id: "project-document-reader",

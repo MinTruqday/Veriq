@@ -8,7 +8,6 @@ from src.core.human_decisions import require_independent_review
 from src.core.common import audit, get_project_entity, now
 from src.core.database import database
 from src.repositories.requirement import requirement_repository
-from src.repositories.requirement_clarification import requirement_clarification_repository
 from src.modules.design.services.linters import requirement_findings
 from src.modules.requirements.services.requirement_indexing import index_requirement_version
 
@@ -201,13 +200,6 @@ async def return_requirement_for_changes(
                     status_code=409,
                     detail={"code": 'REQUIREMENT_STATUS_CONFLICT'},
                 )
-            await requirement_clarification_repository.mark_change_requested_for_version(
-                project_id,
-                version["_id"],
-                expected_revision + 1,
-                timestamp,
-                session=session,
-            )
             await audit(
                 user.id,
                 'requirement_changes_requested',

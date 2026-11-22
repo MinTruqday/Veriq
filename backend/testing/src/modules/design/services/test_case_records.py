@@ -138,7 +138,6 @@ def project_test_index_metadata(value):
         "techniques": value.get("techniques", []),
         "tags": value.get("tags", []),
         "automation_status": value.get("automation_status"),
-        "repository_node_id": value.get("repository_node_id"),
         "requirement_version_ids": value.get("requirement_version_ids", []),
         "acceptance_criterion_ids": value.get("acceptance_criterion_ids", []),
         "coverage_item_ids": value.get("coverage_item_ids", []),
@@ -304,12 +303,6 @@ async def validate_data_set_versions(project_id, data_set_version_ids):
         raise HTTPException(
             status_code=422, detail={"code": 'CROSS_PROJECT_OR_MISSING_DATA_SET_VERSION'}
         )
-
-async def validate_test_design_structure(project_id, repository_node_id, bdd):
-    if repository_node_id and not await test_design_repository.find_repository_node(
-        project_id, repository_node_id
-    ):
-        raise HTTPException(status_code=422, detail={"code": "TEST_REPOSITORY_NODE_NOT_FOUND"})
 
 async def validate_test_case_owner(project_id, owner_id):
     owner = str(owner_id or "").strip()
@@ -499,7 +492,6 @@ async def create_test_case_draft_record(
         payload.test_condition_ids,
     )
     await validate_data_set_versions(project_id, payload.data_set_version_ids)
-    await validate_test_design_structure(project_id, payload.repository_node_id, payload.bdd)
     await validate_coverage_items(
         project_id, payload.requirement_version_ids, payload.coverage_item_ids
     )
@@ -836,13 +828,6 @@ async def update_test_case_draft_record(draft_id, payload, user, project_id=None
         payload.data_set_version_ids
         if payload.data_set_version_ids is not None
         else draft.get("data_set_version_ids", []),
-    )
-    await validate_test_design_structure(
-        draft["project_id"],
-        payload.repository_node_id
-        if payload.repository_node_id is not None
-        else draft.get("repository_node_id"),
-        payload.bdd if payload.bdd is not None else draft.get("bdd"),
     )
     changes = payload.model_dump(exclude_unset=True)
     changes.pop("expected_revision", None)

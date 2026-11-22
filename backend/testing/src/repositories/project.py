@@ -18,10 +18,6 @@ class ProjectRepository:
     def grants(self):
         return database.value.break_glass_grants
 
-    @property
-    def tasks(self):
-        return database.value.project_tasks
-
     async def create_with_memberships(self, project, memberships, audit_event=None):
         async with await database.client.start_session() as session:
             async with session.start_transaction():
@@ -212,35 +208,5 @@ class ProjectRepository:
         return await self.members.delete_one(
             {"project_id": project_id, "user_id": user_id}
         )
-
-    async def list_tasks(self, project_id, status=None, limit=None):
-        query = {"project_id": project_id}
-        if status:
-            query["status"] = status
-        return await self.tasks.find(query).sort("updated_at", -1).to_list(length=limit)
-
-    async def list_tasks_for_projects(self, project_ids, limit=None):
-        if not project_ids:
-            return []
-        return await self.tasks.find(
-            {"project_id": {"$in": list(project_ids)}}
-        ).to_list(length=limit)
-
-    async def create_task(self, task):
-        await self.tasks.insert_one(task)
-        return task
-
-    async def update_task(self, project_id, task_id, revision, changes):
-        return await self.tasks.find_one_and_update(
-            {"_id": task_id, "project_id": project_id, "revision": revision},
-            {"$set": changes, "$inc": {"revision": 1}},
-            return_document=ReturnDocument.AFTER,
-        )
-
-    async def delete_task(self, project_id, task_id, revision):
-        return await self.tasks.delete_one(
-            {"_id": task_id, "project_id": project_id, "revision": revision}
-        )
-
 
 project_repository = ProjectRepository()

@@ -400,7 +400,6 @@ class ProjectArtifactChunkMetadata(BaseModel):
     risk: str | None = None
     techniques: list[str] = Field(default_factory=list)
     automation_status: str | None = None
-    repository_node_id: str | None = None
     coverage_item_ids: list[str] = Field(default_factory=list)
     data_set_version_ids: list[str] = Field(default_factory=list)
     content_format: str | None = None

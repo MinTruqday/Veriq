@@ -54,7 +54,6 @@ const fields = [
   { key: "coverage_item_ids", label: "Điểm cần kiểm thử liên kết", kind: "reference_list" },
   { key: "test_condition_ids", label: "Điều kiện kiểm thử liên kết", kind: "reference_list" },
   { key: "scenario_id", label: "Tình huống kiểm thử", kind: "reference", optional: true },
-  { key: "repository_node_id", label: "Thư mục kho kiểm thử", kind: "reference", optional: true },
   {
     key: "duplicate_reason",
     label: "Lý do giữ ca có khả năng trùng",

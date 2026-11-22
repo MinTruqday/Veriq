@@ -13,16 +13,8 @@ import {
   Search,
   Settings,
   TestTube2,
-  ListTodo,
-  ListFilter,
-  Columns3,
-  Map,
-  Flag,
   Database,
-  FolderTree,
   History,
-  MessageSquareMore,
-  Puzzle,
 } from "lucide-react";
 import {
   OPERATIONS_ROUTE,
@@ -104,16 +96,10 @@ export function testCaseSubsectionItems(projectId) {
 export function testDesignSectionItems(projectId) {
   const designItems =
     navigationGroupsFor(projectRoute(projectId)).find((group) =>
-      group.items.some((item) => item.id === "test-repository"),
+      group.items.some((item) => item.id === "test-cases"),
     )?.items || [];
   return designItems.filter((item) =>
-    [
-      "test-scenarios",
-      "test-repository",
-      "test-cases",
-      "test-data",
-      "test-sets",
-    ].includes(item.id),
+    ["test-scenarios", "test-cases", "test-data", "test-sets"].includes(item.id),
   );
 }
 
@@ -145,13 +131,6 @@ export function navigationGroupsFor(pathname) {
             permission: "requirement.read",
           },
           {
-            id: "clarifications",
-            label: "Phiếu làm rõ",
-            href: `${root}/${PROJECT_SECTION_SLUGS.clarifications}`,
-            icon: MessageSquareMore,
-            permission: "requirement.read",
-          },
-          {
             id: "changes",
             label: "Phân tích thay đổi",
             href: `${root}/${PROJECT_SECTION_SLUGS.changes}`,
@@ -166,13 +145,6 @@ export function navigationGroupsFor(pathname) {
             href: `${root}/${PROJECT_SECTION_SLUGS.testAnalysis}`,
             icon: TestTube2,
             anyPermission: ["testcondition.read", "testanalysis.read"],
-          },
-          {
-            id: "test-repository",
-            label: "Kho kiểm thử",
-            href: `${root}/${PROJECT_SECTION_SLUGS.testRepository}`,
-            icon: FolderTree,
-            permission: "testcase.read",
           },
           {
             id: "test-cases",
@@ -298,7 +270,6 @@ export function navigationGroupsFor(pathname) {
       }
     : {
         project: [],
-        planning: [],
         requirements: [],
         design: [],
         execution: [],
@@ -347,9 +318,7 @@ export function navigationGroupsFor(pathname) {
               },
             ]
           : []),
-        ...projectItems.design.filter(
-          (item) => item.id !== "test-analysis",
-        ),
+        ...projectItems.design.filter((item) => item.id !== "test-analysis"),
       ],
     },
     {

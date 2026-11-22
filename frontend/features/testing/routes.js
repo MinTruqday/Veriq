@@ -4,12 +4,9 @@ export const OPERATIONS_ROUTE = "/van-hanh";
 export const PROJECT_SECTION_SLUGS = Object.freeze({
   testAnalysis: "phan-tich-kiem-thu",
   monitoring: "giam-sat-kiem-thu",
-  planning: "lap-ke-hoach",
   releases: "ban-phat-hanh",
   requirements: "yeu-cau",
-  clarifications: "phieu-lam-ro",
   testDesign: "thiet-ke-kiem-thu",
-  testRepository: "kho-kiem-thu",
   testCases: "ca-kiem-thu",
   testData: "du-lieu-kiem-thu",
   testSets: "bo-kiem-thu",

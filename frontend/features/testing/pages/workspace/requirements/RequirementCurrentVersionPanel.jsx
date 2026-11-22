@@ -17,7 +17,6 @@ export default function RequirementCurrentVersionPanel({
   can,
   checkingWithAi,
   onCheckWithAI,
-  onOpenClarifications,
   saveDraft,
   onCreateVersion,
   onSplit,
@@ -132,7 +131,7 @@ export default function RequirementCurrentVersionPanel({
                 ask({
                   title: "Yêu cầu chỉnh sửa",
                   description:
-                    "Phiên bản sẽ trở về bản nháp để người phụ trách cập nhật nội dung. Ghi rõ điểm cần sửa; có thể kèm Phiếu làm rõ riêng.",
+                    "Phiên bản sẽ trở về bản nháp để người phụ trách cập nhật nội dung. Ghi rõ điểm cần sửa.",
                   confirmLabel: "Trả về bản nháp",
                   fields: [
                     {
@@ -152,6 +151,12 @@ export default function RequirementCurrentVersionPanel({
                       });
                       await reload();
                     } catch (value) {
+                      const detail = value?.response?.data?.detail || value?.detail;
+                      if (detail?.code === "REQUIREMENT_LINT_BLOCKED") {
+                        throw new Error(
+                          "Còn lỗi kiểm tra bắt buộc. Xem gợi ý hoàn thiện yêu cầu, sửa nội dung rồi gửi lại.",
+                        );
+                      }
                       throw new Error(messageOf(value));
                     }
                   },
@@ -205,7 +210,7 @@ export default function RequirementCurrentVersionPanel({
               onClick={async () => {
                 await ask({
                   title: "Chấp nhận Requirement",
-                  description: `${selected.requirement_key} sẽ trở thành phiên bản chuẩn để các bước kiểm thử sử dụng. Cảnh báo nhẹ không chặn thao tác; lỗi rà soát cần được xử lý qua Phiếu làm rõ trước.`,
+                  description: `${selected.requirement_key} sẽ trở thành phiên bản chuẩn để các bước kiểm thử sử dụng. Cảnh báo nhẹ không chặn thao tác; các lỗi bắt buộc cần được xử lý trong nội dung yêu cầu trước khi chấp nhận.`,
                   confirmLabel: "Chấp nhận Requirement",
                   fields: [
                     {
@@ -224,14 +229,6 @@ export default function RequirementCurrentVersionPanel({
                       });
                       await reload();
                     } catch (value) {
-                      const detail = value?.response?.data?.detail || value?.detail;
-                      if (detail?.code === "REQUIREMENT_LINT_BLOCKED") {
-                        await testingApi.createClarificationsFromReview(current._id);
-                        onOpenClarifications?.();
-                        throw new Error(
-                          "Đã tạo Phiếu làm rõ cho các lỗi cần xử lý và mở danh sách phiếu. Cảnh báo nhẹ không chặn chấp nhận.",
-                        );
-                      }
                       throw new Error(messageOf(value));
                     }
                   },
@@ -372,8 +369,8 @@ export default function RequirementCurrentVersionPanel({
             )}
           {current.status === "IN_REVIEW" && (
             <p className="mt-2 max-w-prose text-sm text-ink-muted">
-              Requirement đang chờ rà soát. Cảnh báo nhẹ có thể chấp nhận; lỗi chặn cần được đưa vào
-              Phiếu làm rõ và xử lý trước khi chấp nhận.
+              Requirement đang chờ rà soát. Cảnh báo nhẹ có thể chấp nhận; lỗi bắt buộc cần được sửa
+              trong nội dung trước khi chấp nhận.
             </p>
           )}
           {current.status === "DRAFT" &&

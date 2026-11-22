@@ -37,7 +37,6 @@ export function createTestCaseForm() {
     automationStatus: "manual",
     dataSetVersionIds: [],
     testConditionIds: [],
-    repositoryNodeId: "",
     testStyle: "MANUAL",
     feature: "",
     scenario: "",
@@ -215,7 +214,6 @@ export function buildTestCaseDraftChanges(snapshot, draft) {
     acceptance_criterion_ids: snapshot.acceptanceCriterionIds,
     scenario_id: snapshot.scenarioId || null,
     coverage_item_ids: snapshot.coverageItemIds,
-    repository_node_id: snapshot.repositoryNodeId,
     bdd: snapshot.bdd,
   };
   for (const [field, value] of Object.entries(otherValues)) {
@@ -234,7 +232,6 @@ export function buildTestCaseDraftChanges(snapshot, draft) {
     }
     if (field === "owner_id") previous = previous || "";
     if (field === "bdd") previous = previous || null;
-    if (field === "repository_node_id" && !value) continue;
     if (JSON.stringify(value) !== JSON.stringify(previous)) changes[field] = value;
   }
   return changes;

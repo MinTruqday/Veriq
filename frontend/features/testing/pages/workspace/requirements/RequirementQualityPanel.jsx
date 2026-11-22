@@ -16,7 +16,6 @@ function severityLabel(severity) {
 export default function RequirementQualityPanel({
   lint,
   loading = false,
-  onOpenClarifications,
   onRecheckAI,
   recheckingAI = false,
   draftDirty = false,
@@ -90,15 +89,6 @@ export default function RequirementQualityPanel({
                 Các điều kiện bắt buộc được hệ thống kiểm tra riêng khi gửi rà soát hoặc chấp nhận.
               </p>
             </div>
-            {onOpenClarifications && (
-              <button
-                className="secondary-button shrink-0"
-                type="button"
-                onClick={onOpenClarifications}
-              >
-                Mở Phiếu làm rõ
-              </button>
-            )}
           </div>
           <DataTable
             items={systemFindings}

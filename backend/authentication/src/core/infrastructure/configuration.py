@@ -11,9 +11,6 @@ class Settings:
     CORS_ALLOWED_ORIGINS: str = os.environ["CORS_ALLOWED_ORIGINS"]
     MONGODB_URI: str = os.environ["MONGODB_URI"]
     REDIS_URI: str = os.environ["REDIS_URI"]
-    PASSKEY_RP_ID: str = os.environ["PASSKEY_RP_ID"]
-    PASSKEY_RP_NAME: str = os.environ["PASSKEY_RP_NAME"]
-    PASSKEY_ALLOWED_ORIGINS: str = os.environ["PASSKEY_ALLOWED_ORIGINS"]
     SMTP_HOST: str = os.environ["SMTP_HOST"]
     SMTP_PORT: int = int(os.environ["SMTP_PORT"])
     SMTP_USER: Optional[str] = os.environ["SMTP_USER"]

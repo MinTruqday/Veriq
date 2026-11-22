@@ -19,7 +19,6 @@ from src.tools.testing import (
     list_all_test_case_records,
     list_resumable_ai_test_case_drafts,
     normalized_text,
-    resolve_answered_clarifications,
     response_items,
 )
 from src.tools.testing_api import ToolOperationError, require_operation
@@ -318,47 +317,6 @@ async def process_changed_requirement_version(
     current_version = requirement.get("current_version") or version
     if current_version.get("_id") != requirement_version_id:
         raise RuntimeError("REQUIREMENT_VERSION_NOT_CURRENT")
-    if current_version.get("status") == "DRAFT":
-        await require_operation(
-            "POST",
-            f"/phien-ban-yeu-cau/{requirement_version_id}/phieu-lam-ro/tao-tu-ra-soat",
-            config,
-        )
-    open_clarifications = await resolve_answered_clarifications(current_version, config)
-    if open_clarifications:
-        return json.dumps(
-            {
-                "status": "awaiting_input",
-                "reason_code": "REQUIREMENT_CLARIFICATION_REQUIRED",
-                "requirement_version_id": requirement_version_id,
-                "clarification_ids": [
-                    item.get("_id") for item in open_clarifications if item.get("_id")
-                ],
-                "verification": {
-                    "status": "AWAITING_INPUT",
-                    "project_id": project_id,
-                    "artifact_ids": [
-                        requirement_version_id,
-                        *[str(item["_id"]) for item in open_clarifications if item.get("_id")],
-                    ],
-                    "checks": [
-                        {
-                            "artifact_id": requirement_version_id,
-                            "artifact_type": "requirement_version",
-                        },
-                        *[
-                            {
-                                "artifact_id": str(item["_id"]),
-                                "artifact_type": "requirement_clarification",
-                            }
-                            for item in open_clarifications
-                            if item.get("_id")
-                        ],
-                    ],
-                },
-            },
-            ensure_ascii=False,
-        )
     try:
         requirement_quality = await assess_changed_requirement_quality(
             project_id, current_version, config

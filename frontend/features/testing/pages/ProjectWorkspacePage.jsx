@@ -67,8 +67,6 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
     [PROJECT_SECTION_SLUGS.monitoring]: "monitoring",
     [PROJECT_SECTION_SLUGS.releases]: "releases",
     [PROJECT_SECTION_SLUGS.requirements]: "requirements",
-    [PROJECT_SECTION_SLUGS.clarifications]: "requirements",
-    [PROJECT_SECTION_SLUGS.testRepository]: "test-design",
     [PROJECT_SECTION_SLUGS.testCases]: "test-design",
     [PROJECT_SECTION_SLUGS.testData]: "test-design",
     [PROJECT_SECTION_SLUGS.testSets]: "test-design",
@@ -89,8 +87,8 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
   };
   const legacyRedirectTarget =
     section[0] === PROJECT_SECTION_SLUGS.testDesign
-        ? projectRoute(projectId, PROJECT_SECTION_SLUGS.testCases)
-        : "";
+      ? projectRoute(projectId, PROJECT_SECTION_SLUGS.testCases)
+      : "";
   const area = section[0] ? areaBySlug[section[0]] : "dashboard";
   const caseSubsectionItem =
     section[0] === PROJECT_SECTION_SLUGS.testCases &&
@@ -103,13 +101,11 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
       !caseSubsectionItem,
   );
   const invalidSection = Boolean(
-    (section[0] && !area && !legacyRedirectTarget) ||
-      invalidCaseSubsection,
+    (section[0] && !area && !legacyRedirectTarget) || invalidCaseSubsection,
   );
   const requiredPermissions = {
     "test-analysis": "testcondition.read",
     monitoring: "testmonitor.read",
-    "project-tasks": "project.read",
     releases: "release.read",
     dashboard: "project.read",
     requirements: "requirement.read",
@@ -215,8 +211,6 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
       </div>
     );
   const workspaceViewBySlug = {
-    [PROJECT_SECTION_SLUGS.clarifications]: "clarifications",
-    [PROJECT_SECTION_SLUGS.testRepository]: "repository",
     [PROJECT_SECTION_SLUGS.testCases]: "cases",
     [PROJECT_SECTION_SLUGS.testData]: "test-data",
     [PROJECT_SECTION_SLUGS.testSets]: "test-sets",

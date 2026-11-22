@@ -1,6 +1,6 @@
-# Kiểm tra nghiệp vụ và phân quyền Veriq
+# Hồ sơ lịch sử kiểm tra nghiệp vụ và phân quyền Veriq
 
-Ngày lập: 05/11/2026. Tài liệu theo dõi triển khai kế hoạch đã chốt với người dùng. Đây là hồ sơ kiểm tra mã và nghiệm thu; việc có route, service hoặc màn hình không có nghĩa luồng đã đạt trên Docker.
+Ngày lập: 05/11/2026. Đây là hồ sơ kiểm tra lịch sử ở thời điểm lập, không phải kiểm kê route/chức năng hiện tại. Một số route, service và màn hình trong bảng đã được gỡ khỏi sản phẩm; mã nguồn hiện tại xác định những gì còn hoạt động. Việc có route, service hoặc màn hình không có nghĩa luồng đã đạt trên Docker.
 
 ## 1. Quyết định nghiệp vụ đã chốt
 
@@ -62,7 +62,7 @@ Kiểm kê tĩnh ban đầu đếm được 653 khai báo route HTTP trong `back
 
 | Nhóm API | Số khai báo ban đầu | Mã/màn hình đã xác định | Trọng tâm cần nghiệm thu |
 | --- | ---: | --- | --- |
-| Projects | 61 | projects, work_items, collaboration, attachments; Dashboard, Planning, Settings | Thành viên, quyền, công việc/Sprint/backlog/roadmap, tiến độ, dữ liệu riêng, nhận xét/tệp |
+| Projects | 61 | projects, collaboration, attachments; Dashboard, Settings | Thành viên, quyền, tiến độ dự án, dữ liệu riêng, nhận xét/tệp |
 | Requirements | 88 | requirements, records, imports, documents, templates, analysis; Requirements, DocumentReader, Knowledge | Upload/đọc/tóm tắt, consent AI, Requirement/BR, trùng, làm rõ, xác nhận, baseline, phiên bản |
 | Design | 116 | test_analysis, test_design, test_repository, test_strategy, data_sets, adequacy; TestAnalysis, TestDesign, TestGovernance | Phân công Tester, nháp, độc lập duyệt, nguồn, phiên bản/kho ca, điều kiện và độ phủ |
 | Execution | 146 | execution, context, monitoring, reporting, status_reports, completion; Execution, Releases, Monitoring, Reports, Completion | Plan/Run, build/environment, kết quả, report, lịch, xuất/phát hành, người nhận, quality gate |

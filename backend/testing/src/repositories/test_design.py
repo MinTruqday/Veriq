@@ -4,27 +4,6 @@ from src.core.database import database
 
 
 class TestDesignRepository:
-    async def list_repository_nodes(self, project_id):
-        return await database.value.test_repository_nodes.find(
-            {"project_id": project_id, "status": "ACTIVE"}
-        ).sort("name", 1).to_list(5000)
-
-    async def find_repository_node(self, project_id, node_id):
-        return await database.value.test_repository_nodes.find_one(
-            {"_id": node_id, "project_id": project_id, "status": "ACTIVE"}
-        )
-
-    async def insert_repository_node(self, value):
-        await database.value.test_repository_nodes.insert_one(value)
-        return value
-
-    async def update_repository_node(self, node_id, project_id, revision, changes):
-        return await database.value.test_repository_nodes.find_one_and_update(
-            {"_id": node_id, "project_id": project_id, "status": "ACTIVE", "revision": revision},
-            {"$set": changes, "$inc": {"revision": 1}},
-            return_document=ReturnDocument.AFTER,
-        )
-
     async def list_cases(self, project_id, status=None, limit=20000):
         query = {"project_id": project_id}
         if status:

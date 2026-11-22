@@ -26,17 +26,6 @@ def normalized_text(value):
     return " ".join(normalized.casefold().split())
 
 
-def source_contains_exact_phrase(source_text, quote):
-    normalized_source = normalized_text(source_text)
-    normalized_quote = normalized_text(quote)
-    if not normalized_source or not normalized_quote:
-        return False
-    return re.search(
-        rf"(?<!\w){re.escape(normalized_quote)}(?!\w)",
-        normalized_source,
-        flags=re.UNICODE,
-    ) is not None
-
 def response_items(value):
     if isinstance(value, list):
         return value
@@ -44,21 +33,6 @@ def response_items(value):
         items = value.get("items")
         return items if isinstance(items, list) else []
     return []
-
-
-def requirement_clarification_plan(version, clarifications):
-    return [
-        {
-            "clarification_id": item.get("_id"),
-            "requirement_version_id": version["_id"],
-            "question": item.get("question"),
-            "reason": item.get("reason"),
-            "source_ref": item.get("source_ref"),
-            "source_quote": item.get("source_quote"),
-            "status": item.get("status"),
-        }
-        for item in clarifications
-    ]
 
 
 async def list_resumable_ai_test_case_drafts(project_id, requirement_version_id, config):
@@ -300,70 +274,4 @@ async def carry_forward_unchanged_requirement_tests(
         except (KeyError, RuntimeError) as error:
             unresolved.append({"test_case_id": case.get("_id"), "reason": str(error)})
     return carried, unresolved
-
-async def resolve_answered_clarifications(version, config):
-    clarifications = await require_operation(
-        "GET", f"/phien-ban-yeu-cau/{version['_id']}/phieu-lam-ro", config
-    )
-    items = response_items(clarifications)
-    permissions = set((config or {}).get("configurable", {}).get("permissions", []))
-    if (config or {}).get("configurable", {}).get("ai_run_id") or "requirement.approve" not in permissions:
-        return [item for item in items if item.get("status") in {"OPEN", "ANSWERED"}]
-
-    source_parts = [str(version.get("plain_text_projection") or "")]
-
-    def collect_text(value):
-        if isinstance(value, str):
-            return [value]
-        if isinstance(value, list):
-            return [part for item in value for part in collect_text(item)]
-        if isinstance(value, dict):
-            if isinstance(value.get("text"), str):
-                return [value["text"]]
-            return [part for item in value.values() for part in collect_text(item)]
-        return []
-
-    source_parts.extend(collect_text(version.get("content_doc") or {}))
-    source_parts.extend(collect_text(version.get("business_rules") or []))
-    source_parts.extend(
-        collect_text(version.get("acceptance_criteria") or [])
-    )
-    pending = []
-    for item in items:
-        if item.get("status") == "OPEN":
-            pending.append(item)
-            continue
-        if item.get("status") != "ANSWERED":
-            continue
-        answer = str(item.get("answer") or "").strip()
-        if not any(source_contains_exact_phrase(part, answer) for part in source_parts):
-            pending.append(item)
-            continue
-        try:
-            await require_operation(
-                "POST",
-                f"/phieu-lam-ro/{item['_id']}/xac-nhan-giai-quyet",
-                config,
-                {
-                    "expected_revision": item["revision"],
-                    "requirement_version_id": version["_id"],
-                    "evidence_quote": answer,
-                },
-            )
-        except ToolOperationError:
-            latest = response_items(
-                await require_operation(
-                    "GET", f"/phien-ban-yeu-cau/{version['_id']}/phieu-lam-ro", config
-                )
-            )
-            already_resolved = any(
-                current.get("_id") == item.get("_id")
-                and current.get("status") == "RESOLVED"
-                and current.get("resolved_requirement_version_id") == version["_id"]
-                and current.get("resolution_evidence_quote") == answer
-                for current in latest
-            )
-            if not already_resolved:
-                raise
-    return pending
 

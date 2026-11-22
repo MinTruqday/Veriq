@@ -18,7 +18,6 @@ import {
 } from "../components/WorkspacePrimitives";
 import { testingApi } from "../services/testing.service";
 import { messageOf, valueLabel } from "../lib/testing";
-import { taskProgressPresentation } from "../lib/projectProgress.logic.mjs";
 import {
   formatProjectDate,
   invalidProjectDateRange,
@@ -538,7 +537,9 @@ export default function ProjectsPage() {
               <span>Trạng thái, cập nhật</span>
             </div>
             {visibleProjects.map((item) => {
-              const taskProgress = taskProgressPresentation(item.task_summary);
+              const completionPercent = Number.isFinite(item.project_completion_percent)
+                ? item.project_completion_percent
+                : null;
               const schedule = projectSchedule(item, user?.locale);
               const activityDate = item.updated_at || item.created_at;
               const activityLabel = item.updated_at
@@ -593,37 +594,28 @@ export default function ProjectsPage() {
                     </span>
                   </div>
                   <div className="min-w-0 space-y-2 text-[12px]">
-                    {taskProgress.completionPercent == null ? (
-                      <span className="text-ink-muted">
-                        {taskProgress.label || "Chưa có công việc"}
-                      </span>
+                    {completionPercent == null ? (
+                      <span className="text-ink-muted">Chưa có tiến độ</span>
                     ) : (
                       <div className="space-y-1">
                         <div className="flex justify-between gap-2">
                           <span>Tiến độ dự án</span>
-                          <strong>{taskProgress.completionPercent}%</strong>
+                          <strong>{completionPercent}%</strong>
                         </div>
                         <div
-                          aria-label={`Tiến độ công việc ${taskProgress.completionPercent}%`}
+                          aria-label={`Tiến độ dự án ${completionPercent}%`}
                           aria-valuemax={100}
                           aria-valuemin={0}
-                          aria-valuenow={taskProgress.completionPercent}
+                          aria-valuenow={completionPercent}
                           className="h-1.5 overflow-hidden rounded-full bg-surface-quiet"
                           role="progressbar"
                         >
                           <div
                             className="h-full rounded-full bg-brand"
-                            style={{ width: `${taskProgress.completionPercent}%` }}
+                            style={{ width: `${completionPercent}%` }}
                           />
                         </div>
                       </div>
-                    )}
-                    {taskProgress.applicableTotal > 0 && (
-                      <span className="block text-ink-muted">
-                        {taskProgress.applicableTotal} công việc · {taskProgress.completed ?? 0}{" "}
-                        hoàn thành
-                        {taskProgress.blocked > 0 ? ` · ${taskProgress.blocked} bị chặn` : ""}
-                      </span>
                     )}
                   </div>
                   <div className="flex min-w-0 flex-col items-start gap-1.5">

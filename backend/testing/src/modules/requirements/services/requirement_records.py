@@ -22,7 +22,6 @@ from src.modules.requirements.services.requirement_indexing import (
     validate_requirement_sources,
 )
 from src.repositories.requirement import requirement_repository
-from src.repositories.requirement_clarification import requirement_clarification_repository
 from src.repositories.requirement_template import requirement_template_repository
 from src.schemas.contracts.requirements import RequirementCreate
 
@@ -211,10 +210,6 @@ async def list_requirement_records(
         project_id, version_ids, ["REVIEWED", "CLOSED", "REJECTED"], 20000
     )
     pending_ids = {item["to_version_id"] for item in change_sets}
-    open_clarifications = await requirement_clarification_repository.list_open_for_versions(
-        project_id, version_ids
-    )
-    clarification_version_ids = {item["requirement_version_id"] for item in open_clarifications}
     for item in items:
         version = item.get("current_version") or {}
         item["owner_id"] = item.get("owner_id") or version.get("owner_id")
@@ -503,13 +498,6 @@ async def create_requirement_version_record(requirement_id, payload, user, sessi
         )
         if not activated:
             raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
-        from src.modules.requirements.services.requirement_clarifications import (
-            supersede_requirement_clarifications,
-        )
-
-        await supersede_requirement_clarifications(
-            requirement["project_id"], requirement_id, version["_id"], active_session
-        )
         await audit(
             user.id,
             "requirement_version_created",

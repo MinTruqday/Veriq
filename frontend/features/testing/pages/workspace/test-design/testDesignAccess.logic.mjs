@@ -35,11 +35,6 @@ export function testDesignAccess({ workspaceView = "", caseTab = "cases", permis
     canLoadTestCases:
       (showCases || (isCaseWorkspace && caseTab === "automation") || showImport) &&
       canReadTestCases,
-    canLoadRepository: showCases,
-    canRenderRepository:
-      canReadTestCases &&
-      (workspaceView === "" ||
-        workspaceView === "repository"),
     canReadTestSets: hasPermission(permissions, "testsuite.read"),
     canRenderImport:
       canReadTestCases &&

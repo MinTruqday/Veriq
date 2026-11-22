@@ -9,48 +9,6 @@ import {
 } from "./testing.transport";
 
 export const designTestingApi = {
-  listTestRepository: (projectId) => testingRequest(`/du-an/${projectId}/kho-ca-kiem-thu`),
-  createTestRepositoryNode: (projectId, payload) =>
-    testingRequest(`/du-an/${projectId}/kho-ca-kiem-thu`, {
-      method: "POST",
-      body: JSON.stringify({ ...payload, project_id: projectId }),
-    }),
-  updateTestRepositoryNode: (nodeId, payload) =>
-    testingRequest(`/kho-ca-kiem-thu/${nodeId}`, {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-    }),
-  listRequirementClarifications: (requirementVersionId) =>
-    testingRequest(`/phien-ban-yeu-cau/${requirementVersionId}/phieu-lam-ro`),
-  createRequirementClarification: (requirementVersionId, payload) =>
-    testingRequest(`/phien-ban-yeu-cau/${requirementVersionId}/phieu-lam-ro`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  createClarificationsFromReview: (requirementVersionId) =>
-    testingRequest(`/phien-ban-yeu-cau/${requirementVersionId}/phieu-lam-ro/tao-tu-ra-soat`, {
-      method: "POST",
-    }),
-  answerRequirementClarification: (clarificationId, payload) =>
-    testingRequest(`/phieu-lam-ro/${clarificationId}/tra-loi`, {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-    }),
-  requestRequirementClarificationChanges: (clarificationId, payload) =>
-    testingRequest(`/phieu-lam-ro/${clarificationId}/yeu-cau-cap-nhat`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  resolveRequirementClarification: (clarificationId, payload) =>
-    testingRequest(`/phieu-lam-ro/${clarificationId}/xac-nhan-giai-quyet`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  decideRequirementClarification: (clarificationId, payload) =>
-    testingRequest(`/phieu-lam-ro/${clarificationId}/quyet-dinh`, {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-    }),
   listRequirementCoverageItems: (requirementVersionId) =>
     testingRequest(`/phien-ban-yeu-cau/${requirementVersionId}/hang-muc-do-phu`),
   searchProject: (id, query) =>

@@ -76,7 +76,6 @@ export default function TestCaseCreateForm({
   setForm,
   dataSets,
   testConditions,
-  repositoryNodes,
   requirements = [],
   scenarios = [],
   scenarioRequired = false,
@@ -117,26 +116,16 @@ export default function TestCaseCreateForm({
     matchesConditionScope(condition, requirementIds, scopedCriterionIds, scenarioConditionIds),
   );
   const testLevelOptions = [
-    ...new Set([
-      ...scopedTestConditions.map((item) => item.test_level).filter(Boolean),
-    ]),
+    ...new Set([...scopedTestConditions.map((item) => item.test_level).filter(Boolean)]),
   ];
   const testKindOptions = [
-    ...new Set([
-      ...scopedTestConditions.map((item) => item.test_type).filter(Boolean),
-    ]),
+    ...new Set([...scopedTestConditions.map((item) => item.test_type).filter(Boolean)]),
   ];
   const priorityOptions = [
-    ...new Set(
-      [form.priority]
-        .map((value) => String(value || "").trim())
-        .filter(Boolean),
-    ),
+    ...new Set([form.priority].map((value) => String(value || "").trim()).filter(Boolean)),
   ];
   const riskOptions = [
-    ...new Set(
-      [form.risk].map((value) => String(value || "").trim()).filter(Boolean),
-    ),
+    ...new Set([form.risk].map((value) => String(value || "").trim()).filter(Boolean)),
   ];
   const retainScopedConditionIds = (conditionIds, scopedRequirements, scopedCriteria) =>
     conditionIds.filter((conditionId) => {
@@ -398,22 +387,6 @@ export default function TestCaseCreateForm({
                 />
               </div>
             )}
-            <label className="field-label">
-              Thư mục kho ca kiểm thử
-              <select
-                aria-label="Thư mục kho ca kiểm thử"
-                className="apple-input mt-2"
-                value={form.repositoryNodeId}
-                onChange={(event) => update({ repositoryNodeId: event.target.value })}
-              >
-                <option value="">Thư mục gốc</option>
-                {repositoryNodes.map((item) => (
-                  <option key={item._id} value={item._id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            </label>
           </section>
           <section className="space-y-3 rounded-control border border-border p-4">
             <h3 className="font-semibold">Điều kiện trước và sau</h3>

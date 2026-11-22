@@ -610,8 +610,7 @@ export default function DefectsPage({ project }) {
           <form className="grid gap-4 p-5 md:grid-cols-2" onSubmit={create}>
             {(!classificationOptions.severity.length || !classificationOptions.priority.length) && (
               <p className="rounded-control bg-warning-soft p-3 text-sm text-warning md:col-span-2">
-                Hãy cấu hình và phê duyệt thang mức độ cùng thang ưu tiên trong chiến lược kiểm thử
-                trước khi tạo lỗi.
+                Thang mức độ và thang ưu tiên của dự án chưa được cấu hình.
               </p>
             )}
             <label className="field-label md:col-span-2">

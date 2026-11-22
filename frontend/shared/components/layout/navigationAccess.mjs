@@ -56,23 +56,6 @@ export function projectSearchRouteItem(projectId) {
   };
 }
 
-export function legacyProjectRouteItems(projectId, { projectTasksSlug, testDesignSlug } = {}) {
-  if (!projectId || !projectTasksSlug || !testDesignSlug) return [];
-  const root = `/du-an/${encodeURIComponent(projectId)}`;
-  return [
-    {
-      id: "legacy-project-tasks",
-      href: `${root}/${projectTasksSlug}`,
-      permission: "project.read",
-    },
-    {
-      id: "legacy-test-design",
-      href: `${root}/${testDesignSlug}`,
-      permission: "testcase.read",
-    },
-  ];
-}
-
 export function canRenderProtectedRoute({
   requireAuth,
   isLoading,

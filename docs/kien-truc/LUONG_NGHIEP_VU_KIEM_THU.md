@@ -6,7 +6,7 @@ Tài liệu này giữ đặc tả chi tiết và ma trận xử lý. Bản trì
 
 Luồng hướng dẫn: tài liệu → Requirement → Test Plan nháp → phân tích → Scenario → Test Case → chốt Plan → chuẩn bị → Test Run → báo cáo → quyết định phát hành.
 
-Plan nháp được tạo trước ca, được hoàn thiện dần và khóa phạm vi khi duyệt. Scenario và Test Case thuộc kho dùng lại; Plan chọn các phiên bản cần thực hiện. Việc dùng lại không tạo bản sao hoặc chuyển kết quả PASS/FAIL cũ sang lần chạy mới.
+Plan nháp được tạo trước ca, được hoàn thiện dần và khóa phạm vi khi duyệt. Scenario và Test Case được quản lý theo vòng đời và liên kết nguồn hiện có; Plan chọn các phiên bản cần thực hiện. Việc dùng dữ liệu/draft hiện có không chuyển kết quả PASS/FAIL cũ sang lần chạy mới.
 
 | Bước | Dữ liệu và trách nhiệm |
 | --- | --- |
@@ -15,13 +15,13 @@ Plan nháp được tạo trước ca, được hoàn thiện dần và khóa ph
 | Test Plan | Mục tiêu; trong/ngoài phạm vi; phiên bản yêu cầu; chiến lược/cách tiếp cận; cấp/loại; người và trách nhiệm; môi trường; kế hoạch dữ liệu; điều kiện bắt đầu/kết thúc; lịch/mốc; ước lượng; rủi ro/biện pháp; quy trình Defect; bàn giao/báo cáo; phụ thuộc/ràng buộc; tạm dừng/tiếp tục; chỉ số chất lượng; duyệt và snapshot. |
 | Phân tích | Điều kiện kiểm thử và nghĩa vụ bao phủ từ tiêu chí chấp nhận, quy tắc, nhánh, biên, ngoại lệ và rủi ro. Người có quyền phân tích tạo câu hỏi làm rõ hoặc đánh giá khả năng kiểm thử; quyền sửa nguồn Requirement được kiểm tra riêng. |
 | Scenario | Mã, tên, mục tiêu, nhóm, mô tả, tác nhân, tiền điều kiện, luồng/ngoại lệ, kết quả khái quát, dữ liệu/biến thể, cấp/loại, ưu tiên/rủi ro, người phụ trách, nhãn, yêu cầu/tiêu chí/điều kiện và ca liên quan. Quyền tạo, sửa, rà soát và duyệt lấy từ capability được cấu hình. |
-| Test Case | Mã, tên, mục tiêu, loại/cấp, ưu tiên/rủi ro/ảnh hưởng, tiền/hậu điều kiện, Step ID, hành động/dữ liệu/kết quả từng bước, dataset/bước dùng lại, BDD khi có, Scenario, yêu cầu/tiêu chí, nguồn, người sở hữu, kỹ năng, tự động hóa và phiên bản/duyệt. Quyền quản lý định nghĩa và quyền ghi nhận xét/kết quả là các capability riêng. |
+| Test Case | Mã, tên, mục tiêu, loại/cấp, ưu tiên/rủi ro, tiền/hậu điều kiện, Step ID, hành động/dữ liệu/kết quả từng bước, dataset, BDD khi có, Scenario, yêu cầu/tiêu chí, nguồn, người sở hữu, tự động hóa và phiên bản/duyệt. Quyền quản lý định nghĩa và quyền ghi nhận xét/kết quả là các capability riêng. |
 | Chuẩn bị | Kiểm tra kế hoạch/phiên bản ca, môi trường, build, dữ liệu, tài khoản/công cụ, người chạy và điều kiện bắt đầu. Ngoại lệ có lý do và người quyết định. |
 | Test Run | Kế hoạch/snapshot, ca phiên bản, build/release/môi trường, phân công thực thi, lịch, từng kết quả/bước, Actual Result, bằng chứng, thời gian, lý do bị chặn/bỏ qua, Defect và lượt chạy lại. |
 | Defect | Mã, mô tả, bước tái hiện, Expected/Actual, severity/priority, build/môi trường, bằng chứng, người báo/xử lý, workflow, retest và liên kết nguồn/ca/lượt chạy. |
 | Báo cáo | Báo cáo trạng thái trong lúc chạy; báo cáo hoàn tất có phạm vi, các lượt/build/môi trường được tính, kết quả/độ phủ, điều kiện kết thúc, lỗi/rủi ro còn lại, ngoại lệ, bàn giao, kết luận và người duyệt. |
 
-Người phụ trách Test Case và người thực thi trong Test Run là hai thông tin riêng. Đề xuất nhân sự xét năng lực có bằng chứng, kinh nghiệm, khả dụng, tải, lịch và giới hạn phân bổ; tên vai trò không thay thế bằng chứng hoặc điều kiện quyền. Ở cấp Test Plan/dự án, phép tính nguồn lực còn xét độ phức tạp, rủi ro, phạm vi, thời hạn, giá trị/giá khách hàng, ngân sách và chi phí nhân công theo bảng lương có hiệu lực. Đơn giá là dữ liệu chi phí, không phải bằng chứng về năng lực. Người được cấp capability tương ứng quyết định chấp nhận hoặc thay đổi đề xuất. Quyền quản trị nền tảng không tự cấp capability nghiệp vụ trong dự án.
+Người phụ trách Test Case và người thực thi trong Test Run là hai thông tin riêng; người dùng chọn thủ công theo thành viên dự án và quyền hiện có. Veriq không đề xuất người phụ trách bằng AI hoặc dựa trên hồ sơ kỹ năng.
 
 ## Nguồn đầu vào và tính đầy đủ
 
@@ -73,16 +73,9 @@ Role ID trong mỗi dự án là dữ liệu cấu hình, không phải danh sá
 
 Các bảng role cụ thể trong phần **Bằng chứng và trạng thái triển khai** bên dưới là kết quả kiểm tra ở những thời điểm và fixture đã ghi, không phải danh mục role cố định cho sản phẩm. Hợp đồng hiện tại là capability do access policy định nghĩa.
 
-## Luồng phiếu làm rõ Requirement
+## Câu hỏi làm rõ trong lượt AI
 
-1. Người có capability quản lý phân tích Requirement tạo phiếu gắn với đúng Requirement, phiên bản và nguồn cụ thể như tiêu chí chấp nhận, quy tắc nghiệp vụ hoặc API operation. Phiếu lưu câu hỏi, lý do và trích dẫn nguồn.
-2. Người được giao trách nhiệm cung cấp thông tin trả lời phiếu. Trả lời chỉ ghi nhận nội dung cần làm rõ, không tự sửa Requirement hoặc xác nhận phiếu.
-3. Người có capability rà soát đối chiếu phản hồi. Nếu Requirement đang `IN_REVIEW`, họ yêu cầu cập nhật để đưa đúng phiên bản về `DRAFT`; nếu đã là `DRAFT`, yêu cầu cập nhật gắn với revision hiện tại, có lý do và audit.
-4. Người có capability sửa Requirement cập nhật đúng nội dung được nêu trong phiếu rồi lưu bản nháp. Với Requirement đã chốt chuẩn, việc chỉnh sửa phải thực hiện trên phiên bản mới; không sửa đè phiên bản chuẩn.
-5. Người rà soát đối chiếu lại đúng nguồn của phiếu trên phiên bản hiện tại và cung cấp trích dẫn bằng chứng. Backend chỉ chấp nhận trích dẫn khớp nguồn tương ứng; trích dẫn từ tiêu chí khác không thể giải quyết phiếu này. Nếu chưa đạt, họ có thể yêu cầu cập nhật tiếp.
-6. Sau khi nội dung cần thiết được làm rõ, người có capability gửi Requirement rà soát; người có capability duyệt độc lập với tác giả/sửa revision phê duyệt theo policy. Tạo phiếu, trả lời, yêu cầu sửa, xác nhận bằng chứng, gửi rà soát và phê duyệt đều do người dùng chủ động thực hiện; Agent không tự chạy xuyên suốt.
-
-Các thao tác kiểm tra revision, chuyển `IN_REVIEW` về `DRAFT`, cập nhật phiếu và audit phải nằm trong transaction để không tạo trạng thái dở dang. Xung đột revision trả lỗi để tải lại, không ghi đè nội dung mới hơn.
+AI có thể hỏi người đang thao tác trực tiếp trong lượt chạy khi nguồn hiện có chưa đủ căn cứ. Câu trả lời được lưu cùng lượt AI và được xem là thông tin do người dùng cung cấp, không biến thành trích dẫn nguồn, không tự sửa Requirement và không thay thế bước rà soát/phê duyệt theo quyền dự án. Veriq không dùng Phiếu làm rõ như một tài sản hoặc quy trình duyệt riêng.
 
 ## Thay đổi giao diện và API
 
@@ -474,7 +467,7 @@ Test Plan được mở nháp sớm để định nghĩa mục tiêu, phạm vi,
 
 | Mảng | Đã thấy trong mã hiện tại | Khoảng trống hoặc giới hạn cần giữ rõ |
 | --- | --- | --- |
-| Dự án và kế hoạch công việc | Project, Work Item, List/Board, Scrum Sprint, lịch/lộ trình và tiến độ có API/giao diện. | Không được dùng nhãn phương thức thay cho cách xem. Kiểm tra đồng nhất List/Board/Timeline và workflow theo dự án vẫn là một hạng mục nghiệm thu riêng. |
+| Dự án và kế hoạch công việc | Màn hình Work Item, List/Board, Sprint và Roadmap đã được gỡ; dự án giữ thông tin thành viên, cài đặt và tiến độ tổng hợp. | Quy trình kiểm thử tiếp tục dùng Test Plan, Test Scenario, Test Case, Test Run và báo cáo. |
 | Tài liệu và Requirement | Nhập tệp, phân tích/tóm tắt, quyền đọc/AI, khối nguồn, Requirement nháp, rà soát/duyệt, phiên bản, tiêu chí và câu hỏi làm rõ có module tương ứng. | Có file/API không chứng minh mọi định dạng, trang, bảng, hình, OCR hoặc trích dẫn đã đầy đủ. Import, tệp dài, quyền thu hồi và khôi phục worker cần được nghiệm thu theo nguồn thật. |
 | Test Plan | Tạo/sửa/duyệt, snapshot, điều kiện, lịch, nguồn lực, dữ liệu, Defect và ước lượng được biểu diễn trong module hiện hữu. | Trước khi duyệt phải chỉ rõ trường thiếu, phiên bản Requirement và phạm vi chưa chốt. Không tự điền lịch, chi phí, tiêu chí phát hành hoặc năng lực khi chưa có căn cứ. |
 | Phân tích/Scenario/Test Case | Phân tích điều kiện, Scenario, Test Case, preview AI, so sánh/duyệt, revision, bulk review, dữ liệu kiểm thử và truy vết có API/UI. | Test Case mới cần được kiểm chứng qua thao tác ghép và duyệt trên trình duyệt. Dữ liệu cũ thiếu Scenario/trace không thể được xem như đã đủ bao phủ. |

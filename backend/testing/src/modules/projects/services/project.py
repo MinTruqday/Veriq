@@ -21,7 +21,6 @@ from src.core.common import (
     optimistic_patch,
     resolve_user_reference,
 )
-from src.modules.projects.services.project_progress import task_summaries
 from src.core.project_settings import resolve_project_settings, validate_project_settings
 from src.modules.projects.services.project_responsibilities import (
     assignable_responsibilities,
@@ -254,7 +253,6 @@ class ProjectService:
             )
         return {
             **project,
-            "task_summary": {"total": 0, "completed": 0, "in_progress": 0, "blocked": 0, "cancelled": 0, "applicable_total": 0, "completion_percent": None},
             "current_membership": creator_membership,
             "current_permissions": sorted(project_membership_permissions(project, creator_membership, user.is_system_admin)),
         }
@@ -280,7 +278,6 @@ class ProjectService:
                 {"key": {"$regex": query_text, "$options": "i"}},
             ]
         projects = await project_repository.list_projects(query, limit)
-        summaries = await task_summaries([project["_id"] for project in projects])
         owner_ids = {
             project["_id"]: project["project_owner_user_id"]
             for project in projects
@@ -325,7 +322,6 @@ class ProjectService:
                     else None
                 ),
                 "project_completion_percent": int(project.get("project_completion_percent", 0)),
-                "task_summary": summaries.get(project["_id"]),
             }
             for project in projects
         ]
@@ -366,7 +362,6 @@ class ProjectService:
                 or not owner_account.get("is_active")
                 or owner_account.get("system_role") != "USER"
             )
-        summaries = await task_summaries([project_id])
         lead_identity = (
             await load_user_identities([project["project_lead_user_id"]])
             if project.get("project_lead_user_id")
@@ -376,7 +371,6 @@ class ProjectService:
             **project_access(project, membership, grant, user, owner_support_available),
             "project_lead_label": lead_identity.get("label") or lead_identity.get("email"),
             "project_completion_percent": int(project.get("project_completion_percent", 0)),
-            "task_summary": summaries[project_id],
         }
 
     @staticmethod

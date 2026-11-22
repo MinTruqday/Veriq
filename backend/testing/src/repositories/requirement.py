@@ -431,19 +431,6 @@ class RequirementRepository:
         )
         return result.matched_count == 1
 
-    async def bump_clarification_gate_revision(
-        self, version_id, project_id, session=None, expected_revision=None
-    ):
-        query = {"_id": version_id, "project_id": project_id}
-        if expected_revision is not None:
-            query["revision"] = expected_revision
-        result = await database.value.requirement_versions.update_one(
-            query,
-            {"$inc": {"clarification_gate_revision": 1}},
-            **({"session": session} if session is not None else {}),
-        )
-        return result.matched_count == 1
-
     async def baseline_version(self, version_id, project_id, revision, source_status, changes, session=None):
         return await database.value.requirement_versions.find_one_and_update(
             {

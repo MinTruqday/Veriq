@@ -21,7 +21,6 @@ import RequirementQualityPanel from "./requirements/RequirementQualityPanel";
 import RequirementSourceDocumentsPanel from "./requirements/RequirementSourceDocumentsPanel";
 import RequirementTracePanel from "./requirements/RequirementTracePanel";
 import RequirementsListPanel from "./requirements/RequirementsListPanel";
-import RequirementClarificationPanel from "./requirements/RequirementClarificationPanel";
 import { PROJECT_SECTION_SLUGS, projectRoute } from "../../routes";
 import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
 import {
@@ -421,8 +420,8 @@ export default function RequirementsPage({ project, section, workspaceView }) {
     setError("");
   }, [project._id]);
   useEffect(() => {
-    setDetailTab(workspaceView === "clarifications" ? "clarifications" : "requirement");
-  }, [routeSelected?._id, workspaceView]);
+    setDetailTab("requirement");
+  }, [routeSelected?._id]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -1644,7 +1643,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
   };
   const detailTabs = [
     { id: "requirement", label: "Yêu cầu" },
-    ...(can("requirement.read") ? [{ id: "clarifications", label: "Phiếu làm rõ" }] : []),
     { id: "history", label: "Lịch sử và rà soát" },
   ];
   const activeDetailTab = detailTabs.some((item) => item.id === detailTab)
@@ -1652,13 +1650,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
     : detailTabs[0].id;
   return (
     <WorkspacePage
-      title={
-        routeSelected
-          ? current?.title || selected.requirement_key
-          : workspaceView === "clarifications"
-            ? "Phiếu làm rõ yêu cầu"
-            : "Yêu cầu"
-      }
+      title={routeSelected ? current?.title || selected.requirement_key : "Yêu cầu"}
       description={
         routeSelected
           ? `${selected.requirement_key}${current?.version ? ` · Phiên bản ${current.version}` : ""}`
@@ -1740,7 +1732,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
               can={can}
               checkingWithAi={checkingWithAi}
               onCheckWithAI={checkRequirementWithAI}
-              onOpenClarifications={() => setDetailTab("clarifications")}
               saveDraft={saveDraft}
               onCreateVersion={createVersion}
               onSplit={splitBaseline}
@@ -1757,25 +1748,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
               draftDirty={draftDirty}
               recheckingAI={checkingWithAi}
               onRecheckAI={can("ai.run_lint") ? checkRequirementWithAI : null}
-              onOpenClarifications={
-                can("requirement.read") ? () => setDetailTab("clarifications") : null
-              }
-            />
-          </div>
-          <div className="space-y-6" hidden={activeDetailTab !== "clarifications"}>
-            <RequirementClarificationPanel
-              projectId={project._id}
-              requirementId={routeSelected._id}
-              requirementVersionId={current._id}
-              requirementStatus={current.status}
-              requirementRevision={current.revision}
-              ask={ask}
-              onRequirementChanged={load}
-              onOpenRequirement={async () => {
-                await load();
-                setDetailTab("requirement");
-              }}
-              permissions={project.current_permissions || []}
             />
           </div>
           <div className="space-y-6" hidden={activeDetailTab !== "history"}>
@@ -1827,13 +1799,11 @@ export default function RequirementsPage({ project, section, workspaceView }) {
             onMerge={mergeBaselines}
             onBulkArchive={bulkArchiveRequirements}
             onSelect={(item) => {
-              const sectionSlug =
-                workspaceView === "clarifications"
-                  ? PROJECT_SECTION_SLUGS.clarifications
-                  : PROJECT_SECTION_SLUGS.requirements;
-              window.location.assign(projectRoute(project._id, sectionSlug, item._id));
+              window.location.assign(
+                projectRoute(project._id, PROJECT_SECTION_SLUGS.requirements, item._id),
+              );
             }}
-            title={workspaceView === "clarifications" ? "Chọn yêu cầu" : "Danh sách yêu cầu"}
+            title="Danh sách yêu cầu"
           />
           {!workspaceView && <RequirementDuplicatePanel result={duplicateScan} />}
           {!workspaceView && can("requirement_document.read") && (

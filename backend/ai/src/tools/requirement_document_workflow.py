@@ -27,8 +27,6 @@ from src.tools.testing import (
     compilable_document_ids,
     list_resumable_ai_test_case_drafts,
     normalized_text,
-    requirement_clarification_plan,
-    resolve_answered_clarifications,
     response_items,
 )
 from src.tools.testing_api import ToolOperationError, parse, require_operation
@@ -507,7 +505,6 @@ def classify_requirement_ingestion_outcome(unresolved):
     if not unresolved:
         return "COMPLETED", "COMPLETED", None
     input_reasons = {
-        "REQUIREMENT_CLARIFICATION_REQUIRED",
         "REQUIREMENT_MATCH_NEEDS_RECONCILIATION",
         "HUMAN_REQUIREMENT_REVIEW_REQUIRED",
         "HUMAN_TEST_CASE_REVIEW_REQUIRED",
@@ -538,9 +535,7 @@ def focused_requirement_generation_request(generation_request, missing_criteria)
     }
 
 
-def qa_test_design_handoff_versions(
-    requirements, permissions, clarification_blocked_version_ids
-):
+def qa_test_design_handoff_versions(requirements, permissions):
     if "ai.generate_testcase" in set(permissions):
         return []
     handoffs = []
@@ -550,7 +545,6 @@ def qa_test_design_handoff_versions(
         if (
             not version_id
             or version.get("status") != "BASELINED"
-            or version_id in clarification_blocked_version_ids
         ):
             continue
         criteria = version.get("acceptance_criterion_ids") or [
@@ -996,9 +990,6 @@ async def process_ingested_requirement_document(
         linked_requirement_ids.update(import_job.get("created_requirement_ids", []))
 
     requirements = []
-    clarification_blocked_version_ids = set()
-    clarification_ids = set()
-    clarification_plans = []
     for requirement_id in sorted(linked_requirement_ids):
         requirement = await require_operation("GET", f"/yeu-cau/{requirement_id}", config)
         if requirement.get("project_id") != project_id or not requirement.get("current_version_id"):
@@ -1006,30 +997,6 @@ async def process_ingested_requirement_document(
         current = requirement.get("current_version") or await require_operation(
             "GET", f"/phien-ban-yeu-cau/{requirement['current_version_id']}", config
         )
-        if current.get("status") == "DRAFT":
-            await authorized_source_operation(
-                "POST",
-                f"/phien-ban-yeu-cau/{current['_id']}/phieu-lam-ro/tao-tu-ra-soat",
-            )
-        open_clarifications = await resolve_answered_clarifications(current, config)
-        if open_clarifications:
-            clarification_plans.extend(requirement_clarification_plan(current, open_clarifications))
-            clarification_ids.update(
-                item["_id"] for item in open_clarifications if item.get("_id")
-            )
-            clarification_blocked_version_ids.add(current["_id"])
-            unresolved.append(
-                {
-                    "requirement_id": requirement_id,
-                    "requirement_version_id": current["_id"],
-                    "reason": "REQUIREMENT_CLARIFICATION_REQUIRED",
-                    "clarification_ids": [
-                        item["_id"] for item in open_clarifications if item.get("_id")
-                    ],
-                }
-            )
-            requirements.append({"requirement": requirement, "version": current})
-            continue
         if current.get("status") != "BASELINED":
             unresolved.append({
                 "requirement_id": requirement["_id"],
@@ -1051,7 +1018,6 @@ async def process_ingested_requirement_document(
         item
         for item in requirements
         if item.get("version", {}).get("_id")
-        and item["version"].get("_id") not in clarification_blocked_version_ids
     ]
     review_required_version_ids = [
         str(item["version"]["_id"])
@@ -1277,11 +1243,7 @@ async def process_ingested_requirement_document(
     generation_warnings = []
     unapplied_categories = []
     qa_test_design_handoff_version_ids = (
-        qa_test_design_handoff_versions(
-            requirements,
-            permissions,
-            clarification_blocked_version_ids,
-        )
+        qa_test_design_handoff_versions(requirements, permissions)
         if configurable.get("allow_test_design_handoff") is True else []
     )
     versions_by_id = {
@@ -1318,7 +1280,6 @@ async def process_ingested_requirement_document(
         version_id = str(version.get("_id") or "")
         if (
             configurable.get("allow_test_case_generation") is not True
-            or version_id in clarification_blocked_version_ids
             or version.get("status") != "BASELINED"
             or "ai.generate_testcase" not in permissions
             or "testcase.create" not in permissions
@@ -1557,8 +1518,6 @@ async def process_ingested_requirement_document(
         "test_case_draft_ids": [item["_id"] for item in created_drafts],
         "workflow_stages": workflow_stages,
         "updated_requirement_version_ids": sorted(updated_requirement_versions),
-        "clarification_ids": sorted(clarification_ids),
-        "clarification_plan": clarification_plans,
         "maintenance_results": maintenance_results,
         "skipped_duplicate_count": skipped_duplicates,
         "generation_warnings": list(dict.fromkeys(generation_warnings)),

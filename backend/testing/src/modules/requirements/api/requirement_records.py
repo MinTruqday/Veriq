@@ -12,22 +12,6 @@ from src.schemas.contracts.requirements import (
     RequirementVersionCreate,
     ReviewTransitionInput,
 )
-from src.schemas.contracts.requirement_clarification import (
-    RequirementClarificationAnswer,
-    RequirementClarificationChangeRequest,
-    RequirementClarificationCreate,
-    RequirementClarificationDecision,
-    RequirementClarificationResolution,
-)
-from src.modules.requirements.services.requirement_clarifications import (
-    answer_clarification,
-    create_clarification,
-    decide_clarification,
-    generate_clarifications,
-    list_clarifications,
-    request_clarification_changes,
-    resolve_clarification,
-)
 from src.modules.requirements.services.requirement_dependencies import add_dependency, remove_dependency
 from src.modules.requirements.services.requirement_lifecycle import (
     baseline_requirement,
@@ -62,68 +46,6 @@ async def accept_requirement_technical_review(
     )
     return envelope(version, revision=version["revision"])
 
-
-@router.get("/phien-ban-yeu-cau/{requirement_version_id}/phieu-lam-ro")
-async def requirement_clarification_list(
-    requirement_version_id: str, user: CurrentUser = Depends(get_current_user)
-):
-    return envelope(await list_clarifications(requirement_version_id, user))
-
-
-@router.post("/phien-ban-yeu-cau/{requirement_version_id}/phieu-lam-ro/tao-tu-ra-soat", status_code=201)
-async def create_clarifications_from_review(
-    requirement_version_id: str, user: CurrentUser = Depends(get_current_user)
-):
-    return envelope(await generate_clarifications(requirement_version_id, user))
-
-
-@router.post("/phien-ban-yeu-cau/{requirement_version_id}/phieu-lam-ro", status_code=201)
-async def create_requirement_clarification(
-    requirement_version_id: str,
-    payload: RequirementClarificationCreate,
-    user: CurrentUser = Depends(get_current_user),
-):
-    return envelope(await create_clarification(requirement_version_id, payload, user), revision=1)
-
-
-@router.patch("/phieu-lam-ro/{clarification_id}/tra-loi")
-async def answer_requirement_clarification(
-    clarification_id: str,
-    payload: RequirementClarificationAnswer,
-    user: CurrentUser = Depends(get_current_user),
-):
-    value = await answer_clarification(clarification_id, payload, user)
-    return envelope(value, revision=value["revision"])
-
-
-@router.post("/phieu-lam-ro/{clarification_id}/yeu-cau-cap-nhat")
-async def request_requirement_clarification_changes(
-    clarification_id: str,
-    payload: RequirementClarificationChangeRequest,
-    user: CurrentUser = Depends(get_current_user),
-):
-    value = await request_clarification_changes(clarification_id, payload, user)
-    return envelope(value, revision=value["clarification"]["revision"])
-
-
-@router.post("/phieu-lam-ro/{clarification_id}/xac-nhan-giai-quyet")
-async def resolve_requirement_clarification(
-    clarification_id: str,
-    payload: RequirementClarificationResolution,
-    user: CurrentUser = Depends(get_current_user),
-):
-    value = await resolve_clarification(clarification_id, payload, user)
-    return envelope(value, revision=value["revision"])
-
-
-@router.patch("/phieu-lam-ro/{clarification_id}/quyet-dinh")
-async def decide_requirement_clarification(
-    clarification_id: str,
-    payload: RequirementClarificationDecision,
-    user: CurrentUser = Depends(get_current_user),
-):
-    value = await decide_clarification(clarification_id, payload, user)
-    return envelope(value, revision=value["revision"])
 
 @router.post("/du-an/{project_id}/yeu-cau", status_code=201)
 async def create_requirement(

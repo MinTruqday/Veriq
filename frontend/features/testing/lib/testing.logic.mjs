@@ -231,7 +231,6 @@ const valueLabels = {
   report_new_version_created: "Tạo phiên bản báo cáo",
   report_delivery_access_changed: "Cập nhật quyền người nhận báo cáo",
   report_settings_updated: "Cập nhật cấu hình báo cáo",
-  report_schedule_created: "Tạo lịch báo cáo",
   report_ai_sections_applied: "Áp dụng nội dung AI đã chọn vào báo cáo",
   user_login: "Đăng nhập thành công",
   LOGIN_SUCCESS: "Đăng nhập thành công",
@@ -251,7 +250,6 @@ const valueLabels = {
   ADMIN_USER_SESSIONS_REVOKED: "Thu hồi mọi phiên đăng nhập",
   ADMIN_USER_SESSION_REVOKED: "Thu hồi phiên đăng nhập",
   ADMIN_USER_SESSIONS_VIEWED: "Xem các phiên đăng nhập",
-  ADMIN_USER_PASSKEYS_RESET: "Đặt lại khóa truy cập",
   ADMIN_USER_ACTIVATION_RESENT: "Gửi lại hướng dẫn kích hoạt",
   ADMIN_USER_ANONYMIZED: "Ẩn danh tài khoản",
   ADMIN_USER_BULK_COMPLETED: "Hoàn tất thao tác hàng loạt",
@@ -267,7 +265,6 @@ const valueLabels = {
   CREATE_REQUIREMENT_CANDIDATES: "Đề xuất yêu cầu",
   CREATE_TEST_CASE_CANDIDATES: "Đề xuất ca kiểm thử",
   CREATE_FINDINGS: "Phát hiện điểm thiếu hoặc mâu thuẫn",
-  REQUEST_CLARIFICATION: "Tạo câu hỏi làm rõ",
   PROPOSE_ASSIGNMENT: "Đề xuất người thực hiện",
   PROPOSE_TRANSITION: "Đề xuất chuyển trạng thái",
   RUN_CHANGE_SIMULATION: "Phân tích ảnh hưởng khi yêu cầu thay đổi",
@@ -309,7 +306,6 @@ const valueLabels = {
   "requirement_document.ai_read_revocation_pending": "Đang thu hồi quyền AI đọc tài liệu",
   "requirement_document.ai_read_event_cancellation_pending": "Đang hủy tác vụ AI đọc tài liệu",
   requirement_created: "Đã tạo yêu cầu từ tài liệu",
-  requirement_clarification_created: "Đã tạo phiếu làm rõ yêu cầu",
   requirement_quality_analyzed: "Đã đánh giá chất lượng yêu cầu",
   requirement_review_submitted: "Đã gửi yêu cầu để rà soát",
   requirement_version_baselined: "Đã chốt phiên bản yêu cầu",
@@ -362,12 +358,10 @@ const valueLabels = {
   TestSuite: "Bộ kiểm thử",
   TestRun: "Lần chạy kiểm thử",
   TestPlan: "Kế hoạch kiểm thử",
-  TestStrategy: "Chiến lược kiểm thử",
   TestCaseVersion: "Phiên bản ca kiểm thử",
   RequirementVersion: "Phiên bản yêu cầu",
   RequirementTemplate: "Mẫu yêu cầu",
   RequirementDocument: "Tài liệu yêu cầu",
-  RequirementClarification: "Phiếu làm rõ yêu cầu",
   AIResult: "Kết quả AI",
   Requirement: "Yêu cầu",
   APIImport: "Đặc tả API",
@@ -380,7 +374,6 @@ const valueLabels = {
   test_case_approved: "Duyệt ca kiểm thử",
   test_case_draft_created: "Tạo bản nháp ca kiểm thử",
   defect_created: "Ghi nhận lỗi",
-  project_task_created: "Tạo công việc dự án",
   project_completion_percent_updated: "Cập nhật tiến độ dự án",
   requirement_import_confirmed: "Xác nhận nhập yêu cầu",
   requirement_import_previewed: "Xem trước dữ liệu yêu cầu",
@@ -394,7 +387,6 @@ const valueLabels = {
   requirement_review_submitted: "Gửi yêu cầu để rà soát",
   requirement_version_baselined: "Chốt phiên bản yêu cầu làm mốc",
   TestCaseDraft: "Bản nháp ca kiểm thử",
-  ProjectTask: "Công việc dự án",
   RequirementImport: "Lần nhập yêu cầu",
   requirement_document_reindexed: "Lập chỉ mục lại tài liệu yêu cầu",
   knowledge_source_created: "Tạo tài liệu tham chiếu",
@@ -576,9 +568,9 @@ export function messageOf(reason) {
   if (documentDuplicateMessages[reason?.code]) return documentDuplicateMessages[reason.code];
   const defectClassificationMessages = {
     DEFECT_CLASSIFICATION_POLICY_REQUIRED:
-      "Hãy cấu hình và phê duyệt thang mức độ cùng thang ưu tiên trong chiến lược kiểm thử trước khi ghi nhận lỗi.",
+      "Thang mức độ và thang ưu tiên của dự án chưa được cấu hình.",
     DEFECT_CLASSIFICATION_NOT_CONFIGURED:
-      "Mức độ hoặc mức ưu tiên đã chọn không thuộc chiến lược kiểm thử đang có hiệu lực. Hãy tải lại danh sách lựa chọn.",
+      "Mức độ hoặc mức ưu tiên chưa được cấu hình cho dự án. Hãy tải lại danh sách lựa chọn.",
   };
   if (defectClassificationMessages[reason?.code]) {
     return defectClassificationMessages[reason.code];
@@ -736,10 +728,6 @@ export function messageOf(reason) {
       "Một mục truy vết không còn hợp lệ trong nguồn đã chọn. Tải lại yêu cầu và chọn lại.",
     IDEMPOTENCY_RECEIPT_INCOMPLETE:
       "Chưa xác minh được kết quả lần lưu trước. Tải lại dữ liệu trước khi thử lại để tránh ghi trùng.",
-    REUSABLE_TEST_STEP_NOT_FOUND:
-      "Không tìm thấy bước kiểm thử dùng lại. Tải lại thư viện bước rồi chọn lại.",
-    TEST_REPOSITORY_NODE_NOT_FOUND:
-      "Không tìm thấy thư mục ca kiểm thử. Tải lại cấu trúc kho rồi chọn lại.",
     INVALID_STATE_TRANSITION:
       "Trạng thái đã thay đổi nên thao tác này không còn phù hợp. Tải lại dữ liệu rồi thử lại.",
     PROJECT_RESPONSIBILITY_REQUIRED:
@@ -773,13 +761,6 @@ export function messageOf(reason) {
       "Người tạo hoặc sửa báo cáo hoàn tất rà soát không thể tự duyệt báo cáo đó.",
     PROJECT_MISMATCH:
       "Mục đã chọn không thuộc dự án hiện tại. Tải lại dữ liệu và chọn mục trong đúng dự án.",
-    CLARIFICATION_ANSWER_REQUIRED: "Cần có câu trả lời trước khi yêu cầu cập nhật Requirement.",
-    CLARIFICATION_VERSION_NOT_EDITABLE:
-      "Requirement không còn ở bản nháp hoặc đang rà soát. Tạo phiên bản mới để tiếp tục xử lý phiếu.",
-    CLARIFICATION_UPDATE_REQUEST_REQUIRED:
-      "Cần yêu cầu cập nhật trên phiên bản hiện tại trước khi xác nhận phiếu làm rõ.",
-    RESOLUTION_EVIDENCE_NOT_FOUND:
-      "Trích dẫn chưa khớp nguồn được nêu trong phiếu. Đối chiếu đúng tiêu chí rồi nhập bằng chứng từ tiêu chí đó.",
     VERIFIED_REQUIREMENT_EVENT_REQUIRED:
       "Chỉ có thể phân tích yêu cầu đã được xác minh. Mở yêu cầu và hoàn tất bước rà soát trước.",
     TEST_CONDITION_EVENT_KEY_INVALID:

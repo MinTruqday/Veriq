@@ -57,7 +57,6 @@ import {
 } from "./test-design/testCaseApproval.logic.mjs";
 import TestCaseTransferPanel from "./test-design/TestCaseTransferPanel";
 import { canUseAssignedDraft, testDesignAccess } from "./test-design/testDesignAccess.logic.mjs";
-import TestRepositoryPanel from "./test-design/TestRepositoryPanel";
 import {
   createDataSetForm,
   createScenarioForm,
@@ -115,7 +114,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
   const [suites, setSuites] = useState([]);
   const [suiteSearch, setSuiteSearch] = useState("");
   const [testSetDialog, setTestSetDialog] = useState(null);
-  const [repositoryNodes, setRepositoryNodes] = useState([]);
   const [projectMembers, setProjectMembers] = useState([]);
   const [projectMembersUnavailable, setProjectMembersUnavailable] = useState(false);
   const [selectedTestIds, setSelectedTestIds] = useState([]);
@@ -255,7 +253,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
       setTests([]);
       setSuites([]);
       setSuiteSearch("");
-      setRepositoryNodes([]);
       setProjectMembers([]);
       setProjectMembersUnavailable(false);
       setApiArtifacts([]);
@@ -291,7 +288,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
         draftValues,
         testValues,
         suiteValues,
-        repositoryValues,
         apiArtifactValues,
         operationValues,
         memberResult,
@@ -324,7 +320,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
         (showCases || workspaceView === "test-sets") && permissions.includes("testsuite.read")
           ? testingApi.listSuites(project._id)
           : Promise.resolve([]),
-        access.canLoadRepository ? testingApi.listTestRepository(project._id) : Promise.resolve([]),
         showApi && permissions.includes("apiartifact.read")
           ? testingApi.listApiArtifacts(project._id)
           : Promise.resolve([]),
@@ -358,7 +353,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
       setTests(testValues.items);
       setTestPageInfo(testValues);
       setSuites(suiteValues);
-      setRepositoryNodes(repositoryValues);
       setProjectMembers((memberResult.items || []).filter((item) => item.status === "ACTIVE"));
       setProjectMembersUnavailable(memberResult.unavailable);
       setApiArtifacts(apiArtifactValues);
@@ -402,7 +396,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
     }
   }, [
     access.canLoadDrafts,
-    access.canLoadRepository,
     access.canLoadTestCases,
     canReadTestData,
     initialDataLoaded,
@@ -506,7 +499,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
       requirementVersionIds: selectedDraft.requirement_version_ids || [],
       acceptanceCriterionIds: selectedDraft.acceptance_criterion_ids || [],
       coverageItemIds: selectedDraft.coverage_item_ids || [],
-      repositoryNodeId: selectedDraft.repository_node_id || "",
       bdd: selectedDraft.bdd
         ? {
             feature: selectedDraft.bdd.feature || "",
@@ -633,7 +625,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
         attachments: [],
         data_set_version_ids: form.dataSetVersionIds,
         test_condition_ids: form.testConditionIds,
-        repository_node_id: form.repositoryNodeId || null,
         requirement_version_ids: form.requirementVersionIds,
         acceptance_criterion_ids: form.acceptanceCriterionIds,
         coverage_item_ids: form.coverageItemIds,
@@ -1041,23 +1032,21 @@ export default function TestDesignPage({ project, workspaceView, section }) {
   }, [suiteSearch, suites]);
   const pageTitle = linkedCaseId
     ? "Chi tiết ca kiểm thử"
-    : workspaceView === "repository"
-      ? "Kho kiểm thử"
-      : workspaceView === "" || workspaceView === "cases"
-        ? {
-            cases: "Ca kiểm thử",
-            "agent-runs": "Hoạt động AI",
-            scenarios: "Kịch bản kiểm thử",
-            templates: "Mẫu ca kiểm thử",
-            automation: "Mã kiểm thử tự động",
-            api: "Tích hợp API",
-            import: "Nhập và xuất ca kiểm thử",
-          }[caseTab]
-        : workspaceView === "test-data"
-            ? "Dữ liệu kiểm thử"
-            : workspaceView === "test-sets"
-              ? "Bộ kiểm thử"
-              : "Thiết kế kiểm thử";
+    : workspaceView === "" || workspaceView === "cases"
+      ? {
+          cases: "Ca kiểm thử",
+          "agent-runs": "Hoạt động AI",
+          scenarios: "Kịch bản kiểm thử",
+          templates: "Mẫu ca kiểm thử",
+          automation: "Mã kiểm thử tự động",
+          api: "Tích hợp API",
+          import: "Nhập và xuất ca kiểm thử",
+        }[caseTab]
+      : workspaceView === "test-data"
+        ? "Dữ liệu kiểm thử"
+        : workspaceView === "test-sets"
+          ? "Bộ kiểm thử"
+          : "Thiết kế kiểm thử";
   if (initialLoading || initialLoadFailed) {
     return (
       <WorkspacePage title={pageTitle} actions={<ProjectCrumb projectId={project._id} />}>
@@ -1093,7 +1082,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
               setForm={setForm}
               dataSets={dataSets}
               testConditions={testConditions}
-              repositoryNodes={repositoryNodes}
               requirements={requirements}
               scenarios={availableScenarios}
               scenarioRequired={!canCreateUnassignedCase}
@@ -1186,7 +1174,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
           <WorkspaceSectionNav
             current={
               {
-                repository: "test-repository",
                 cases: "test-cases",
                 "test-data": "test-data",
                 "test-sets": "test-sets",
@@ -1969,7 +1956,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                 <option value="">Mọi ưu tiên</option>
                 {[
                   ...new Set([
-                    ...strategyPriorityLevels,
                     ...tests
                       .map((item) => item.current_version?.priority || item.priority)
                       .filter(Boolean),
@@ -2806,29 +2792,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                   value={draftEdit.dataSetVersionIds}
                   onChange={(dataSetVersionIds) => changeDraftEdit({ dataSetVersionIds })}
                 />
-                <label className="field-label">
-                  Thư mục kho ca kiểm thử
-                  <select
-                    className="apple-input mt-2"
-                    aria-label="Thư mục kho ca kiểm thử của bản nháp"
-                    value={draftEdit.repositoryNodeId || ""}
-                    onChange={(event) => changeDraftEdit({ repositoryNodeId: event.target.value })}
-                  >
-                    <option value="">
-                      {selectedDraft.repository_node_id
-                        ? "Giữ nguyên thư mục hiện tại"
-                        : "Thư mục gốc (hiện tại)"}
-                    </option>
-                    {repositoryNodes.map((node) => (
-                      <option key={node._id} value={node._id}>
-                        {node.name}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="mt-1 block text-sm text-ink-muted">
-                    Chọn thư mục để phân loại bản nháp; để trống giữ nguyên vị trí hiện tại.
-                  </span>
-                </label>
                 <MultiSelect
                   label="Điều kiện kiểm thử đã phê duyệt"
                   options={testConditions.map((item) => ({
@@ -3170,15 +3133,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
           ask={ask}
           reload={load}
           onError={setError}
-        />
-      )}
-      {access.canRenderRepository && (
-        <TestRepositoryPanel
-          project={project}
-          can={can}
-          ask={ask}
-          onError={setError}
-          focus={workspaceView}
         />
       )}
       {workspaceView === "test-sets" && access.canReadTestSets && (

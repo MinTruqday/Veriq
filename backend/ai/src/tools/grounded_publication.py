@@ -74,7 +74,6 @@ def _same_authored_test_case_content(draft, version):
         "coverage_item_ids": [],
         "test_condition_ids": [],
         "scenario_id": None,
-        "repository_node_id": None,
         "bdd": None,
         "evidence_refs": [],
         "evidence_quotes": [],
