@@ -139,6 +139,11 @@ class TestingCapabilityResult(BaseModel):
     summary: str = Field(default="", max_length=1500)
     improvement_suggestions: List[str] = Field(default_factory=list, max_length=30)
     semantic_matches: List[dict[str, Any]] = Field(default_factory=list, max_length=1000)
+    clarifications: List[dict[str, Any]] = Field(
+        default_factory=list,
+        max_length=100,
+        description="Evidence-grounded clarification questions produced by AI capabilities",
+    )
     readiness: str | None = None
     conflicts: List[dict[str, Any]] = Field(default_factory=list, max_length=100)
     context: dict[str, Any] = Field(default_factory=dict)

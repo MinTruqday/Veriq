@@ -104,9 +104,15 @@ class ExtractedAgentFact(BaseModel):
 
 class AgentUncertainty(BaseModel):
     code: str = Field(min_length=1)
+    question: str = ""
     reason: str = Field(min_length=1)
     evidence_refs: list[str] = Field(default_factory=list)
     blocking: bool = True
+    response_allowed: bool = True
+    resolution_status: Literal["OPEN", "USER_ANSWERED"] = "OPEN"
+    answer: str | None = Field(default=None, max_length=4000)
+    answered_by: str | None = Field(default=None, max_length=200)
+    answered_at: datetime | None = None
 
 
 class AgentFactExtraction(BaseModel):
@@ -178,6 +184,20 @@ class ChangeSimulationInput(BaseModel):
 
 class AIRunRetryRequest(BaseModel):
     expected_revision: int = Field(ge=1)
+
+
+class AIRunClarificationResponseRequest(BaseModel):
+    expected_revision: int = Field(ge=1)
+    uncertainty_code: str = Field(min_length=1, max_length=160)
+    answer: str = Field(min_length=1, max_length=4000)
+
+    @field_validator("uncertainty_code", "answer")
+    @classmethod
+    def reject_blank_clarification_values(cls, value):
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("clarification_value_must_not_be_blank")
+        return normalized
 
 
 class AIRunCancelRequest(BaseModel):

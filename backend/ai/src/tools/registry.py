@@ -313,6 +313,12 @@ async def invoke_tool(
                     ),
                     "tool_name": tool_name,
                 }
+            configurable["clarification_responses"] = list(
+                (getattr(active_run, "constraints", None) or {}).get(
+                    "clarification_responses"
+                )
+                or []
+            )
             if active_run.intent == "process_ingested_requirement_document":
                 configurable["allow_test_case_generation"] = True
                 configurable["allow_test_design_handoff"] = False

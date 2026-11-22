@@ -3,6 +3,7 @@ import hashlib
 import json
 import re
 import time
+from datetime import datetime, timezone
 
 import httpx
 import jwt
@@ -18,10 +19,12 @@ from src.runtime.queue_names import AI_RUN_QUEUE
 from src.schemas.agent import AIRunRequest, RequirementDocumentRunRequest
 from src.schemas.ai_runs import (
     AIRunPhase,
+    AIRunClarificationResponseRequest,
     AIRunKind,
     AIRun,
     AIRunStatus,
     AIRunTrigger,
+    EvidenceItem,
 )
 from src.services.project_access import project_access
 from src.tools.registry import agent_available_tools, registered_tools, tool_access
@@ -313,6 +316,197 @@ class AIRunService:
                 phase=AIRunPhase.FINALIZED,
                 detail={"reason_code": "AI_RUN_QUEUE_UNAVAILABLE", "retryable": True},
                 state_snapshot=resume_snapshot,
+            )
+            if not degraded:
+                raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
+            return degraded
+        return updated
+
+    async def provide_clarification(
+        self,
+        run: AIRun,
+        payload: AIRunClarificationResponseRequest,
+        responder_user_id: str,
+    ) -> AIRun:
+        if not (run.constraints or {}).get("user_requested"):
+            raise HTTPException(status_code=409, detail={"code": "AGENT_REQUEST_REQUIRED"})
+        if run.revision != payload.expected_revision:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "REVISION_CONFLICT", "latest": run.model_dump(mode="json")},
+            )
+        if run.status != AIRunStatus.AWAITING_INPUT:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "AI_RUN_NOT_AWAITING_INPUT"},
+            )
+        checkpoint = await ai_run_repository.latest_checkpoint(run.ai_run_id)
+        snapshot = checkpoint.state_snapshot if checkpoint else None
+        if snapshot is None:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "AI_RUN_CLARIFICATION_CHECKPOINT_MISSING"},
+            )
+        matching_uncertainties = [
+            item
+            for item in snapshot.uncertainties
+            if item.code == payload.uncertainty_code
+            and item.resolution_status == "OPEN"
+        ]
+        if not matching_uncertainties:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "AI_RUN_CLARIFICATION_NOT_OPEN"},
+            )
+        if len(matching_uncertainties) != 1:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "AI_RUN_CLARIFICATION_CODE_AMBIGUOUS"},
+            )
+        uncertainty = matching_uncertainties[0]
+        if not uncertainty.response_allowed:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "AI_RUN_CLARIFICATION_REQUIRES_SOURCE_OR_SYSTEM_RECOVERY"},
+            )
+
+        answered_at = datetime.now(timezone.utc)
+        evidence_ref = "clarification:" + hashlib.sha256(
+            f"{run.ai_run_id}:{payload.uncertainty_code}:{payload.expected_revision + 1}".encode()
+        ).hexdigest()[:48]
+        clarification_evidence = EvidenceItem(
+            artifact_type="ai_run_clarification",
+            artifact_id=evidence_ref,
+            artifact_version_id=evidence_ref,
+            source="user",
+            authority="user_clarification",
+            text=payload.answer,
+            project_id=run.project_id,
+        )
+        resolved_uncertainties = [
+            item.model_copy(
+                update={
+                    "blocking": False,
+                    "resolution_status": "USER_ANSWERED",
+                    "answer": payload.answer,
+                    "answered_by": responder_user_id,
+                    "answered_at": answered_at,
+                }
+            )
+            if item.code == payload.uncertainty_code
+            and item.resolution_status == "OPEN"
+            else item
+            for item in snapshot.uncertainties
+        ]
+        response_record = {
+            "uncertainty_code": payload.uncertainty_code,
+            "question": uncertainty.question,
+            "reason": uncertainty.reason,
+            "evidence_refs": list(uncertainty.evidence_refs),
+            "answer": payload.answer,
+            "answered_by": responder_user_id,
+            "answered_at": answered_at.isoformat(),
+            "evidence_ref": evidence_ref,
+        }
+        prior_responses = list(
+            (run.constraints or {}).get("clarification_responses") or []
+        )
+        updated_constraints = {
+            **(run.constraints or {}),
+            "clarification_responses": [*prior_responses, response_record],
+        }
+        resume_after_phase = (
+            AIRunPhase.FACTS_EXTRACTED
+            if snapshot.source_facts
+            else AIRunPhase.OBSERVED
+        )
+        resume_document_workflow = (
+            run.intent == "process_ingested_requirement_document"
+        )
+        resumed_run_values = {
+            "evidence_refs": list(
+                dict.fromkeys([*snapshot.run.evidence_refs, evidence_ref])
+            )
+        }
+        if resume_document_workflow:
+            resumed_run_values.update(
+                {
+                    "execution_plan": [],
+                    "active_task": None,
+                    "completed_tasks": [],
+                    "agent_results": [],
+                    "tool_calls": [],
+                    "proposal": None,
+                    "current_step": 0,
+                    "status": "PLANNING",
+                    "error_code": None,
+                }
+            )
+        resumed_snapshot = snapshot.model_copy(
+            update={
+                "completed_phase": resume_after_phase,
+                "run": snapshot.run.model_copy(
+                    update=resumed_run_values
+                ),
+                "evidence": [*snapshot.evidence, clarification_evidence],
+                "uncertainties": resolved_uncertainties,
+                "constraints": {
+                    **snapshot.constraints,
+                    "clarification_responses": [*prior_responses, response_record],
+                },
+                **(
+                    {
+                        "tasks": [],
+                        "results": [],
+                        "success_criteria": [],
+                        "planning_round": 0,
+                        "completed_phases": [AIRunPhase.OBSERVED.value],
+                    }
+                    if resume_document_workflow
+                    else {}
+                ),
+            }
+        )
+        updated = await ai_run_repository.transition_with_checkpoint(
+            run.ai_run_id,
+            payload.expected_revision,
+            {
+                "status": AIRunStatus.QUEUED,
+                "error_code": None,
+                "constraints": updated_constraints,
+                "evidence": [
+                    item.model_dump(mode="python")
+                    if hasattr(item, "model_dump")
+                    else item
+                    for item in [*run.evidence, clarification_evidence]
+                ],
+            },
+            phase=AIRunPhase.QUEUED,
+            detail={
+                "reason_code": "AI_RUN_RESUMED_WITH_USER_CLARIFICATION",
+                "uncertainty_code": payload.uncertainty_code,
+                "responder_user_id": responder_user_id,
+                "resuming_after": resume_after_phase.value,
+            },
+            state_snapshot=resumed_snapshot,
+        )
+        if not updated:
+            raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
+        if not await publish_ai_run(run.ai_run_id):
+            degraded = await ai_run_repository.transition_with_checkpoint(
+                updated.ai_run_id,
+                updated.revision,
+                {
+                    "status": AIRunStatus.DEGRADED,
+                    "error_code": "AI_RUN_QUEUE_UNAVAILABLE",
+                },
+                phase=AIRunPhase.FINALIZED,
+                detail={
+                    "reason_code": "AI_RUN_QUEUE_UNAVAILABLE",
+                    "retryable": True,
+                    "resuming_after": resume_after_phase.value,
+                },
+                state_snapshot=resumed_snapshot,
             )
             if not degraded:
                 raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})

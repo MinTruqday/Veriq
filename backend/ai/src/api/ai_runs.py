@@ -6,6 +6,7 @@ from src.schemas.agent import AIRunRequest, RequirementDocumentRunRequest
 from src.schemas.auth import CurrentUser, SystemRole
 from src.schemas.ai_runs import (
     AIRunCancelRequest,
+    AIRunClarificationResponseRequest,
     AIRunAcceptedResponse,
     AIRunRetryRequest,
     AIRunStatus,
@@ -123,9 +124,15 @@ async def get_ai_run(
     user: CurrentUser = Depends(get_current_user),
 ):
     run = await _readable_run(ai_run_id, token, user)
+    latest_checkpoint = await ai_run_repository.latest_checkpoint(ai_run_id)
+    clarifications = [
+        item.model_dump(mode="json")
+        for item in (latest_checkpoint.state_snapshot.uncertainties if latest_checkpoint and latest_checkpoint.state_snapshot else [])
+    ]
     return {
         "run": run,
         "checkpoints": await ai_run_repository.list_checkpoints(ai_run_id),
+        "clarifications": clarifications,
         "receipt": await ai_run_repository.get_receipt(ai_run_id),
     }
 
@@ -181,6 +188,32 @@ async def retry_ai_run(
 ):
     run = await _controllable_run(ai_run_id, token, user)
     return await ai_run_service.authorize_retry(run, payload.expected_revision)
+
+
+@router.post("/luot-chay/{ai_run_id}/tra-loi-lam-ro")
+async def answer_ai_run_clarification(
+    ai_run_id: str,
+    payload: AIRunClarificationResponseRequest,
+    token: str = Depends(oauth2_scheme),
+    user: CurrentUser = Depends(get_current_user),
+):
+    run = await ai_run_repository.get_run(ai_run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail={"code": "ENTITY_NOT_FOUND"})
+    if user.system_role != SystemRole.ADMIN:
+        _, permissions = await project_access(run.project_id, token)
+        if "requirement.update" not in permissions:
+            raise HTTPException(
+                status_code=403,
+                detail={"code": "AI_RUN_CLARIFICATION_PERMISSION_DENIED"},
+            )
+    updated = await ai_run_service.provide_clarification(run, payload, user.id)
+    return {
+        "ai_run_id": updated.ai_run_id,
+        "status": updated.status,
+        "revision": updated.revision,
+        "error_code": updated.error_code,
+    }
 
 
 @router.post("/luot-chay/{ai_run_id}/huy")

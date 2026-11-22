@@ -100,6 +100,7 @@ def action_input_uncertainties(completed: VeriqRunState) -> list[AgentUncertaint
             if isinstance(value, dict)
         )
 
+    summary = str((completed.proposal or {}).get("summary") or "").strip()
     uncertainties = []
     for code, entry in grouped.items():
         unresolved = entry["unresolved"]
@@ -120,14 +121,20 @@ def action_input_uncertainties(completed: VeriqRunState) -> list[AgentUncertaint
                 str(item.get("reason") or code)
                 for item in unresolved
             ) or code
+        question = summary or reason
         if details:
-            reason = f"{reason} ({'; '.join(details)})"
+            question = f"{question} ({'; '.join(details)})"
         uncertainties.append(
             AgentUncertainty(
                 code=code,
+                question=question[:4000],
                 reason=reason[:4000],
                 evidence_refs=sorted(entry["evidence_refs"]),
                 blocking=True,
+                response_allowed=all(
+                    item.get("response_allowed", True) is not False
+                    for item in unresolved
+                ),
             )
         )
     return uncertainties
