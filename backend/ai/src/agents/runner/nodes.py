@@ -1082,7 +1082,7 @@ async def verify(state):
     if "AI_PROVIDER_UNAVAILABLE" in reason_codes:
         run.status = AIRunExecutionStatus.FAILED
         run.error_code = "AI_PROVIDER_UNAVAILABLE"
-    elif {"CLARIFICATION_REQUIRED", "USER_DECISION_REQUIRED"} & reason_codes:
+    elif {"SOURCE_INPUT_REQUIRED", "USER_DECISION_REQUIRED"} & reason_codes:
         run.status = AIRunExecutionStatus.FAILED
         run.error_code = "AI_RUN_WAITING_FOR_INPUT"
     elif verified:

@@ -316,8 +316,6 @@ export default function AIRunPanel({
   const [receipt, setReceipt] = useState(null);
   const [sourceFacts, setSourceFacts] = useState([]);
   const [toolEvidence, setToolEvidence] = useState([]);
-  const [clarificationAnswers, setClarificationAnswers] = useState({});
-  const [submittingClarification, setSubmittingClarification] = useState("");
   const [busy, setBusy] = useState(false);
   const [refreshingRuns, setRefreshingRuns] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -353,8 +351,6 @@ export default function AIRunPanel({
     setReceipt(null);
     setSourceFacts([]);
     setToolEvidence([]);
-    setClarificationAnswers({});
-    setSubmittingClarification("");
     Promise.allSettled([
       canReadProjectRuns || canReadOwnAIRuns
         ? testingApi.listAIRuns(project._id)
@@ -430,7 +426,6 @@ export default function AIRunPanel({
 
   const loadRun = async (runId) => {
     const requestVersion = ++detailRequestVersion.current;
-    if (selectedRunIdRef.current !== runId) setClarificationAnswers({});
     selectedRunIdRef.current = runId;
     selectedRunSnapshotRef.current = null;
     setSourceFacts([]);
@@ -613,54 +608,6 @@ export default function AIRunPanel({
     }
   };
 
-  const answerClarification = async (uncertainty) => {
-    if (!run || !uncertainty?.code || !uncertainty.response_allowed || submittingClarification) {
-      return;
-    }
-    const answer = clarificationAnswers[uncertainty.code]?.trim();
-    if (!answer) return;
-    const runId = run.ai_run_id;
-    const selectionVersion = detailRequestVersion.current;
-    setSubmittingClarification(uncertainty.code);
-    setError("");
-    try {
-      await testingApi.answerAgentClarification(runId, {
-        expected_revision: run.revision,
-        uncertainty_code: uncertainty.code,
-        answer,
-      });
-      if (selectionVersion === detailRequestVersion.current) {
-        setClarificationAnswers((current) => ({
-          ...current,
-          [uncertainty.code]: "",
-        }));
-      }
-      try {
-        await refreshRuns();
-      } catch (reason) {
-        setRunsRefreshError(messageOf(reason));
-      }
-      if (selectionVersion === detailRequestVersion.current) {
-        try {
-          await loadRun(runId);
-        } catch (reason) {
-          setDetailRefreshError(messageOf(reason));
-        }
-      }
-    } catch (reason) {
-      if (selectionVersion === detailRequestVersion.current) {
-        setError(messageOf(reason));
-        try {
-          await loadRun(runId);
-        } catch (refreshReason) {
-          setDetailRefreshError(messageOf(refreshReason));
-        }
-      }
-    } finally {
-      setSubmittingClarification("");
-    }
-  };
-
   const proposal = run?.result?.proposal;
   const documentWorkflow = documentWorkflowResult(run);
   const documentWorkflowStages = documentWorkflow?.workflow_stages || null;
@@ -721,7 +668,6 @@ export default function AIRunPanel({
   const busyRun = run && activeStatuses.has(run.status);
   const visibleRuns = recentRuns.filter(canViewRun);
   const canControlRun = run?.requester_user_id === currentUserId;
-  const canAnswerClarification = permissions.includes("requirement.update");
   const canResumeRun = canControlRun && canResumeAIRun(run, checkpoints, currentUserId);
   const canShowRunControls = (busyRun && canControlRun) || canResumeRun;
   const uncertainties = latestAgentUncertainties(checkpoints);
@@ -1070,7 +1016,6 @@ export default function AIRunPanel({
                           className="grid gap-1 rounded-control border border-border bg-surface p-3"
                           key={`${item.code || "uncertainty"}-${index}`}
                         >
-                          {item.question && <p className="font-medium text-ink">{item.question}</p>}
                           {item.reason && <p className="text-ink-muted">{item.reason}</p>}
                           {item.evidence_refs?.length > 0 && (
                             <div className="text-xs text-ink-muted">
@@ -1079,68 +1024,13 @@ export default function AIRunPanel({
                               </p>
                             </div>
                           )}
-                          {item.blocking && item.response_allowed && canAnswerClarification && (
-                            <form
-                              className="mt-2 grid gap-2"
-                              onSubmit={(event) => {
-                                event.preventDefault();
-                                void answerClarification(item);
-                              }}
-                            >
-                              <label className="grid gap-1 text-sm font-medium text-ink">
-                                Thông tin trả lời
-                                <textarea
-                                  className="apple-input min-h-24"
-                                  maxLength={4000}
-                                  required
-                                  value={clarificationAnswers[item.code] || ""}
-                                  onChange={(event) =>
-                                    setClarificationAnswers((current) => ({
-                                      ...current,
-                                      [item.code]: event.target.value,
-                                    }))
-                                  }
-                                  placeholder="Bổ sung dữ kiện nghiệp vụ để AI tiếp tục xử lý"
-                                />
-                              </label>
-                              <button
-                                className="primary-button justify-self-start"
-                                disabled={
-                                  busy ||
-                                  Boolean(submittingClarification) ||
-                                  !clarificationAnswers[item.code]?.trim()
-                                }
-                                type="submit"
-                              >
-                                {submittingClarification === item.code
-                                  ? "Đang gửi và tiếp tục…"
-                                  : "Gửi thông tin và tiếp tục xử lý"}
-                              </button>
-                            </form>
-                          )}
-                          {item.blocking && item.response_allowed && !canAnswerClarification && (
-                            <p className="mt-1 text-sm text-ink-muted">
-                              Cần thành viên có quyền cập nhật yêu cầu bổ sung dữ kiện này.
-                            </p>
-                          )}
-                          {item.blocking && !item.response_allowed && (
-                            <p className="mt-1 text-sm text-ink-muted">
-                              Cần cập nhật tài liệu hoặc khôi phục nguồn trước khi AI có thể tiếp
-                              tục.
-                            </p>
-                          )}
-                          {!item.blocking && item.resolution_status && (
-                            <p className="mt-1 text-sm text-ink-muted">
-                              Mục làm rõ này đã được xử lý trong tác vụ AI.
-                            </p>
-                          )}
                         </li>
                       ))}
                     </ul>
                   ) : (
                     <p className="text-sm text-ink-muted">
-                      Tác vụ AI chưa lưu câu hỏi cụ thể. Hãy mở yêu cầu hoặc tài liệu nguồn liên
-                      quan để bổ sung thông tin còn thiếu.
+                      Tác vụ AI chưa ghi nhận chi tiết về nguồn cần bổ sung. Hãy mở yêu cầu hoặc tài
+                      liệu liên quan.
                     </p>
                   )}
                 </section>
