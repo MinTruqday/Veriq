@@ -81,7 +81,7 @@ class ProjectAccessControl(BaseModel):
 
     @classmethod
     def from_legacy(cls, values):
-        known_fields = {"project_permissions", "read_only_permissions", "role_permissions", "policy_permissions", "conditional_permissions", "conditional_denials", "comment_collaborator_permissions", "collaborator_permissions"}
+        known_fields = {"project_permissions", "read_only_permissions", "role_permissions", "policy_permissions", "conditional_permissions", "conditional_denials", "comment_collaborator_permissions", "collaborator_permissions", "responsibility_permissions"}
         if set(values) - known_fields:
             raise ValueError("UNRECOGNIZED_LEGACY_ACCESS_FIELDS")
         read_only = set(values.get("read_only_permissions", []))
@@ -92,7 +92,14 @@ class ProjectAccessControl(BaseModel):
         for field, effect in (("conditional_permissions", "ALLOW"), ("conditional_denials", "DENY")):
             rules.extend(ProjectSettingGrant(**rule, effect=effect) for rule in values.get(field, []))
         return cls(
-            capabilities=[ProjectCapability(name=name, read_only=name in read_only) for name in sorted(set(values["project_permissions"]))],
+            capabilities=[
+                ProjectCapability(
+                    name=name,
+                    read_only=name in read_only,
+                    responsibility=(values.get("responsibility_permissions") or {}).get(name),
+                )
+                for name in sorted(set(values["project_permissions"]))
+            ],
             role_grants=[ProjectRoleGrant(role=role, permissions=permissions) for role, permissions in values["role_permissions"].items()],
             setting_grants=rules,
         )
