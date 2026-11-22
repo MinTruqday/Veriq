@@ -111,7 +111,7 @@ ASSIGNED_OWNER_PERMISSIONS = ASSIGNED_DRAFT_PERMISSIONS | frozenset({
 def permissions_for_role(role: str, settings_value: dict | None = None):
     normalized = str(getattr(role, "value", role) or "").strip().upper()
     values = access_policy()
-    if normalized not in values.get("role_permissions", {}) or normalized == "SYSTEM_ADMIN":
+    if normalized not in values.get("role_permissions", {}):
         return set()
     permissions = {
         canonical_permission(permission)

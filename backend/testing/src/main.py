@@ -46,7 +46,7 @@ async def lifespan(app: FastAPI):
     await project_access_repository.ensure_reporting_capabilities()
     await project_access_repository.ensure_read_only_comment_capabilities()
     await project_access_repository.ensure_private_defect_capability()
-    await project_access_repository.migrate_project_roles()
+    await project_access_repository.ensure_test_review_capabilities()
     from src.repositories.reporting import reporting_repository
     await reporting_repository.initialize()
     from src.modules.execution.services.report_jobs import start_reporting_background
