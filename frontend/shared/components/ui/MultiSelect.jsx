@@ -7,7 +7,6 @@ export default function MultiSelect({
   value,
   onChange,
   searchPlaceholder = "Tìm mục",
-  emptyMessage = "Không có mục phù hợp",
   className = "",
   disabled = false,
   autoFocus = false,
@@ -62,13 +61,13 @@ export default function MultiSelect({
         type="search"
         value={query}
       />
-      <div
-        aria-label={label}
-        className="max-h-52 min-w-0 space-y-1 overflow-y-auto rounded-control border border-border bg-surface p-2"
-        role="group"
-      >
-        {visibleOptions.length ? (
-          visibleOptions.map((option) => (
+      {visibleOptions.length > 0 && (
+        <div
+          aria-label={label}
+          className="max-h-52 min-w-0 space-y-1 overflow-y-auto rounded-control border border-border bg-surface p-2"
+          role="group"
+        >
+          {visibleOptions.map((option) => (
             <label
               className="flex min-h-10 min-w-0 cursor-pointer items-start gap-3 rounded-control px-2 py-2 text-sm hover:bg-surface-quiet has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60"
               key={option.value}
@@ -87,11 +86,9 @@ export default function MultiSelect({
                 )}
               </span>
             </label>
-          ))
-        ) : (
-          <p className="px-2 py-3 text-sm text-ink-muted">{emptyMessage}</p>
-        )}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

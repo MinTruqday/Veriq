@@ -647,7 +647,6 @@ export default function TestCaseCreateForm({
             <MultiSelect
               label="Tiêu chí chấp nhận được ca này kiểm thử"
               searchPlaceholder="Tìm tiêu chí chấp nhận"
-              emptyMessage="Yêu cầu đã chọn chưa có tiêu chí chấp nhận"
               options={selectedCriteria.map((criterion) => ({
                 value: criterion._id,
                 label: `${criterion.requirement_key} · ${criterion.key || "Tiêu chí"}`,
@@ -689,11 +688,6 @@ export default function TestCaseCreateForm({
           />
           <MultiSelect
             label="Điều kiện kiểm thử đã phê duyệt"
-            emptyMessage={
-              form.requirementVersionIds.length
-                ? "Chưa có điều kiện đã duyệt gắn với yêu cầu hoặc tiêu chí đang chọn"
-                : "Chưa có điều kiện kiểm thử đã phê duyệt"
-            }
             options={scopedTestConditions.map((item) => ({
               value: item._id,
               label: `${item.condition_key} ${item.title}`,

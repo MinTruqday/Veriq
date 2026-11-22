@@ -84,7 +84,6 @@ export default function RequirementCoverageSelector({
       <MultiSelect
         label="Quy tắc nghiệp vụ cần bao phủ"
         searchPlaceholder="Tìm quy tắc nghiệp vụ"
-        emptyMessage={loading ? "Đang tải quy tắc nghiệp vụ…" : "Yêu cầu đã chọn chưa có BR"}
         options={[...options, ...missing]}
         value={value}
         onChange={onChange}
@@ -93,9 +92,6 @@ export default function RequirementCoverageSelector({
         <p role="status" className="text-sm text-danger">
           {error}
         </p>
-      )}
-      {!error && !loading && requirementVersionIds.length > 0 && items.length === 0 && (
-        <p className="text-sm text-ink-muted">Không có BR trong các yêu cầu đã chọn.</p>
       )}
     </div>
   );

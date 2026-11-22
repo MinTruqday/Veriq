@@ -2580,7 +2580,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                   <MultiSelect
                     label="Tiêu chí chấp nhận liên kết"
                     searchPlaceholder="Tìm tiêu chí chấp nhận"
-                    emptyMessage="Yêu cầu đã chọn chưa có tiêu chí chấp nhận khả dụng"
                     options={[
                       ...requirements
                         .filter((item) =>
