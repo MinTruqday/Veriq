@@ -43,16 +43,25 @@ const scopeFields = [
 ];
 
 const conditionFields = [
-  ["entry_criteria", "Tiêu chí đầu vào"],
-  ["exit_criteria", "Tiêu chí đầu ra"],
+  ["entry_criteria", "Điều kiện bắt đầu"],
+  ["exit_criteria", "Tiêu chí hoàn thành"],
+];
+
+const assumptionFields = [
   ["assumptions", "Giả định"],
   ["constraints", "Ràng buộc"],
 ];
 
-const structuredFields = [
-  ["dependencies", "Phụ thuộc"],
-  ["quality_targets", "Mục tiêu chất lượng"],
-  ["risk_register", "Sổ đăng ký rủi ro"],
+const dependencyFields = [["dependencies", "Phụ thuộc"]];
+
+const qualityFields = [["quality_targets", "Mục tiêu chất lượng"]];
+
+const riskFields = [["risk_register", "Rủi ro và cách ứng phó"]];
+
+const communicationFields = [
+  ["channel", "Kênh báo cáo"],
+  ["status_report_frequency", "Tần suất"],
+  ["recipients", "Người nhận"],
 ];
 
 const defaults = {
@@ -64,8 +73,6 @@ const defaults = {
   test_level: "",
   test_approach: "",
   environment: "",
-  release_id: "",
-  build_id: "",
   environment_id: "",
   scope_in: [],
   scope_out: [],
@@ -100,8 +107,6 @@ export default function TestPlanEditor({
   suites,
   tests,
   members = [],
-  releases = [],
-  builds = [],
   environments = [],
   readOnly = false,
   initialRequirementVersionIds = [],
@@ -234,6 +239,7 @@ export default function TestPlanEditor({
   };
   return (
     <form
+      id="test-plan-editor"
       className="test-design-form space-y-5 p-5"
       onSubmit={async (event) => {
         event.preventDefault();
@@ -241,33 +247,10 @@ export default function TestPlanEditor({
         if (savingRef.current) return;
         setError("");
         try {
-          const effortAllocations = value.estimation.effort_allocations || [];
-          if (effortAllocations.some((item) => !item.user_id)) {
-            setError("Chọn thành viên cho từng dòng phân bổ giờ.");
-            return;
-          }
-          if (
-            new Set(effortAllocations.map((item) => item.user_id)).size !== effortAllocations.length
-          ) {
-            setError("Mỗi thành viên chỉ được có một dòng phân bổ trong kế hoạch kiểm thử.");
-            return;
-          }
-          const allocatedHours = effortAllocations.reduce(
-            (sum, item) => sum + Number(item.planned_hours || 0),
-            0,
-          );
-          if (
-            effortAllocations.length &&
-            Math.round(allocatedHours * 100) !==
-              Math.round(Number(value.estimation.planned_effort_hours || 0) * 100)
-          ) {
-            setError("Tổng giờ phân bổ phải bằng tổng giờ dự kiến.");
-            return;
-          }
           const payload = {
             ...Object.fromEntries(Object.keys(defaults).map((key) => [key, value[key]])),
             ...Object.fromEntries(
-              [...scopeFields, ...conditionFields].map(([key]) => [
+              [...scopeFields, ...conditionFields, ...assumptionFields].map(([key]) => [
                 key,
                 (value[key] || []).map((item) => item.trim()).filter(Boolean),
               ]),
@@ -278,8 +261,6 @@ export default function TestPlanEditor({
             strategy_version_id: value.strategy_version_id || null,
             test_level: value.test_level || null,
             owner_id: value.owner_id || null,
-            release_id: value.release_id || null,
-            build_id: value.build_id || null,
             environment_id: value.environment_id || null,
             communication_plan: {
               ...value.communication_plan,
@@ -304,216 +285,180 @@ export default function TestPlanEditor({
     >
       {error && <p className="text-sm text-danger">{error}</p>}
       {!readOnly && (
-        <section
-          className="space-y-3 rounded-control border border-border p-4"
-          aria-label="Gợi ý kế hoạch từ AI"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="font-semibold">Gợi ý kế hoạch từ AI</h3>
-              <p className="mt-1 text-sm text-ink-muted">
+        <details className="rounded-control border border-border bg-surface p-4">
+          <summary className="cursor-pointer font-medium">Gợi ý kế hoạch từ AI</summary>
+          <div className="mt-4 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-ink-muted">
                 Chỉ dựa trên các phiên bản yêu cầu đã chọn. AI không lưu hoặc duyệt kế hoạch.
               </p>
-            </div>
-            <button
-              className="secondary-button border-violet-300 text-violet-800"
-              type="button"
-              disabled={aiBusy || !value.requirement_version_ids.length}
-              onClick={requestAiPlanDraft}
-            >
-              {aiBusy ? "Đang tạo gợi ý" : "Tạo gợi ý"}
-            </button>
-          </div>
-          <label className="field-label block">
-            Hướng dẫn bổ sung
-            <textarea
-              className="apple-input mt-2 min-h-16"
-              value={aiInstruction}
-              disabled={aiBusy || readOnly}
-              onChange={(event) => setAiInstruction(event.target.value)}
-            />
-          </label>
-          {aiError && (
-            <p role="alert" className="text-sm text-danger">
-              {aiError}
-            </p>
-          )}
-          {aiSuggestion?.suggestion && (
-            <div className="space-y-3 rounded-control border border-violet-200 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm font-medium text-violet-800">
-                  So sánh đề xuất với nội dung đang có
-                </p>
-                <ContentOriginBadge origin="ai_generated" />
-              </div>
-              <p className="text-sm text-ink-muted">
-                Chỉ các trường đang để trống được chọn sẵn. Bỏ chọn trường muốn giữ nguyên; đề xuất
-                không được lưu hoặc duyệt cho đến khi bạn lưu kế hoạch.
-              </p>
-              <div className="grid gap-3 md:grid-cols-2">
-                {aiPlanFields
-                  .filter(([field]) => hasSuggestedValue(aiSuggestion.suggestion[field]))
-                  .map(([field, label, applicable]) => {
-                    const selected = selectedAiFields.has(field);
-                    const applied = appliedAiFields.has(field);
-                    const currentValue = displayPlanFieldValue(planFieldValue(value, field));
-                    const proposedValue = displayPlanFieldValue(aiSuggestion.suggestion[field]);
-                    const fieldEvidence = (aiSuggestion.suggestion.field_evidence || []).find(
-                      (item) => item.field === field,
-                    );
-                    return (
-                      <article
-                        className="min-w-0 rounded-control border border-border p-3"
-                        key={field}
-                      >
-                        <div className="flex items-start gap-2 text-sm font-medium">
-                          {applicable && (
-                            <input
-                              className="mt-1"
-                              type="checkbox"
-                              checked={selected}
-                              onChange={(event) =>
-                                setSelectedAiFields((current) => {
-                                  const next = new Set(current);
-                                  if (event.target.checked) next.add(field);
-                                  else next.delete(field);
-                                  return next;
-                                })
-                              }
-                            />
-                          )}
-                          <span>
-                            {label}
-                            {!applicable ? " · chỉ tham khảo" : ""}
-                          </span>
-                        </div>
-                        <div className="mt-3 space-y-2 text-sm">
-                          <div>
-                            <p className="text-xs font-medium text-ink-muted">Đang có</p>
-                            <p className="mt-1 whitespace-pre-wrap break-words">
-                              {currentValue || "Chưa có nội dung"}
-                            </p>
-                          </div>
-                          <div className="border-t border-border pt-2">
-                            <p className="text-xs font-medium text-violet-800">AI đề xuất</p>
-                            <p className="mt-1 whitespace-pre-wrap break-words">{proposedValue}</p>
-                          </div>
-                          {fieldEvidence?.evidence_quotes?.length > 0 && (
-                            <details className="border-t border-border pt-2">
-                              <summary className="cursor-pointer text-xs font-medium text-violet-800">
-                                Căn cứ cho trường này
-                              </summary>
-                              <ul className="mt-2 space-y-2 text-xs font-normal">
-                                {fieldEvidence.evidence_quotes.map((item, index) => (
-                                  <li key={`${item.evidence_ref}-${index}`}>
-                                    <span className="text-ink-muted">{item.evidence_ref}: </span>
-                                    {item.quote}
-                                  </li>
-                                ))}
-                              </ul>
-                            </details>
-                          )}
-                          {applied && (
-                            <p className="text-xs font-medium text-violet-800">
-                              Đã áp dụng vào biểu mẫu; cần lưu kế hoạch để ghi nhận.
-                            </p>
-                          )}
-                        </div>
-                      </article>
-                    );
-                  })}
-              </div>
-              {!aiPlanFields.some(([field]) =>
-                hasSuggestedValue(aiSuggestion.suggestion[field]),
-              ) && (
-                <p className="text-sm text-ink-muted">
-                  Chưa có trường nào đủ căn cứ để đề xuất. Xem các thông tin còn thiếu bên dưới.
-                </p>
-              )}
-              {!!aiSuggestion.suggestion.evidence_quotes?.length && (
-                <details className="text-sm">
-                  <summary className="cursor-pointer">Căn cứ từ yêu cầu nguồn</summary>
-                  <ul className="mt-2 space-y-2">
-                    {aiSuggestion.suggestion.evidence_quotes.map((item, index) => (
-                      <li
-                        className="border-l-2 border-violet-300 pl-3"
-                        key={`${item.evidence_ref}-${index}`}
-                      >
-                        <span className="text-ink-muted">{item.evidence_ref}: </span>
-                        {item.quote}
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              )}
-              {!!aiSuggestion.warnings?.length && (
-                <ul className="list-disc pl-5 text-sm text-ink-muted">
-                  {aiSuggestion.warnings.map((item, index) => (
-                    <li key={`${item}-${index}`}>{item}</li>
-                  ))}
-                </ul>
-              )}
               <button
-                className="apple-button"
+                className="secondary-button border-violet-300 text-violet-800"
                 type="button"
-                disabled={!selectedAiFields.size}
-                onClick={applyAiPlanDraft}
+                disabled={aiBusy || !value.requirement_version_ids.length}
+                onClick={requestAiPlanDraft}
               >
-                Áp dụng{" "}
-                {selectedAiFields.size
-                  ? `${selectedAiFields.size} trường đã chọn`
-                  : "trường đã chọn"}
+                {aiBusy ? "Đang tạo gợi ý" : "Tạo gợi ý"}
               </button>
             </div>
-          )}
-        </section>
+            <label className="field-label block">
+              Hướng dẫn bổ sung
+              <textarea
+                className="apple-input mt-2 min-h-16"
+                value={aiInstruction}
+                disabled={aiBusy}
+                onChange={(event) => setAiInstruction(event.target.value)}
+              />
+            </label>
+            {aiError && (
+              <p role="alert" className="text-sm text-danger">
+                {aiError}
+              </p>
+            )}
+            {aiSuggestion?.suggestion && (
+              <div className="space-y-3 rounded-control border border-violet-200 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-medium text-violet-800">
+                    So sánh đề xuất với nội dung đang có
+                  </p>
+                  <ContentOriginBadge origin="ai_generated" />
+                </div>
+                <p className="text-sm text-ink-muted">
+                  Chỉ các trường đang để trống được chọn sẵn. Bỏ chọn trường muốn giữ nguyên; đề
+                  xuất không được lưu hoặc duyệt cho đến khi bạn lưu kế hoạch.
+                </p>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {aiPlanFields
+                    .filter(([field]) => hasSuggestedValue(aiSuggestion.suggestion[field]))
+                    .map(([field, label, applicable]) => {
+                      const selected = selectedAiFields.has(field);
+                      const applied = appliedAiFields.has(field);
+                      const currentValue = displayPlanFieldValue(planFieldValue(value, field));
+                      const proposedValue = displayPlanFieldValue(aiSuggestion.suggestion[field]);
+                      const fieldEvidence = (aiSuggestion.suggestion.field_evidence || []).find(
+                        (item) => item.field === field,
+                      );
+                      return (
+                        <article
+                          className="min-w-0 rounded-control border border-border p-3"
+                          key={field}
+                        >
+                          <div className="flex items-start gap-2 text-sm font-medium">
+                            {applicable && (
+                              <input
+                                className="mt-1"
+                                type="checkbox"
+                                checked={selected}
+                                onChange={(event) =>
+                                  setSelectedAiFields((current) => {
+                                    const next = new Set(current);
+                                    if (event.target.checked) next.add(field);
+                                    else next.delete(field);
+                                    return next;
+                                  })
+                                }
+                              />
+                            )}
+                            <span>
+                              {label}
+                              {!applicable ? " · chỉ tham khảo" : ""}
+                            </span>
+                          </div>
+                          <div className="mt-3 space-y-2 text-sm">
+                            <div>
+                              <p className="text-xs font-medium text-ink-muted">Đang có</p>
+                              <p className="mt-1 whitespace-pre-wrap break-words">
+                                {currentValue || "Chưa có nội dung"}
+                              </p>
+                            </div>
+                            <div className="border-t border-border pt-2">
+                              <p className="text-xs font-medium text-violet-800">AI đề xuất</p>
+                              <p className="mt-1 whitespace-pre-wrap break-words">
+                                {proposedValue}
+                              </p>
+                            </div>
+                            {fieldEvidence?.evidence_quotes?.length > 0 && (
+                              <details className="border-t border-border pt-2">
+                                <summary className="cursor-pointer text-xs font-medium text-violet-800">
+                                  Căn cứ cho trường này
+                                </summary>
+                                <ul className="mt-2 space-y-2 text-xs font-normal">
+                                  {fieldEvidence.evidence_quotes.map((item, index) => (
+                                    <li key={`${item.evidence_ref}-${index}`}>
+                                      <span className="text-ink-muted">{item.evidence_ref}: </span>
+                                      {item.quote}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </details>
+                            )}
+                            {applied && (
+                              <p className="text-xs font-medium text-violet-800">
+                                Đã áp dụng vào biểu mẫu; cần lưu kế hoạch để ghi nhận.
+                              </p>
+                            )}
+                          </div>
+                        </article>
+                      );
+                    })}
+                </div>
+                {!aiPlanFields.some(([field]) =>
+                  hasSuggestedValue(aiSuggestion.suggestion[field]),
+                ) && (
+                  <p className="text-sm text-ink-muted">
+                    Chưa có trường nào đủ căn cứ để đề xuất. Xem các thông tin còn thiếu bên dưới.
+                  </p>
+                )}
+                {!!aiSuggestion.suggestion.evidence_quotes?.length && (
+                  <details className="text-sm">
+                    <summary className="cursor-pointer">Căn cứ từ yêu cầu nguồn</summary>
+                    <ul className="mt-2 space-y-2">
+                      {aiSuggestion.suggestion.evidence_quotes.map((item, index) => (
+                        <li
+                          className="border-l-2 border-violet-300 pl-3"
+                          key={`${item.evidence_ref}-${index}`}
+                        >
+                          <span className="text-ink-muted">{item.evidence_ref}: </span>
+                          {item.quote}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+                {!!aiSuggestion.warnings?.length && (
+                  <ul className="list-disc pl-5 text-sm text-ink-muted">
+                    {aiSuggestion.warnings.map((item, index) => (
+                      <li key={`${item}-${index}`}>{item}</li>
+                    ))}
+                  </ul>
+                )}
+                <button
+                  className="apple-button"
+                  type="button"
+                  disabled={!selectedAiFields.size}
+                  onClick={applyAiPlanDraft}
+                >
+                  Áp dụng{" "}
+                  {selectedAiFields.size
+                    ? `${selectedAiFields.size} trường đã chọn`
+                    : "trường đã chọn"}
+                </button>
+              </div>
+            )}
+          </div>
+        </details>
       )}
-      <fieldset disabled={readOnly || saving || aiBusy} className="min-w-0 space-y-5">
-        <section className="min-w-0 space-y-4" aria-labelledby="test-plan-basics-heading">
+      <fieldset disabled={readOnly || saving || aiBusy} className="flex min-w-0 flex-col gap-5">
+        <section
+          className="order-2 min-w-0 space-y-4 rounded-control border border-border bg-surface p-4"
+          aria-labelledby="test-plan-approach-heading"
+        >
           <div>
-            <h3 id="test-plan-basics-heading" className="text-base font-semibold text-ink">
-              Thông tin kế hoạch
+            <h3 id="test-plan-approach-heading" className="text-base font-semibold text-ink">
+              Cách tiếp cận kiểm thử
             </h3>
           </div>
           <div className="grid gap-4 md:grid-cols-2">
-            <label className="field-label">
-              Bản phát hành
-              <select
-                className="apple-input mt-2"
-                value={value.release_id || ""}
-                onChange={(event) =>
-                  setValue((current) => ({
-                    ...current,
-                    release_id: event.target.value,
-                    build_id: "",
-                  }))
-                }
-              >
-                <option value="">Chọn bản phát hành</option>
-                {releases.map((item) => (
-                  <option key={item._id} value={item._id}>
-                    {item.name || item.key}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field-label">
-              Bản dựng
-              <select
-                className="apple-input mt-2"
-                value={value.build_id || ""}
-                onChange={(event) => setField("build_id", event.target.value)}
-              >
-                <option value="">Chọn khi có bản dựng</option>
-                {builds
-                  .filter((item) => !value.release_id || item.release_id === value.release_id)
-                  .map((item) => (
-                    <option key={item._id} value={item._id}>
-                      {item.identifier || item.name || item.key}
-                    </option>
-                  ))}
-              </select>
-            </label>
             <label className="field-label md:col-span-2">
               Môi trường kiểm thử
               <select
@@ -547,15 +492,6 @@ export default function TestPlanEditor({
                 className="apple-input mt-2"
                 value={value.environment}
                 onChange={(event) => setField("environment", event.target.value)}
-              />
-            </label>
-            <label className="field-label">
-              Tên kế hoạch
-              <input
-                className="apple-input mt-2"
-                value={value.name}
-                onChange={(event) => setField("name", event.target.value)}
-                required
               />
             </label>
             <label className="field-label">
@@ -595,6 +531,14 @@ export default function TestPlanEditor({
                   ))}
               </select>
             </label>
+            <MultiSelect
+              label="Bộ kiểm thử trong phạm vi"
+              options={suites.map((item) => ({ value: item._id, label: item.name }))}
+              searchPlaceholder="Tìm bộ kiểm thử"
+              value={value.test_suite_ids}
+              onChange={(selected) => setField("test_suite_ids", selected)}
+              disabled={readOnly}
+            />
             <label className="field-label">
               Cấp kiểm thử
               <select
@@ -615,30 +559,19 @@ export default function TestPlanEditor({
                 )}
               </select>
             </label>
-            <div className="md:col-span-2">
-              <p className="field-label">Loại kiểm thử</p>
-              <div className="mt-2">
-                <MultiSelect
-                  label="Chọn loại kiểm thử"
-                  options={[
-                    ...new Set([
-                      ...(selectedStrategy?.test_types || []),
-                      ...(value.test_types || []),
-                    ]),
-                  ].map((item) => ({ value: item, label: valueLabel(item) }))}
-                  value={value.test_types || []}
-                  onChange={(items) => setField("test_types", items)}
-                  disabled={!selectedStrategy?.test_types?.length && !value.test_types?.length}
-                  emptyMessage="Phiên bản chiến lược chưa khai báo loại kiểm thử"
-                  searchPlaceholder="Tìm loại kiểm thử"
-                />
-                {!selectedStrategy?.test_types?.length && !value.test_types?.length && (
-                  <p className="mt-2 text-sm text-ink-muted">
-                    Chọn chiến lược đã duyệt có khai báo loại kiểm thử.
-                  </p>
-                )}
-              </div>
-            </div>
+            <MultiSelect
+              label="Loại kiểm thử"
+              options={[
+                ...new Set([...(selectedStrategy?.test_types || []), ...(value.test_types || [])]),
+              ].map((item) => ({ value: item, label: valueLabel(item) }))}
+              value={value.test_types || []}
+              onChange={(items) => setField("test_types", items)}
+              disabled={
+                readOnly || (!selectedStrategy?.test_types?.length && !value.test_types?.length)
+              }
+              emptyMessage="Chiến lược chưa khai báo loại kiểm thử"
+              searchPlaceholder="Tìm loại kiểm thử"
+            />
             {!selectedStrategy && !readOnly && !value.test_level && !value.test_types?.length && (
               <p className="text-sm text-ink-muted md:col-span-2" role="status">
                 Dự án chưa có chiến lược kiểm thử được phê duyệt. Cấp và loại kiểm thử được lấy từ
@@ -652,14 +585,6 @@ export default function TestPlanEditor({
               </p>
             )}
             <label className="field-label md:col-span-2">
-              Mục tiêu
-              <textarea
-                className="apple-input mt-2 min-h-24"
-                value={value.objective}
-                onChange={(event) => setField("objective", event.target.value)}
-              />
-            </label>
-            <label className="field-label md:col-span-2">
               Cách tiếp cận kiểm thử
               <textarea
                 className="apple-input mt-2 min-h-24"
@@ -667,18 +592,87 @@ export default function TestPlanEditor({
                 onChange={(event) => setField("test_approach", event.target.value)}
               />
             </label>
+            {conditionFields.map(([key, label]) => (
+              <label className="field-label" key={key}>
+                {label}
+                <textarea
+                  className="apple-input mt-2 min-h-20"
+                  value={(value[key] || []).join("\n")}
+                  onChange={(event) =>
+                    setField(
+                      key,
+                      event.target.value.split("\n").map((item) => item.trim()),
+                    )
+                  }
+                />
+              </label>
+            ))}
+            {qualityFields.map(([key, label]) => (
+              <div className="min-w-0 space-y-2 md:col-span-2" key={key}>
+                <StructuredValueEditor
+                  label={label}
+                  value={value[key] ?? defaults[key]}
+                  fixedType="array"
+                  itemTypes={["object"]}
+                  onChange={(nextValue) => setField(key, nextValue)}
+                />
+              </div>
+            ))}
           </div>
         </section>
         <section
-          className="min-w-0 space-y-4 border-t border-border pt-5"
-          aria-labelledby="test-plan-scope-heading"
+          className="order-1 min-w-0 space-y-4 rounded-control border border-border bg-surface p-4"
+          aria-labelledby="test-plan-info-heading"
         >
           <div>
-            <h3 id="test-plan-scope-heading" className="text-base font-semibold text-ink">
-              Phạm vi kiểm thử
+            <h3 id="test-plan-info-heading" className="text-base font-semibold text-ink">
+              Thông tin và phạm vi
             </h3>
           </div>
           <div className="grid min-w-0 gap-4 md:grid-cols-2">
+            <label className="field-label">
+              Tên kế hoạch
+              <input
+                className="apple-input mt-2"
+                value={value.name}
+                onChange={(event) => setField("name", event.target.value)}
+                required
+              />
+            </label>
+            <label className="field-label">
+              Mục tiêu
+              <textarea
+                className="apple-input mt-2 min-h-12"
+                value={value.objective}
+                onChange={(event) => setField("objective", event.target.value)}
+              />
+            </label>
+            <label className="field-label">
+              Trong phạm vi
+              <textarea
+                className="apple-input mt-2 min-h-20"
+                value={(value.scope_in || []).join("\n")}
+                onChange={(event) =>
+                  setField(
+                    "scope_in",
+                    event.target.value.split("\n").map((item) => item.trim()),
+                  )
+                }
+              />
+            </label>
+            <label className="field-label">
+              Ngoài phạm vi
+              <textarea
+                className="apple-input mt-2 min-h-20"
+                value={(value.scope_out || []).join("\n")}
+                onChange={(event) =>
+                  setField(
+                    "scope_out",
+                    event.target.value.split("\n").map((item) => item.trim()),
+                  )
+                }
+              />
+            </label>
             <MultiSelect
               label="Kịch bản kiểm thử liên kết"
               options={scenarios
@@ -689,6 +683,7 @@ export default function TestPlanEditor({
                 }))}
               value={value.scenario_ids}
               onChange={(ids) => setField("scenario_ids", ids)}
+              disabled={readOnly}
             />
             <MultiSelect
               className="md:col-span-2"
@@ -705,13 +700,7 @@ export default function TestPlanEditor({
                 setSelectedAiFields(new Set());
                 setAppliedAiFields(new Set());
               }}
-            />
-            <MultiSelect
-              label="Bộ kiểm thử trong phạm vi"
-              options={suites.map((item) => ({ value: item._id, label: item.name }))}
-              searchPlaceholder="Tìm bộ kiểm thử"
-              value={value.test_suite_ids}
-              onChange={(selected) => setField("test_suite_ids", selected)}
+              disabled={readOnly}
             />
             <MultiSelect
               className="md:col-span-2"
@@ -723,31 +712,17 @@ export default function TestPlanEditor({
               searchPlaceholder="Tìm ca kiểm thử"
               value={value.test_case_version_ids}
               onChange={(selected) => setField("test_case_version_ids", selected)}
+              disabled={readOnly}
             />
-            {scopeFields.map(([key, label]) => (
-              <label className="field-label" key={key}>
-                {label} mỗi dòng một giá trị
-                <textarea
-                  className="apple-input mt-2 min-h-24"
-                  value={(value[key] || []).join("\n")}
-                  onChange={(event) =>
-                    setField(
-                      key,
-                      event.target.value.split("\n").map((item) => item.trim()),
-                    )
-                  }
-                />
-              </label>
-            ))}
           </div>
         </section>
         <section
-          className="min-w-0 space-y-4 border-t border-border pt-5"
-          aria-labelledby="test-plan-conditions-heading"
+          className="order-3 min-w-0 space-y-4 rounded-control border border-border bg-surface p-4"
+          aria-labelledby="test-plan-people-heading"
         >
           <div>
-            <h3 id="test-plan-conditions-heading" className="text-base font-semibold text-ink">
-              Điều kiện và nguồn lực
+            <h3 id="test-plan-people-heading" className="text-base font-semibold text-ink">
+              Nhân sự và thời gian
             </h3>
           </div>
           <div className="grid min-w-0 gap-4 md:grid-cols-2">
@@ -786,248 +761,8 @@ export default function TestPlanEditor({
                 }))}
               value={value.members}
               onChange={(selected) => setField("members", selected)}
+              disabled={readOnly}
             />
-            {conditionFields.map(([key, label]) => (
-              <label className="field-label" key={key}>
-                {label} mỗi dòng một giá trị
-                <textarea
-                  className="apple-input mt-2 min-h-24"
-                  value={(value[key] || []).join("\n")}
-                  onChange={(event) =>
-                    setField(
-                      key,
-                      event.target.value.split("\n").map((item) => item.trim()),
-                    )
-                  }
-                />
-              </label>
-            ))}
-          </div>
-        </section>
-        <section
-          className="min-w-0 space-y-4 border-t border-border pt-5"
-          aria-labelledby="test-plan-coordination-heading"
-        >
-          <div>
-            <h3 id="test-plan-coordination-heading" className="text-base font-semibold text-ink">
-              Phối hợp và theo dõi
-            </h3>
-          </div>
-          <div className="grid min-w-0 gap-4 md:grid-cols-2">
-            {structuredFields.map(([key, label]) => (
-              <div className="min-w-0 space-y-2" key={key}>
-                <StructuredValueEditor
-                  label={label}
-                  value={value[key] ?? defaults[key]}
-                  fixedType={Array.isArray(defaults[key]) ? "array" : "object"}
-                  itemTypes={["object"]}
-                  onChange={(nextValue) => setField(key, nextValue)}
-                />
-              </div>
-            ))}
-          </div>
-        </section>
-        <details className="space-y-3 rounded-control border border-border p-4">
-          <summary className="cursor-pointer font-medium">Giao tiếp</summary>
-          <div className="grid gap-3 md:grid-cols-3">
-            {[
-              ["channel", "Kênh báo cáo"],
-              ["status_report_frequency", "Tần suất"],
-              ["recipients", "Người nhận"],
-            ].map(([field, label]) => (
-              <label className="field-label" key={field}>
-                {label}
-                <input
-                  className="apple-input mt-2"
-                  value={
-                    field === "recipients"
-                      ? (value.communication_plan.recipients || []).join(", ")
-                      : value.communication_plan[field] || ""
-                  }
-                  onChange={(event) =>
-                    setField("communication_plan", {
-                      ...value.communication_plan,
-                      [field]:
-                        field === "recipients"
-                          ? event.target.value.split(",").map((item) => item.trimStart())
-                          : event.target.value,
-                    })
-                  }
-                />
-              </label>
-            ))}
-          </div>
-        </details>
-        <section
-          className="min-w-0 space-y-3 rounded-control border border-border p-4 md:col-span-2"
-          aria-labelledby="test-plan-effort-heading"
-        >
-          <div>
-            <h3 id="test-plan-effort-heading" className="font-medium">
-              Ước lượng và phân bổ giờ theo người
-            </h3>
-            <p className="mt-1 text-sm text-ink-muted">
-              Khai báo tổng giờ dự kiến và phân bổ cho thành viên tham gia kế hoạch. Phân bổ này
-              phục vụ lập kế hoạch; người thực chạy từng ca được giao riêng trong lượt chạy kiểm
-              thử. Đây là dự toán nhân công, không phải chi phí thực tế.
-            </p>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="field-label">
-              Tổng giờ dự kiến
-              <input
-                className="apple-input mt-2 w-full"
-                type="number"
-                min="0"
-                step="0.25"
-                value={value.estimation.planned_effort_hours}
-                onChange={(event) =>
-                  setField("estimation", {
-                    ...value.estimation,
-                    planned_effort_hours: Number(event.target.value),
-                  })
-                }
-              />
-            </label>
-            <label className="field-label">
-              Cách ước lượng
-              <select
-                className="apple-input mt-2 w-full"
-                value={value.estimation.method}
-                onChange={(event) =>
-                  setField("estimation", { ...value.estimation, method: event.target.value })
-                }
-              >
-                <option value="expert_judgment">Đánh giá chuyên gia</option>
-                <option value="three_point">Ước lượng ba điểm</option>
-                <option value="historical">Dữ liệu lịch sử</option>
-                <option value="custom">Khác</option>
-              </select>
-            </label>
-          </div>
-          <label className="field-label block">
-            Căn cứ ước lượng
-            <textarea
-              className="apple-input mt-2 min-h-20 w-full"
-              value={value.estimation.basis || ""}
-              onChange={(event) =>
-                setField("estimation", { ...value.estimation, basis: event.target.value })
-              }
-            />
-          </label>
-          <div className="space-y-2">
-            {(value.estimation.effort_allocations || []).map((allocation, index) => (
-              <div
-                className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_10rem_auto]"
-                key={`${allocation.user_id}-${index}`}
-              >
-                <select
-                  aria-label={`Thành viên phân bổ ${index + 1}`}
-                  className="apple-input min-w-0"
-                  value={allocation.user_id}
-                  onChange={(event) =>
-                    setField("estimation", {
-                      ...value.estimation,
-                      effort_allocations: value.estimation.effort_allocations.map(
-                        (item, itemIndex) =>
-                          itemIndex === index ? { ...item, user_id: event.target.value } : item,
-                      ),
-                    })
-                  }
-                >
-                  <option value="">Chọn thành viên</option>
-                  {members
-                    .filter((item) => item.status === "ACTIVE")
-                    .map((item) => (
-                      <option
-                        key={item.user_id}
-                        value={item.user_id}
-                        disabled={(value.estimation.effort_allocations || []).some(
-                          (other, otherIndex) =>
-                            otherIndex !== index && other.user_id === item.user_id,
-                        )}
-                      >
-                        {item.user_label ||
-                          item.user?.full_name ||
-                          item.user?.email ||
-                          "Thành viên chưa có tên"}
-                      </option>
-                    ))}
-                </select>
-                <input
-                  aria-label={`Số giờ phân bổ ${index + 1}`}
-                  className="apple-input min-w-0"
-                  type="number"
-                  min="0.25"
-                  step="0.25"
-                  value={allocation.planned_hours}
-                  onChange={(event) =>
-                    setField("estimation", {
-                      ...value.estimation,
-                      effort_allocations: value.estimation.effort_allocations.map(
-                        (item, itemIndex) =>
-                          itemIndex === index
-                            ? { ...item, planned_hours: Number(event.target.value) }
-                            : item,
-                      ),
-                    })
-                  }
-                />
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={() =>
-                    setField("estimation", {
-                      ...value.estimation,
-                      effort_allocations: value.estimation.effort_allocations.filter(
-                        (_, itemIndex) => itemIndex !== index,
-                      ),
-                    })
-                  }
-                >
-                  Xóa
-                </button>
-              </div>
-            ))}
-            <button
-              className="secondary-button"
-              type="button"
-              disabled={!members.some((item) => item.status === "ACTIVE")}
-              onClick={() =>
-                setField("estimation", {
-                  ...value.estimation,
-                  effort_allocations: [
-                    ...value.estimation.effort_allocations,
-                    { user_id: "", planned_hours: 1 },
-                  ],
-                })
-              }
-            >
-              Thêm người và số giờ
-            </button>
-            <p className="text-sm text-ink-muted">
-              Đã phân bổ{" "}
-              {(value.estimation.effort_allocations || []).reduce(
-                (sum, item) => sum + (Number(item.planned_hours) || 0),
-                0,
-              )}{" "}
-              / {Number(value.estimation.planned_effort_hours) || 0} giờ.
-            </p>
-          </div>
-        </section>
-        <section
-          className="min-w-0 space-y-3 rounded-control border border-border p-4 md:col-span-2"
-          aria-labelledby="test-plan-schedule-heading"
-        >
-          <div>
-            <h3 id="test-plan-schedule-heading" className="font-medium">
-              Thời gian kế hoạch kiểm thử
-            </h3>
-            <p className="mt-1 text-sm text-ink-muted">
-              Thời điểm bắt đầu giúp áp dụng đúng đơn giá nhân sự khi lập dự toán.
-            </p>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2">
             <label className="field-label">
               Bắt đầu dự kiến
               <input
@@ -1052,19 +787,113 @@ export default function TestPlanEditor({
                 }
               />
             </label>
+            <label className="field-label md:col-span-2">
+              Ước lượng (giờ)
+              <input
+                className="apple-input mt-2 w-full"
+                type="number"
+                min="0"
+                step="0.25"
+                value={value.estimation.planned_effort_hours}
+                onChange={(event) =>
+                  setField("estimation", {
+                    ...value.estimation,
+                    planned_effort_hours: Number(event.target.value),
+                  })
+                }
+              />
+            </label>
           </div>
         </section>
+        <section
+          className="order-6 min-w-0 space-y-4 rounded-control border border-border bg-surface p-4"
+          aria-labelledby="test-plan-risk-heading"
+        >
+          <div>
+            <h3 id="test-plan-risk-heading" className="text-base font-semibold text-ink">
+              Rủi ro
+            </h3>
+          </div>
+          <div className="min-w-0">
+            {riskFields.map(([key, label]) => (
+              <div className="min-w-0 space-y-2" key={key}>
+                <StructuredValueEditor
+                  label={label}
+                  value={value[key] ?? defaults[key]}
+                  fixedType="array"
+                  itemTypes={["object"]}
+                  onChange={(nextValue) => setField(key, nextValue)}
+                />
+              </div>
+            ))}
+          </div>
+        </section>
+        <details className="order-7 space-y-3 rounded-control border border-border bg-surface p-4">
+          <summary className="cursor-pointer font-medium">Giao tiếp</summary>
+          <div className="grid gap-3 md:grid-cols-3">
+            {communicationFields.map(([field, label]) => (
+              <label className="field-label" key={field}>
+                {label}
+                <input
+                  className="apple-input mt-2"
+                  value={
+                    field === "recipients"
+                      ? (value.communication_plan.recipients || []).join(", ")
+                      : value.communication_plan[field] || ""
+                  }
+                  onChange={(event) =>
+                    setField("communication_plan", {
+                      ...value.communication_plan,
+                      [field]:
+                        field === "recipients"
+                          ? event.target.value.split(",").map((item) => item.trimStart())
+                          : event.target.value,
+                    })
+                  }
+                />
+              </label>
+            ))}
+          </div>
+        </details>
+        <details className="order-8 space-y-3 rounded-control border border-border bg-surface p-4">
+          <summary className="cursor-pointer font-medium">Giả định và ràng buộc</summary>
+          <div className="grid gap-4 md:grid-cols-2">
+            {assumptionFields.map(([key, label]) => (
+              <label className="field-label" key={key}>
+                {label}
+                <textarea
+                  className="apple-input mt-2 min-h-20"
+                  value={(value[key] || []).join("\n")}
+                  onChange={(event) =>
+                    setField(
+                      key,
+                      event.target.value.split("\n").map((item) => item.trim()),
+                    )
+                  }
+                />
+              </label>
+            ))}
+            {dependencyFields.map(([key, label]) => (
+              <div className="min-w-0 space-y-2 md:col-span-2" key={key}>
+                <StructuredValueEditor
+                  label={label}
+                  value={value[key] ?? defaults[key]}
+                  fixedType="array"
+                  itemTypes={["object"]}
+                  onChange={(nextValue) => setField(key, nextValue)}
+                />
+              </div>
+            ))}
+          </div>
+        </details>
       </fieldset>
-      <div className="action-dialog-footer flex items-center justify-end gap-3">
-        <button className="secondary-button" type="button" disabled={saving} onClick={onCancel}>
-          {readOnly ? "Đóng" : "Hủy"}
-        </button>
-        {!readOnly && (
-          <button className="apple-button" type="submit" disabled={saving}>
-            {saving ? "Đang lưu" : "Lưu kế hoạch"}
+      {readOnly && (
+        <div className="action-dialog-footer flex items-center justify-end">
+          <button className="secondary-button" type="button" onClick={onCancel}>
+            Đóng
           </button>
-        )}
-      </div>
+        </div>
+      )}
     </form>
   );
 }

@@ -556,6 +556,7 @@ export const designTestingApi = {
       headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
     }),
   getTestDraft: (id) => testingRequest(`/ban-nhap-ca-kiem-thu/${id}`),
+  deleteTestDraft: (id) => testingRequest(`/ban-nhap-ca-kiem-thu/${id}`, { method: "DELETE" }),
   compareTestDraft: (id) => testingRequest(`/ban-nhap-ca-kiem-thu/${id}/so-sanh`),
   saveTestDraftMerge: (id, payload) =>
     testingRequest(`/ban-nhap-ca-kiem-thu/${id}/luu-ban-ghep`, {

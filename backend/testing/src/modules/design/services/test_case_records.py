@@ -876,3 +876,37 @@ async def update_test_case_draft_record(draft_id, payload, user, project_id=None
                     session=active_session,
                 )
     return updated
+
+
+async def delete_test_case_draft_record(draft_id, user):
+    draft = await require_assigned_design_draft(
+        "test_case_drafts", draft_id, user, "testcase.update"
+    )
+    if draft.get("status") != "DRAFT":
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "ONLY_UNSUBMITTED_TEST_CASE_DRAFTS_CAN_BE_DELETED"},
+        )
+    async with await database.client.start_session() as session:
+        async with session.start_transaction():
+            result = await database.value.test_case_drafts.delete_one(
+                {
+                    "_id": draft_id,
+                    "project_id": draft["project_id"],
+                    "revision": draft.get("revision"),
+                    "status": "DRAFT",
+                },
+                session=session,
+            )
+            if result.deleted_count != 1:
+                raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
+            await audit(
+                user.id,
+                "test_case_draft_deleted",
+                "TestCaseDraft",
+                draft_id,
+                draft["project_id"],
+                {"revision": draft.get("revision"), "test_case_key": draft.get("test_case_key")},
+                session=session,
+            )
+    return {"_id": draft_id, "deleted": True}

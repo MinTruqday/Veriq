@@ -51,7 +51,6 @@ PLAN_SNAPSHOT_FIELDS = (
     'requirement_version_ids', 'test_suite_ids', 'test_case_version_ids',
     'test_suite_snapshots', 'environment', 'environment_id',
     'entry_criteria', 'exit_criteria', 'test_types', 'members',
-    'release', 'release_id', 'build', 'build_id',
     'strategy_version_id', 'strategy_id', 'strategy_version',
     'strategy_snapshot_hash', 'test_level', 'test_approach',
     'assumptions', 'constraints', 'dependencies', 'estimation', 'schedule',
@@ -329,11 +328,7 @@ async def create_test_plan_record(payload, project_id, user):
     context = await resolve_execution_context(
         payload.project_id,
         user,
-        release_id=payload.release_id,
-        build_id=payload.build_id,
         environment_id=payload.environment_id,
-        release=payload.release,
-        build=payload.build,
         environment=payload.environment,
     )
     scenario_ids = await validate_plan_links(payload.project_id, payload.owner_id, payload.scenario_ids)
@@ -367,7 +362,8 @@ async def create_test_plan_record(payload, project_id, user):
         or (strategy or {}).get("test_types")
         or [],
         **scope,
-        **context,
+        "environment": context["environment"],
+        "environment_id": context["environment_id"],
         **strategy_binding,
         "status": 'DRAFT',
         "approval_history": [],
@@ -409,9 +405,6 @@ async def list_test_plan_records(
     project_id,
     user,
     q="",
-    release="",
-    release_id="",
-    build_id="",
     environment_id="",
     status="",
     sort="-updated_at",
@@ -421,13 +414,10 @@ async def list_test_plan_records(
     query = {"project_id": project_id}
     if q:
         query["$or"] = [
+            {"_id": {"$regex": re.escape(q), "$options": "i"}},
             {"name": {"$regex": re.escape(q), "$options": "i"}},
-            {"objective": {"$regex": re.escape(q), "$options": "i"}},
         ]
     for field, value in {
-        "release": release,
-        "release_id": release_id,
-        "build_id": build_id,
         "environment_id": environment_id,
         "status": status,
     }.items():
@@ -435,7 +425,7 @@ async def list_test_plan_records(
             query[field] = value
     sort_field, direction = sort_spec(
         sort,
-        set(['name', 'release', 'status', 'created_at', 'updated_at']),
+        set(['name', 'status', 'created_at', 'updated_at']),
     )
     return await test_plan_repository.list_plans(
         query, sort_field, direction, 500
@@ -467,18 +457,18 @@ async def update_test_plan_record(plan_id, payload, user):
                 auto_bind=False,
             )
         )
-    if {"release_id", "build_id", "environment_id", "release", "build", "environment"} & set(changes):
+    if {"environment_id", "environment"} & set(changes):
+        environment_context = await resolve_execution_context(
+            plan["project_id"],
+            user,
+            environment_id=changes.get("environment_id", plan.get("environment_id")),
+            environment=changes.get("environment", plan.get("environment", "")),
+        )
         changes.update(
-            await resolve_execution_context(
-                plan["project_id"],
-                user,
-                release_id=changes.get("release_id", plan.get("release_id")),
-                build_id=changes.get("build_id", plan.get("build_id")),
-                environment_id=changes.get("environment_id", plan.get("environment_id")),
-                release=changes.get("release", plan.get("release", "")),
-                build=changes.get("build", plan.get("build", "")),
-                environment=changes.get("environment", plan.get("environment", "")),
-            )
+            {
+                "environment": environment_context["environment"],
+                "environment_id": environment_context["environment_id"],
+            }
         )
     if {"requirement_version_ids", "test_suite_ids", "test_case_version_ids"} & set(changes):
         scope = await validate_plan_scope(

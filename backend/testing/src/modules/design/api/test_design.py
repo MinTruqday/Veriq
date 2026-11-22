@@ -29,6 +29,7 @@ from src.schemas.contracts.design import TestCaseFreezeInput as CaseFreezeInput
 from src.modules.design.services.test_case_records import (
     create_generated_test_case_draft_batch,
     create_test_case_draft_record,
+    delete_test_case_draft_record,
     update_test_case_draft_record,
 )
 from src.modules.design.services.test_case_query import (
@@ -233,6 +234,11 @@ async def list_test_case_drafts(
 @router.get("/ban-nhap-ca-kiem-thu/{draft_id}")
 async def get_test_case_draft(draft_id: str, user: CurrentUser = Depends(get_current_user)):
     return envelope(await get_project_entity("test_case_drafts", draft_id, user, "testcase.read"))
+
+
+@router.delete("/ban-nhap-ca-kiem-thu/{draft_id}")
+async def delete_test_case_draft(draft_id: str, user: CurrentUser = Depends(get_current_user)):
+    return envelope(await delete_test_case_draft_record(draft_id, user))
 
 
 @router.get("/ca-kiem-thu/{test_case_id}")

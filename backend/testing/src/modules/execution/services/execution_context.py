@@ -242,9 +242,6 @@ async def ensure_release_assurance_gate(
         except HTTPException:
             invalid_plan_ids.append(plan.get("_id"))
             continue
-        if snapshot.get("release_id") != release_id:
-            invalid_plan_ids.append(plan.get("_id"))
-            continue
         snapshots.append(snapshot)
     if invalid_plan_ids:
         raise HTTPException(

@@ -389,10 +389,7 @@ class ExecutionContextRepository:
             {
                 "project_id": project_id,
                 "status": "APPROVED",
-                "$or": [
-                    {"_id": {"$in": run_plan_ids}},
-                    {"release_id": release_id},
-                ],
+                "_id": {"$in": run_plan_ids},
             },
             session=session,
         ).to_list(None)
