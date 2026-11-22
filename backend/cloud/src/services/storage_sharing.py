@@ -16,7 +16,7 @@ async def get_public_item(share_token: str) -> Optional[StorageItemInDB]:
 
 
 async def share_item(item_id: str, email: str, role: str, owner_id: str) -> dict:
-    if role not in {"viewer", "editor"}:
+    if role != "editor":
         raise HTTPException(status_code=422, detail="Vai trò chia sẻ không hợp lệ")
     target_user = await AccountClient.get_by_email(email)
     if not target_user:
@@ -35,7 +35,7 @@ async def share_item(item_id: str, email: str, role: str, owner_id: str) -> dict
             status_code=404, detail="Không tìm thấy dữ liệu hoặc thiếu quyền chia sẻ"
         )
     result = await storage_repository.update_one(
-        {"_id": item_id, "shared_with.user_id": {"$ne": target_user_id}},
+        {"_id": item_id, "owner_id": owner_id, "shared_with.user_id": {"$ne": target_user_id}},
         {"$addToSet": {"shared_with": {"user_id": target_user_id, "role": role}}},
     )
     if result.modified_count == 0:
@@ -46,7 +46,7 @@ async def share_item(item_id: str, email: str, role: str, owner_id: str) -> dict
 async def get_recent_items(owner_id: str, limit: int = 20) -> List[StorageItemInDB]:
     items = await storage_repository.find_many(
         {
-            "$or": [{"owner_id": owner_id}, {"shared_with.user_id": owner_id}],
+            "$or": [{"owner_id": owner_id}, {"shared_with": {"$elemMatch": {"user_id": owner_id, "role": "editor"}}}],
             "is_trashed": False,
             "is_folder": False,
         },
@@ -74,7 +74,7 @@ async def revoke_internal_share(item_id: str, target_user_id: str, owner_id: str
 
 async def get_shared_with_me_items(user_id: str) -> List[StorageItemInDB]:
     items = await storage_repository.find_many(
-        {"shared_with.user_id": user_id, "is_trashed": False},
+        {"shared_with": {"$elemMatch": {"user_id": user_id, "role": "editor"}}, "is_trashed": False},
         sort=[("updated_at", -1)],
     )
     return [StorageItemInDB(**item) for item in items]

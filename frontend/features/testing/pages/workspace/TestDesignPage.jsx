@@ -1205,7 +1205,7 @@ export default function TestDesignPage({ project, workspaceView, section }) {
           canDecide={can("testcase.review")}
           canReadResults={can("testrun.read")}
           canCreateClarification={can("requirement.review")}
-          canApprove={can("testcase.review")}
+          canApprove={can("testadequacy.approve")}
           canSubmit={can("testcase.submit_review")}
         />
       )}
@@ -2771,7 +2771,7 @@ export default function TestDesignPage({ project, workspaceView, section }) {
           onSubmit={createScenario}
           requirements={requirements}
           members={projectMembers}
-          canReview={can("testscenario.update")}
+          canReview={can("testscenario.review")}
           canEdit={(scenario) => canDraft("testscenario.update", scenario)}
           canAssignOwner={can("project.members.read")}
           canReadTestConditions={permissions.includes("testcondition.read")}

@@ -20,12 +20,16 @@ class ProjectResponsibilities(RootModel[dict[str, str | None]]):
         return value
 
 
-def assignable_responsibilities(membership):
+def assignable_responsibilities(membership, project_owner_user_id=None):
     if not membership or membership.get("status") != "ACTIVE":
         return []
+    if membership.get("user_id") == project_owner_user_id:
+        return sorted(access_policy().get("responsibility_permissions", {}).values())
     roles = roles_for_membership(membership)
     policy = access_policy()
     responsibility_permissions = policy.get("responsibility_permissions", {})
+    if "SYSTEM_ADMIN" in roles:
+        return sorted(responsibility_permissions.values())
     permissions = set().union(
         *(permissions_for_role(role) for role in roles)
     ) if roles else set()
@@ -36,18 +40,30 @@ def assignable_responsibilities(membership):
     return sorted(assignable)
 
 
-async def validate_project_responsibilities(settings_value, project_id=None, initial_members=None):
+async def validate_project_responsibilities(
+    settings_value,
+    project_id=None,
+    initial_members=None,
+    project_owner_user_id=None,
+):
     if "responsibilities" not in settings_value:
         return
     try:
         responsibilities = ProjectResponsibilities.model_validate(settings_value["responsibilities"])
     except ValidationError as error:
         raise HTTPException(422, detail={"code": "PROJECT_RESPONSIBILITIES_INVALID"}) from error
+    if project_id:
+        project = await common_repository.find_project(
+            project_id, {"project_owner_user_id": 1}
+        )
+        project_owner_user_id = (project or {}).get("project_owner_user_id")
     for responsibility, user_id in responsibilities.root.items():
         if user_id is None:
             continue
         if not user_id.strip() or len(user_id) > 320:
             raise HTTPException(422, detail={"code": "PROJECT_RESPONSIBLE_MEMBER_INVALID"})
         membership = (initial_members or {}).get(user_id) if initial_members is not None else await common_repository.find_membership(project_id, user_id, status="ACTIVE")
-        if responsibility not in assignable_responsibilities(membership):
+        if responsibility not in assignable_responsibilities(
+            membership, project_owner_user_id
+        ):
             raise HTTPException(422, detail={"code": "PROJECT_RESPONSIBLE_MEMBER_INVALID", "responsibility": responsibility})

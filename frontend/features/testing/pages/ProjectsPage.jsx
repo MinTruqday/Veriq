@@ -186,6 +186,7 @@ export default function ProjectsPage() {
     try {
       await testingApi.createProject({
         ...form,
+        project_owner_user_id: form.project_owner_user_id?.trim() || undefined,
         key: form.key.trim().toUpperCase(),
         name: form.name.trim(),
         locale: user?.locale || "vi",
@@ -322,6 +323,20 @@ export default function ProjectsPage() {
               <option value="KANBAN">Kanban</option>
             </select>
           </label>
+          {user?.system_role === "ADMIN" && (
+            <label className="field-label block min-w-0">
+              Chủ dự án
+              <input
+                className="apple-input mt-2"
+                required
+                value={form.project_owner_user_id || ""}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, project_owner_user_id: event.target.value }))
+                }
+                placeholder="Mã tài khoản hoặc email"
+              />
+            </label>
+          )}
           <label className="field-label block min-w-0 md:col-span-2">
             Mô tả
             <textarea

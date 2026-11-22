@@ -22,6 +22,7 @@ from src.api.version import router as version
 from src.core.infrastructure.configuration import settings
 from src.core.infrastructure.database import close_db, database, init_db
 from src.core.infrastructure.redis import redis
+from src.repositories.storage import storage_repository
 from src.core.storage import close_storage_client, get_storage_client, initialize_bucket
 
 logger.remove()
@@ -31,6 +32,10 @@ logger.add(sys.stdout, format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    await storage_repository.update_many(
+        {"shared_with": {"$elemMatch": {"role": {"$ne": "editor"}}}},
+        {"$pull": {"shared_with": {"role": {"$ne": "editor"}}}},
+    )
     await initialize_bucket()
     logger.info("Cloud storage service provisioned and ready")
     yield

@@ -157,7 +157,6 @@ export default function MetricDefinitionPanel({ project }) {
         {
           name: "owner_role",
           label: "Vai trò chịu trách nhiệm",
-          required: true,
           options: (project.available_project_roles || []).map((value) => ({
             value,
             label: valueLabel(value),

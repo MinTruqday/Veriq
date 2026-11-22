@@ -4,7 +4,7 @@ from fastapi import HTTPException
 from pymongo import ReturnDocument, UpdateOne
 from pymongo.errors import DuplicateKeyError, OperationFailure
 
-from src.core.auth import access_policy, permissions_for_role
+from src.core.auth import access_policy
 from src.core.common import (
     audit,
     get_project,
@@ -181,11 +181,7 @@ async def _workflow(project_id):
             detail={"code": "WORK_ITEM_WORKFLOW_COLUMNS_INVALID"},
         )
     completed_statuses = _default_completed_statuses()
-    transition_roles = sorted(
-        role
-        for role in access_policy().get("role_permissions", {})
-        if "project.update" in permissions_for_role(role)
-    )
+    transition_roles = sorted(set(access_policy().get("role_permissions", {})) - {"SYSTEM_ADMIN"})
     transitions = [
         {"from_status": source, "to_status": target, "allowed_roles": transition_roles}
         for source in statuses
@@ -356,6 +352,13 @@ class WorkItemService:
         if not item:
             raise HTTPException(status_code=404, detail={"code": "WORK_ITEM_NOT_FOUND"})
         roles = await get_project_roles(project_id, user.id)
+        membership = await project_repository.find_member(
+            project_id, user.id, status="ACTIVE", projection={"_id": 1}
+        )
+        can_transition_as_project_authority = bool(
+            user.id == project.get("project_owner_user_id")
+            or user.is_system_admin and membership
+        )
         can_manage = item.get("assignee_id") != user.id
         if can_manage:
             await get_project(project_id, user, "project.update")
@@ -369,7 +372,9 @@ class WorkItemService:
             None,
         )
         if not transition or (
-            not can_manage and not roles.intersection(transition["allowed_roles"])
+            not can_manage
+            and not can_transition_as_project_authority
+            and not roles.intersection(transition["allowed_roles"])
         ):
             raise HTTPException(status_code=422, detail={"code": "WORK_ITEM_WORKFLOW_TRANSITION_INVALID"})
         target_status = next(
@@ -414,6 +419,7 @@ class WorkItemService:
                         not current_transition
                         or (
                             not can_manage
+                            and not can_transition_as_project_authority
                             and not roles.intersection(current_transition["allowed_roles"])
                         )
                     ):

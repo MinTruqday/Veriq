@@ -17,6 +17,27 @@ ai_capability_context = ContextVar("ai_capability_context", default=None)
 _access_policy_context = ContextVar("project_access_policy", default=None)
 
 
+OWNER_PERMISSIONS = frozenset({
+    "project.archive", "project.restore", "project.audit.read", "project.update",
+    "project.settings.manage", "project.members.manage", "notification.project_rule.manage",
+    "workreport.manage", "release.close", "qualitygate.accept_risk",
+    "qualitygate.override", "testcompletion.close",
+    "requirement_document.confirm_extraction", "testmonitor.exit_criteria.override",
+})
+
+
+def requires_project_owner(permission):
+    return permission in OWNER_PERMISSIONS or requires_project_approval(permission)
+
+
+def requires_project_approval(permission):
+    return permission.endswith((".approve", ".decide", ".publish")) or permission in {
+        "release.close", "qualitygate.accept_risk", "qualitygate.override",
+        "testcompletion.close", "requirement_document.confirm_extraction",
+        "testmonitor.exit_criteria.override",
+    }
+
+
 ROLE_NEUTRAL_PERMISSIONS = {
     "attachment.delete_own_unreferenced",
     "attachment.manage",
@@ -89,9 +110,9 @@ ASSIGNED_OWNER_PERMISSIONS = ASSIGNED_DRAFT_PERMISSIONS | frozenset({
 
 def permissions_for_role(role: str, settings_value: dict | None = None):
     normalized = str(getattr(role, "value", role) or "").strip().upper()
-    if not normalized:
-        return set()
     values = access_policy()
+    if normalized not in values.get("role_permissions", {}) or normalized == "SYSTEM_ADMIN":
+        return set()
     permissions = {
         canonical_permission(permission)
         for permission in values.get("role_permissions", {}).get(normalized, [])
@@ -125,7 +146,7 @@ def permissions_for_role(role: str, settings_value: dict | None = None):
     denied_overrides = {canonical_permission(item) for item in overrides.get("deny", [])}
     permissions.update(item for item in allowed_overrides if item in known_permissions)
     permissions.difference_update(denied | denied_overrides)
-    return permissions
+    return {permission for permission in permissions if not requires_project_approval(permission)}
 
 
 def sign_off_has_permission(sign_off: dict, permission: str) -> bool:
@@ -147,7 +168,8 @@ def roles_for_membership(membership: dict | None) -> set[str]:
     return {
         str(role).strip().upper()
         for role in values
-        if role is not None and str(role).strip()
+        if role is not None
+        and str(role).strip().upper() in access_policy().get("role_permissions", {})
     }
 
 
@@ -187,6 +209,17 @@ def permissions_for_membership(membership: dict | None, settings_value: dict | N
     for permission, responsibility in access_policy().get("responsibility_permissions", {}).items():
         if responsibilities.get(responsibility) != membership.get("user_id"):
             permissions.discard(permission)
+    return permissions
+
+
+def project_membership_permissions(project, membership, user_is_admin=False):
+    if not membership or membership.get("status") != "ACTIVE":
+        return set()
+    if user_is_admin:
+        return {permission for permission in project_permissions() if not requires_project_approval(permission)}
+    permissions = permissions_for_membership(membership, project.get("settings"))
+    if membership.get("user_id") == project.get("project_owner_user_id"):
+        permissions.update(project_permissions())
     return permissions
 
 

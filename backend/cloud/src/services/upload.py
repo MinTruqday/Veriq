@@ -251,7 +251,7 @@ class UploadService:
             {
                 "url": file_path,
                 "is_trashed": False,
-                "$or": [{"owner_id": user_id}, {"shared_with.user_id": user_id}],
+                "$or": [{"owner_id": user_id}, {"shared_with": {"$elemMatch": {"user_id": user_id, "role": "editor"}}}],
             },
             {"_id": 1},
         )

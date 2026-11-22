@@ -97,7 +97,7 @@ class StorageService:
         is_starred: Optional[bool] = None,
         tag: Optional[str] = None,
     ) -> List[StorageItemInDB]:
-        access_query = {"$or": [{"owner_id": owner_id}, {"shared_with.user_id": owner_id}]}
+        access_query = {"$or": [{"owner_id": owner_id}, {"shared_with": {"$elemMatch": {"user_id": owner_id, "role": "editor"}}}]}
         if parent_id:
             parent = await StorageService.get_accessible_item(parent_id, owner_id)
             if not parent:
@@ -119,7 +119,7 @@ class StorageService:
         query_str: str, owner_id: str, type_filter: Optional[str] = None
     ) -> List[StorageItemInDB]:
         query = {
-            "$or": [{"owner_id": owner_id}, {"shared_with.user_id": owner_id}],
+            "$or": [{"owner_id": owner_id}, {"shared_with": {"$elemMatch": {"user_id": owner_id, "role": "editor"}}}],
             "is_trashed": False,
             "name": {"$regex": query_str, "$options": "i"},
         }
@@ -146,7 +146,7 @@ class StorageService:
             {
                 "_id": item_id,
                 "is_trashed": False,
-                "$or": [{"owner_id": user_id}, {"shared_with.user_id": user_id}],
+                "$or": [{"owner_id": user_id}, {"shared_with": {"$elemMatch": {"user_id": user_id, "role": "editor"}}}],
             }
         )
         return StorageItemInDB(**item) if item else None

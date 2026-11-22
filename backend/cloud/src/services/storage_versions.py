@@ -23,7 +23,7 @@ async def _accessible_item(item_id: str, user_id: str) -> Optional[StorageItemIn
         {
             "_id": item_id,
             "is_trashed": False,
-            "$or": [{"owner_id": user_id}, {"shared_with.user_id": user_id}],
+            "$or": [{"owner_id": user_id}, {"shared_with": {"$elemMatch": {"user_id": user_id, "role": "editor"}}}],
         }
     )
     return StorageItemInDB(**item) if item else None

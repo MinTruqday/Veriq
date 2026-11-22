@@ -166,6 +166,11 @@ const labels = {
 };
 
 const valueLabels = {
+  BA: "BA (Phân tích nghiệp vụ)",
+  QA: "QA (Đảm bảo chất lượng)",
+  QC: "QC (Kiểm thử)",
+  DEVELOPER: "Nhà phát triển",
+  SYSTEM_ADMIN: "Quản trị hệ thống",
   Backlog: "Danh sách chờ",
   equivalence_partitioning: "Phân vùng tương đương",
   boundary_value: "Giá trị biên",

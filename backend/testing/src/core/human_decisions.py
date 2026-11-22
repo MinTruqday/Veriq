@@ -51,6 +51,10 @@ async def require_independent_review(record, user, code="SELF_REVIEW_FORBIDDEN")
     )
     if not (project or {}).get("settings", {}).get("require_independent_review", False):
         return
+    reject_self_approval(record, user, code)
+
+
+def reject_self_approval(record, user, code="SELF_REVIEW_FORBIDDEN"):
     if record.get("content_authorship_status") == "INCOMPLETE":
         raise HTTPException(409, detail={"code": "REVIEW_AUTHORSHIP_UNVERIFIED", "message": "Lịch sử người sửa bản cũ chưa đủ để xác minh duyệt độc lập. Cần tạo bản nháp mới trước khi duyệt."})
     authors = set(record.get("content_author_ids") or [])

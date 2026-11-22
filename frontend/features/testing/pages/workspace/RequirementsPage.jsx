@@ -1798,7 +1798,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
                 canDecide={can("testcase.review")}
                 canReadResults={can("testrun.read")}
                 canCreateClarification={can("requirement.review")}
-                canApprove={can("testcase.review")}
+                canApprove={can("testadequacy.approve")}
                 canSubmit={can("testcase.submit_review")}
               />
             </div>

@@ -40,7 +40,7 @@ export default function ScenariosPanel({
   const [approvalNotice, setApprovalNotice] = useState("");
   const editInFlight = useRef(false);
   const reviewableScenarios = scenarios.filter(
-    (item) => item.status === "in_review" && canReview && can("testscenario.update"),
+    (item) => item.status === "in_review" && can("testscenario.approve"),
   );
   const selectedReviewableScenarios = reviewableScenarios.filter((item) =>
     selectedApprovalIds.includes(item._id),
@@ -117,11 +117,11 @@ export default function ScenariosPanel({
     <span className="flex shrink-0 items-center gap-1.5">
       {[
         ...(item.status === "draft" && canEdit(item) ? [["gui-ra-soat", "Gửi rà soát", Send]] : []),
-        ...(item.status === "in_review" && canReview && can("testscenario.update")
-          ? [
-              ["phe-duyet", "Duyệt kịch bản", Check],
-              ["yeu-cau-chinh-sua", "Yêu cầu chỉnh sửa", RotateCcw],
-            ]
+        ...(item.status === "in_review" && can("testscenario.approve")
+          ? [["phe-duyet", "Duyệt kịch bản", Check]]
+          : []),
+        ...(item.status === "in_review" && canReview
+          ? [["yeu-cau-chinh-sua", "Yêu cầu chỉnh sửa", RotateCcw]]
           : []),
       ].map(([action, label, Icon]) => (
         <button
@@ -391,7 +391,7 @@ export default function ScenariosPanel({
                 className="flex min-w-0 items-start justify-between gap-4 px-4 py-4"
                 key={item._id}
               >
-                {item.status === "in_review" && canReview && can("testscenario.update") && (
+                {item.status === "in_review" && can("testscenario.approve") && (
                   <input
                     className="mt-2"
                     type="checkbox"

@@ -3,7 +3,8 @@ from fastapi import HTTPException
 from src.core.auth import (
     access_policy,
     archive_read_permissions,
-    permissions_for_membership,
+    project_membership_permissions,
+    requires_project_owner,
     roles_for_membership,
 )
 from src.core.common import get_project
@@ -11,13 +12,14 @@ from src.core.project_settings import resolve_project_settings
 from src.repositories.common import common_repository
 
 
-def explain_project_access(project, membership, user_id):
+def explain_project_access(project, membership, user):
+    user_id = user.id
     values = access_policy()
     settings = resolve_project_settings(project.get("settings"))
     responsibilities = settings.get("responsibilities") or {}
     responsibility_permissions = values.get("responsibility_permissions", {})
     roles = roles_for_membership(membership)
-    permissions = permissions_for_membership(membership, settings)
+    permissions = project_membership_permissions(project, membership, user.is_system_admin)
     archived = str(project.get("status", "active")).lower() == "archived"
     archived_permissions = archive_read_permissions()
     capabilities = []
@@ -25,7 +27,7 @@ def explain_project_access(project, membership, user_id):
     for permission in sorted(values.get("project_permissions", [])):
         responsibility = responsibility_permissions.get(permission)
         reason = None
-        if responsibility and responsibilities.get(responsibility) != user_id:
+        if responsibility and not requires_project_owner(permission) and responsibilities.get(responsibility) != user_id:
             reason = "RESPONSIBILITY_NOT_ASSIGNED"
         elif permission not in permissions:
             reason = "PERMISSION_NOT_GRANTED"
@@ -75,6 +77,4 @@ async def get_effective_project_access(project_id, user):
     )
     if not membership:
         raise HTTPException(status_code=403, detail={"code": "PROJECT_MEMBERSHIP_REQUIRED"})
-    if not roles_for_membership(membership):
-        raise HTTPException(status_code=403, detail={"code": "PROJECT_PERMISSION_DENIED"})
-    return explain_project_access(project, membership, user.id)
+    return explain_project_access(project, membership, user)

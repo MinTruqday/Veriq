@@ -1807,15 +1807,17 @@ export default function WorkReportsPanel({ project }) {
                             Gửi rà soát
                           </button>
                         )}
+                        {can("workreport.approve") && selected.status === "IN_REVIEW" && (
+                          <button
+                            className="apple-button"
+                            disabled={busy}
+                            onClick={() => action("APPROVE")}
+                          >
+                            Duyệt
+                          </button>
+                        )}
                         {selected.reviewer_id === userId && selected.status === "IN_REVIEW" && (
                           <>
-                            <button
-                              className="apple-button"
-                              disabled={busy}
-                              onClick={() => action("APPROVE")}
-                            >
-                              Duyệt
-                            </button>
                             <button
                               className="secondary-button"
                               disabled={busy || !note.trim()}
@@ -1825,7 +1827,7 @@ export default function WorkReportsPanel({ project }) {
                             </button>
                           </>
                         )}
-                        {selected.reviewer_id === userId && selected.status === "APPROVED" && (
+                        {can("workreport.publish") && selected.status === "APPROVED" && (
                           <>
                             <button
                               className="apple-button"

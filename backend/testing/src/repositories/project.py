@@ -1,6 +1,6 @@
 from pymongo import ReturnDocument
 
-from src.core.auth import permissions_for_membership
+from src.core.auth import project_membership_permissions, requires_project_approval
 from src.core.database import database
 from src.repositories.common import common_repository
 
@@ -89,14 +89,35 @@ class ProjectRepository:
             query["user_id"] = {"$in": list(set(user_ids))}
         memberships = await self.members.find(query, session=session).to_list(5000)
         project = await self.projects.find_one(
-            {"_id": project_id}, {"settings": 1}, session=session
-        )
-        project_settings = (project or {}).get("settings") or {}
+            {"_id": project_id}, {"settings": 1, "project_owner_user_id": 1}, session=session
+        ) or {}
+        accounts = await self._system_admin_accounts(memberships)
         return [
             item
             for item in memberships
-            if permission in permissions_for_membership(item, project_settings)
+            if permission in project_membership_permissions(
+                project,
+                item,
+                (accounts.get(item.get("user_id")) or {}).get("system_role") == "ADMIN"
+                and (accounts.get(item.get("user_id")) or {}).get("is_active") is True,
+            )
         ]
+
+    @staticmethod
+    async def _system_admin_accounts(memberships):
+        user_ids = {
+            item["user_id"]
+            for item in memberships
+            if item.get("user_id")
+            and "SYSTEM_ADMIN" in (
+                item.get("project_roles") or [item.get("project_role")]
+            )
+        }
+        if not user_ids:
+            return {}
+        from src.clients.authentication import load_accounts
+
+        return await load_accounts(sorted(user_ids))
 
     async def add_member(self, membership):
         await self.members.insert_one(membership)
@@ -143,16 +164,22 @@ class ProjectRepository:
             session=session,
         ).to_list(len(requested_ids))
         project = await self.projects.find_one(
-            {"_id": project_id}, {"settings": 1}, session=session
-        )
-        project_settings = (project or {}).get("settings") or {}
+            {"_id": project_id}, {"settings": 1, "project_owner_user_id": 1}, session=session
+        ) or {}
         membership_by_user = {item["user_id"]: item for item in memberships}
+        accounts = await self._system_admin_accounts(memberships)
         stale_members = []
         for user_id in requested_ids:
             membership = membership_by_user.get(user_id)
             if (
                 membership is None
-                or permission not in permissions_for_membership(membership, project_settings)
+                or permission not in project_membership_permissions(
+                    project,
+                    membership,
+                    (accounts.get(user_id) or {}).get("system_role") == "ADMIN"
+                    and (accounts.get(user_id) or {}).get("is_active") is True,
+                )
+                or requires_project_approval(permission)
             ):
                 stale_members.append(user_id)
                 continue

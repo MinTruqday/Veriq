@@ -8,12 +8,19 @@ from pymongo.errors import DuplicateKeyError
 
 from src.core.auth import (
     permission_explicitly_denied,
-    permissions_for_membership,
     project_permissions,
     responsibility_allows,
     roles_for_membership,
 )
-from src.core.common import audit, get_project, new_id, next_key, now, page_payload
+from src.core.common import (
+    audit,
+    get_project,
+    get_project_permissions,
+    new_id,
+    next_key,
+    now,
+    page_payload,
+)
 from src.core.database import database
 from src.core.ai_capabilities import ai_contract_metadata, request_ai_capability
 from src.core.human_decisions import require_independent_review
@@ -574,8 +581,8 @@ async def condition_coverage(project_id, user):
     )
     roles = roles_for_membership(membership)
     settings_value = project.get("settings")
-    permission_available = "testcase.read" in permissions_for_membership(
-        membership, settings_value
+    permission_available = "testcase.read" in await get_project_permissions(
+        project_id, user.id
     )
     if not permission_available:
         grant = await common_repository.find_active_grant(

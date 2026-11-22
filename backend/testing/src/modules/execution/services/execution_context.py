@@ -1,7 +1,7 @@
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError, OperationFailure
 
-from src.core.auth import CurrentUser, sign_off_has_permission
+from src.core.auth import CurrentUser
 from src.core.common import audit, get_project, get_project_entity, new_id, now, optimistic_patch
 from src.core.database import database
 from src.modules.quality.services.defect_classification import defect_is_blocking
@@ -109,16 +109,10 @@ async def ensure_release_completion_gate(
             )
         reports_to_validate = list(latest_by_plan.values())
         for report in reports_to_validate:
-            reviewer_signed = any(
-                sign_off_has_permission(item, "testcompletion.review")
-                and item.get("decision") == "APPROVE"
-                for item in report.get("sign_offs", [])
-            )
             snapshot = report.get("approved_snapshot")
             if (
                 not report.get("approved_by")
                 or not report.get("approved_at")
-                or not reviewer_signed
                 or not isinstance(snapshot, dict)
                 or snapshot != completion_snapshot(report)
                 or report.get("approved_snapshot_hash") != completion_hash(report)

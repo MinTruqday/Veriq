@@ -50,7 +50,7 @@ async def list_definitions(project_id, user):
 async def create_definition(project_id, payload, user):
     
     await get_project(project_id, user, 'measurement.manage')
-    if payload.owner_role not in access_policy().get("role_permissions", {}):
+    if payload.owner_role and payload.owner_role not in access_policy().get("role_permissions", {}):
         raise HTTPException(status_code=422, detail={"code": "PROJECT_ROLE_UNAVAILABLE"})
     if payload.idempotency_key:
         existing = await measurement_repository.find_definition_idempotency(

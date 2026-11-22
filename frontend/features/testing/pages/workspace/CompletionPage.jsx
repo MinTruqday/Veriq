@@ -523,20 +523,20 @@ export default function CompletionPage({ project }) {
                       className="secondary-button"
                       type="button"
                       onClick={() =>
-                        transition("signOffTestCompletion", "Ký xác nhận", [
+                        transition("signOffTestCompletion", "Gửi nhận xét rà soát", [
                           {
                             name: "decision",
-                            label: "Quyết định",
+                            label: "Ý kiến rà soát",
                             required: true,
                             options: [
-                              { value: "APPROVE", label: "Đồng ý" },
-                              { value: "REJECT", label: "Không đồng ý" },
+                              { value: "APPROVE", label: "Đề nghị phê duyệt" },
+                              { value: "REJECT", label: "Đề nghị chỉnh sửa" },
                             ],
                           },
                         ])
                       }
                     >
-                      Ký xác nhận
+                      Gửi nhận xét rà soát
                     </button>
                   )}
                   {selected.status === "IN_REVIEW" && can("testcompletion.review") && (
@@ -859,17 +859,17 @@ export default function CompletionPage({ project }) {
                   environments={selected.environment_closure}
                 />
                 <div>
-                  <h3 className="mb-3 font-semibold text-ink">Xác nhận</h3>
+                  <h3 className="mb-3 font-semibold text-ink">Ý kiến rà soát</h3>
                   <DataTable
                     items={(selected.sign_offs || []).map((item) => ({
                       ...item,
                       _id: item.user_id,
                     }))}
-                    empty="Chưa có xác nhận"
+                    empty="Chưa có ý kiến rà soát"
                     columns={[
                       {
                         key: "user_id",
-                        label: "Người xác nhận",
+                        label: "Người rà soát",
                         render: (item) =>
                           item.user_label ||
                           members.find((member) => member.user_id === item.user_id)?.user_label ||

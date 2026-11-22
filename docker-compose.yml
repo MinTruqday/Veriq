@@ -334,6 +334,8 @@ services:
       DOCUMENT_DUPLICATE_SCAN_MAX_ITEMS: ${DOCUMENT_DUPLICATE_SCAN_MAX_ITEMS:-10000}
       MAINTENANCE_PROPOSAL_APPLY_LEASE_SECONDS: ${MAINTENANCE_PROPOSAL_APPLY_LEASE_SECONDS:-900}
     depends_on:
+      authentication:
+        condition: service_healthy
       mongodb:
         condition: service_healthy
       ai:

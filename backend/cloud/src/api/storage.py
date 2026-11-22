@@ -287,7 +287,7 @@ async def add_version(
 async def share_archive(
     item_id: str,
     email: str = Body(..., embed=True),
-    role: str = Body("viewer", embed=True),
+    role: str = Body(..., embed=True),
     current_user: CurrentUser = Depends(get_current_user),
     db=Depends(get_db),
 ):

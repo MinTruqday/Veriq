@@ -1,13 +1,13 @@
 import uuid
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
 class ShareAccess(BaseModel):
     user_id: str = Field(min_length=1, max_length=100)
-    role: str = Field(default="viewer", pattern=r"^(viewer|editor)$")
+    role: Literal["editor"]
 
 
 class ProtectedShareCreate(BaseModel):
@@ -156,7 +156,7 @@ class TagColorUpdateRequest(BaseModel):
 
 class InternalShareRequest(BaseModel):
     email: str
-    role: str = Field(default="viewer", pattern=r"^(viewer|editor)$")
+    role: Literal["editor"]
 
 
 class CategoryBreakdown(BaseModel):

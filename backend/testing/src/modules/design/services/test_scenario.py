@@ -335,7 +335,8 @@ async def transition_test_scenario_record(scenario_id, payload, user, action):
     if action == "submit":
         scenario = await require_assigned_design_draft('test_scenarios', scenario_id, user, 'testscenario.update')
     else:
-        scenario = await get_project_entity('test_scenarios', scenario_id, user, 'testscenario.update')
+        permission = "testscenario.approve" if action == "approve" else "testscenario.review"
+        scenario = await get_project_entity("test_scenarios", scenario_id, user, permission)
     transitions = {
         'submit': ('draft', 'in_review'),
         'approve': ('in_review', 'approved'),
@@ -347,7 +348,7 @@ async def transition_test_scenario_record(scenario_id, payload, user, action):
     if action in {'approve', 'revise'}:
         await require_independent_review(scenario, user, 'TEST_SCENARIO_SELF_REVIEW_FORBIDDEN')
     if action == 'approve':
-        require_ai_publication_authority(user, 'testscenario.update')
+        require_ai_publication_authority(user, 'testscenario.approve')
         if not scenario.get('objective') or not scenario.get('requirement_version_ids'):
             raise HTTPException(409, detail={'code': 'SCENARIO_INCOMPLETE'})
         await validate_design_sources(

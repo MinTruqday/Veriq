@@ -58,12 +58,12 @@ class MeasurementDefinitionCreate(BaseModel):
     target: float | None = None
     warning_threshold: float | None = None
     critical_threshold: float | None = None
-    owner_role: str = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z][A-Za-z0-9_-]*$")
+    owner_role: str | None = Field(default=None, min_length=1, max_length=80, pattern=r"^[A-Za-z][A-Za-z0-9_-]*$")
 
     @field_validator("owner_role")
     @classmethod
     def normalize_owner_role(cls, value):
-        return value.strip().upper()
+        return value.strip().upper() if value else value
 
     @model_validator(mode="after")
     def validate_thresholds(self):

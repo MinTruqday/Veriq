@@ -5,8 +5,8 @@ from datetime import datetime, timezone
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
-from src.core.auth import permissions_for_membership
-from src.core.common import audit, get_project, new_id, now
+from src.core.auth import project_membership_permissions
+from src.core.common import audit, get_project, get_project_permissions, new_id, now
 from src.core.database import database
 from src.core.human_decisions import (
     content_authorship_changes,
@@ -38,22 +38,35 @@ async def membership(project_id, user_id):
 
 
 async def member_permissions(project_id, user_id):
-    member = await membership(project_id, user_id)
-    project = await common_repository.find_project(project_id, {"settings": 1}) or {}
-    return permissions_for_membership(member, project.get("settings"))
+    return await get_project_permissions(project_id, user_id)
 
 
 async def list_eligible_participants(project_id, user):
     await get_project(project_id, user, "workreport.read")
-    project = await common_repository.find_project(project_id, {"settings": 1}) or {}
+    project = await common_repository.find_project(
+        project_id, {"settings": 1, "project_owner_user_id": 1}
+    ) or {}
     members = await database.value.project_members.find(
         {"project_id": project_id, "status": "ACTIVE"},
         {"user_id": 1, "project_role": 1, "project_roles": 1, "status": 1},
     ).to_list(5000)
+    admin_ids = [
+        member["user_id"]
+        for member in members
+        if "SYSTEM_ADMIN" in (member.get("project_roles") or [])
+    ]
+    from src.clients.authentication import load_accounts
+
+    accounts = await load_accounts(admin_ids)
     writers = []
     reviewers = []
     for member in members:
-        permissions = permissions_for_membership(member, project.get("settings"))
+        permissions = project_membership_permissions(
+            project,
+            member,
+            (accounts.get(member.get("user_id")) or {}).get("system_role") == "ADMIN"
+            and (accounts.get(member.get("user_id")) or {}).get("is_active") is True,
+        )
         user_id = member.get("user_id")
         if not user_id:
             continue
@@ -82,10 +95,12 @@ async def report_for_user(report_id, user, action="read"):
         fail("REPORT_NOT_FOUND", 404)
     permission = (
         f"workreport.{action}"
-        if action in {"write", "review", "publish"}
+        if action in {"write", "review", "approve", "publish"}
         else "workreport.read"
     )
     await get_project(report["project_id"], user, permission)
+    if action in {"approve", "publish"}:
+        return report
     permissions = await member_permissions(report["project_id"], user.id)
     is_author = "workreport.write" in permissions and user.id in {
         report["owner_id"], *report.get("editor_ids", [])
@@ -98,7 +113,13 @@ async def report_for_user(report_id, user, action="read"):
         fail("REPORT_EDIT_FORBIDDEN", 403)
     if action in {"review", "publish"} and not is_reviewer:
         fail("REPORT_REVIEWER_REQUIRED", 403)
-    if action == "read" and not (is_author or is_reviewer or (delivery and delivery["status"] in {"RECEIVED", "VIEWED", "ACKNOWLEDGED"} and report["status"] in {"PUBLISHED", "ARCHIVED"})):
+    authority_reader = bool(permissions & {"workreport.review", "workreport.approve", "workreport.publish"})
+    if action == "read" and not (
+        is_author
+        or is_reviewer
+        or (authority_reader and report["status"] in {"DRAFT", "IN_REVIEW", "APPROVED"})
+        or (delivery and delivery["status"] in {"RECEIVED", "VIEWED", "ACKNOWLEDGED"} and report["status"] in {"PUBLISHED", "ARCHIVED"})
+    ):
         fail("REPORT_ACCESS_DENIED", 403)
     missing_identity_ids = [
         report.get(id_field)
@@ -284,6 +305,10 @@ async def list_reports(project_id, user, inbox=False, limit=50, offset=0, search
             visible.extend([{"owner_id": user.id}, {"editor_ids": user.id}])
         if "workreport.review" in permissions:
             visible.append({"reviewer_id": user.id})
+        if "workreport.review" in permissions or "workreport.approve" in permissions:
+            visible.append({"status": "IN_REVIEW"})
+        if "workreport.publish" in permissions:
+            visible.append({"status": "APPROVED"})
         query["$or"] = visible
     if search.strip():
         import re
@@ -387,7 +412,7 @@ async def transition_report(report_id, payload, user):
     action = payload.action
     if action in {"SUBMIT", "REQUEST_CHANGES", "APPROVE", "PUBLISH"}:
         require_ai_publication_authority(user, f"workreport.{action.lower()}")
-    permission = "review" if action in {"APPROVE", "REQUEST_CHANGES"} else "publish" if action == "PUBLISH" else "write"
+    permission = "approve" if action == "APPROVE" else "review" if action == "REQUEST_CHANGES" else "publish" if action == "PUBLISH" else "write"
     report = await report_for_user(report_id, user, permission)
     existing = await repository.find("report_actions", {"report_id": report_id, "actor_id": user.id, "idempotency_key": payload.idempotency_key})
     request_hash = fingerprint(payload.model_dump())

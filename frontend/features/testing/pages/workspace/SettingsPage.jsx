@@ -159,6 +159,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
   const loadedProjectId = useRef(project._id);
   const settingsLoadRevision = useRef(0);
   const [name, setName] = useState(project.name);
+  const [projectOwnerUserId, setProjectOwnerUserId] = useState(project.project_owner_user_id || "");
   const [projectLeadUserId, setProjectLeadUserId] = useState(project.project_lead_user_id || "");
   const [description, setDescription] = useState(project.description || "");
   const [projectType, setProjectType] = useState(project.project_type || "");
@@ -178,6 +179,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
   const plannedDateRangeInvalid = invalidProjectDateRange(plannedStartAt, plannedEndAt);
   const minimumPlannedEndAt = minimumProjectEndDate(plannedStartAt);
   useEffect(() => {
+    setProjectOwnerUserId(project.project_owner_user_id || "");
     setProjectLeadUserId(project.project_lead_user_id || "");
     setLocale(project.locale || "vi");
     setTimezone(
@@ -192,6 +194,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
     project._id,
     project.revision,
     project.project_lead_user_id,
+    project.project_owner_user_id,
     project.planned_end_at,
     project.planned_start_at,
     project.locale,
@@ -529,6 +532,11 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                   delete actionPolicies["defect.duplicate"];
                   const payload = {
                     expected_revision: project.revision,
+                    ...(canUpdateProject &&
+                    projectOwnerUserId &&
+                    projectOwnerUserId !== project.project_owner_user_id
+                      ? { project_owner_user_id: projectOwnerUserId }
+                      : {}),
                     ...(can("project.members.read") && (canManageSettings || canUpdateProject)
                       ? { project_lead_user_id: projectLeadUserId || null }
                       : {}),
@@ -579,6 +587,32 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
             >
               <section className="space-y-4 rounded-xl border border-border bg-white p-4 sm:p-5">
                 <h3 className="text-sm font-semibold text-ink">Thông tin cơ bản</h3>
+                {can("project.update") && can("project.members.read") && (
+                  <label className="field-label block max-w-xl">
+                    Chủ dự án
+                    <select
+                      className="apple-input mt-2"
+                      value={projectOwnerUserId}
+                      disabled={dataLoading || Boolean(loadErrors.members)}
+                      onChange={(event) => setProjectOwnerUserId(event.target.value)}
+                    >
+                      <option value="" disabled>
+                        Chọn chủ dự án
+                      </option>
+                      {members
+                        .filter(
+                          (member) =>
+                            member.status === "ACTIVE" && member.user?.system_role === "USER",
+                        )
+                        .map((member) => (
+                          <option key={member.user_id} value={member.user_id}>
+                            {member.user_label || member.user_id}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                )}
+
                 {(can("project.update") || can("project.settings.manage")) &&
                   (can("project.members.read") ? (
                     <label className="field-label block max-w-xl">
@@ -1142,7 +1176,10 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                           label: "Vai trò",
                           render: (item) => {
                             const roles = memberRoles(item);
-                            const roleLabels = roles.map(valueLabel);
+                            const roleLabels = [
+                              ...(item.is_project_owner ? ["Chủ dự án"] : []),
+                              ...roles.map(valueLabel),
+                            ];
                             return can("project.members.manage") ? (
                               <details className="min-w-40">
                                 <summary
@@ -1193,7 +1230,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                                 </fieldset>
                               </details>
                             ) : (
-                              <span>{roleLabels.join(", ")}</span>
+                              <span>{roleLabels.join(", ") || "Chưa gán vai trò"}</span>
                             );
                           },
                         },

@@ -245,11 +245,6 @@ async def approve_strategy(strategy_id, payload, user):
         strategy_id, user, 'teststrategy.approve'
     )
     await require_independent_review(strategy, user, 'TEST_STRATEGY_SELF_REVIEW_FORBIDDEN')
-    _require_strategy_reviewer_assignment(
-        strategy,
-        user,
-        await _independent_review_required(strategy["project_id"]),
-    )
     if strategy["status"] != 'IN_REVIEW':
         raise HTTPException(status_code=409, detail={"code": 'STRATEGY_NOT_IN_REVIEW'})
     if payload.expected_revision != strategy["revision"]:

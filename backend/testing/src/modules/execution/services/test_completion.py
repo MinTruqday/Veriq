@@ -3,7 +3,6 @@ from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from src.modules.execution.services.test_monitoring_snapshot import resolve_report_build
-from src.core.auth import sign_off_has_permission
 from src.core.common import audit, get_project, new_id, now
 from src.core.common import idempotency_request_hash as _create_request_hash
 from src.core.common import verify_idempotency_replay as _verify_create_replay
@@ -492,6 +491,7 @@ async def sign_off_completion(report_id, payload, user):
         {
             "user_id": user.id,
             "permission": "testcompletion.review",
+            "kind": "REVIEW_RECOMMENDATION",
             "decision": payload.decision,
             "note": payload.note,
             "at": now(),
@@ -552,13 +552,6 @@ async def transition_completion(report_id, payload, user, transition_action):
         await require_independent_review(report, user, "TEST_COMPLETION_SELF_REVIEW_FORBIDDEN")
     if target == "APPROVED":
         await validate_completion_readiness(report)
-        reviewer_approved = any(
-            sign_off_has_permission(item, "testcompletion.review")
-            and item.get("decision") == "APPROVE"
-            for item in report.get("sign_offs", [])
-        )
-        if not reviewer_approved:
-            raise HTTPException(status_code=409, detail={"code": "INDEPENDENT_REVIEW_SIGNOFF_REQUIRED"})
         if any(
             item.get("treatment", item.get("acceptance")) == "PENDING"
             for item in report.get("residual_risks", [])
@@ -566,8 +559,6 @@ async def transition_completion(report_id, payload, user, transition_action):
             raise HTTPException(
                 status_code=409, detail={"code": "RESIDUAL_RISK_ACCEPTANCE_REQUIRED"}
             )
-        if any(item.get("decision") == "REJECT" for item in report.get("sign_offs", [])):
-            raise HTTPException(status_code=409, detail={"code": "COMPLETION_REJECTION_UNRESOLVED"})
     timestamp = now()
     event = {"actor_id": user.id, "action": target, "note": payload.note, "at": timestamp}
     history_field = (

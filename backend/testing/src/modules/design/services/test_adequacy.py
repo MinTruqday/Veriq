@@ -496,7 +496,7 @@ async def submit_adequacy_assessment(assessment_id, payload, user):
 
 
 async def approve_adequacy_assessment(assessment_id, payload, user):
-    assessment = await get_project_entity("test_adequacy_assessments", assessment_id, user, "testcase.review")
+    assessment = await get_project_entity("test_adequacy_assessments", assessment_id, user, "testadequacy.approve")
     assessment = await _reconcile_expired_waivers(assessment)
     if assessment["status"] != "IN_REVIEW":
         raise HTTPException(status_code=409, detail={"code": "INVALID_STATE_TRANSITION"})
