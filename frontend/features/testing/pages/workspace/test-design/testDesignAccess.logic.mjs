@@ -39,8 +39,7 @@ export function testDesignAccess({ workspaceView = "", caseTab = "cases", permis
     canRenderRepository:
       canReadTestCases &&
       (workspaceView === "" ||
-        workspaceView === "repository" ||
-        workspaceView === "reusable-steps"),
+        workspaceView === "repository"),
     canReadTestSets: hasPermission(permissions, "testsuite.read"),
     canRenderImport:
       canReadTestCases &&

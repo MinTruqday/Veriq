@@ -18,7 +18,6 @@ import {
   Columns3,
   Map,
   Flag,
-  ClipboardCheck,
   Database,
   FolderTree,
   History,
@@ -57,12 +56,6 @@ export function testCaseSubsectionItems(projectId) {
   const root = projectRoute(projectId, PROJECT_SECTION_SLUGS.testCases);
   return [
     { id: "cases", label: "Ca kiểm thử", href: root, permission: "testcase.read" },
-    {
-      id: "adequacy",
-      label: "Nghĩa vụ kiểm thử",
-      href: `${root}/do-day-du`,
-      permissions: ["requirement.read", "testcase.read"],
-    },
     {
       id: "ai",
       label: "Hoạt động AI",
@@ -118,7 +111,6 @@ export function testDesignSectionItems(projectId) {
       "test-scenarios",
       "test-repository",
       "test-cases",
-      "reusable-steps",
       "test-data",
       "test-sets",
     ].includes(item.id),
@@ -130,7 +122,7 @@ export function projectIdFromPath(pathname) {
   return match?.[1] || "";
 }
 
-export function navigationGroupsFor(pathname, planningMethod = null) {
+export function navigationGroupsFor(pathname) {
   const projectId = projectIdFromPath(pathname);
   const root = projectId ? projectRoute(projectId) : "";
   const projectItems = projectId
@@ -144,54 +136,6 @@ export function navigationGroupsFor(pathname, planningMethod = null) {
             permission: "project.read",
           },
         ],
-        planning: [
-          {
-            id: "work-list",
-            label: "Danh sách công việc",
-            href: `${root}/${PROJECT_SECTION_SLUGS.planning}/list`,
-            icon: ListFilter,
-            permission: "project.read",
-          },
-          {
-            id: "backlog",
-            label: "Danh sách chờ",
-            href: `${root}/${PROJECT_SECTION_SLUGS.planning}/backlog`,
-            icon: ListTodo,
-            permission: "project.read",
-          },
-          {
-            id: "work-board",
-            label: "Bảng công việc",
-            href: `${root}/${PROJECT_SECTION_SLUGS.planning}/board`,
-            icon: Columns3,
-            permission: "project.read",
-          },
-          ...(planningMethod === "SCRUM"
-            ? [
-                {
-                  id: "sprint",
-                  label: "Đợt lặp",
-                  href: `${root}/${PROJECT_SECTION_SLUGS.planning}/sprint`,
-                  icon: ListTodo,
-                  permission: "project.read",
-                },
-              ]
-            : []),
-          {
-            id: "roadmap",
-            label: "Lộ trình",
-            href: `${root}/${PROJECT_SECTION_SLUGS.planning}/roadmap`,
-            icon: Map,
-            permission: "project.read",
-          },
-          {
-            id: "releases",
-            label: "Bản phát hành",
-            href: `${root}/${PROJECT_SECTION_SLUGS.releases}`,
-            icon: Flag,
-            permission: "release.read",
-          },
-        ],
         requirements: [
           {
             id: "requirements",
@@ -199,14 +143,6 @@ export function navigationGroupsFor(pathname, planningMethod = null) {
             href: `${root}/${PROJECT_SECTION_SLUGS.requirements}`,
             icon: FileCheck2,
             permission: "requirement.read",
-          },
-          {
-            id: "assurance",
-            label: "Hồ sơ đảm bảo",
-            href: `${root}/${PROJECT_SECTION_SLUGS.assurance}`,
-            icon: ClipboardCheck,
-            permission: "requirement.read",
-            permissions: ["testcase.read"],
           },
           {
             id: "clarifications",
@@ -224,13 +160,6 @@ export function navigationGroupsFor(pathname, planningMethod = null) {
           },
         ],
         design: [
-          {
-            id: "test-strategy",
-            label: "Chiến lược kiểm thử",
-            href: `${root}/${PROJECT_SECTION_SLUGS.governance}`,
-            icon: ClipboardCheck,
-            permission: "teststrategy.read",
-          },
           {
             id: "test-analysis",
             label: "Phân tích kiểm thử",
@@ -250,13 +179,6 @@ export function navigationGroupsFor(pathname, planningMethod = null) {
             label: "Ca kiểm thử",
             href: `${root}/${PROJECT_SECTION_SLUGS.testCases}`,
             icon: TestTube2,
-            permission: "testcase.read",
-          },
-          {
-            id: "reusable-steps",
-            label: "Bước dùng lại",
-            href: `${root}/${PROJECT_SECTION_SLUGS.reusableSteps}`,
-            icon: Puzzle,
             permission: "testcase.read",
           },
           {
@@ -334,15 +256,12 @@ export function navigationGroupsFor(pathname, planningMethod = null) {
             href: `${root}/${PROJECT_SECTION_SLUGS.reports}`,
             icon: BarChart3,
             anyPermission: [
-              "workreport.read",
               "report.read",
               "analytics.read",
               "analytics.ai.read",
               "coverage.read",
               "teststatusreport.read",
               "testcompletion.read",
-              "qualityevaluation.read",
-              "measurement.read",
             ],
           },
           {
@@ -407,19 +326,10 @@ export function navigationGroupsFor(pathname, planningMethod = null) {
       ],
     },
     { label: "Dự án", items: projectItems.project },
-    {
-      label: "Lập kế hoạch",
-      href: projectId ? `${root}/${PROJECT_SECTION_SLUGS.planning}` : "",
-      defaultActiveItemId: "backlog",
-      items: projectItems.planning,
-    },
     { label: "Bảo đảm yêu cầu", items: projectItems.requirements },
     {
       label: "Kế hoạch kiểm thử",
-      items: [
-        ...projectItems.execution.filter((item) => item.id === "test-plans"),
-        ...projectItems.design.filter((item) => item.id === "test-strategy"),
-      ],
+      items: projectItems.execution.filter((item) => item.id === "test-plans"),
     },
     {
       label: "Thiết kế kiểm thử",
@@ -438,7 +348,7 @@ export function navigationGroupsFor(pathname, planningMethod = null) {
             ]
           : []),
         ...projectItems.design.filter(
-          (item) => !["test-strategy", "test-analysis"].includes(item.id),
+          (item) => item.id !== "test-analysis",
         ),
       ],
     },

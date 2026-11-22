@@ -143,20 +143,6 @@ class ExecutionContextRepository:
         options = {"session": session} if session is not None else {}
         return await database.value.defects.aggregate(pipeline, **options).to_list(1000)
 
-    async def list_active_member_ids(self, project_id, user_ids, session=None):
-        if not user_ids:
-            return []
-        members = await database.value.project_members.find(
-            {
-                "project_id": project_id,
-                "user_id": {"$in": sorted(set(user_ids))},
-                "status": "ACTIVE",
-            },
-            {"_id": 0, "user_id": 1},
-            **({"session": session} if session is not None else {}),
-        ).to_list(len(set(user_ids)))
-        return [item["user_id"] for item in members]
-
     async def release_evidence_changed_since(self, project_id, release_id, run_ids, since, session=None):
         options = {"session": session} if session is not None else {}
         checks = [
@@ -241,8 +227,6 @@ class ExecutionContextRepository:
             ("results", "test_results", {"revision": "revision", "status": "status"}),
             ("defects", "defects", {"revision": "revision", "status": "status", "severity": "severity"}),
             ("conditions", "test_conditions", {"revision": "revision", "hash": "snapshot_hash"}),
-            ("nfr_plans", "non_functional_test_plans", {"revision": "revision"}),
-            ("environment_incidents", "environment_incidents", {"revision": "revision", "status": "status", "severity": "severity", "environment_id": "environment_id", "build_id": "build_id"}),
         )
         for state_key, collection_name, field_map in specifications:
             states = source_state.get(state_key, [])
@@ -393,15 +377,6 @@ class ExecutionContextRepository:
             },
             session=session,
         ).to_list(None)
-
-    async def list_adequacy_assessments(self, project_id, requirement_version_ids, session=None):
-        return await database.value.test_adequacy_assessments.find(
-            {
-                "project_id": project_id,
-                "requirement_version_id": {"$in": requirement_version_ids},
-            },
-            **({"session": session} if session is not None else {}),
-        ).to_list(len(requirement_version_ids))
 
     async def list_releases(self, query, limit=500):
         return await database.value.releases.find(query).sort(

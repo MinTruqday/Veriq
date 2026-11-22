@@ -170,7 +170,6 @@ async def generate_status_report(project_id, payload, user):
             _create_request_hash(payload) if payload.idempotency_key else None
         ),
         "test_plan_id": snapshot["test_plan_id"],
-        "strategy_version_id": plan.get("strategy_version_id"),
         "release_id": release_id,
         "build_id": build["_id"],
         "reporting_period": payload.reporting_period.model_dump(),

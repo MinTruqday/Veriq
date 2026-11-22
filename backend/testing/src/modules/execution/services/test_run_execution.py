@@ -250,8 +250,7 @@ async def record_test_result_entry(run_id, test_case_version_id, payload, user):
         raise HTTPException(
             status_code=409,
             detail={
-                "code": 'TEST_RUN_PAUSED_BY_ENVIRONMENT_INCIDENT',
-                "incident_id": run.get("paused_by_environment_incident_id"),
+                "code": 'TEST_RUN_PAUSED',
             },
         )
     if test_case_version_id not in run["test_case_version_ids"]:
@@ -411,8 +410,7 @@ async def update_test_execution_record(project_id, execution_id, payload, user):
         raise HTTPException(
             status_code=409,
             detail={
-                "code": 'TEST_RUN_PAUSED_BY_ENVIRONMENT_INCIDENT',
-                "incident_id": run.get("paused_by_environment_incident_id"),
+                "code": 'TEST_RUN_PAUSED',
             },
         )
     allowed = execution_transitions().get(result.get("status"), set())

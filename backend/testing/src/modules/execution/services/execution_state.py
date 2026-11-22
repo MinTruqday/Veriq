@@ -25,9 +25,6 @@ def frozen_run_scope(run):
             'release_id',
             'build',
             'build_id',
-            'device_matrix_id',
-            'device_profile_keys',
-            'device_matrix_snapshot',
         )
     }
     for field in ('test_plan_snapshot_hash', 'requirement_version_ids'):

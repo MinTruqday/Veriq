@@ -18,8 +18,6 @@ export default function ScenariosPanel({
   form,
   setForm,
   testConditions,
-  strategyTestLevels = [],
-  strategyTestTypes = [],
   onSubmit,
   ask,
   reload,
@@ -205,8 +203,6 @@ export default function ScenariosPanel({
           form={form}
           setForm={setForm}
           testConditions={testConditions}
-          strategyTestLevels={strategyTestLevels}
-          strategyTestTypes={strategyTestTypes}
           requirements={requirements}
           members={members}
           canReadTestConditions={canReadTestConditions}
@@ -226,8 +222,6 @@ export default function ScenariosPanel({
           readOnly={selected.status !== "draft" || !canEdit(selected)}
           canAssignOwner={canAssignOwner}
           testConditions={testConditions}
-          strategyTestLevels={strategyTestLevels}
-          strategyTestTypes={strategyTestTypes}
           requirements={requirements}
           members={members}
           canReadTestConditions={canReadTestConditions}

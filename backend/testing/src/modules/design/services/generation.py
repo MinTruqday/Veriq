@@ -13,7 +13,6 @@ from src.modules.design.services.linters import duplicate_score
 from src.modules.design.services.test_case_records import active_suite_signature, comparison_cases
 from src.core.project_settings import resolve_testcase_duplicate_threshold
 from src.repositories.test_design import test_design_repository
-from src.repositories.test_strategy import test_strategy_repository
 from src.modules.design.services.test_evidence import requirement_test_evidence_text
 from src.schemas.contracts.design import ScenarioCreate, TestCaseDraftCreate
 from src.schemas.test_analysis import GeneratedCase
@@ -86,55 +85,6 @@ async def request_grounded_test_generation(project_id, instruction, evidence):
         grounded_retry_instruction(instruction, result),
         evidence,
     )
-
-
-async def project_risk_assessment_policy(project_id):
-    strategy = await test_strategy_repository.active_approved(project_id, "APPROVED")
-    risk_model = (strategy or {}).get("risk_model") or {}
-    risk_levels = list(dict.fromkeys(
-        str(item.get("level") or "").strip()
-        for item in risk_model.get("thresholds") or []
-        if str(item.get("level") or "").strip()
-    ))
-    priority_levels = list(dict.fromkeys(
-        str(item.get("label") or "").strip()
-        for item in risk_model.get("priority_scale") or []
-        if str(item.get("label") or "").strip()
-    ))
-    if not risk_levels or not priority_levels:
-        return None
-    return {
-        "risk_levels": risk_levels,
-        "priority_levels": priority_levels,
-        "risk_exposure_formula": risk_model.get("risk_exposure_formula") or "",
-        "thresholds": risk_model.get("thresholds") or [],
-        "probability_scale": risk_model.get("probability_scale") or [],
-        "impact_scale": risk_model.get("impact_scale") or [],
-    }
-
-
-def validate_generated_assessments(items, policy):
-    if not policy:
-        if any(
-            item.risk.casefold() != "unassessed"
-            or item.priority.casefold() != "unassessed"
-            for item in items
-        ):
-            raise ValueError("generated assessment requires active project scales")
-        return
-    risk_by_normalized = {value.casefold(): value for value in policy["risk_levels"]}
-    priority_by_normalized = {
-        value.casefold(): value for value in policy["priority_levels"]
-    }
-    for item in items:
-        risk = item.risk.casefold()
-        priority = item.priority.casefold()
-        if risk != "unassessed" and risk not in risk_by_normalized:
-            raise ValueError("generated risk outside active project scale")
-        if priority != "unassessed" and priority not in priority_by_normalized:
-            raise ValueError("generated priority outside active project scale")
-        item.risk = risk_by_normalized.get(risk, "unassessed")
-        item.priority = priority_by_normalized.get(priority, "unassessed")
 
 
 def merge_duplicate_generated_cases(drafts, suggestions, threshold):
@@ -284,7 +234,6 @@ async def generate_requirement_drafts(
                 "approved_snapshot": 1,
                 "approved_snapshot_hash": 1,
                 "baseline_hash": 1,
-                "device_matrix_id": 1,
                 "objective": 1,
                 "scope_in": 1,
                 "scope_out": 1,
@@ -476,7 +425,6 @@ async def generate_requirement_drafts(
                 "existing_items_are_context_not_authoritative_requirement_evidence": True,
             }
     source_text_by_ref = {item["artifact_version_id"]: item["text"] for item in evidence}
-    risk_policy = await project_risk_assessment_policy(version["project_id"])
     instruction = json.dumps(
         {
             "categories": categories,
@@ -484,7 +432,6 @@ async def generate_requirement_drafts(
             "maximum_cases": payload.max_cases or (len(payload.techniques) if technique_mode else (len(criteria) if not categories else None)),
             "selected_design_techniques": payload.techniques if not scenario else [],
             "allowed_acceptance_criterion_ids": [item["_id"] for item in criteria],
-            "project_risk_assessment_policy": risk_policy,
             "upstream_approved_context": related_context,
             "consistency_rules": [
                 "Treat the exact Requirement version, acceptance criteria, and current related artifacts as distinct sources. Do not assume one source is always correct when they disagree.",
@@ -528,7 +475,6 @@ async def generate_requirement_drafts(
         )
     try:
         generated = [GeneratedCase.model_validate(item) for item in result.get("suggestions", [])]
-        validate_generated_assessments(generated, risk_policy)
         if not generated:
             raise HTTPException(
                 422,

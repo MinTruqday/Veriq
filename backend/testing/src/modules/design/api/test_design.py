@@ -31,6 +31,7 @@ from src.modules.design.services.test_case_records import (
     create_test_case_draft_record,
     delete_test_case_draft_record,
     update_test_case_draft_record,
+    list_coverage_source_items,
 )
 from src.modules.design.services.test_case_query import (
     clone_test_case_record,
@@ -68,6 +69,13 @@ from src.modules.design.services.test_scenario import (
     transition_test_scenario_record,
 )
 router = APIRouter(prefix="/kiem-thu", tags=["Thiết kế kiểm thử"])
+
+
+@router.get("/phien-ban-yeu-cau/{requirement_version_id}/hang-muc-do-phu")
+async def get_coverage_source_items(
+    requirement_version_id: str, user: CurrentUser = Depends(get_current_user)
+):
+    return envelope(await list_coverage_source_items(requirement_version_id, user))
 
 
 @router.get("/ban-nhap-ca-kiem-thu/{draft_id}/so-sanh")

@@ -14,10 +14,8 @@ import {
 import { uploadAssetAPI } from "@/features/cloud/services/upload.service";
 import DataTable from "../../components/DataTable";
 import FilePicker from "../../components/FilePicker";
-import FormalReviewPanel from "../../components/FormalReviewPanel";
 import ReviewCommentsPanel from "../../components/ReviewCommentsPanel";
 import TestCaseTemplatesPanel from "../../components/TestCaseTemplatesPanel";
-import SpecializedDesignPanel from "../../components/SpecializedDesignPanel";
 import AutomationScriptsPanel from "../../components/AutomationScriptsPanel";
 import AIRunPanel from "../../components/AIRunPanel";
 import CollaborationPanel from "../../components/CollaborationPanel";
@@ -59,7 +57,6 @@ import {
 } from "./test-design/testCaseApproval.logic.mjs";
 import TestCaseTransferPanel from "./test-design/TestCaseTransferPanel";
 import { canUseAssignedDraft, testDesignAccess } from "./test-design/testDesignAccess.logic.mjs";
-import TestAdequacyPanel from "./design/TestAdequacyPanel";
 import TestRepositoryPanel from "./test-design/TestRepositoryPanel";
 import {
   createDataSetForm,
@@ -70,7 +67,6 @@ import {
   UNASSESSED_VALUE,
   buildTestCaseDraftChanges,
 } from "./test-design/testDesign.model";
-import { withRiskModelDefaults } from "../../components/RiskModelEditor";
 
 function draftConditionValues(draft, conditions, field, currentValue) {
   const requirementIds = new Set(draft?.requirement_version_ids || []);
@@ -112,7 +108,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
   const linkedCaseId = searchParams.get("case") || "";
   const [requirements, setRequirements] = useState([]);
   const [testConditions, setTestConditions] = useState([]);
-  const [testStrategies, setTestStrategies] = useState([]);
   const [scenarios, setScenarios] = useState([]);
   const [dataSets, setDataSets] = useState([]);
   const [drafts, setDrafts] = useState([]);
@@ -123,7 +118,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
   const [repositoryNodes, setRepositoryNodes] = useState([]);
   const [projectMembers, setProjectMembers] = useState([]);
   const [projectMembersUnavailable, setProjectMembersUnavailable] = useState(false);
-  const [reusableSteps, setReusableSteps] = useState([]);
   const [selectedTestIds, setSelectedTestIds] = useState([]);
   const [testPage, setTestPage] = useState(1);
   const [testPageSize, setTestPageSize] = useState(10);
@@ -218,7 +212,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
   const requestedCaseTab =
     {
       ai: "agent-runs",
-      "do-day-du": "adequacy",
       "kich-ban": "scenarios",
       mau: "templates",
       "tu-dong-hoa": "automation",
@@ -229,7 +222,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
   const access = testDesignAccess({ workspaceView, caseTab, permissions });
   const isCaseWorkspace = workspaceView === "" || workspaceView === "cases";
   const showCases = access.showCases;
-  const showAdequacy = isCaseWorkspace && caseTab === "adequacy";
   const showAIRuns = isCaseWorkspace && caseTab === "agent-runs";
   const showScenarios = isCaseWorkspace && caseTab === "scenarios";
   const showTemplates = isCaseWorkspace && caseTab === "templates";
@@ -257,7 +249,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
       setApiImport({ filename: "openapi.json", format: "openapi", content: "" });
       setRequirements([]);
       setTestConditions([]);
-      setTestStrategies([]);
       setScenarios([]);
       setDataSets([]);
       setDrafts([]);
@@ -265,7 +256,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
       setSuites([]);
       setSuiteSearch("");
       setRepositoryNodes([]);
-      setReusableSteps([]);
       setProjectMembers([]);
       setProjectMembersUnavailable(false);
       setApiArtifacts([]);
@@ -296,23 +286,17 @@ export default function TestDesignPage({ project, workspaceView, section }) {
       const [
         requirementValues,
         testConditionValues,
-        strategyValues,
         scenarioValues,
         dataSetValues,
         draftValues,
         testValues,
         suiteValues,
         repositoryValues,
-        reusableStepValues,
         apiArtifactValues,
         operationValues,
         memberResult,
       ] = await Promise.all([
-        (showCases ||
-          showAIRuns ||
-          showScenarios ||
-          showAdequacy ||
-          workspaceView === "test-data") &&
+        (showCases || showAIRuns || showScenarios || workspaceView === "test-data") &&
         permissions.includes("requirement.read")
           ? testingApi.listRequirements(project._id, {
               page_size: 500,
@@ -322,9 +306,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
           : Promise.resolve([]),
         (showCases || showScenarios) && permissions.includes("testcondition.read")
           ? testingApi.listTestConditions(project._id, { status: "APPROVED", page_size: 200 })
-          : Promise.resolve({ items: [] }),
-        (showCases || showScenarios) && permissions.includes("teststrategy.read")
-          ? testingApi.listTestStrategies(project._id, { status: "APPROVED", page_size: 200 })
           : Promise.resolve({ items: [] }),
         (showScenarios || showCases) && permissions.includes("testscenario.read")
           ? testingApi.listScenarios(project._id, scenarioFilters)
@@ -344,16 +325,13 @@ export default function TestDesignPage({ project, workspaceView, section }) {
           ? testingApi.listSuites(project._id)
           : Promise.resolve([]),
         access.canLoadRepository ? testingApi.listTestRepository(project._id) : Promise.resolve([]),
-        access.canLoadRepository
-          ? testingApi.listReusableTestSteps(project._id)
-          : Promise.resolve([]),
         showApi && permissions.includes("apiartifact.read")
           ? testingApi.listApiArtifacts(project._id)
           : Promise.resolve([]),
         showApi && permissions.includes("apiartifact.read")
           ? testingApi.listApiOperations(project._id)
           : Promise.resolve([]),
-        (showCases || showScenarios || showAdequacy) && permissions.includes("project.members.read")
+        (showCases || showScenarios) && permissions.includes("project.members.read")
           ? testingApi
               .listMembers(project._id)
               .then((items) => ({ items: items || [], unavailable: false }))
@@ -368,7 +346,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
       }
       setRequirements(requirementValues);
       setTestConditions(testConditionValues.items || []);
-      setTestStrategies(strategyValues.items || []);
       setScenarios(scenarioValues);
       setDataSets(dataSetValues);
       setDrafts(draftValues);
@@ -382,7 +359,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
       setTestPageInfo(testValues);
       setSuites(suiteValues);
       setRepositoryNodes(repositoryValues);
-      setReusableSteps(reusableStepValues);
       setProjectMembers((memberResult.items || []).filter((item) => item.status === "ACTIVE"));
       setProjectMembersUnavailable(memberResult.unavailable);
       setApiArtifacts(apiArtifactValues);
@@ -434,7 +410,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
     permissions,
     project._id,
     scenarioFilters,
-    showAdequacy,
     showAIRuns,
     showApi,
     showCases,
@@ -481,16 +456,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
   const selectedRequirementRecord = requirements.find(
     (item) => item.current_version_id === selectedRequirement,
   );
-  const activeTestStrategy = testStrategies.find((item) => item.active_approved) || null;
-  const strategyTestLevels = activeTestStrategy?.test_levels || [];
-  const strategyTestTypes = activeTestStrategy?.test_types || [];
-  const activeRiskModel = withRiskModelDefaults(activeTestStrategy?.risk_model);
-  const strategyPriorityLevels = activeRiskModel.priority_scale
-    .map((item) => String(item.label || "").trim())
-    .filter(Boolean);
-  const strategyRiskLevels = activeRiskModel.thresholds
-    .map((item) => String(item.level || "").trim())
-    .filter(Boolean);
   const requirementLabels = Object.fromEntries(
     requirements
       .filter((item) => item.current_version_id)
@@ -509,13 +474,11 @@ export default function TestDesignPage({ project, workspaceView, section }) {
   const selectedDraft = actionableDrafts.find((item) => item._id === selectedDraftId) || null;
   const draftTestLevelOptions = [
     ...new Set([
-      ...strategyTestLevels,
       ...draftConditionValues(selectedDraft, testConditions, "test_level", draftEdit?.test_level),
     ]),
   ];
   const draftTestKindOptions = [
     ...new Set([
-      ...strategyTestTypes,
       ...draftConditionValues(selectedDraft, testConditions, "test_type", draftEdit?.test_kind),
     ]),
   ];
@@ -552,9 +515,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
               id: step.id,
               keyword: step.keyword,
               text: step.text || "",
-              ...(step.reusable_step_version_id
-                ? { reusable_step_version_id: step.reusable_step_version_id }
-                : {}),
             })),
           }
         : null,
@@ -688,19 +648,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                   { keyword: "Given", text: form.given },
                   { keyword: "When", text: form.when },
                   { keyword: "Then", text: form.then },
-                  ...form.reusableStepVersionIds.flatMap((versionId) => {
-                    const reusableStep = reusableSteps.find(
-                      (item) => item.current_version_id === versionId,
-                    );
-                    if (!reusableStep) return [];
-                    return [
-                      {
-                        keyword: "And",
-                        text: docText(reusableStep.action_doc),
-                        reusable_step_version_id: versionId,
-                      },
-                    ];
-                  }),
                 ].filter((item) => item.text.trim()),
               }
             : null,
@@ -1099,7 +1046,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
       : workspaceView === "" || workspaceView === "cases"
         ? {
             cases: "Ca kiểm thử",
-            adequacy: "Nghĩa vụ kiểm thử",
             "agent-runs": "Hoạt động AI",
             scenarios: "Kịch bản kiểm thử",
             templates: "Mẫu ca kiểm thử",
@@ -1107,9 +1053,7 @@ export default function TestDesignPage({ project, workspaceView, section }) {
             api: "Tích hợp API",
             import: "Nhập và xuất ca kiểm thử",
           }[caseTab]
-        : workspaceView === "reusable-steps"
-          ? "Bước dùng lại"
-          : workspaceView === "test-data"
+        : workspaceView === "test-data"
             ? "Dữ liệu kiểm thử"
             : workspaceView === "test-sets"
               ? "Bộ kiểm thử"
@@ -1149,12 +1093,7 @@ export default function TestDesignPage({ project, workspaceView, section }) {
               setForm={setForm}
               dataSets={dataSets}
               testConditions={testConditions}
-              strategyTestLevels={strategyTestLevels}
-              strategyTestTypes={strategyTestTypes}
-              strategyPriorityLevels={strategyPriorityLevels}
-              strategyRiskLevels={strategyRiskLevels}
               repositoryNodes={repositoryNodes}
-              reusableSteps={reusableSteps}
               requirements={requirements}
               scenarios={availableScenarios}
               scenarioRequired={!canCreateUnassignedCase}
@@ -1249,7 +1188,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
               {
                 repository: "test-repository",
                 cases: "test-cases",
-                "reusable-steps": "reusable-steps",
                 "test-data": "test-data",
                 "test-sets": "test-sets",
               }[workspaceView] || "test-cases"
@@ -1470,20 +1408,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
           </Panel>
         </div>
       )}
-      {showAdequacy && selectedRequirement && (
-        <TestAdequacyPanel
-          projectId={project._id}
-          requirementVersionId={selectedRequirement}
-          requirements={requirements}
-          onRequirementChange={setSelectedRequirement}
-          members={projectMembers}
-          canDecide={can("testcase.review")}
-          canReadResults={can("testrun.read")}
-          canCreateClarification={can("requirement.review")}
-          canApprove={can("testadequacy.approve")}
-          canSubmit={can("testcase.submit_review")}
-        />
-      )}
       {showAIRuns && canReadAIRuns && (
         <div id="agent-run-details">
           <AIRunPanel
@@ -1559,7 +1483,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
         <TestCaseTemplatesPanel project={project} />
       )}
       {showAutomation && <AutomationScriptsPanel project={project} />}
-      {showScenarios && <SpecializedDesignPanel project={project} />}
       {((showScenarios && can("ai.generate_scenario") && can("testscenario.create")) ||
         (showCases && !linkedCaseId && can("ai.generate_testcase") && can("testcase.create"))) && (
         <ManualTestGenerationPanel
@@ -2026,7 +1949,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                 <option value="">Mọi loại</option>
                 {[
                   ...new Set([
-                    ...strategyTestTypes,
                     ...tests.map((item) => item.current_version?.type || item.type).filter(Boolean),
                   ]),
                 ].map((type) => (
@@ -2467,19 +2389,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
             ))}
         </Panel>
       )}
-      {showCases &&
-        selectedTestId &&
-        testVersions[0] &&
-        project.current_permissions?.includes("reviewsession.read") && (
-          <FormalReviewPanel
-            project={project}
-            artifactType="TEST_CASE"
-            artifactId={selectedTestId}
-            artifactVersionId={testVersions[0]._id}
-            reviewType="TEST_CASE_REVIEW"
-            readOnly
-          />
-        )}
       {showCases && selectedDraft && draftEdit && (
         <>
           <div className="flex flex-wrap items-center gap-3">
@@ -3233,8 +3142,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
           form={scenarioForm}
           setForm={setScenarioForm}
           testConditions={testConditions}
-          strategyTestLevels={strategyTestLevels}
-          strategyTestTypes={strategyTestTypes}
           onSubmit={createScenario}
           requirements={requirements}
           members={projectMembers}

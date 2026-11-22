@@ -7,7 +7,6 @@ from pydantic import BaseModel
 from src.prompts.change_simulation import IMPACT_ANALYSIS_CONTRACT
 from src.prompts.model_output import schema_instruction
 from src.prompts.project_assistance import PROJECT_QUESTION_CONTRACT
-from src.prompts.project_completeness import PROJECT_COMPLETENESS_CONTRACT
 from src.prompts.prompt_data import prompt_json
 from src.prompts.quality_capabilities import QUALITY_CAPABILITY_CONTRACTS
 from src.prompts.requirement_analysis import requirement_quality_analysis_instruction
@@ -18,13 +17,10 @@ from src.prompts.requirement_templates import (
 from src.prompts.test_case_grounding import build_generated_cases_grounding_prompt
 from src.prompts.test_design import TEST_DESIGN_CAPABILITY_CONTRACTS
 from src.prompts.testing_contract import STRUCTURED_TESTING_TEMPLATE
-from src.prompts.work_reporting import WORK_REPORT_NARRATIVE_CONTRACT
 
 
 def _capability_contracts():
     return {
-        "project_completeness_review": PROJECT_COMPLETENESS_CONTRACT,
-        "work_report_narrative": WORK_REPORT_NARRATIVE_CONTRACT,
         "requirement_quality_analysis": requirement_quality_analysis_instruction(),
         "requirement_template_synthesis": REQUIREMENT_TEMPLATE_SYNTHESIS_INSTRUCTIONS,
         "requirement_template_review": REQUIREMENT_TEMPLATE_REVIEW_INSTRUCTIONS,

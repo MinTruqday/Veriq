@@ -83,63 +83,6 @@ class EnvironmentSecretRefs(BaseModel):
         return value
 
 
-class DeviceProfileInput(BaseModel):
-    key: str = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
-    name: str = Field(min_length=2, max_length=200)
-    device_type: str = Field(min_length=1, max_length=100)
-    operating_system: str = Field(min_length=1, max_length=120)
-    operating_system_version: str = Field(default="", max_length=120)
-    browser: str = Field(default="", max_length=120)
-    browser_version: str = Field(default="", max_length=120)
-    viewport_width: int | None = Field(default=None, ge=1, le=20000)
-    viewport_height: int | None = Field(default=None, ge=1, le=20000)
-    capabilities: dict[str, Any] = Field(default_factory=dict)
-    enabled: bool = True
-
-
-class DeviceMatrixCreate(BaseModel):
-    name: str = Field(min_length=2, max_length=200)
-    description: str = Field(default="", max_length=5000)
-    profiles: list[DeviceProfileInput] = Field(min_length=1, max_length=500)
-
-    @field_validator("profiles")
-    @classmethod
-    def validate_profile_keys(cls, value):
-        keys = [item.key for item in value]
-        if len(keys) != len(set(keys)):
-            raise ValueError("Mã hồ sơ thiết bị không được trùng nhau")
-        return value
-
-
-class DeviceMatrixPatch(BaseModel):
-    expected_revision: int = Field(ge=1)
-    name: str | None = Field(default=None, min_length=2, max_length=200)
-    description: str | None = Field(default=None, max_length=5000)
-    profiles: list[DeviceProfileInput] | None = Field(default=None, min_length=1, max_length=500)
-
-    @field_validator("profiles")
-    @classmethod
-    def validate_profile_keys(cls, value):
-        if value is None:
-            return value
-        keys = [item.key for item in value]
-        if len(keys) != len(set(keys)):
-            raise ValueError("Mã hồ sơ thiết bị không được trùng nhau")
-        return value
-
-
-class DeviceMatrixArchive(BaseModel):
-    expected_revision: int = Field(ge=1)
-    reason: str = Field(min_length=2, max_length=2000)
-
-
-class DeviceMatrixAssignment(BaseModel):
-    target_type: Literal["test_plan", "test_run"]
-    target_id: str = Field(min_length=1, max_length=200)
-    expected_target_revision: int = Field(ge=1)
-    profile_keys: list[str] = Field(default_factory=list, max_length=500)
-
-
 class NotificationWatchInput(BaseModel):
     watching: bool = True
 

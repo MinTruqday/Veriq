@@ -1,6 +1,4 @@
 from src.tools.api_artifact import process_confirmed_api_operation
-from src.tools.automation_assurance import refresh_assurance_after_test_case_approval
-from src.tools.automation_execution import process_recorded_test_execution
 from src.tools.automation_script import generate_automation_script_after_test_case_approval
 from src.tools.execution_tools import (
     analyze_change_impact,
@@ -14,19 +12,15 @@ from src.tools.execution_tools import (
     get_test_plan,
     get_test_result,
     get_test_results,
-    get_work_item,
-    get_work_item_impact_context,
     link_bug_candidates,
     suggest_regression_scope,
 )
 from src.tools.execution_workflows import (
-    process_approved_performance_configuration,
     process_approved_test_plan,
     process_changed_release,
     process_changed_test_plan,
     process_created_status_report,
     process_created_test_completion_report,
-    process_recorded_defect,
 )
 from src.tools.knowledge_tools import (
     get_project_context,
@@ -59,7 +53,6 @@ from src.tools.test_design_tools import (
     create_test_case_draft,
     find_duplicate_testcases,
     find_near_duplicates,
-    generate_security_suggestions_for_requirement,
     generate_test_scenarios,
     generate_testcases,
     get_test_case_draft,
@@ -78,7 +71,6 @@ from src.tools.test_design_tools import (
 tools = [
     generate_automation_script_after_test_case_approval,
     process_confirmed_api_operation,
-    process_approved_performance_configuration,
     get_project_context,
     search_project_knowledge,
     retrieve_project_evidence,
@@ -86,7 +78,6 @@ tools = [
     process_ingested_requirement_document,
     process_changed_requirement_version,
     recommend_test_design_techniques_for_requirement_change,
-    process_recorded_defect,
     process_approved_test_plan,
     process_changed_test_plan,
     process_changed_release,
@@ -103,15 +94,10 @@ tools = [
     get_test_case_version_by_id,
     get_test_results,
     get_test_result,
-    process_recorded_test_execution,
-    refresh_assurance_after_test_case_approval,
     get_test_plan,
     get_release,
-    get_work_item,
-    get_work_item_impact_context,
     get_historical_defects,
     find_near_duplicates,
-    generate_security_suggestions_for_requirement,
     generate_test_conditions_for_requirement_baseline,
     create_test_case_draft,
     create_trace_link_suggestion,

@@ -217,131 +217,6 @@ async def ensure_release_completion_gate(
         )
     return report
 
-async def ensure_release_assurance_gate(
-    project_id: str, release_id: str, session=None, completion_approved_at=None
-):
-    from src.modules.design.services.test_adequacy import (
-        _as_datetime,
-        coverage_item_ready_for_assurance,
-    )
-    from src.modules.execution.services.test_plan import verified_approved_plan_snapshot
-
-    plans = await execution_context_repository.list_approved_test_plan_scopes(
-        project_id, release_id, session=session
-    )
-    if not plans:
-        raise HTTPException(
-            status_code=409,
-            detail={"code": "RELEASE_TEST_PLAN_SCOPE_REQUIRED"},
-        )
-    snapshots = []
-    invalid_plan_ids = []
-    for plan in plans:
-        try:
-            snapshot, _ = verified_approved_plan_snapshot(plan, project_id)
-        except HTTPException:
-            invalid_plan_ids.append(plan.get("_id"))
-            continue
-        snapshots.append(snapshot)
-    if invalid_plan_ids:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "code": "RELEASE_TEST_PLAN_SNAPSHOT_INVALID",
-                "test_plan_ids": sorted(value for value in invalid_plan_ids if value),
-            },
-        )
-    requirement_version_ids = sorted(
-        {
-            requirement_version_id
-            for snapshot in snapshots
-            for requirement_version_id in snapshot.get("requirement_version_ids", [])
-        }
-    )
-    if not requirement_version_ids:
-        raise HTTPException(
-            status_code=409,
-            detail={"code": "RELEASE_REQUIREMENT_SCOPE_REQUIRED"},
-        )
-    assessments = {
-        item["requirement_version_id"]: item
-        for item in await execution_context_repository.list_adequacy_assessments(
-            project_id, requirement_version_ids, session=session
-        )
-    }
-    waiver_owner_ids = [
-        (item.get("decision") or {}).get("waiver_owner_id")
-        for assessment in assessments.values()
-        for item in assessment.get("coverage_items", [])
-        if item.get("status") == "WAIVED"
-        and (item.get("decision") or {}).get("waiver_owner_id")
-    ]
-    active_waiver_owners = set(
-        await execution_context_repository.list_active_member_ids(
-            project_id, waiver_owner_ids, session=session
-        )
-    )
-    timestamp = now()
-    completion_timestamp = _as_datetime(completion_approved_at)
-    invalid = []
-    for requirement_version_id in requirement_version_ids:
-        assessment = assessments.get(requirement_version_id)
-        if (
-            not assessment
-            or assessment.get("requirement_version_id") != requirement_version_id
-            or assessment.get("status") not in {"ASSURED", "CONDITIONAL"}
-        ):
-            invalid.append(requirement_version_id)
-            continue
-        assessment_updated_at = _as_datetime(assessment.get("updated_at"))
-        if (
-            completion_timestamp
-            and (
-                not assessment_updated_at
-                or assessment_updated_at > completion_timestamp
-            )
-        ):
-            invalid.append(requirement_version_id)
-            continue
-        coverage_items = assessment.get("coverage_items") or []
-        if not coverage_items:
-            invalid.append(requirement_version_id)
-            continue
-        coverage_item_ids = [item.get("coverage_item_id") for item in coverage_items]
-        if (
-            any(not item_id for item_id in coverage_item_ids)
-            or len(coverage_item_ids) != len(set(coverage_item_ids))
-        ):
-            invalid.append(requirement_version_id)
-            continue
-        has_active_waiver = False
-        unresolved_item = False
-        for item in coverage_items:
-            item_status = item.get("status")
-            item_ready = coverage_item_ready_for_assurance(item, timestamp)
-            if not item_ready:
-                unresolved_item = True
-            if item_status == "WAIVED":
-                owner_id = (item.get("decision") or {}).get("waiver_owner_id")
-                if item_ready and owner_id in active_waiver_owners:
-                    has_active_waiver = True
-                else:
-                    unresolved_item = True
-            elif item_status not in {"VERIFIED_COVERED", "NOT_APPLICABLE"}:
-                unresolved_item = True
-        status_mismatch = (assessment.get("status") == "CONDITIONAL") != has_active_waiver
-        if unresolved_item or status_mismatch:
-            invalid.append(requirement_version_id)
-    if invalid:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "code": "RELEASE_REQUIREMENT_ASSURANCE_GATE_FAILED",
-                "requirement_version_ids": invalid,
-            },
-        )
-    return len(requirement_version_ids)
-
 async def resolve_execution_context(
     project_id: str,
     user: CurrentUser,
@@ -540,36 +415,6 @@ class ExecutionContextService:
                     )
                 )
 
-                try:
-                    assured_requirement_count = await ensure_release_assurance_gate(
-                        project_id,
-                        release_id,
-                        session=session,
-                        completion_approved_at=(
-                            completion_report.get('approved_at') or completion_report.get('created_at')
-                            if isinstance(completion_report, dict)
-                            else None
-                        ),
-                    )
-                    checks.append(
-                        ReleaseReadinessCheck(
-                            gate='REQUIREMENT_ASSURANCE',
-                            status='PASS',
-                            code='RELEASE_REQUIREMENT_ASSURANCE_VALID',
-                            details={'requirement_count': assured_requirement_count},
-                        )
-                    )
-                except HTTPException as error:
-                    detail = error.detail if isinstance(error.detail, dict) else {}
-                    checks.append(
-                        ReleaseReadinessCheck(
-                            gate='REQUIREMENT_ASSURANCE',
-                            status='BLOCKED',
-                            code=detail.get('reason_code') or detail.get('code') or 'RELEASE_REQUIREMENT_ASSURANCE_GATE_FAILED',
-                            details=detail,
-                        )
-                    )
-
                 blockers = [item for item in checks if item.status == 'BLOCKED']
                 gate_revision_value = gate_revision if valid_gate_revision else None
                 return ReleaseReadiness(
@@ -689,8 +534,6 @@ class ExecutionContextService:
                 },
             )
         completion_gate_applied = False
-        assurance_scope_size = 0
-
         try:
             gate_revision = release.get("gate_revision", 0)
             if target == 'CLOSED' and (
@@ -721,16 +564,6 @@ class ExecutionContextService:
                             ai_run_id=getattr(user, "_ai_capability_run_id", None),
                         )
                         completion_gate_applied = bool(completion_report)
-                        assurance_scope_size = await ensure_release_assurance_gate(
-                            release["project_id"],
-                            release_id,
-                            session=session,
-                            completion_approved_at=(
-                                completion_report.get("approved_at") or completion_report.get("created_at")
-                                if isinstance(completion_report, dict)
-                                else None
-                            ),
-                        )
                     event = (
                         'release_closed_after_completion'
                         if completion_gate_applied
@@ -760,7 +593,7 @@ class ExecutionContextService:
                         'Release',
                         release_id,
                         release["project_id"],
-                        {"reason": payload.reason, "assured_requirement_count": assurance_scope_size},
+                        {"reason": payload.reason},
                         session=session,
                     )
         except HTTPException as error:
@@ -772,7 +605,6 @@ class ExecutionContextService:
                 'RELEASE_TEST_PLAN_SCOPE_REQUIRED',
                 'RELEASE_TEST_PLAN_SNAPSHOT_INVALID',
                 'RELEASE_REQUIREMENT_SCOPE_REQUIRED',
-                'RELEASE_REQUIREMENT_ASSURANCE_GATE_FAILED',
             }
             error_detail = error.detail if isinstance(error.detail, dict) else {}
             if target == 'CLOSED' and error_detail.get("code") in gate_codes:

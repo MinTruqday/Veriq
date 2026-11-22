@@ -12,9 +12,6 @@ from src.core.common import (
 from src.core.database import database
 from src.repositories.test_run import test_run_repository
 from src.repositories.project import project_repository
-from src.modules.projects.services.assignment_capacity import (
-    _check_test_run_assignment_capacity,
-)
 from src.modules.execution.services.execution_context import resolve_execution_context
 from src.modules.execution.services.execution_state import validate_test_versions
 from src.modules.execution.services.test_plan import verified_approved_plan_snapshot
@@ -115,14 +112,6 @@ def _pin_run_to_plan(run, snapshot, snapshot_hash):
     run["requirement_version_ids"] = list(snapshot.get("requirement_version_ids") or [])
     schedule = snapshot.get("schedule")
     run["test_plan_schedule_snapshot"] = dict(schedule) if isinstance(schedule, dict) else {}
-    if snapshot.get("device_matrix_id"):
-        run.update(
-            {
-                "device_matrix_id": snapshot["device_matrix_id"],
-                "device_profile_keys": list(snapshot.get("device_profile_keys", [])),
-                "device_matrix_snapshot": snapshot.get("device_matrix_snapshot"),
-            }
-        )
     return run
 
 
@@ -253,21 +242,11 @@ async def create_test_run_record(payload, project_id, user):
                 raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
             return existing
     timestamp = now()
-    device_scope = {}
-    if approved_snapshot:
-        device_scope = {
-            "device_matrix_id": approved_snapshot.get("device_matrix_id"),
-            "device_profile_keys": approved_snapshot.get("device_profile_keys", []),
-            "device_matrix_snapshot": approved_snapshot.get("device_matrix_snapshot"),
-        }
-        if not device_scope["device_matrix_id"]:
-            device_scope = {}
     run = {
         "_id": new_id('TRUN'),
         **payload.model_dump(exclude={"expected_test_plan_snapshot_hash"}),
         "test_suite_ids": list(dict.fromkeys(payload.test_suite_ids)),
         **context,
-        **device_scope,
         "test_case_version_ids": version_ids,
         "test_case_assignments": {},
         "status": 'DRAFT',
@@ -423,7 +402,7 @@ async def rerun_test_run_record(project_id, run_id, payload, user):
             "project_id", "test_plan_id", "test_suite_ids",
             "environment", "environment_id", "release", "release_id", "build", "build_id",
             "test_case_assignments",
-            "assignee_id", "test_plan_snapshot_hash", "device_matrix_id", "device_profile_keys", "device_matrix_snapshot",
+            "assignee_id", "test_plan_snapshot_hash",
         )
         if key in source
     }
@@ -875,19 +854,6 @@ async def assign_test_run_record(project_id, run_id, payload, user):
                             "user_ids": stale_members,
                         },
                     )
-                proposed_users = assigned_users | {payload.assignee_id}
-                current_run_users = set(
-                    (current_run.get("test_case_assignments") or {}).values()
-                )
-                if current_run.get("assignee_id"):
-                    current_run_users.add(current_run["assignee_id"])
-                await _check_test_run_assignment_capacity(
-                    project_id,
-                    current_run,
-                    proposed_users,
-                    session=session,
-                    existing_run_user_ids=current_run_users.intersection(proposed_users),
-                )
                 updated = await optimistic_patch(
                     'test_runs',
                     run_id,

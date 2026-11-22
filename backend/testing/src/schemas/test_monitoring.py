@@ -73,7 +73,6 @@ class ExitCriterionDefinition(BaseModel):
         "AC_COVERAGE_MIN",
         "CONDITION_COVERAGE_MIN",
         "STALE_TESTCASE_MAX",
-        "ENVIRONMENT_INCIDENT_MAX",
         "REQUIRED_RUNS_COMPLETED",
         "CUSTOM_MANUAL_GATE",
     ]

@@ -71,9 +71,6 @@ class ProjectAccessRepository:
         names = {
             "testscenario.approve",
             "testscenario.review",
-            "testadequacy.approve",
-            "testadequacy.review",
-            "workreport.approve",
         }
         while True:
             document = await database.value.project_access_control.find_one({"_id": "active"})
@@ -231,46 +228,6 @@ class ProjectAccessRepository:
                             upsert=True,
                             session=session,
                         )
-                        access_policy.cache_clear()
-                        return
-
-    async def ensure_reporting_capabilities(self):
-        from src.core.auth import access_policy
-        from src.schemas.project_access import ProjectCapability
-
-        names = {
-            "workreport.read",
-            "workreport.write",
-            "workreport.ai",
-            "workreport.manage",
-            "workreport.review",
-            "workreport.publish",
-        }
-        while True:
-            document = await database.value.project_access_control.find_one({"_id": "active"})
-            access = ProjectAccessControl.model_validate(document)
-            known = {item.name for item in access.capabilities}
-            missing = names - known
-            if not missing:
-                access_policy.cache_clear()
-                return
-            updated = access.model_copy(update={
-                "revision": access.revision + 1,
-                "capabilities": access.capabilities + [ProjectCapability(name=name, read_only=name.endswith(".read")) for name in sorted(missing)],
-            })
-            async with await database.client.start_session() as session:
-                async with session.start_transaction():
-                    result = await database.value.project_access_control.replace_one(
-                        {"_id": "active", "revision": access.revision},
-                        {**document, **updated.model_dump(), "updated_at": datetime.now(timezone.utc)}, session=session,
-                    )
-                    if result.modified_count:
-                        await database.value.audit_events.insert_one({
-                            "_id": f"MIG-reporting-capabilities-{updated.revision}",
-                            "actor_id": "SYSTEM_MIGRATION", "action": "reporting_capabilities_added",
-                            "entity_type": "ProjectAccessControl", "entity_id": "active", "project_id": None,
-                            "created_at": datetime.now(timezone.utc), "details": {"added": sorted(missing), "previous_revision": access.revision},
-                        }, session=session)
                         access_policy.cache_clear()
                         return
 

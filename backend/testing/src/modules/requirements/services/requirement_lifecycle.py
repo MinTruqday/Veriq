@@ -383,7 +383,6 @@ async def baseline_requirement(
             detail={"code": 'REQUIREMENT_LINT_BLOCKED', "findings": findings},
         )
     timestamp = now()
-    from src.modules.design.services.test_adequacy import supersede_requirement_assessments
     already_baselined = False
     async with await database.client.start_session() as session:
         async with session.start_transaction():
@@ -425,10 +424,6 @@ async def baseline_requirement(
                         status_code=409,
                         detail={"code": 'REQUIREMENT_CURRENT_VERSION_CHANGED'},
                     )
-                await supersede_requirement_assessments(
-                    version["project_id"], version["requirement_id"], version_id, user.id,
-                    session=session,
-                )
                 await requirement_repository.approve_acceptance_criteria(
                     version_id,
                     'draft',

@@ -25,31 +25,6 @@ class TestDesignRepository:
             return_document=ReturnDocument.AFTER,
         )
 
-    async def list_reusable_steps(self, project_id):
-        return await database.value.reusable_test_steps.find(
-            {"project_id": project_id, "status": "ACTIVE"}
-        ).sort("updated_at", -1).to_list(1000)
-
-    async def find_reusable_step_version(self, project_id, version_id):
-        return await database.value.reusable_test_step_versions.find_one(
-            {"_id": version_id, "project_id": project_id, "status": "ACTIVE"}
-        )
-
-    async def insert_reusable_step(self, value, session=None):
-        await database.value.reusable_test_steps.insert_one(value, session=session)
-        return value
-
-    async def insert_reusable_step_version(self, value, session=None):
-        await database.value.reusable_test_step_versions.insert_one(value, session=session)
-        return value
-
-    async def update_reusable_step(self, step_id, project_id, revision, changes):
-        return await database.value.reusable_test_steps.find_one_and_update(
-            {"_id": step_id, "project_id": project_id, "status": "ACTIVE", "revision": revision},
-            {"$set": changes, "$inc": {"revision": 1}},
-            return_document=ReturnDocument.AFTER,
-        )
-
     async def list_cases(self, project_id, status=None, limit=20000):
         query = {"project_id": project_id}
         if status:
@@ -270,8 +245,6 @@ class TestDesignRepository:
         trace_error_code,
         approval_audit_status,
         approval_audit_error_code,
-        adequacy_invalidation_status,
-        adequacy_invalidation_error_code,
     ):
         return await database.value.test_case_versions.update_one(
             {"_id": version_id, "project_id": project_id},
@@ -284,8 +257,6 @@ class TestDesignRepository:
                     "trace_error_code": trace_error_code,
                     "approval_audit_status": approval_audit_status,
                     "approval_audit_error_code": approval_audit_error_code,
-                    "adequacy_invalidation_status": adequacy_invalidation_status,
-                    "adequacy_invalidation_error_code": adequacy_invalidation_error_code,
                 }
             },
         )
@@ -504,15 +475,6 @@ class TestDesignRepository:
             {"$set": changes, "$inc": {"revision": 1}},
             return_document=ReturnDocument.AFTER,
         )
-
-    async def list_device_matrices(self, query, limit=500):
-        return await database.value.device_matrices.find(query).sort(
-            "updated_at", -1
-        ).to_list(limit)
-
-    async def insert_device_matrix(self, value):
-        await database.value.device_matrices.insert_one(value)
-        return value
 
     async def artifact_exists(self, collection_name, project_id, artifact_id):
         return bool(

@@ -102,7 +102,6 @@ class TestBasisRef(BaseModel):
         "API_OPERATION",
         "KNOWLEDGE_SOURCE",
         "BUSINESS_RULE",
-        "RISK_RANKING",
         "DEFECT",
         "REGULATION",
     ]

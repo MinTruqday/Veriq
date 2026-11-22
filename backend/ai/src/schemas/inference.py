@@ -2,7 +2,6 @@ from typing import get_args
 
 from pydantic import BaseModel
 
-from src.schemas.inference_completeness import ProjectCompletenessOutput
 from src.schemas.inference_change_simulation import ChangeSimulationReportOutput
 from src.schemas.inference_impact import (
     ImpactClassificationOutput,
@@ -12,11 +11,8 @@ from src.schemas.inference_impact import (
     NewTestCandidateOutput,
 )
 from src.schemas.inference_quality import (
-    WorkReportNarrativeOutput,
     AutomationScriptOutput,
     AutomationScriptSuggestionOutput,
-    CausalHypothesesOutput,
-    CausalHypothesisSuggestionOutput,
     CompletionReportNarrativeOutput,
     CompletionReportNarrativeSuggestionOutput,
     ExecutionAssistanceDefectDraftOutput,
@@ -25,13 +21,6 @@ from src.schemas.inference_quality import (
     ExecutionAssistanceSuggestionOutput,
     LessonsLearnedClustersOutput,
     LessonsLearnedClusterSuggestionOutput,
-    PerformanceSuggestionOutput,
-    PerformanceSuggestionsOutput,
-    ProjectComplexityAssessmentOutput,
-    ProjectComplexityAssessmentSuggestionOutput,
-    ProjectComplexityDimensionOutput,
-    SecuritySuggestionOutput,
-    SecuritySuggestionsOutput,
     StatusReportNarrativeOutput,
     StatusReportNarrativeSuggestionOutput,
     TestDataSuggestionItemOutput,
@@ -78,8 +67,6 @@ from src.schemas.inference_test_design import (
 __all__ = [
     "AutomationScriptOutput",
     "AutomationScriptSuggestionOutput",
-    "CausalHypothesesOutput",
-    "CausalHypothesisSuggestionOutput",
     "ChangeSimulationReportOutput",
     "CompletionReportNarrativeOutput",
     "CompletionReportNarrativeSuggestionOutput",
@@ -102,12 +89,6 @@ __all__ = [
     "MaintenanceTestCasePatchOutput",
     "MaintenanceTestStepOutput",
     "NewTestCandidateOutput",
-    "PerformanceSuggestionOutput",
-    "PerformanceSuggestionsOutput",
-    "ProjectComplexityAssessmentOutput",
-    "ProjectComplexityAssessmentSuggestionOutput",
-    "ProjectComplexityDimensionOutput",
-    "ProjectCompletenessOutput",
     "ProjectQuestionOutput",
     "RequirementAcceptanceCriterionSuggestionOutput",
     "RequirementQualityModelOutput",
@@ -119,8 +100,6 @@ __all__ = [
     "RequirementTemplateReviewOutput",
     "RequirementTemplateSuggestionOutput",
     "RequirementTemplateSynthesisOutput",
-    "SecuritySuggestionOutput",
-    "SecuritySuggestionsOutput",
     "StatusReportNarrativeOutput",
     "StatusReportNarrativeSuggestionOutput",
     "TestPlanDraftOutput",
@@ -137,7 +116,6 @@ __all__ = [
     "TestingCapabilityStatus",
     "TestingEvidence",
     "VerifiedSourceFactCitation",
-    "WorkReportNarrativeOutput",
     "output_schema",
 ]
 

@@ -76,12 +76,7 @@ export default function TestCaseCreateForm({
   setForm,
   dataSets,
   testConditions,
-  strategyTestLevels = [],
-  strategyTestTypes = [],
-  strategyPriorityLevels = [],
-  strategyRiskLevels = [],
   repositoryNodes,
-  reusableSteps,
   requirements = [],
   scenarios = [],
   scenarioRequired = false,
@@ -123,26 +118,24 @@ export default function TestCaseCreateForm({
   );
   const testLevelOptions = [
     ...new Set([
-      ...strategyTestLevels,
       ...scopedTestConditions.map((item) => item.test_level).filter(Boolean),
     ]),
   ];
   const testKindOptions = [
     ...new Set([
-      ...strategyTestTypes,
       ...scopedTestConditions.map((item) => item.test_type).filter(Boolean),
     ]),
   ];
   const priorityOptions = [
     ...new Set(
-      [...strategyPriorityLevels, form.priority]
+      [form.priority]
         .map((value) => String(value || "").trim())
         .filter(Boolean),
     ),
   ];
   const riskOptions = [
     ...new Set(
-      [...strategyRiskLevels, form.risk].map((value) => String(value || "").trim()).filter(Boolean),
+      [form.risk].map((value) => String(value || "").trim()).filter(Boolean),
     ),
   ];
   const retainScopedConditionIds = (conditionIds, scopedRequirements, scopedCriteria) =>
@@ -402,15 +395,6 @@ export default function TestCaseCreateForm({
                   onChange={(event) => update({ then: event.target.value })}
                   placeholder="Kết quả mong đợi"
                   required
-                />
-                <MultiSelect
-                  label="Bước dùng lại"
-                  options={reusableSteps.map((item) => ({
-                    value: item.current_version_id,
-                    label: `${item.name} v${item.version}`,
-                  }))}
-                  value={form.reusableStepVersionIds}
-                  onChange={(reusableStepVersionIds) => update({ reusableStepVersionIds })}
                 />
               </div>
             )}

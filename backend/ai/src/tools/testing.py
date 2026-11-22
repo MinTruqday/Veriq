@@ -46,6 +46,21 @@ def response_items(value):
     return []
 
 
+def requirement_clarification_plan(version, clarifications):
+    return [
+        {
+            "clarification_id": item.get("_id"),
+            "requirement_version_id": version["_id"],
+            "question": item.get("question"),
+            "reason": item.get("reason"),
+            "source_ref": item.get("source_ref"),
+            "source_quote": item.get("source_quote"),
+            "status": item.get("status"),
+        }
+        for item in clarifications
+    ]
+
+
 async def list_resumable_ai_test_case_drafts(project_id, requirement_version_id, config):
     drafts_by_id = {}
     for status in ("DRAFT", "IN_REVIEW"):
@@ -351,72 +366,4 @@ async def resolve_answered_clarifications(version, config):
             if not already_resolved:
                 raise
     return pending
-
-async def plan_clarification_priority(version, clarifications, config):
-    """Rank open questions by persisted, exact links to unresolved test obligations."""
-    if not clarifications:
-        return []
-    assessment = await require_operation(
-        "GET",
-        f"/phien-ban-yeu-cau/{version['_id']}/do-day-du-kiem-thu",
-        config,
-    )
-    unresolved_items = [
-        item
-        for item in assessment.get("coverage_items", [])
-        if item.get("status") in {"UNASSESSED", "MISSING_INFORMATION"}
-    ]
-    ranked = []
-    for clarification in clarifications:
-        explicit_item_ids = set(clarification.get("unlocks_coverage_item_ids") or [])
-        obligation_quotes = {
-            " ".join(str(value or "").split())
-            for value in clarification.get("unlocks_source_quotes", [])
-            if str(value or "").strip()
-        }
-        if explicit_item_ids:
-            linked = [
-                item for item in unresolved_items
-                if item.get("coverage_item_id") in explicit_item_ids
-            ]
-        elif obligation_quotes:
-            linked = [
-                item for item in unresolved_items
-                if " ".join(str(item.get("source_quote") or "").split()) in obligation_quotes
-            ]
-        else:
-            source_ref = str(clarification.get("source_ref") or "").strip()
-            source_quote = " ".join(str(clarification.get("source_quote") or "").split())
-            linked = [
-                item for item in unresolved_items
-                if (
-                    clarification.get("coverage_item_id") == item.get("coverage_item_id")
-                    or (source_ref and source_ref == str(item.get("source_ref") or "").strip())
-                    or (
-                        source_quote
-                        and source_quote == " ".join(str(item.get("source_quote") or "").split())
-                    )
-                )
-            ]
-        ranked.append(
-            {
-                "clarification_id": clarification.get("_id"),
-                "requirement_version_id": version["_id"],
-                "question": clarification.get("question"),
-                "reason": clarification.get("reason"),
-                "status": clarification.get("status"),
-                "unlocks_coverage_item_ids": list(
-                    dict.fromkeys(item.get("coverage_item_id") for item in linked if item.get("coverage_item_id"))
-                ),
-                "unlock_count": len({item.get("coverage_item_id") for item in linked if item.get("coverage_item_id")}),
-            }
-        )
-    ranked.sort(key=lambda item: (-item["unlock_count"], str(item.get("clarification_id") or "")))
-    for priority, item in enumerate(ranked, start=1):
-        item["priority"] = priority
-        if not item["unlock_count"]:
-            item["priority_basis"] = 'Không có liên kết nguồn chính xác với Nghĩa vụ còn mở; không khẳng định số mục được mở khóa.'
-        else:
-            item["priority_basis"] = 'Số Nghĩa vụ còn mở được liên kết qua mã nguồn hoặc trích dẫn chính xác.'
-    return ranked
 

@@ -3,7 +3,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Pencil, RefreshCw } from "lucide-react";
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
 import DataTable from "./DataTable";
-import FormalReviewPanel from "./FormalReviewPanel";
 import QualityGateBadge from "./QualityGateBadge";
 import ReportSelectionList from "./ReportSelectionList";
 import { ErrorState, Metric, Panel, StatusPill, useActionDialog } from "./WorkspacePrimitives";
@@ -706,15 +705,6 @@ export default function TestStatusReportPanel({ project }) {
                       ]}
                     />
                   </Panel>
-                )}
-                {can("reviewsession.read") && (
-                  <FormalReviewPanel
-                    project={project}
-                    artifactType="STATUS_REPORT"
-                    artifactId={selected._id}
-                    artifactVersionId={selected._id}
-                    reviewType="STATUS_REPORT"
-                  />
                 )}
               </div>
             )}

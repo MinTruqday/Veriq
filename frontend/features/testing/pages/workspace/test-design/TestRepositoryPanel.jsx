@@ -5,10 +5,8 @@ import { ChevronDown, ChevronRight, Folder, Pencil } from "lucide-react";
 import SearchField from "@/shared/components/ui/SearchField";
 import { LoadingState, Panel } from "../../../components/WorkspacePrimitives";
 import { testingApi } from "../../../services/testing.service";
-import { docText, messageOf, textDoc } from "../../../lib/testing";
+import { messageOf } from "../../../lib/testing";
 import { Modal, ModalFooter, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
-import { useDateTimeOptions } from "../../../hooks/useDateTimeOptions";
-import { formatDateTime } from "@/shared/lib/dateTime.mjs";
 
 function RepositoryBranch({
   node,
@@ -83,23 +81,16 @@ function RepositoryBranch({
 }
 
 export default function TestRepositoryPanel({ project, can, ask, onError, focus = "" }) {
-  const dateTimeOptions = useDateTimeOptions(project);
   const [nodes, setNodes] = useState([]);
-  const [steps, setSteps] = useState([]);
   const [nodeName, setNodeName] = useState("");
   const [parentId, setParentId] = useState("");
   const [nodeModalOpen, setNodeModalOpen] = useState(false);
-  const [stepName, setStepName] = useState("");
-  const [stepAction, setStepAction] = useState("");
-  const [stepModalOpen, setStepModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [savingNode, setSavingNode] = useState(false);
-  const [savingStep, setSavingStep] = useState(false);
   const [expandedNodeIds, setExpandedNodeIds] = useState(() => new Set());
   const [repositoryQuery, setRepositoryQuery] = useState("");
-  const [stepsQuery, setStepsQuery] = useState("");
   const loadGeneration = useRef(0);
   const load = useCallback(async () => {
     const requestGeneration = ++loadGeneration.current;
@@ -107,13 +98,9 @@ export default function TestRepositoryPanel({ project, can, ask, onError, focus 
     setLoadFailed(false);
     setLoadError("");
     try {
-      const [repository, reusable] = await Promise.all([
-        testingApi.listTestRepository(project._id),
-        testingApi.listReusableTestSteps(project._id),
-      ]);
+      const repository = await testingApi.listTestRepository(project._id);
       if (requestGeneration !== loadGeneration.current) return;
       setNodes(repository);
-      setSteps(reusable);
     } catch (reason) {
       if (requestGeneration !== loadGeneration.current) return;
       setLoadFailed(true);
@@ -149,25 +136,6 @@ export default function TestRepositoryPanel({ project, can, ask, onError, focus 
       setSavingNode(false);
     }
   };
-  const createStep = async (event) => {
-    event.preventDefault();
-    setSavingStep(true);
-    try {
-      await testingApi.createReusableTestStep(project._id, {
-        name: stepName,
-        action_doc: textDoc(stepAction),
-        expected_doc: textDoc(""),
-      });
-      setStepName("");
-      setStepAction("");
-      setStepModalOpen(false);
-      await load();
-    } catch (reason) {
-      onError(messageOf(reason));
-    } finally {
-      setSavingStep(false);
-    }
-  };
   const renameNode = async (node) => {
     await ask({
       title: "Đổi tên thư mục kiểm thử",
@@ -179,42 +147,6 @@ export default function TestRepositoryPanel({ project, can, ask, onError, focus 
           await testingApi.updateTestRepositoryNode(node._id, {
             expected_revision: node.revision,
             name: name.trim(),
-          });
-          await load();
-        } catch (reason) {
-          throw new Error(messageOf(reason));
-        }
-      },
-    });
-  };
-  const editStep = async (step) => {
-    await ask({
-      title: "Tạo phiên bản bước dùng lại",
-      description: `Phiên bản hiện tại v${step.version} sẽ được giữ nguyên. Ca kiểm thử đã duyệt tiếp tục dùng phiên bản đã ghim.`,
-      confirmLabel: "Tạo phiên bản mới",
-      fields: [
-        { name: "name", label: "Tên bước", initialValue: step.name, required: true },
-        {
-          name: "action",
-          label: "Hành động",
-          initialValue: docText(step.action_doc),
-          required: true,
-          multiline: true,
-        },
-        {
-          name: "expected",
-          label: "Kết quả mong đợi",
-          initialValue: docText(step.expected_doc),
-          multiline: true,
-        },
-      ],
-      onConfirm: async ({ name, action, expected }) => {
-        try {
-          await testingApi.updateReusableTestStep(step._id, {
-            expected_revision: step.revision,
-            name: name.trim(),
-            action_doc: textDoc(action),
-            expected_doc: textDoc(expected || ""),
           });
           await load();
         } catch (reason) {
@@ -250,15 +182,8 @@ export default function TestRepositoryPanel({ project, can, ask, onError, focus 
       else next.add(nodeId);
       return next;
     });
-  const visibleSteps = steps.filter((step) =>
-    `${step.name} ${docText(step.action_doc)} ${docText(step.expected_doc)}`
-      .toLocaleLowerCase()
-      .includes(stepsQuery.trim().toLocaleLowerCase()),
-  );
-  const formatDate = (value) => (value ? formatDateTime(value, dateTimeOptions) : "");
   return (
-    <div className={`grid items-start gap-6 ${focus ? "" : "xl:grid-cols-2"}`}>
-      {focus !== "reusable-steps" && (
+    <div>
         <Panel title="Thư mục kiểm thử" className="!shadow-none">
           {loading ? (
             <div className="p-5">
@@ -340,113 +265,6 @@ export default function TestRepositoryPanel({ project, can, ask, onError, focus 
             </div>
           )}
         </Panel>
-      )}
-      {focus !== "repository" && (
-        <Panel title="Bước kiểm thử dùng lại" className="!shadow-none">
-          {loading ? (
-            <div className="p-5">
-              <LoadingState />
-            </div>
-          ) : loadFailed ? (
-            <div className="space-y-3 p-5">
-              <p role="alert" className="text-sm text-danger">
-                Không thể tải bước dùng lại{loadError ? `: ${loadError}` : ""}
-              </p>
-              <button
-                className="secondary-button"
-                disabled={loading}
-                type="button"
-                onClick={() => void load()}
-              >
-                Thử tải lại
-              </button>
-            </div>
-          ) : steps.length ? (
-            <div className="divide-y divide-border">
-              <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-                <p className="text-sm text-ink-muted">{steps.length} bước đã lưu</p>
-                <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
-                  <SearchField
-                    ariaLabel="Tìm bước kiểm thử dùng lại"
-                    className="min-w-[15rem] flex-1 xl:max-w-sm"
-                    onChange={(event) => setStepsQuery(event.target.value)}
-                    placeholder="Tìm theo tên hoặc nội dung"
-                    value={stepsQuery}
-                  />
-                  {can("testcase.create") && (
-                    <button
-                      className="primary-button shrink-0"
-                      type="button"
-                      onClick={() => setStepModalOpen(true)}
-                    >
-                      Tạo bước dùng lại
-                    </button>
-                  )}
-                </div>
-              </div>
-              {visibleSteps.length ? (
-                <ul className="divide-y divide-border">
-                  {visibleSteps.map((step) => (
-                    <li
-                      className="flex min-w-0 items-start justify-between gap-4 px-4 py-4"
-                      key={step._id}
-                    >
-                      <div className="min-w-0 space-y-2">
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                          <h3 className="font-medium text-ink">{step.name}</h3>
-                          <span className="text-sm text-ink-muted">Phiên bản {step.version}</span>
-                          {formatDate(step.updated_at) && (
-                            <span className="text-sm text-ink-muted">
-                              Cập nhật {formatDate(step.updated_at)}
-                            </span>
-                          )}
-                        </div>
-                        <p className="break-words text-sm text-ink-muted">
-                          <span className="font-medium text-ink">Thao tác:</span>{" "}
-                          {docText(step.action_doc) || "Chưa có mô tả thao tác"}
-                        </p>
-                        <p className="break-words text-sm text-ink-muted">
-                          <span className="font-medium text-ink">Kết quả:</span>{" "}
-                          {docText(step.expected_doc) || "Chưa ghi kết quả mong đợi"}
-                        </p>
-                      </div>
-                      {can("testcase.update") && (
-                        <button
-                          aria-label={`Tạo phiên bản mới cho ${step.name}`}
-                          className="icon-button h-9 w-9 shrink-0"
-                          title="Tạo phiên bản mới"
-                          type="button"
-                          onClick={() => void editStep(step)}
-                        >
-                          <Pencil aria-hidden="true" size={16} />
-                        </button>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="p-5 text-sm text-ink-muted">Không tìm thấy bước phù hợp.</p>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-3 p-5">
-              <p className="font-medium text-ink">Chưa có bước dùng lại</p>
-              <p className="text-sm text-ink-muted">
-                Lưu thao tác và kết quả chuẩn để dùng nhất quán trong nhiều ca kiểm thử.
-              </p>
-              {can("testcase.create") && !loadFailed && (
-                <button
-                  className="primary-button w-fit"
-                  type="button"
-                  onClick={() => setStepModalOpen(true)}
-                >
-                  Tạo bước dùng lại
-                </button>
-              )}
-            </div>
-          )}
-        </Panel>
-      )}
       <Modal
         isOpen={nodeModalOpen}
         onClose={() => {
@@ -495,52 +313,6 @@ export default function TestRepositoryPanel({ project, can, ask, onError, focus 
             </button>
             <button className="primary-button" disabled={savingNode} type="submit">
               {savingNode ? "Đang tạo thư mục" : "Tạo thư mục"}
-            </button>
-          </ModalFooter>
-        </form>
-      </Modal>
-      <Modal
-        isOpen={stepModalOpen}
-        onClose={() => {
-          if (!savingStep) setStepModalOpen(false);
-        }}
-        ariaLabel="Tạo bước dùng lại"
-      >
-        <ModalHeader>
-          <ModalTitle>Tạo bước dùng lại</ModalTitle>
-        </ModalHeader>
-        <form className="space-y-4 p-5" onSubmit={createStep}>
-          <label className="field-label" htmlFor="reusable-step-name">
-            Tên bước
-            <input
-              id="reusable-step-name"
-              className="apple-input mt-2 w-full"
-              value={stepName}
-              onChange={(event) => setStepName(event.target.value)}
-              required
-            />
-          </label>
-          <label className="field-label" htmlFor="reusable-step-action">
-            Hành động
-            <textarea
-              id="reusable-step-action"
-              className="apple-input mt-2 min-h-24 w-full min-w-0"
-              value={stepAction}
-              onChange={(event) => setStepAction(event.target.value)}
-              required
-            />
-          </label>
-          <ModalFooter className="-mx-5 -mb-5">
-            <button
-              className="secondary-button"
-              disabled={savingStep}
-              onClick={() => setStepModalOpen(false)}
-              type="button"
-            >
-              Hủy
-            </button>
-            <button className="primary-button" disabled={savingStep} type="submit">
-              {savingStep ? "Đang tạo bước" : "Tạo bước dùng lại"}
             </button>
           </ModalFooter>
         </form>

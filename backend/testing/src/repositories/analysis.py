@@ -167,16 +167,6 @@ class AnalysisRepository:
             projection,
         ).to_list(limit)
 
-    async def find_latest_risk_ranking(self, project_id):
-        return await database.value.risk_rankings.find_one(
-            {"project_id": project_id},
-            sort=[("created_at", -1)],
-        )
-
-    async def insert_risk_ranking(self, value):
-        await database.value.risk_rankings.insert_one(value)
-        return value
-
     async def failure_counts(self, project_id, limit=5000):
         return await database.value.test_results.aggregate(
             [

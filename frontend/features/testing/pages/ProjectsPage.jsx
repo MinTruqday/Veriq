@@ -84,7 +84,6 @@ export default function ProjectsPage() {
     name: "",
     description: "",
     project_type: "",
-    planning_method: "SCRUM",
     planned_start_at: "",
     planned_end_at: "",
   });
@@ -203,7 +202,6 @@ export default function ProjectsPage() {
         name: "",
         description: "",
         project_type: "",
-        planning_method: "SCRUM",
         planned_start_at: "",
         planned_end_at: "",
       });
@@ -311,17 +309,6 @@ export default function ProjectsPage() {
               onChange={(event) => setForm({ ...form, project_type: event.target.value })}
               placeholder="Nhập loại dự án"
             />
-          </label>
-          <label className="field-label block min-w-0">
-            Phương thức làm việc
-            <select
-              className="apple-input mt-2 w-full"
-              value={form.planning_method}
-              onChange={(event) => setForm({ ...form, planning_method: event.target.value })}
-            >
-              <option value="SCRUM">Scrum</option>
-              <option value="KANBAN">Kanban</option>
-            </select>
           </label>
           {user?.system_role === "ADMIN" && (
             <label className="field-label block min-w-0">

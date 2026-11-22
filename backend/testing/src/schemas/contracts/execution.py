@@ -22,7 +22,6 @@ class ReleaseReadinessCheck(BaseModel):
         "GATE_REVISION",
         "COMPLETION_REPORT",
         "BLOCKING_DEFECTS",
-        "REQUIREMENT_ASSURANCE",
     ]
     status: Literal["PASS", "BLOCKED"]
     code: str
@@ -58,7 +57,6 @@ class TestPlanPatch(BaseModel):
     exit_criteria: list[str] | None = Field(default=None, max_length=200)
     test_types: list[str] | None = Field(default=None, max_length=100)
     members: list[str] | None = Field(default=None, max_length=500)
-    strategy_version_id: str | None = Field(default=None, max_length=200)
     test_level: str | None = Field(default=None, min_length=1, max_length=100)
     test_approach: str | None = Field(default=None, max_length=10000)
     assumptions: list[str] | None = Field(default=None, max_length=200)

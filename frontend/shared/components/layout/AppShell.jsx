@@ -62,7 +62,6 @@ function initialNavigationGroups(groups, pathname) {
 function NavigationList({
   onNavigate,
   projectPermissions,
-  planningMethod,
   collapsed = false,
   globalOnly = false,
 }) {
@@ -70,14 +69,14 @@ function NavigationList({
   const { user } = useAuth();
   const groups = useMemo(() => {
     const available = availableNavigation(
-      navigationGroupsFor(pathname, planningMethod),
+      navigationGroupsFor(pathname),
       user,
       projectPermissions,
     );
     return globalOnly
       ? available.filter((group) => ["Không gian làm việc", "Tài khoản"].includes(group.label))
       : available;
-  }, [globalOnly, pathname, planningMethod, projectPermissions, user]);
+  }, [globalOnly, pathname, projectPermissions, user]);
   const [collapsedGroups, setCollapsedGroups] = useState(() =>
     initialNavigationGroups(groups, pathname),
   );
@@ -173,7 +172,6 @@ export default function AppShell({ children, requireAuth }) {
   const [searchQuery, setSearchQuery] = useState(routeQuery);
   const [projectPermissions, setProjectPermissions] = useState(null);
   const [permissionsProjectId, setPermissionsProjectId] = useState(null);
-  const [planningMethod, setPlanningMethod] = useState(null);
   const [projectContext, setProjectContext] = useState(null);
   const [projectContextError, setProjectContextError] = useState("");
   const projectContextRequest = useRef(0);
@@ -227,12 +225,10 @@ export default function AppShell({ children, requireAuth }) {
         if (requestId !== projectContextRequest.current) return;
         setProjectPermissions(project?.current_permissions || []);
         setPermissionsProjectId(id);
-        setPlanningMethod(project ? project.planning_method || "SCRUM" : null);
         setProjectContext(project || null);
       } catch (error) {
         if (error?.status === 403 || error?.status === 404) {
           if (requestId === projectContextRequest.current) {
-            setPlanningMethod(null);
             setProjectContext(null);
             setProjectPermissions([]);
             setPermissionsProjectId(id);
@@ -241,7 +237,6 @@ export default function AppShell({ children, requireAuth }) {
           return;
         }
         if (requestId !== projectContextRequest.current) return;
-        setPlanningMethod(null);
         setProjectContext(null);
         setProjectPermissions(null);
         setPermissionsProjectId(null);
@@ -358,12 +353,11 @@ export default function AppShell({ children, requireAuth }) {
     };
   }, [mobileOpen]);
   const currentProjectPermissions = permissionsProjectId === projectId ? projectPermissions : null;
-  const currentPlanningMethod = permissionsProjectId === projectId ? planningMethod : null;
   const currentProjectContext = permissionsProjectId === projectId ? projectContext : null;
   const projectAccessReady =
     !projectId || (permissionsProjectId === projectId && Array.isArray(currentProjectPermissions));
   const projectRouteItem = projectId
-    ? navigationItemForPath(navigationGroupsFor(pathname, currentPlanningMethod), pathname, [
+      ? navigationItemForPath(navigationGroupsFor(pathname), pathname, [
         ...testCaseSubsectionItems(projectId),
         ...legacyProjectRouteItems(projectId, {
           projectTasksSlug: PROJECT_SECTION_SLUGS.projectTasks,
@@ -388,7 +382,7 @@ export default function AppShell({ children, requireAuth }) {
   const projectNavigationGroups = useMemo(() => {
     if (!projectId || !Array.isArray(currentProjectPermissions)) return [];
     const groups = availableNavigation(
-      navigationGroupsFor(pathname, currentPlanningMethod),
+      navigationGroupsFor(pathname),
       user,
       currentProjectPermissions,
     ).filter((group) => !["Không gian làm việc", "Tài khoản"].includes(group.label));
@@ -426,7 +420,7 @@ export default function AppShell({ children, requireAuth }) {
       );
     }
     return nextGroups;
-  }, [currentPlanningMethod, currentProjectPermissions, pathname, projectId, user]);
+  }, [currentProjectPermissions, pathname, projectId, user]);
   const selectedProjectNavigationGroup = useMemo(() => {
     const isDocumentReader = pathname.startsWith(
       `${projectRoute(projectId, PROJECT_SECTION_SLUGS.documentReader)}/`,
@@ -801,7 +795,6 @@ export default function AppShell({ children, requireAuth }) {
         >
           <NavigationList
             projectPermissions={currentProjectPermissions}
-            planningMethod={currentPlanningMethod}
             collapsed={sidebarCollapsed}
             globalOnly={Boolean(projectId)}
           />
@@ -854,7 +847,6 @@ export default function AppShell({ children, requireAuth }) {
             <NavigationList
               onNavigate={() => setMobileOpen(false)}
               projectPermissions={currentProjectPermissions}
-              planningMethod={currentPlanningMethod}
             />
           </aside>
         </div>

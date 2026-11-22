@@ -8,8 +8,6 @@ export default function ScenarioCreateModal({
   form,
   setForm,
   testConditions,
-  strategyTestLevels = [],
-  strategyTestTypes = [],
   saving,
   onSubmit,
   title = "Tạo kịch bản",
@@ -53,7 +51,6 @@ export default function ScenarioCreateModal({
   const testLevelOptions = [
     ...new Set(
       [
-        ...strategyTestLevels,
         ...conditionsForClassification.map((condition) => condition.test_level),
         form.test_level,
       ]
@@ -64,7 +61,6 @@ export default function ScenarioCreateModal({
   const testKindOptions = [
     ...new Set(
       [
-        ...strategyTestTypes,
         ...conditionsForClassification.map((condition) => condition.test_type),
         form.test_kind,
       ]
@@ -207,9 +203,7 @@ export default function ScenarioCreateModal({
                   value={form[key] || ""}
                   disabled={
                     !options.length ||
-                    (!canReadTestConditions &&
-                      !strategyTestLevels.length &&
-                      !strategyTestTypes.length)
+                    !canReadTestConditions
                   }
                   onChange={(event) => update({ [key]: event.target.value })}
                 >

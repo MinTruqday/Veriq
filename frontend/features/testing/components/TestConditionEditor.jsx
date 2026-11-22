@@ -21,10 +21,6 @@ const defaults = {
 export default function TestConditionEditor({
   initialValue,
   requirements,
-  strategies = [],
-  riskLevels = [],
-  priorityLevels = [],
-  projectId,
   onSave,
   onCancel,
 }) {
@@ -44,37 +40,7 @@ export default function TestConditionEditor({
       ),
     [initialValue],
   );
-  useEffect(() => {
-    if (initialValue) return;
-    const strategy = strategies.find((item) => item.active_approved);
-    if (!strategy) return;
-    setValue((current) => ({
-      ...current,
-      test_level: current.test_level || strategy.test_levels?.[0] || "",
-      test_type: current.test_type || strategy.test_types?.[0] || "",
-    }));
-  }, [initialValue, strategies]);
   const setField = (key, next) => setValue((current) => ({ ...current, [key]: next }));
-  const levels = [
-    ...new Set(
-      [...strategies.flatMap((item) => item.test_levels || []), value.test_level].filter(Boolean),
-    ),
-  ];
-  const types = [
-    ...new Set(
-      [...strategies.flatMap((item) => item.test_types || []), value.test_type].filter(Boolean),
-    ),
-  ];
-  const configuredRiskLevels = [
-    ...new Set(
-      [...riskLevels, value.risk].map((item) => String(item || "").trim()).filter(Boolean),
-    ),
-  ];
-  const configuredPriorityLevels = [
-    ...new Set(
-      [...priorityLevels, value.priority].map((item) => String(item || "").trim()).filter(Boolean),
-    ),
-  ];
   return (
     <form
       className="test-design-form space-y-4 p-5"
@@ -152,112 +118,49 @@ export default function TestConditionEditor({
         </label>
         <label className="field-label">
           Cấp kiểm thử
-          <select
+          <input
             aria-label="Cấp kiểm thử"
             className="apple-input mt-2"
             value={value.test_level}
             onChange={(event) => setField("test_level", event.target.value)}
             required
-            disabled={!levels.length}
-          >
-            <option value="">Chọn cấp kiểm thử</option>
-            {levels.map((item) => (
-              <option key={item} value={item}>
-                {valueLabel(item)}
-              </option>
-            ))}
-          </select>
+            maxLength={100}
+            placeholder="Nhập cấp kiểm thử"
+          />
         </label>
         <label className="field-label">
           Loại kiểm thử
-          <select
+          <input
             aria-label="Loại kiểm thử"
             className="apple-input mt-2"
             value={value.test_type}
             onChange={(event) => setField("test_type", event.target.value)}
             required
-            disabled={!types.length}
-          >
-            <option value="">Chọn loại kiểm thử</option>
-            {types.map((item) => (
-              <option key={item} value={item}>
-                {valueLabel(item)}
-              </option>
-            ))}
-          </select>
+            maxLength={100}
+            placeholder="Nhập loại kiểm thử"
+          />
         </label>
-        {(!levels.length || !types.length) && (
-          <p className="text-sm text-ink-muted md:col-span-2">
-            {!levels.length && !types.length
-              ? "Chiến lược đã duyệt chưa có cấp và loại kiểm thử."
-              : !levels.length
-                ? "Chiến lược đã duyệt chưa có cấp kiểm thử."
-                : "Chiến lược đã duyệt chưa có loại kiểm thử."}{" "}
-            {projectId && (
-              <a
-                className="font-medium text-brand underline"
-                href={`/du-an/${projectId}/quan-tri-kiem-thu`}
-              >
-                Mở chiến lược kiểm thử
-              </a>
-            )}
-          </p>
-        )}
         <label className="field-label">
           Mức rủi ro
-          {configuredRiskLevels.length ? (
-            <select
-              aria-label="Mức rủi ro điều kiện kiểm thử"
-              className="apple-input mt-2"
-              value={value.risk}
-              onChange={(event) => setField("risk", event.target.value)}
-              required
-            >
-              <option value="">Chọn mức rủi ro theo chiến lược dự án</option>
-              {configuredRiskLevels.map((item) => (
-                <option key={item} value={item}>
-                  {valueLabel(item)}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <input
-              className="apple-input mt-2"
-              value={value.risk}
-              onChange={(event) => setField("risk", event.target.value)}
-              maxLength={100}
-              placeholder="Nhập theo quy ước dự án"
-              required
-            />
-          )}
+          <input
+            className="apple-input mt-2"
+            value={value.risk}
+            onChange={(event) => setField("risk", event.target.value)}
+            maxLength={100}
+            placeholder="Nhập mức rủi ro"
+            required
+          />
         </label>
         <label className="field-label">
           Mức ưu tiên
-          {configuredPriorityLevels.length ? (
-            <select
-              aria-label="Mức ưu tiên điều kiện kiểm thử"
-              className="apple-input mt-2"
-              value={value.priority}
-              onChange={(event) => setField("priority", event.target.value)}
-              required
-            >
-              <option value="">Chọn mức ưu tiên theo chiến lược dự án</option>
-              {configuredPriorityLevels.map((item) => (
-                <option key={item} value={item}>
-                  {valueLabel(item)}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <input
-              className="apple-input mt-2"
-              value={value.priority}
-              onChange={(event) => setField("priority", event.target.value)}
-              maxLength={100}
-              placeholder="Nhập theo quy ước dự án"
-              required
-            />
-          )}
+          <input
+            className="apple-input mt-2"
+            value={value.priority}
+            onChange={(event) => setField("priority", event.target.value)}
+            maxLength={100}
+            placeholder="Nhập mức ưu tiên"
+            required
+          />
         </label>
         <label className="field-label">
           Khả năng kiểm thử

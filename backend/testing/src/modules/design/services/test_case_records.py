@@ -7,6 +7,7 @@ from pymongo.errors import DuplicateKeyError
 from src.core.common import (
     audit,
     get_project,
+    get_project_entity,
     new_id,
     next_key,
     now,
@@ -21,11 +22,75 @@ from src.repositories.analysis import (
     analysis_repository,
 )
 from src.repositories.common import common_repository
+from src.repositories.requirement import requirement_repository
 from src.modules.design.services.linters import duplicate_score
 from src.modules.design.services.test_evidence import requirement_test_evidence_text
 from src.schemas.contracts.design import TestCaseDraftCreate
 from src.core.human_decisions import content_authorship_changes
 from src.modules.design.services.design_authorization import require_assigned_design_draft, require_test_case_creation_scope
+
+
+def _coverage_item_id(requirement_version_id, source_type, source_id, quote):
+    value = f"{requirement_version_id}|{source_type}|{source_id}|{quote}".encode()
+    return f"COV-{hashlib.sha256(value).hexdigest()[:20]}"
+
+
+async def coverage_source_items(version):
+    items = []
+    criteria = await requirement_repository.list_acceptance_criteria(version["_id"], None)
+    for criterion in criteria:
+        quote = criterion.get("plain_text") or ""
+        if quote.strip():
+            items.append({
+                "source_type": "acceptance_criterion",
+                "source_id": criterion["_id"],
+                "source_ref": criterion.get("key") or criterion["_id"],
+                "source_quote": quote,
+            })
+    for index, rule in enumerate(version.get("business_rules") or []):
+        if str(rule).strip():
+            items.append({
+                "source_type": "business_rule",
+                "source_id": str(index),
+                "source_ref": f"business_rule:{index + 1}",
+                "source_quote": str(rule).strip(),
+            })
+    for operation in (version.get("details") or {}).get("api_operations", []):
+        if not isinstance(operation, dict):
+            continue
+        method = str(operation.get("method") or "").strip().upper()
+        path = str(operation.get("path") or operation.get("url_template") or "").strip()
+        if not method or not path:
+            continue
+        identity = json.dumps(operation, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        items.append({
+            "source_type": "api_operation",
+            "source_id": hashlib.sha256(identity.encode()).hexdigest(),
+            "source_ref": f"{method} {path}",
+            "source_quote": f"{method} {path}",
+        })
+    if not items:
+        quote = version.get("plain_text_projection") or version.get("title") or ""
+        if quote.strip():
+            items.append({
+                "source_type": "requirement_version",
+                "source_id": version["_id"],
+                "source_ref": version["_id"],
+                "source_quote": quote,
+            })
+    for item in items:
+        item["requirement_version_id"] = version["_id"]
+        item["coverage_item_id"] = _coverage_item_id(
+            version["_id"], item["source_type"], item["source_id"], item["source_quote"]
+        )
+    return items
+
+
+async def list_coverage_source_items(requirement_version_id, user):
+    version = await get_project_entity(
+        "requirement_versions", requirement_version_id, user, "testcase.read"
+    )
+    return await coverage_source_items(version)
 
 def project_test_text(value):
     steps = " ".join(
@@ -245,11 +310,6 @@ async def validate_test_design_structure(project_id, repository_node_id, bdd):
         project_id, repository_node_id
     ):
         raise HTTPException(status_code=422, detail={"code": "TEST_REPOSITORY_NODE_NOT_FOUND"})
-    for item in (bdd.steps if bdd else []):
-        if item.reusable_step_version_id and not await test_design_repository.find_reusable_step_version(
-            project_id, item.reusable_step_version_id
-        ):
-            raise HTTPException(status_code=422, detail={"code": "REUSABLE_TEST_STEP_NOT_FOUND"})
 
 async def validate_test_case_owner(project_id, owner_id):
     owner = str(owner_id or "").strip()
@@ -278,15 +338,13 @@ async def validate_test_case_owner(project_id, owner_id):
 async def validate_coverage_items(project_id, requirement_version_ids, coverage_item_ids):
     if not coverage_item_ids:
         return
-    from src.modules.design.services.test_adequacy import _sources
-
     versions = await analysis_repository.list_requirement_versions(
         project_id, list(dict.fromkeys(requirement_version_ids)), len(set(requirement_version_ids))
     )
     available = {
         item["coverage_item_id"]
         for version in versions
-        for item in await _sources(version)
+        for item in await coverage_source_items(version)
     }
     missing = sorted(set(coverage_item_ids) - available)
     if missing:
@@ -308,13 +366,11 @@ async def attach_manual_criterion_evidence(project_id, payload):
             status_code=409,
             detail={"code": "TEST_CASE_EVIDENCE_CHANGED", "message": "Yêu cầu, tiêu chí hoặc quy tắc nghiệp vụ đã thay đổi. Hãy tải lại trước khi lưu."},
         )
-    from src.modules.design.services.test_adequacy import _sources
-
     selected_coverage_ids = set(payload.coverage_item_ids or [])
     selected_business_rules = [
         source
         for version in versions
-        for source in await _sources(version)
+        for source in await coverage_source_items(version)
         if source["source_type"] == "business_rule"
         and source["coverage_item_id"] in selected_coverage_ids
     ]

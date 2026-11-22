@@ -27,7 +27,7 @@ from src.tools.testing import (
     compilable_document_ids,
     list_resumable_ai_test_case_drafts,
     normalized_text,
-    plan_clarification_priority,
+    requirement_clarification_plan,
     resolve_answered_clarifications,
     response_items,
 )
@@ -1013,9 +1013,7 @@ async def process_ingested_requirement_document(
             )
         open_clarifications = await resolve_answered_clarifications(current, config)
         if open_clarifications:
-            clarification_plans.extend(
-                await plan_clarification_priority(current, open_clarifications, config)
-            )
+            clarification_plans.extend(requirement_clarification_plan(current, open_clarifications))
             clarification_ids.update(
                 item["_id"] for item in open_clarifications if item.get("_id")
             )

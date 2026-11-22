@@ -1,7 +1,6 @@
 import json
 import re
 from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation
 
 from fastapi import HTTPException
 from loguru import logger
@@ -163,55 +162,6 @@ def nested_values(value, key_name):
     return values
 
 
-def performance_targets_have_evidence(suggestions, evidence):
-    source_text = {
-        str(item.get("artifact_version_id") or item.get("artifact_id")): str(
-            item.get("text") or ""
-        )
-        for item in evidence
-        if item.get("artifact_version_id") or item.get("artifact_id")
-    }
-    for suggestion in suggestions:
-        quotes = suggestion.get("evidence_quotes") or []
-        valid_quotes = [
-            quote
-            for quote in quotes
-            if quote.get("evidence_ref") in source_text
-            and quote.get("quote", "").strip()
-            and source_quote_spans(
-                source_text[quote["evidence_ref"]], quote["quote"].strip()
-            )
-        ]
-        if not valid_quotes:
-            return False
-        for field in ("virtual_users", "requests_per_second", "duration_minutes"):
-            value = suggestion.get(field)
-            if value is None:
-                continue
-            try:
-                expected = Decimal(format(float(value), ".15g"))
-            except (InvalidOperation, TypeError, ValueError):
-                return False
-            supported = False
-            for quote in valid_quotes:
-                tokens = re.findall(
-                    r"(?<![\w])[+-]?\d+(?:[.,]\d+)*(?![\w])", quote["quote"]
-                )
-                for token in tokens:
-                    try:
-                        token_value = Decimal(token.replace(",", "."))
-                    except InvalidOperation:
-                        continue
-                    if token_value == expected:
-                        supported = True
-                        break
-                if supported:
-                    break
-            if not supported:
-                return False
-    return True
-
-
 def generated_cases_have_grounded_citations(cases, evidence):
     source_text = {
         str(item.get("artifact_version_id") or item.get("artifact_id")): str(
@@ -351,10 +301,6 @@ async def _generate_ai_capability(req: TestingCapabilityRequest):
         )
         if unknown_refs:
             raise ValueError("AI_EVIDENCE_REF_UNKNOWN")
-        if req.capability == "performance_plan_generation" and not (
-            performance_targets_have_evidence(generated_data.get("suggestions", []), evidence)
-        ):
-            raise ValueError("AI_PERFORMANCE_TARGET_EVIDENCE_INVALID")
         if req.capability == "test_generation" and generated_data.get("suggestions"):
             cases = generated_data["suggestions"]
             if not generated_cases_have_grounded_citations(cases, evidence):

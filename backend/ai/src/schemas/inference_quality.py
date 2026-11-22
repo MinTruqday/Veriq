@@ -11,56 +11,6 @@ class EvidenceQuoteOutput(BaseModel):
     quote: str = Field(min_length=2, max_length=1000)
 
 
-class SecuritySuggestionOutput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    category: str = Field(min_length=1, max_length=200)
-    title: str = Field(min_length=2, max_length=300)
-    preconditions: List[str] = Field(min_length=1, max_length=30)
-    action: str = Field(min_length=2, max_length=5000)
-    expected: str = Field(min_length=2, max_length=5000)
-    requirement_version_ids: List[str] = Field(default_factory=list, max_length=100)
-    evidence_quotes: List[EvidenceQuoteOutput] = Field(min_length=1, max_length=20)
-
-
-class SecuritySuggestionsOutput(BaseModel):
-    """Structured security test candidates."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    capability: Literal["security_test_generation"]
-    suggestions: List[SecuritySuggestionOutput] = Field(default_factory=list, max_length=100)
-    evidence_refs: List[str] = Field(min_length=1, max_length=200)
-    confidence: float = Field(ge=0, le=1)
-    warnings: List[str] = Field(default_factory=list, max_length=20)
-
-
-class PerformanceSuggestionOutput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    workload_type: str = Field(min_length=1, max_length=200)
-    title: str = Field(min_length=2, max_length=300)
-    virtual_users: int | None = Field(default=None, ge=1, le=1000000)
-    requests_per_second: float | None = Field(default=None, gt=0)
-    duration_minutes: int | None = Field(default=None, ge=1, le=10080)
-    ramp_pattern: str = Field(min_length=2, max_length=2000)
-    actions: List[str] = Field(min_length=1, max_length=50)
-    expected: str = Field(min_length=2, max_length=5000)
-    evidence_quotes: List[EvidenceQuoteOutput] = Field(min_length=1, max_length=20)
-
-
-class PerformanceSuggestionsOutput(BaseModel):
-    """Structured performance workload candidates."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    capability: Literal["performance_plan_generation"]
-    suggestions: List[PerformanceSuggestionOutput] = Field(min_length=1, max_length=100)
-    evidence_refs: List[str] = Field(min_length=1, max_length=200)
-    confidence: float = Field(ge=0, le=1)
-    warnings: List[str] = Field(default_factory=list, max_length=20)
-
-
 class AutomationScriptSuggestionOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -75,31 +25,6 @@ class AutomationScriptOutput(BaseModel):
 
     capability: Literal["automation_script_generation"]
     suggestions: List[AutomationScriptSuggestionOutput] = Field(min_length=1, max_length=1)
-    evidence_refs: List[str] = Field(min_length=1, max_length=200)
-    confidence: float = Field(ge=0, le=1)
-    warnings: List[str] = Field(default_factory=list, max_length=20)
-
-
-class CausalHypothesisSuggestionOutput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    root_cause_category: str = Field(min_length=1, max_length=200)
-    hypothesis: str = Field(min_length=2, max_length=5000)
-    contributing_factors: List[str] = Field(default_factory=list, max_length=50)
-    five_whys: List[str] = Field(default_factory=list, max_length=5)
-    missing_test_conditions: List[str] = Field(default_factory=list, max_length=50)
-    missing_test_cases: List[str] = Field(default_factory=list, max_length=50)
-    evidence_refs: List[str] = Field(min_length=1, max_length=200)
-    confidence: float = Field(ge=0, le=1)
-
-
-class CausalHypothesesOutput(BaseModel):
-    """Structured causal analysis hypotheses."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    capability: Literal["causal_analysis"]
-    suggestions: List[CausalHypothesisSuggestionOutput] = Field(min_length=1, max_length=100)
     evidence_refs: List[str] = Field(min_length=1, max_length=200)
     confidence: float = Field(ge=0, le=1)
     warnings: List[str] = Field(default_factory=list, max_length=20)
@@ -259,54 +184,6 @@ class LessonsLearnedClustersOutput(BaseModel):
     warnings: List[str] = Field(default_factory=list, max_length=20)
 
 
-class ProjectComplexityDimensionOutput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    dimension_id: str = Field(min_length=1, max_length=100)
-    level: Literal["LOW", "MEDIUM", "HIGH", "INSUFFICIENT_EVIDENCE"]
-    explanation: str = Field(min_length=2, max_length=4000)
-    evidence_quotes: List[EvidenceQuoteOutput] = Field(default_factory=list, max_length=30)
-    uncertainty: List[str] = Field(default_factory=list, max_length=30)
-    testing_impacts: List[str] = Field(default_factory=list, max_length=30)
-    confidence: float = Field(ge=0, le=1)
-
-
-class ProjectComplexityAssessmentSuggestionOutput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    dimensions: List[ProjectComplexityDimensionOutput] = Field(min_length=1, max_length=100)
-    readiness_summary: str = Field(min_length=2, max_length=5000)
-    unresolved_questions: List[str] = Field(default_factory=list, max_length=100)
-    source_gaps: List[str] = Field(default_factory=list, max_length=100)
-    recommended_follow_ups: List[
-        Literal[
-            "REQUIREMENT_CLARIFICATION",
-            "TEST_PLAN_DRAFT",
-            "SCENARIO_OR_TEST_CASE_DRAFT",
-            "CHANGE_IMPACT_REVIEW",
-            "STAFFING_REVIEW",
-        ]
-    ] = Field(default_factory=list, max_length=30)
-
-    @model_validator(mode="after")
-    def validate_dimension_coverage(self):
-        received = [item.dimension_id for item in self.dimensions]
-        if len(set(received)) != len(received):
-            raise ValueError("project_complexity_dimension_ids_must_be_unique")
-        return self
-
-
-class ProjectComplexityAssessmentOutput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    capability: Literal["project_complexity_assessment"]
-    suggestions: List[ProjectComplexityAssessmentSuggestionOutput] = Field(
-        min_length=1, max_length=1
-    )
-    evidence_refs: List[str] = Field(min_length=1, max_length=500)
-    warnings: List[str] = Field(default_factory=list, max_length=50)
-
-
 class ExecutionAssistanceObservationOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -342,29 +219,3 @@ class ExecutionAssistanceOutput(BaseModel):
     suggestions: List[ExecutionAssistanceSuggestionOutput] = Field(min_length=1, max_length=1)
     evidence_refs: List[str] = Field(min_length=1, max_length=100)
     warnings: List[str] = Field(default_factory=list, max_length=30)
-
-
-class WorkReportSectionOutput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    title: str = Field(min_length=1, max_length=300)
-    text: str = Field(min_length=1, max_length=12000)
-    evidence_refs: List[str] = Field(default_factory=list, max_length=100)
-
-
-class WorkReportSuggestionOutput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    sections: List[WorkReportSectionOutput] = Field(default_factory=list, max_length=40)
-    missing_information: List[str] = Field(default_factory=list, max_length=100)
-    inconsistencies: List[str] = Field(default_factory=list, max_length=100)
-
-
-class WorkReportNarrativeOutput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    capability: Literal["work_report_narrative"]
-    suggestions: List[WorkReportSuggestionOutput] = Field(min_length=1, max_length=1)
-    evidence_refs: List[str] = Field(min_length=1, max_length=100)
-    confidence: float = Field(ge=0, le=1)
-    warnings: List[str] = Field(default_factory=list, max_length=100)

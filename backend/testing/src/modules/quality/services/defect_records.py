@@ -26,7 +26,6 @@ from src.modules.quality.services.defect_classification import (
     defect_is_critical,
     resolve_defect_classification,
 )
-from src.repositories.test_strategy import test_strategy_repository
 from src.repositories.defect import defect_repository
 from src.repositories.defect_search_index import defect_search_index_repository
 
@@ -55,25 +54,17 @@ def _public_defect(defect):
 async def defect_classification_options(project_id, user):
     permissions = await get_project_permissions(project_id, user.id)
     allowed = False
-    for permission in ("defect.create", "environmentincident.create"):
-        if permission not in permissions:
-            continue
-        try:
-            await get_project(project_id, user, permission)
-            allowed = True
-            break
-        except HTTPException as error:
-            if error.status_code != 403:
-                raise
+    if "defect.create" in permissions:
+        await get_project(project_id, user, "defect.create")
+        allowed = True
     if not allowed:
         raise HTTPException(status_code=403, detail={"code": "PROJECT_PERMISSION_DENIED"})
-    strategy = await test_strategy_repository.active_approved(project_id, "APPROVED")
-    risk_model = (strategy or {}).get("risk_model") or {}
+    records = await database.value.defects.find(
+        {"project_id": project_id}, {"severity": 1, "priority": 1}
+    ).to_list(5000)
     return {
-        "strategy_id": (strategy or {}).get("_id"),
-        "strategy_version": (strategy or {}).get("version"),
-        "severity": [item.get("label") for item in risk_model.get("severity_scale") or []],
-        "priority": [item.get("label") for item in risk_model.get("priority_scale") or []],
+        "severity": sorted({item["severity"] for item in records if item.get("severity")}),
+        "priority": sorted({item["priority"] for item in records if item.get("priority")}),
     }
 
 async def create_defect_record(project_id, payload, user):

@@ -48,16 +48,10 @@ const TestDesignPage = dynamic(() => import("./workspace/TestDesignPage"), {
 const TraceabilityPage = dynamic(() => import("./workspace/TraceabilityPage"), {
   loading: workspaceLoading,
 });
-const TestGovernancePage = dynamic(() => import("./workspace/TestGovernancePage"), {
-  loading: workspaceLoading,
-});
 const TestAnalysisPage = dynamic(() => import("./workspace/TestAnalysisPage"), {
   loading: workspaceLoading,
 });
 const MonitoringPage = dynamic(() => import("./workspace/MonitoringPage"), {
-  loading: workspaceLoading,
-});
-const PlanningPage = dynamic(() => import("./workspace/PlanningPage"), {
   loading: workspaceLoading,
 });
 const ReleasesPage = dynamic(() => import("./workspace/ReleasesPage"), {
@@ -69,17 +63,13 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
   const state = useProject(projectId);
   const dateTimeOptions = useDateTimeOptions(state.project);
   const areaBySlug = {
-    [PROJECT_SECTION_SLUGS.governance]: "governance",
     [PROJECT_SECTION_SLUGS.testAnalysis]: "test-analysis",
     [PROJECT_SECTION_SLUGS.monitoring]: "monitoring",
-    [PROJECT_SECTION_SLUGS.planning]: "planning",
     [PROJECT_SECTION_SLUGS.releases]: "releases",
     [PROJECT_SECTION_SLUGS.requirements]: "requirements",
-    [PROJECT_SECTION_SLUGS.assurance]: "requirements",
     [PROJECT_SECTION_SLUGS.clarifications]: "requirements",
     [PROJECT_SECTION_SLUGS.testRepository]: "test-design",
     [PROJECT_SECTION_SLUGS.testCases]: "test-design",
-    [PROJECT_SECTION_SLUGS.reusableSteps]: "test-design",
     [PROJECT_SECTION_SLUGS.testData]: "test-design",
     [PROJECT_SECTION_SLUGS.testSets]: "test-design",
     [PROJECT_SECTION_SLUGS.traceability]: "traceability",
@@ -98,9 +88,7 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
     [PROJECT_SECTION_SLUGS.documentReader]: "document-reader",
   };
   const legacyRedirectTarget =
-    section[0] === PROJECT_SECTION_SLUGS.projectTasks
-      ? projectRoute(projectId, PROJECT_SECTION_SLUGS.planning, "backlog")
-      : section[0] === PROJECT_SECTION_SLUGS.testDesign
+    section[0] === PROJECT_SECTION_SLUGS.testDesign
         ? projectRoute(projectId, PROJECT_SECTION_SLUGS.testCases)
         : "";
   const area = section[0] ? areaBySlug[section[0]] : "dashboard";
@@ -114,31 +102,14 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
       section[1] !== "tao-moi" &&
       !caseSubsectionItem,
   );
-  const planningSubsections = ["list", "backlog", "board", "sprint", "roadmap"];
-  const invalidPlanningSubsection = Boolean(
-    section[0] === PROJECT_SECTION_SLUGS.planning &&
-      section[1] &&
-      !planningSubsections.includes(section[1]),
-  );
-  const unavailableSprint = Boolean(
-    !state.loading &&
-      state.project &&
-      section[0] === PROJECT_SECTION_SLUGS.planning &&
-      section[1] === "sprint" &&
-      (state.project.planning_method || "SCRUM") !== "SCRUM",
-  );
   const invalidSection = Boolean(
     (section[0] && !area && !legacyRedirectTarget) ||
-      invalidCaseSubsection ||
-      invalidPlanningSubsection ||
-      unavailableSprint,
+      invalidCaseSubsection,
   );
   const requiredPermissions = {
-    governance: "teststrategy.read",
     "test-analysis": "testcondition.read",
     monitoring: "testmonitor.read",
     "project-tasks": "project.read",
-    planning: "project.read",
     releases: "release.read",
     dashboard: "project.read",
     requirements: "requirement.read",
@@ -154,7 +125,6 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
     "document-reader": "requirement_document.read",
   };
   const sectionPermission = {
-    [PROJECT_SECTION_SLUGS.assurance]: ["requirement.read", "testcase.read"],
     [PROJECT_SECTION_SLUGS.testData]: ["testdata.read", "testcase.read"],
     [PROJECT_SECTION_SLUGS.testSets]: ["testsuite.read", "testcase.read"],
     [PROJECT_SECTION_SLUGS.testPlans]: "testplan.read",
@@ -171,15 +141,12 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
   const areaAnyPermissions =
     area === "reports"
       ? [
-          "workreport.read",
           "report.read",
           "analytics.read",
           "analytics.ai.read",
           "coverage.read",
           "teststatusreport.read",
           "testcompletion.read",
-          "qualityevaluation.read",
-          "measurement.read",
         ]
       : area === "changes"
         ? ["changeset.read"]
@@ -248,11 +215,9 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
       </div>
     );
   const workspaceViewBySlug = {
-    [PROJECT_SECTION_SLUGS.assurance]: "assurance",
     [PROJECT_SECTION_SLUGS.clarifications]: "clarifications",
     [PROJECT_SECTION_SLUGS.testRepository]: "repository",
     [PROJECT_SECTION_SLUGS.testCases]: "cases",
-    [PROJECT_SECTION_SLUGS.reusableSteps]: "reusable-steps",
     [PROJECT_SECTION_SLUGS.testData]: "test-data",
     [PROJECT_SECTION_SLUGS.testSets]: "test-sets",
     [PROJECT_SECTION_SLUGS.testPlans]: "test-plans",
@@ -267,10 +232,8 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
     setGlobalError: state.setError,
   };
   const pages = {
-    governance: <TestGovernancePage {...props} />,
     "test-analysis": <TestAnalysisPage {...props} />,
     monitoring: <MonitoringPage {...props} />,
-    planning: <PlanningPage {...props} />,
     releases: <ReleasesPage {...props} />,
     requirements: <RequirementsPage {...props} />,
     "test-design": <TestDesignPage {...props} />,

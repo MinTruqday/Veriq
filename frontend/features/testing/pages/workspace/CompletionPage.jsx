@@ -7,7 +7,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import CompletionReportEditor from "../../components/CompletionReportEditor";
 import DataTable from "../../components/DataTable";
 import { criterionName } from "../../components/ExitCriteriaPanel";
-import FormalReviewPanel from "../../components/FormalReviewPanel";
 import LessonsLearnedPanel from "../../components/LessonsLearnedPanel";
 import QualityGateBadge from "../../components/QualityGateBadge";
 import ReportSelectionList from "../../components/ReportSelectionList";
@@ -694,13 +693,6 @@ export default function CompletionPage({ project }) {
                         value={`${selected.coverage_summary.api_coverage}%`}
                       />
                     )}
-                  {selected.coverage_summary?.nfr_coverage !== null &&
-                    selected.coverage_summary?.nfr_coverage !== undefined && (
-                      <Metric
-                        label="Độ phủ phi chức năng"
-                        value={`${selected.coverage_summary.nfr_coverage}%`}
-                      />
-                    )}
                   <Metric
                     label="Lỗi nghiêm trọng chưa xử lý"
                     value={selected.defect_summary?.open_critical ?? 0}
@@ -715,12 +707,6 @@ export default function CompletionPage({ project }) {
                       <span className="field-label">Kế hoạch kiểm thử</span>
                       <br />
                       {selected.test_plan_id ? "Đã ghi nhận" : "Chưa ghi nhận"}
-                    </p>
-                    <p>
-                      <span className="field-label">Chiến lược hoặc cách tiếp cận</span>
-                      <br />
-                      {selected.strategy_approach_snapshot ||
-                        (selected.strategy_version_id ? "Chiến lược đã lưu" : "Chưa ghi nhận")}
                     </p>
                     <p>
                       <span className="field-label">Bản phát hành</span>
@@ -890,15 +876,6 @@ export default function CompletionPage({ project }) {
                     ]}
                   />
                 </div>
-                {can("reviewsession.read") && (
-                  <FormalReviewPanel
-                    project={project}
-                    artifactType="COMPLETION_REPORT"
-                    artifactId={selected._id}
-                    artifactVersionId={selected._id}
-                    reviewType="COMPLETION_REPORT"
-                  />
-                )}
               </div>
             )}
           </div>

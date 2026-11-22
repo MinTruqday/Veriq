@@ -11,7 +11,6 @@ const criterionLabels = {
   AC_COVERAGE_MIN: "Độ phủ tiêu chí chấp nhận tối thiểu",
   CONDITION_COVERAGE_MIN: "Độ phủ điều kiện kiểm thử tối thiểu",
   STALE_TESTCASE_MAX: "Số ca kiểm thử lỗi thời tối đa",
-  ENVIRONMENT_INCIDENT_MAX: "Số sự cố môi trường đang mở tối đa",
   REQUIRED_RUNS_COMPLETED: "Số lượt chạy bắt buộc hoàn tất",
   CUSTOM_MANUAL_GATE: "Tiêu chí cần đánh giá thủ công",
 };

@@ -15,7 +15,6 @@ from src.core.configuration import settings
 from src.core.database import close_database, connect_database, database
 from src.modules.design.router import router as design_router
 from src.modules.execution.router import router as execution_router
-from src.modules.resource_capacity import router as resource_capacity_router
 from src.modules.integrations.router import router as integrations_router
 from src.modules.operations.router import router as operations_router
 from src.modules.projects.router import router as projects_router
@@ -31,7 +30,6 @@ from src.modules.requirements.services.requirement_document_worker import (
 )
 from src.repositories.project_access import project_access_repository
 from src.repositories.defect import defect_repository
-from src.repositories.review import review_repository
 
 logger = logging.getLogger(__name__)
 
@@ -42,20 +40,12 @@ async def lifespan(app: FastAPI):
     await project_access_repository.migrate_legacy()
     await project_access_repository.migrate_legacy_permission_names()
     await defect_repository.migrate_legacy_severity_flags()
-    await review_repository.migrate_legacy_finding_blocking()
-    await project_access_repository.ensure_reporting_capabilities()
     await project_access_repository.ensure_read_only_comment_capabilities()
     await project_access_repository.ensure_private_defect_capability()
     await project_access_repository.ensure_test_review_capabilities()
-    from src.repositories.reporting import reporting_repository
-    await reporting_repository.initialize()
-    from src.modules.execution.services.report_jobs import start_reporting_background
-    await start_reporting_background()
     await start_requirement_document_parse_worker()
     await start_defect_search_index_worker()
     yield
-    from src.modules.execution.services.report_jobs import stop_reporting_background
-    await stop_reporting_background()
     await stop_defect_search_index_worker()
     await stop_requirement_document_parse_worker()
     await close_database()
@@ -163,7 +153,6 @@ async def release_ai_capability_access_lease(request: Request, call_next):
 app.include_router(projects_router)
 app.include_router(requirements_router)
 app.include_router(execution_router)
-app.include_router(resource_capacity_router)
 app.include_router(design_router)
 app.include_router(quality_router)
 app.include_router(integrations_router)
@@ -201,11 +190,7 @@ async def validation_exception_handler(request: Request, error: RequestValidatio
     locations = [tuple(str(part) for part in issue.get("loc", ())) for issue in issues]
     messages = [str(issue.get("msg", "")) for issue in issues]
     code = "VALIDATION_ERROR"
-    if any("INVALID_RISK_MODEL" in message for message in messages) or any(
-        "risk_model" in location for location in locations
-    ):
-        code = "INVALID_RISK_MODEL"
-    elif any(
+    if any(
         location
         and location[-1] == "reason"
         and ("quality" in request.url.path or "quyet-dinh-chat-luong" in request.url.path)

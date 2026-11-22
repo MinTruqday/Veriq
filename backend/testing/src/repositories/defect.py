@@ -39,11 +39,7 @@ class DefectRepository:
                 },
             }}],
         )
-        incidents = await database.value.environment_incidents.update_many(
-            {"severity_blocks_release": {"$exists": False}},
-            [{"$set": {"severity_blocks_release": blocking}}],
-        )
-        migrated_count = defects.modified_count + incidents.modified_count
+        migrated_count = defects.modified_count
         if migrated_count:
             await database.value.audit_events.update_one(
                 {"_id": "MIG-configurable-severity-flags-v1"},
@@ -56,7 +52,6 @@ class DefectRepository:
                     "created_at": datetime.now(timezone.utc),
                     "details": {
                         "defects": defects.modified_count,
-                        "environment_incidents": incidents.modified_count,
                     },
                 }},
                 upsert=True,

@@ -76,7 +76,6 @@ async def create_completion_report(project_id, payload, user):
     (
         release,
         build,
-        strategy,
         runs,
         results,
         defects,
@@ -202,10 +201,6 @@ async def create_completion_report(project_id, payload, user):
         "release_id": release["_id"],
         "build_id": build["_id"],
         "build_ids": [build["_id"]],
-        "strategy_version_id": strategy.get("_id"),
-        "strategy_snapshot_hash": strategy.get("snapshot_hash"),
-        "strategy_approach_snapshot": strategy.get("approach"),
-        "strategy_source": strategy.get("source", "APPROVED_TEST_STRATEGY"),
         "monitoring_snapshot_id": snapshot["_id"],
         "final_snapshot_id": snapshot["_id"],
         "scope_snapshot": {
@@ -239,7 +234,6 @@ async def create_completion_report(project_id, payload, user):
                 "test_condition_coverage",
                 "risk_coverage",
                 "api_coverage",
-                "nfr_coverage",
             )
         },
         "defect_summary": {

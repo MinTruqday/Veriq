@@ -2,19 +2,15 @@ export const PROJECTS_ROUTE = "/du-an";
 export const OPERATIONS_ROUTE = "/van-hanh";
 
 export const PROJECT_SECTION_SLUGS = Object.freeze({
-  governance: "quan-tri-kiem-thu",
   testAnalysis: "phan-tich-kiem-thu",
   monitoring: "giam-sat-kiem-thu",
-  projectTasks: "cong-viec",
   planning: "lap-ke-hoach",
   releases: "ban-phat-hanh",
   requirements: "yeu-cau",
-  assurance: "ho-so-dam-bao",
   clarifications: "phieu-lam-ro",
   testDesign: "thiet-ke-kiem-thu",
   testRepository: "kho-kiem-thu",
   testCases: "ca-kiem-thu",
-  reusableSteps: "buoc-dung-lai",
   testData: "du-lieu-kiem-thu",
   testSets: "bo-kiem-thu",
   testPlans: "ke-hoach-kiem-thu",

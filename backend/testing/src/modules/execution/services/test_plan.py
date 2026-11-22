@@ -51,8 +51,8 @@ PLAN_SNAPSHOT_FIELDS = (
     'requirement_version_ids', 'test_suite_ids', 'test_case_version_ids',
     'test_suite_snapshots', 'environment', 'environment_id',
     'entry_criteria', 'exit_criteria', 'test_types', 'members',
-    'strategy_version_id', 'strategy_id', 'strategy_version',
-    'strategy_snapshot_hash', 'test_level', 'test_approach',
+    'strategy_version_id', 'strategy_id', 'strategy_version', 'strategy_snapshot_hash',
+    'test_level', 'test_approach',
     'assumptions', 'constraints', 'dependencies', 'estimation', 'schedule',
     'quality_targets', 'risk_register', 'communication_plan',
     'owner_id', 'scenario_ids',
@@ -66,23 +66,6 @@ def plan_snapshot_hash(plan):
         plan_snapshot(plan), ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
     )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-
-async def _validate_assignment_capacity(plan, plan_id, session):
-    from src.modules.projects.services.assignment_capacity import (
-        _check_test_plan_assignment_capacity,
-    )
-
-    await _check_test_plan_assignment_capacity(
-        plan["project_id"],
-        plan.get("schedule") or {},
-        {
-            item.get("user_id")
-            for item in (plan.get("estimation") or {}).get("effort_allocations") or []
-            if item.get("user_id")
-        },
-        session=session,
-        exclude_plan_id=plan_id,
-    )
 
 def _legacy_plan_snapshot_hash(snapshot):
     canonical_snapshot = {
@@ -128,18 +111,14 @@ def verified_approved_plan_snapshot(plan, project_id):
             field: plan.get(field) for field in LEGACY_PLAN_SNAPSHOT_FIELDS
         }
     approved_digest = plan.get("approved_snapshot_hash") or plan.get("baseline_hash")
-    device_snapshot_fields = (
-        "device_matrix_id",
-        "device_profile_keys",
-        "device_matrix_snapshot",
-    )
-    has_any_device_snapshot = any(field in snapshot for field in device_snapshot_fields)
-    has_device_snapshot = all(field in snapshot for field in device_snapshot_fields)
     if 'test_suite_snapshots' in snapshot:
         digest = plan_snapshot_hash(snapshot)
         if digest != approved_digest:
             digest = _prior_plan_snapshot_hash(snapshot)
-    elif has_device_snapshot:
+    elif all(
+        field in snapshot
+        for field in ('device_matrix_id', 'device_profile_keys', 'device_matrix_snapshot')
+    ):
         legacy_snapshot = {
             field: snapshot.get(field)
             for field in LEGACY_DEVICE_PLAN_SNAPSHOT_FIELDS
@@ -160,11 +139,6 @@ def verified_approved_plan_snapshot(plan, project_id):
         or digest != approved_digest
         or (plan.get("approved_snapshot_hash") and plan["approved_snapshot_hash"] != digest)
         or (plan.get("baseline_hash") and plan["baseline_hash"] != digest)
-        or (has_any_device_snapshot and not has_device_snapshot)
-        or (
-            not has_device_snapshot
-            and plan.get("device_matrix_id")
-        )
     ):
         raise HTTPException(
             status_code=409,
@@ -175,9 +149,8 @@ def verified_approved_plan_snapshot(plan, project_id):
 def plan_completeness(plan):
     checks = [
         (
-            'TEST_PLAN_STRATEGY_REQUIRED',
-            all(plan.get(field) for field in ['strategy_version_id', 'strategy_snapshot_hash'])
-            or bool(str(plan.get('test_approach') or '').strip()),
+            'TEST_PLAN_APPROACH_REQUIRED',
+            bool(str(plan.get('test_approach') or '').strip()),
         ),
         *[
             (requirement["code"], bool(plan.get(requirement["field"])))
@@ -287,39 +260,6 @@ async def validate_plan_scope(project_id, requirement_version_ids, test_suite_id
         "test_suite_snapshots": suite_snapshots,
     }
 
-async def resolve_strategy_binding(project_id, strategy_version_id, auto_bind=False):
-    
-    strategy = None
-    if strategy_version_id:
-        strategy = await test_plan_repository.find_strategy(
-            project_id, strategy_version_id
-        )
-        if not strategy:
-            raise HTTPException(status_code=422, detail={"code": 'INVALID_STRATEGY_VERSION'})
-        if strategy.get("status") != 'APPROVED' or not strategy.get(
-            "snapshot_hash"
-        ):
-            raise HTTPException(
-                status_code=409, detail={"code": 'STRATEGY_VERSION_NOT_APPROVED'}
-            )
-    elif auto_bind:
-        strategy = await test_plan_repository.find_active_strategy(
-            project_id, 'APPROVED'
-        )
-    if not strategy:
-        return {
-            "strategy_version_id": None,
-            "strategy_id": None,
-            "strategy_version": None,
-            "strategy_snapshot_hash": None,
-        }
-    return {
-        "strategy_version_id": strategy["_id"],
-        "strategy_id": strategy["lineage_id"],
-        "strategy_version": strategy["version"],
-        "strategy_snapshot_hash": strategy["snapshot_hash"],
-    }
-
 async def create_test_plan_record(payload, project_id, user):
     
     if project_id and project_id != payload.project_id:
@@ -333,18 +273,6 @@ async def create_test_plan_record(payload, project_id, user):
     )
     scenario_ids = await validate_plan_links(payload.project_id, payload.owner_id, payload.scenario_ids)
     await validate_effort_allocation_members(payload.project_id, payload.estimation)
-    strategy_binding = await resolve_strategy_binding(
-        payload.project_id,
-        payload.strategy_version_id,
-        auto_bind=False,
-    )
-    strategy = (
-        await test_plan_repository.find_strategy(
-            payload.project_id, strategy_binding["strategy_version_id"]
-        )
-        if strategy_binding["strategy_version_id"]
-        else None
-    )
     scope = await validate_plan_scope(
         payload.project_id,
         payload.requirement_version_ids,
@@ -356,15 +284,11 @@ async def create_test_plan_record(payload, project_id, user):
         "_id": new_id('TP'),
         **payload.model_dump(),
         "scenario_ids": scenario_ids,
-        "test_level": payload.test_level
-        or next(iter((strategy or {}).get("test_levels") or []), None),
-        "test_types": payload.test_types
-        or (strategy or {}).get("test_types")
-        or [],
+        "test_level": payload.test_level,
+        "test_types": payload.test_types,
         **scope,
         "environment": context["environment"],
         "environment_id": context["environment_id"],
-        **strategy_binding,
         "status": 'DRAFT',
         "approval_history": [],
         "revision": 1,
@@ -377,19 +301,6 @@ async def create_test_plan_record(payload, project_id, user):
 
     async with await database.client.start_session() as session:
         async with session.start_transaction():
-            from src.modules.projects.services.assignment_capacity import (
-                _check_test_plan_assignment_capacity,
-            )
-
-            await _check_test_plan_assignment_capacity(
-                payload.project_id,
-                payload.schedule.model_dump() if payload.schedule else {},
-                {
-                    item.user_id
-                    for item in (payload.estimation.effort_allocations or [])
-                },
-                session=session,
-            )
             await test_plan_repository.insert_plan(plan, session=session)
             await audit(
                 user.id,
@@ -449,14 +360,6 @@ async def update_test_plan_record(plan_id, payload, user):
         await validate_effort_allocation_members(
             plan["project_id"], TestPlanCreate.model_validate({**plan, **changes}).estimation
         )
-    if "strategy_version_id" in changes:
-        changes.update(
-            await resolve_strategy_binding(
-                plan["project_id"],
-                changes.get("strategy_version_id"),
-                auto_bind=False,
-            )
-        )
     if {"environment_id", "environment"} & set(changes):
         environment_context = await resolve_execution_context(
             plan["project_id"],
@@ -497,22 +400,6 @@ async def update_test_plan_record(plan_id, payload, user):
 
     async with await database.client.start_session() as session:
         async with session.start_transaction():
-            if {"schedule", "estimation"}.intersection(changes):
-                from src.modules.projects.services.assignment_capacity import (
-                    _check_test_plan_assignment_capacity,
-                )
-
-                candidate = TestPlanCreate.model_validate({**plan, **changes})
-                await _check_test_plan_assignment_capacity(
-                    plan["project_id"],
-                    candidate.schedule.model_dump() if candidate.schedule else {},
-                    {
-                        item.user_id
-                        for item in (candidate.estimation.effort_allocations or [])
-                    },
-                    session=session,
-                    exclude_plan_id=plan_id,
-                )
             updated = await optimistic_patch(
                 "test_plans",
                 plan_id,
@@ -539,7 +426,6 @@ async def submit_test_plan_record(plan_id, payload, user):
 
     async with await database.client.start_session() as session:
         async with session.start_transaction():
-            await _validate_assignment_capacity(plan, plan_id, session)
             updated = await optimistic_patch(
                 "test_plans",
                 plan_id,
@@ -602,7 +488,6 @@ async def approve_test_plan_record(plan_id, payload, user):
 
     async with await database.client.start_session() as session:
         async with session.start_transaction():
-            await _validate_assignment_capacity(plan, plan_id, session)
             updated = await optimistic_patch(
                 "test_plans",
                 plan_id,

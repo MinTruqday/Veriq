@@ -1,12 +1,6 @@
 import { aiRunRequest, downloadTestingFile, listQuery, testingRequest } from "./testing.transport";
 
 export const projectTestingApi = {
-  listCapacityPeriods: () => testingRequest("/quan-tri/cong-suat"),
-  updateCapacityPeriod: (payload) =>
-    testingRequest("/quan-tri/cong-suat", {
-      method: "PUT",
-      body: JSON.stringify(payload),
-    }),
   getProjectCapabilities: () => testingRequest("/du-an/kha-nang"),
   listEffectiveAccess: (projectId) =>
     testingRequest(`/du-an/${encodeURIComponent(projectId)}/quyen-hieu-luc`),
@@ -42,21 +36,6 @@ export const projectTestingApi = {
   createProject: (payload) =>
     testingRequest("/du-an", { method: "POST", body: JSON.stringify(payload) }),
   getProject: (id) => testingRequest(`/du-an/${id}`),
-  getProjectComplexityAssessment: (id) => testingRequest(`/du-an/${id}/do-kho-ai`),
-  getProjectComplexityScope: (id) => testingRequest(`/du-an/${id}/do-kho-ai/pham-vi`),
-  getProjectCompletenessScope: (id) =>
-    testingRequest(`/du-an/${encodeURIComponent(id)}/ho-so-ai/pham-vi`),
-  getProjectCompletenessReview: (id) => testingRequest(`/du-an/${encodeURIComponent(id)}/ho-so-ai`),
-  reviewProjectCompleteness: (id, payload) =>
-    testingRequest(`/du-an/${encodeURIComponent(id)}/ho-so-ai/ra-soat`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  assessProjectComplexity: (id, payload) =>
-    testingRequest(`/du-an/${id}/do-kho-ai/danh-gia`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
   listMembers: (id) => testingRequest(`/du-an/${id}/thanh-vien`),
   listInvitations: () => testingRequest("/loi-moi-du-an"),
   addMember: (id, payload) =>
@@ -86,84 +65,6 @@ export const projectTestingApi = {
     testingRequest(`/du-an/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
   updateProjectProgress: (id, payload) =>
     testingRequest(`/du-an/${id}/tien-do`, { method: "PATCH", body: JSON.stringify(payload) }),
-  listWorkItems: (id, filters = {}) => {
-    const params = new URLSearchParams();
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && value !== "" && value !== false)
-        params.set(key, String(value));
-    });
-    return testingRequest(`/du-an/${id}/cong-viec${params.size ? `?${params.toString()}` : ""}`);
-  },
-  createWorkItem: (id, payload) =>
-    testingRequest(`/du-an/${id}/cong-viec`, { method: "POST", body: JSON.stringify(payload) }),
-  previewProjectTaskMigration: (id) =>
-    testingRequest(`/du-an/${id}/cong-viec/migrate-project-task/preview`),
-  migrateProjectTasks: (id, payload) =>
-    testingRequest(`/du-an/${id}/cong-viec/migrate-project-task`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  updateWorkItem: (id, itemId, payload) =>
-    testingRequest(`/du-an/${id}/cong-viec/${itemId}`, {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-    }),
-  transitionWorkItem: (id, itemId, payload) =>
-    testingRequest(`/du-an/${id}/cong-viec/${itemId}/chuyen-trang-thai`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  rankWorkItem: (id, itemId, payload) =>
-    testingRequest(`/du-an/${id}/cong-viec/${itemId}/xep-hang`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  createWorkItemDependency: (id, itemId, payload) =>
-    testingRequest(`/du-an/${id}/cong-viec/${itemId}/phu-thuoc`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  workBoard: (id) => testingRequest(`/du-an/${id}/bang-cong-viec`),
-  updateWorkBoard: (id, payload) =>
-    testingRequest(`/du-an/${id}/bang-cong-viec`, {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-    }),
-  updatePlanningWorkflow: (id, payload) =>
-    testingRequest(`/du-an/${id}/quy-trinh-cong-viec`, {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-    }),
-  roadmap: (id) => testingRequest(`/du-an/${id}/lo-trinh`),
-  listSprints: (id) => testingRequest(`/du-an/${id}/sprint`),
-  createSprint: (id, payload) =>
-    testingRequest(`/du-an/${id}/sprint`, { method: "POST", body: JSON.stringify(payload) }),
-  patchSprintScope: (id, sprintId, payload) =>
-    testingRequest(`/du-an/${id}/sprint/${sprintId}/pham-vi`, {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-    }),
-  transitionSprint: (id, sprintId, payload) =>
-    testingRequest(`/du-an/${id}/sprint/${sprintId}/chuyen-trang-thai`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  listProjectTasks: (id, status = "") =>
-    testingRequest(
-      `/du-an/${id}/cong-viec${status ? `?status=${encodeURIComponent(status)}` : ""}`,
-    ),
-  createProjectTask: (id, payload) =>
-    testingRequest(`/du-an/${id}/cong-viec`, { method: "POST", body: JSON.stringify(payload) }),
-  updateProjectTask: (id, taskId, payload) =>
-    testingRequest(`/du-an/${id}/cong-viec/${taskId}`, {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-    }),
-  deleteProjectTask: (id, taskId, payload) =>
-    testingRequest(`/du-an/${id}/cong-viec/${taskId}`, {
-      method: "DELETE",
-      body: JSON.stringify(payload),
-    }),
   getProjectSettings: (id) => testingRequest(`/du-an/${id}/cai-dat`),
   updateProjectSettings: (id, payload) =>
     testingRequest(`/du-an/${id}/cai-dat`, { method: "PATCH", body: JSON.stringify(payload) }),
@@ -174,62 +75,6 @@ export const projectTestingApi = {
   dashboard: (id) => testingRequest(`/du-an/${id}/tong-quan`),
   getDefectClassificationOptions: (projectId) =>
     testingRequest(`/du-an/${projectId}/phan-loai-loi`),
-  listTestStrategies: (projectId, filters = {}) => {
-    const query = listQuery(filters);
-    return testingRequest(`/du-an/${projectId}/chien-luoc${query ? `?${query}` : ""}`);
-  },
-  createTestStrategy: (projectId, payload) =>
-    testingRequest(`/du-an/${projectId}/chien-luoc`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  getTestStrategy: (strategyId) => testingRequest(`/chien-luoc/${strategyId}`),
-  updateTestStrategy: (strategyId, payload) =>
-    testingRequest(`/chien-luoc/${strategyId}`, {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-    }),
-  submitTestStrategy: (strategyId, payload) =>
-    testingRequest(`/chien-luoc/${strategyId}/gui-ra-soat`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  requestTestStrategyChanges: (strategyId, payload) =>
-    testingRequest(`/chien-luoc/${strategyId}/yeu-cau-chinh-sua`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  reviewTestStrategy: (strategyId, payload) =>
-    testingRequest(`/chien-luoc/${strategyId}/ra-soat`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  approveTestStrategy: (strategyId, payload) =>
-    testingRequest(`/chien-luoc/${strategyId}/phe-duyet`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  versionTestStrategy: (strategyId, payload) =>
-    testingRequest(`/chien-luoc/${strategyId}/tao-phien-ban`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  compareTestStrategyVersions: (strategyId, otherStrategyId) =>
-    testingRequest(
-      `/chien-luoc/${strategyId}/so-sanh?other_strategy_id=${encodeURIComponent(otherStrategyId)}`,
-    ),
-  cloneTestStrategy: (projectId, payload) =>
-    testingRequest(`/du-an/${projectId}/chien-luoc/nhan-ban`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  validateTestStrategy: (strategyId) =>
-    testingRequest(`/chien-luoc/${strategyId}/kiem-tra`, { method: "POST" }),
-  archiveTestStrategy: (strategyId, payload) =>
-    testingRequest(`/chien-luoc/${strategyId}/luu-tru`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
   listTestConditions: (projectId, filters = {}) => {
     const query = listQuery(filters);
     return testingRequest(`/du-an/${projectId}/dieu-kien-kiem-thu${query ? `?${query}` : ""}`);

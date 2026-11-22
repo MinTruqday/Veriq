@@ -22,7 +22,6 @@ def report_rows(report):
         ("Mã báo cáo", report.get("_id")),
         ("Dự án", report.get("project_id")),
         ("Kế hoạch kiểm thử", report.get("test_plan_id")),
-        ("Phiên bản chiến lược", report.get("strategy_version_id")),
         ("Bản phát hành", report.get("release_id")),
         ("Bản dựng", report.get("build_id")),
         ("Kỳ báo cáo bắt đầu", report.get("reporting_period_start", period.get("start_at"))),

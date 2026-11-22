@@ -1,10 +1,9 @@
-import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
+import { useRef, useState } from "react";
 import MultiSelect from "@/shared/components/ui/MultiSelect";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import StructuredValueEditor from "./StructuredValueEditor";
 import { testingApi } from "../services/testing.service";
-import { messageOf, valueLabel } from "../lib/testing";
+import { messageOf } from "../lib/testing";
 
 const aiPlanFields = [
   ["objective", "Mục tiêu", true],
@@ -69,7 +68,6 @@ const defaults = {
   owner_id: "",
   scenario_ids: [],
   objective: "",
-  strategy_version_id: "",
   test_level: "",
   test_approach: "",
   environment: "",
@@ -101,7 +99,6 @@ const defaults = {
 export default function TestPlanEditor({
   projectId,
   initialValue,
-  strategies = [],
   requirements,
   scenarios = [],
   suites,
@@ -139,32 +136,6 @@ export default function TestPlanEditor({
       },
     };
   });
-  const selectedStrategy =
-    strategies.find(
-      (item) => item._id === value.strategy_version_id && item.status === "APPROVED",
-    ) ||
-    (!value.strategy_version_id
-      ? strategies.find((item) => item.status === "APPROVED" && item.active_approved)
-      : null);
-  useEffect(() => {
-    if (initialValue) return;
-    const strategy = selectedStrategy;
-    if (!strategy) return;
-    setValue((current) => ({
-      ...current,
-      test_level: current.test_level || strategy.test_levels?.[0] || "",
-      test_types: current.test_types.length > 0 ? current.test_types : strategy.test_types || [],
-      test_approach: current.test_approach || strategy.approach || "",
-      entry_criteria:
-        current.entry_criteria.length > 0
-          ? current.entry_criteria
-          : strategy.entry_criteria_defaults || [],
-      exit_criteria:
-        current.exit_criteria.length > 0
-          ? current.exit_criteria
-          : strategy.exit_criteria_defaults || [],
-    }));
-  }, [initialValue, selectedStrategy, value.strategy_version_id]);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
@@ -258,7 +229,6 @@ export default function TestPlanEditor({
             estimation: {
               ...value.estimation,
             },
-            strategy_version_id: value.strategy_version_id || null,
             test_level: value.test_level || null,
             owner_id: value.owner_id || null,
             environment_id: value.environment_id || null,
@@ -494,43 +464,6 @@ export default function TestPlanEditor({
                 onChange={(event) => setField("environment", event.target.value)}
               />
             </label>
-            <label className="field-label">
-              Phiên bản chiến lược được tham chiếu (không bắt buộc)
-              <select
-                className="apple-input mt-2"
-                value={value.strategy_version_id}
-                onChange={(event) => {
-                  const strategyVersionId = event.target.value;
-                  const strategy =
-                    strategies.find(
-                      (item) => item._id === strategyVersionId && item.status === "APPROVED",
-                    ) ||
-                    (!strategyVersionId
-                      ? strategies.find(
-                          (item) => item.status === "APPROVED" && item.active_approved,
-                        )
-                      : null);
-                  setValue((current) => ({
-                    ...current,
-                    strategy_version_id: strategyVersionId,
-                    test_level: strategy?.test_levels?.[0] || "",
-                    test_types: strategy?.test_types || [],
-                    test_approach: strategy?.approach || "",
-                    entry_criteria: strategy?.entry_criteria_defaults || [],
-                    exit_criteria: strategy?.exit_criteria_defaults || [],
-                  }));
-                }}
-              >
-                <option value="">Không gắn phiên bản cụ thể</option>
-                {strategies
-                  .filter((item) => item.status === "APPROVED")
-                  .map((item) => (
-                    <option key={item._id} value={item._id}>
-                      {item.key} phiên bản {item.version}
-                    </option>
-                  ))}
-              </select>
-            </label>
             <MultiSelect
               label="Bộ kiểm thử trong phạm vi"
               options={suites.map((item) => ({ value: item._id, label: item.name }))}
@@ -541,49 +474,33 @@ export default function TestPlanEditor({
             />
             <label className="field-label">
               Cấp kiểm thử
-              <select
+              <input
                 className="apple-input mt-2"
                 value={value.test_level}
                 onChange={(event) => setField("test_level", event.target.value)}
                 aria-label="Cấp kiểm thử"
-                disabled={!selectedStrategy?.test_levels?.length && !value.test_level}
-              >
-                <option value="">Chọn cấp kiểm thử</option>
-                {(selectedStrategy?.test_levels || []).map((level) => (
-                  <option key={level} value={level}>
-                    {valueLabel(level)}
-                  </option>
-                ))}
-                {value.test_level && !selectedStrategy?.test_levels?.includes(value.test_level) && (
-                  <option value={value.test_level}>{valueLabel(value.test_level)}</option>
-                )}
-              </select>
+                maxLength={100}
+                placeholder="Nhập cấp kiểm thử"
+              />
             </label>
-            <MultiSelect
-              label="Loại kiểm thử"
-              options={[
-                ...new Set([...(selectedStrategy?.test_types || []), ...(value.test_types || [])]),
-              ].map((item) => ({ value: item, label: valueLabel(item) }))}
-              value={value.test_types || []}
-              onChange={(items) => setField("test_types", items)}
-              disabled={
-                readOnly || (!selectedStrategy?.test_types?.length && !value.test_types?.length)
-              }
-              emptyMessage="Chiến lược chưa khai báo loại kiểm thử"
-              searchPlaceholder="Tìm loại kiểm thử"
-            />
-            {!selectedStrategy && !readOnly && !value.test_level && !value.test_types?.length && (
-              <p className="text-sm text-ink-muted md:col-span-2" role="status">
-                Dự án chưa có chiến lược kiểm thử được phê duyệt. Cấp và loại kiểm thử được lấy từ
-                chiến lược của dự án.{" "}
-                <Link
-                  className="font-medium text-brand underline"
-                  href={`/du-an/${encodeURIComponent(projectId)}/quan-tri-kiem-thu`}
-                >
-                  Mở chiến lược kiểm thử
-                </Link>
-              </p>
-            )}
+            <label className="field-label">
+              Loại kiểm thử
+              <textarea
+                className="apple-input mt-2 min-h-20"
+                value={(value.test_types || []).join("\n")}
+                onChange={(event) =>
+                  setField(
+                    "test_types",
+                    event.target.value
+                      .split("\n")
+                      .map((item) => item.trim())
+                      .filter(Boolean),
+                  )
+                }
+                disabled={readOnly}
+                placeholder="Mỗi loại kiểm thử trên một dòng"
+              />
+            </label>
             <label className="field-label md:col-span-2">
               Cách tiếp cận kiểm thử
               <textarea

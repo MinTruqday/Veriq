@@ -1,5 +1,4 @@
 import json
-import hashlib
 from typing import Annotated
 from urllib.parse import urlencode
 
@@ -10,19 +9,6 @@ from src.core.infrastructure.configuration import settings
 from src.prompts.test_design import AUTOMATED_TECHNIQUE_RECOMMENDATION_INSTRUCTION
 from src.tools.registry import with_tool_access
 from src.tools.testing_api import call, parse
-
-
-def parse_collection(value):
-    try:
-        result = json.loads(value)
-    except (TypeError, json.JSONDecodeError):
-        return []
-    if isinstance(result, list):
-        return result
-    if isinstance(result, dict):
-        items = result.get("items", result.get("results"))
-        return items if isinstance(items, list) else []
-    return []
 
 
 @with_tool_access(("test_design", "analysis"), "READ", "testcase.read")
@@ -73,95 +59,6 @@ async def find_near_duplicates(
             )
         path = f"{path}?{urlencode({'test_case_draft_id': test_case_draft_id, 'expected_revision': expected_revision})}"
     return await call("GET", path, config)
-
-
-@with_tool_access(("requirement",), "MUTATE", "ai.generate_security_tests")
-async def generate_security_suggestions_for_requirement(
-    project_id: Annotated[str, Field(min_length=1, description="Project that owns the Requirement version")],
-    requirement_version_id: Annotated[str, Field(min_length=1, description="Baselined Requirement version")],
-    source_event_id: Annotated[str, Field(min_length=1, max_length=200, description="Verified Requirement event identifier")],
-    source_event_revision: Annotated[int, Field(ge=1, description="Requirement revision in the source event")],
-    config: RunnableConfig = None,
-) -> str:
-    """Create idempotent, source-quoted security-test candidates for one verified Requirement baseline event."""
-    configurable = (config or {}).get("configurable", {})
-    ai_run_id = configurable.get("ai_run_id")
-    source = next(
-        (
-            item
-            for item in configurable.get("evidence", [])
-            if isinstance(item, dict)
-            and item.get("project_id") == project_id
-            and item.get("artifact_type") == "requirement_version"
-            and str(item.get("artifact_version_id") or "") == requirement_version_id
-            and item.get("artifact_revision") == source_event_revision
-            and str(item.get("text") or "").strip()
-        ),
-        None,
-    )
-    expected_event_id = (
-        f"requirement-version:{requirement_version_id}:{source_event_revision}:BASELINED"
-    )
-    if not ai_run_id:
-        return json.dumps({"status": "blocked", "reason_code": "VERIFIED_AI_RUN_REQUIRED"})
-    if not source or source_event_id != expected_event_id:
-        return json.dumps({"status": "blocked", "reason_code": "BASELINED_REQUIREMENT_EVENT_EVIDENCE_REQUIRED"})
-
-    idempotency_key = "security-requirement:" + hashlib.sha256(
-        f"{source_event_id}:{requirement_version_id}".encode("utf-8")
-    ).hexdigest()
-    suggestion = parse(
-        await call(
-            "POST",
-            f"/du-an/{project_id}/ai/goi-y-kiem-thu-bao-mat",
-            config,
-            {
-                "requirement_version_ids": [requirement_version_id],
-                "categories": [],
-                "context": "",
-                "idempotency_key": idempotency_key,
-                "source_event_id": source_event_id,
-                "source_event_revision": source_event_revision,
-            },
-        )
-    )
-    if not suggestion or not suggestion.get("_id"):
-        return json.dumps({"status": "partial_failure", "reason_code": "SECURITY_SUGGESTION_CREATE_FAILED"})
-    stored = parse_collection(
-        await call("GET", f"/du-an/{project_id}/ai/goi-y-kiem-thu-bao-mat", config)
-    )
-    readback = next(
-        (item for item in stored if isinstance(item, dict) and item.get("_id") == suggestion["_id"]),
-        None,
-    )
-    if (
-        not readback
-        or readback.get("project_id") != project_id
-        or readback.get("source_event_id") != source_event_id
-        or readback.get("source_event_revision") != source_event_revision
-        or readback.get("requirement_version_ids") != [requirement_version_id]
-        or readback.get("candidate_only") is not True
-        or readback.get("vulnerability_scan_performed") is not False
-    ):
-        return json.dumps({"status": "partial_failure", "reason_code": "SECURITY_SUGGESTION_READBACK_INVALID"})
-    return json.dumps(
-        {
-            "status": "completed",
-            "suggestion_id": suggestion["_id"],
-            "candidate_count": len(readback.get("candidates") or []),
-            "source_event_id": source_event_id,
-            "source_event_revision": source_event_revision,
-            "candidate_only": True,
-            "vulnerability_scan_performed": False,
-            "verification": {
-                "status": "COMPLETED",
-                "project_id": project_id,
-                "artifact_ids": [suggestion["_id"]],
-                "checks": ["project_scope", "source_event_revision", "persisted_candidate_only", "no_scan_claim"],
-            },
-        },
-        ensure_ascii=False,
-    )
 
 
 @with_tool_access(

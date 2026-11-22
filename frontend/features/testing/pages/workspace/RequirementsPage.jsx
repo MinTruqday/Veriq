@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
 import ReviewCommentsPanel from "../../components/ReviewCommentsPanel";
-import FormalReviewPanel from "../../components/FormalReviewPanel";
 import CollaborationPanel from "../../components/CollaborationPanel";
 import {
   ErrorState,
@@ -22,7 +21,6 @@ import RequirementQualityPanel from "./requirements/RequirementQualityPanel";
 import RequirementSourceDocumentsPanel from "./requirements/RequirementSourceDocumentsPanel";
 import RequirementTracePanel from "./requirements/RequirementTracePanel";
 import RequirementsListPanel from "./requirements/RequirementsListPanel";
-import TestAdequacyPanel from "./design/TestAdequacyPanel";
 import RequirementClarificationPanel from "./requirements/RequirementClarificationPanel";
 import { PROJECT_SECTION_SLUGS, projectRoute } from "../../routes";
 import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
@@ -373,12 +371,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
   const routeSelected = selectedContextKey === `${project._id}:${requirementId}` ? selected : null;
   const projectDataReady = loadedProjectId === project._id;
   const visibleItems = useMemo(() => (projectDataReady ? items : []), [items, projectDataReady]);
-  const assuranceRequirements = useMemo(() => {
-    if (!routeSelected?.current_version_id) return visibleItems;
-    return visibleItems.some((item) => item.current_version_id === routeSelected.current_version_id)
-      ? visibleItems
-      : [...visibleItems, routeSelected];
-  }, [routeSelected, visibleItems]);
   const visibleMembers = projectDataReady ? members : [];
   const visibleSourceDocuments = projectDataReady ? sourceDocuments : [];
   useEffect(() => {
@@ -429,13 +421,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
     setError("");
   }, [project._id]);
   useEffect(() => {
-    setDetailTab(
-      workspaceView === "assurance"
-        ? "assurance"
-        : workspaceView === "clarifications"
-          ? "clarifications"
-          : "requirement",
-    );
+    setDetailTab(workspaceView === "clarifications" ? "clarifications" : "requirement");
   }, [routeSelected?._id, workspaceView]);
   useEffect(() => {
     void load();
@@ -1658,7 +1644,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
   };
   const detailTabs = [
     { id: "requirement", label: "Yêu cầu" },
-    ...(can("testcase.read") ? [{ id: "assurance", label: "Hồ sơ đảm bảo" }] : []),
     ...(can("requirement.read") ? [{ id: "clarifications", label: "Phiếu làm rõ" }] : []),
     { id: "history", label: "Lịch sử và rà soát" },
   ];
@@ -1670,11 +1655,9 @@ export default function RequirementsPage({ project, section, workspaceView }) {
       title={
         routeSelected
           ? current?.title || selected.requirement_key
-          : workspaceView === "assurance"
-            ? "Hồ sơ đảm bảo yêu cầu"
-            : workspaceView === "clarifications"
-              ? "Phiếu làm rõ yêu cầu"
-              : "Yêu cầu"
+          : workspaceView === "clarifications"
+            ? "Phiếu làm rõ yêu cầu"
+            : "Yêu cầu"
       }
       description={
         routeSelected
@@ -1779,30 +1762,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
               }
             />
           </div>
-          {can("testcase.read") && (
-            <div className="space-y-6" hidden={activeDetailTab !== "assurance"}>
-              <TestAdequacyPanel
-                projectId={project._id}
-                requirementVersionId={current._id}
-                requirements={assuranceRequirements}
-                onRequirementChange={(versionId) => {
-                  const requirement = assuranceRequirements.find(
-                    (item) => item.current_version_id === versionId,
-                  );
-                  if (!requirement) return;
-                  window.location.assign(
-                    projectRoute(project._id, PROJECT_SECTION_SLUGS.assurance, requirement._id),
-                  );
-                }}
-                members={visibleMembers}
-                canDecide={can("testcase.review")}
-                canReadResults={can("testrun.read")}
-                canCreateClarification={can("requirement.review")}
-                canApprove={can("testadequacy.approve")}
-                canSubmit={can("testcase.submit_review")}
-              />
-            </div>
-          )}
           <div className="space-y-6" hidden={activeDetailTab !== "clarifications"}>
             <RequirementClarificationPanel
               projectId={project._id}
@@ -1839,16 +1798,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
               permissions={project.current_permissions || []}
               currentUserId={project.current_membership?.user_id}
             />
-            {project.current_permissions?.includes("reviewsession.read") && (
-              <FormalReviewPanel
-                project={project}
-                artifactType="REQUIREMENT"
-                artifactId={routeSelected._id}
-                artifactVersionId={current._id}
-                reviewType="REQUIREMENT_REVIEW"
-                readOnly
-              />
-            )}
             <CollaborationPanel
               project={project}
               artifactType="requirement"
@@ -1879,11 +1828,9 @@ export default function RequirementsPage({ project, section, workspaceView }) {
             onBulkArchive={bulkArchiveRequirements}
             onSelect={(item) => {
               const sectionSlug =
-                workspaceView === "assurance"
-                  ? PROJECT_SECTION_SLUGS.assurance
-                  : workspaceView === "clarifications"
-                    ? PROJECT_SECTION_SLUGS.clarifications
-                    : PROJECT_SECTION_SLUGS.requirements;
+                workspaceView === "clarifications"
+                  ? PROJECT_SECTION_SLUGS.clarifications
+                  : PROJECT_SECTION_SLUGS.requirements;
               window.location.assign(projectRoute(project._id, sectionSlug, item._id));
             }}
             title={workspaceView === "clarifications" ? "Chọn yêu cầu" : "Danh sách yêu cầu"}

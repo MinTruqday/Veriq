@@ -109,7 +109,6 @@ class BddStep(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()), min_length=1, max_length=200)
     keyword: Literal["Given", "When", "Then", "And", "But"]
     text: str = Field(min_length=1, max_length=2000)
-    reusable_step_version_id: str | None = Field(default=None, max_length=200)
 
 
 class BddScenario(BaseModel):
@@ -134,20 +133,6 @@ class TestRepositoryNodePatch(BaseModel):
     expected_revision: int = Field(ge=1)
     name: str | None = Field(default=None, min_length=1, max_length=300)
     parent_id: str | None = Field(default=None, max_length=200)
-
-
-class ReusableStepCreate(BaseModel):
-    project_id: str
-    name: str = Field(min_length=2, max_length=300)
-    action_doc: dict[str, Any] = Field(default_factory=empty_doc)
-    expected_doc: dict[str, Any] = Field(default_factory=empty_doc)
-
-
-class ReusableStepPatch(BaseModel):
-    expected_revision: int = Field(ge=1)
-    name: str | None = Field(default=None, min_length=2, max_length=300)
-    action_doc: dict[str, Any] | None = None
-    expected_doc: dict[str, Any] | None = None
 
 
 class EvidenceQuote(BaseModel):
@@ -433,22 +418,6 @@ class DataSetPreview(BaseModel):
 class DataSetArchive(BaseModel):
     expected_revision: int = Field(ge=1)
     reason: str = Field(min_length=2, max_length=2000)
-
-
-class RiskRankingGenerate(BaseModel):
-    max_items: int | None = Field(default=None, ge=1, le=5000)
-
-
-class RiskRankingPatch(BaseModel):
-    expected_revision: int = Field(ge=1)
-    test_case_version_id: str = Field(min_length=1, max_length=200)
-    included: bool
-    reason: str = Field(min_length=2, max_length=2000)
-
-
-class RiskRankingApproval(BaseModel):
-    expected_revision: int = Field(ge=1)
-    review_note: str = Field(default="", max_length=5000)
 
 
 class TraceLinkCreate(BaseModel):

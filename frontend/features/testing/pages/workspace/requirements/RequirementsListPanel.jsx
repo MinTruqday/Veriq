@@ -226,12 +226,6 @@ export default function RequirementsListPanel({
                 minWidth: 140,
                 render: (item) => <StatusPill value={item.status} wrap />,
               },
-              {
-                key: "assurance_status",
-                label: "Hồ sơ đảm bảo",
-                minWidth: 164,
-                render: (item) => <StatusPill value={item.assurance_status} wrap />,
-              },
             ]}
           />
           <Pagination value={pageInfo} onChange={setPage} />

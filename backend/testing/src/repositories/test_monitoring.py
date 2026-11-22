@@ -156,14 +156,6 @@ class TestMonitoringRepository:
             {"project_id": project_id}, {"_id": 1}
         ).to_list(limit)
 
-    async def list_approved_non_functional_plans(
-        self, project_id, approved_status, limit
-    ):
-        return await database.value.non_functional_test_plans.find(
-            {"project_id": project_id, "status": approved_status},
-            {"_id": 1, "test_condition_ids": 1, "test_case_version_ids": 1, "revision": 1},
-        ).to_list(limit)
-
     async def count_requirement_changes(self, project_id, since):
         query = {"project_id": project_id}
         if since:
@@ -184,17 +176,6 @@ class TestMonitoringRepository:
         return await database.value.test_cases.count_documents(
             {"project_id": project_id, "status": status}
         )
-
-    async def list_environment_incidents(
-        self, project_id, statuses, release_scoped, build_ids, run_ids, limit
-    ):
-        query = {"project_id": project_id, "status": {"$in": statuses}}
-        if release_scoped:
-            query["$or"] = [
-                {"build_id": {"$in": build_ids}},
-                {"affected_run_ids": {"$in": run_ids}},
-            ]
-        return await database.value.environment_incidents.find(query).to_list(limit)
 
 
 test_monitoring_repository = TestMonitoringRepository()

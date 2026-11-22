@@ -3,11 +3,8 @@ import { useDateTimeOptions } from "../../hooks/useDateTimeOptions";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import DataTable from "../../components/DataTable";
-import WorkReportsPanel from "../../components/WorkReportsPanel";
 import TestStatusReportPanel from "../../components/TestStatusReportPanel";
 import CompletionPage from "./CompletionPage";
-import MetricDefinitionPanel from "../../components/MetricDefinitionPanel";
-import ReleaseQualityPanel from "../../components/ReleaseQualityPanel";
 import ProjectAIEvaluationPanel from "../../components/ProjectAIEvaluationPanel";
 import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
 import {
@@ -86,7 +83,6 @@ const aiCapabilityLabels = {
   security_test_generation: "Đề xuất kiểm thử bảo mật",
   performance_plan_generation: "Đề xuất kiểm thử hiệu năng",
   automation_script_generation: "Tạo bản nháp mã kiểm thử tự động",
-  causal_analysis: "Phân tích nguyên nhân khả dĩ",
   status_report_narrative: "Soạn diễn giải báo cáo trạng thái",
   completion_report_narrative: "Soạn diễn giải báo cáo hoàn tất",
   lessons_learned_clustering: "Nhóm bài học kinh nghiệm",
@@ -184,7 +180,6 @@ export default function ReportsPage({ project }) {
   });
   const [activeTab, setActiveTab] = useState("summary");
   const [activeTestReportTab, setActiveTestReportTab] = useState("status");
-  const [activeQualityTab, setActiveQualityTab] = useState("evaluation");
   const [showAllActivity, setShowAllActivity] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -219,15 +214,11 @@ export default function ReportsPage({ project }) {
       scope.build,
   );
   const reportTabs = [
-    ...(can("workreport.read") ? [{ id: "work", label: "Công việc và định kỳ" }] : []),
     ...(canReadAnalytics || canReadAiAnalytics || canReadCoverage || canReadReports
       ? [{ id: "summary", label: "Tổng quan" }]
       : []),
     ...(can("teststatusreport.read") || can("testcompletion.read")
       ? [{ id: "reports", label: "Báo cáo" }]
-      : []),
-    ...(can("qualityevaluation.read") || can("measurement.read")
-      ? [{ id: "quality", label: "Chất lượng và cải tiến" }]
       : []),
     ...(canReadAiAnalytics ? [{ id: "ai", label: "Đánh giá AI thực tế" }] : []),
   ];
@@ -239,15 +230,6 @@ export default function ReportsPage({ project }) {
   const visibleTestReportTab = testReportTabs.some((tab) => tab.id === activeTestReportTab)
     ? activeTestReportTab
     : testReportTabs[0]?.id;
-  const qualityTabs = [
-    ...(can("qualityevaluation.read")
-      ? [{ id: "evaluation", label: "Đánh giá bản phát hành" }]
-      : []),
-    ...(can("measurement.read") ? [{ id: "measurement", label: "Đo lường" }] : []),
-  ];
-  const visibleQualityTab = qualityTabs.some((tab) => tab.id === activeQualityTab)
-    ? activeQualityTab
-    : qualityTabs[0]?.id;
   const recentActivity = useMemo(
     () =>
       (Array.isArray(value?.activity) ? value.activity : []).filter(
@@ -390,7 +372,6 @@ export default function ReportsPage({ project }) {
           tabs={reportTabs}
         />
       )}
-      {visibleTab === "work" && <WorkReportsPanel project={project} />}
       {visibleTab === "reports" && (
         <div className="space-y-6">
           {testReportTabs.length > 1 && (
@@ -403,20 +384,6 @@ export default function ReportsPage({ project }) {
           )}
           {visibleTestReportTab === "status" && <TestStatusReportPanel project={project} />}
           {visibleTestReportTab === "completion" && <CompletionPage project={project} />}
-        </div>
-      )}
-      {visibleTab === "quality" && (
-        <div className="space-y-6">
-          {qualityTabs.length > 1 && (
-            <SegmentedTabs
-              label="Nội dung chất lượng"
-              value={visibleQualityTab}
-              onChange={setActiveQualityTab}
-              tabs={qualityTabs}
-            />
-          )}
-          {visibleQualityTab === "evaluation" && <ReleaseQualityPanel project={project} />}
-          {visibleQualityTab === "measurement" && <MetricDefinitionPanel project={project} />}
         </div>
       )}
       {visibleTab === "ai" && (

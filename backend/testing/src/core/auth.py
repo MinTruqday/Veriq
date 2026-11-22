@@ -20,7 +20,7 @@ _access_policy_context = ContextVar("project_access_policy", default=None)
 OWNER_PERMISSIONS = frozenset({
     "project.archive", "project.restore", "project.audit.read", "project.update",
     "project.settings.manage", "project.members.manage", "notification.project_rule.manage",
-    "workreport.manage", "release.close", "qualitygate.accept_risk",
+    "release.close", "qualitygate.accept_risk",
     "qualitygate.override", "testcompletion.close",
     "requirement_document.confirm_extraction", "testmonitor.exit_criteria.override",
 })
@@ -381,7 +381,6 @@ async def get_current_user(
                 "release.close",
                 "testmonitor.snapshot.create",
                 "testcompletion.create",
-                "testadequacy.execution_feedback.record",
             }
             if publication_project_id and isinstance(publication_permissions, list):
                 user._ai_capability_publication_permissions = sorted(

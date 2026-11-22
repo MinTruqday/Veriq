@@ -4,10 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Archive, Copy, MoreHorizontal, Pencil, RefreshCw } from "lucide-react";
-import DeviceMatricesPanel from "../../components/DeviceMatricesPanel";
 import TestPlanEditor from "../../components/TestPlanEditor";
-import EnvironmentIncidentPanel from "../../components/EnvironmentIncidentPanel";
-import NonFunctionalTestPanel from "../../components/NonFunctionalTestPanel";
 import DataTable from "../../components/DataTable";
 import {
   ErrorState,
@@ -31,14 +28,12 @@ import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import SearchField from "@/shared/components/ui/SearchField";
 import RunExecutionWorkspace from "./execution/RunExecutionWorkspace";
 import JUnitResultPanel from "../../components/JUnitResultPanel";
-import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
 import MultiSelect from "@/shared/components/ui/MultiSelect";
 import {
   operationForRetry,
   shouldReloadAfterAmbiguousMutation,
 } from "../../lib/executionRecovery.logic.mjs";
 import { PROJECT_SECTION_SLUGS, projectRoute } from "../../routes";
-import { withRiskModelDefaults } from "../../components/RiskModelEditor";
 
 const testPlanFindingLabels = {
   TEST_PLAN_STRATEGY_REQUIRED:
@@ -70,7 +65,6 @@ export default function ExecutionPage({ project, section, workspaceView }) {
     router.push([planPath, encodeURIComponent(id), action].filter(Boolean).join("/"));
   const [plans, setPlans] = useState([]);
   const [scenarios, setScenarios] = useState([]);
-  const [strategies, setStrategies] = useState([]);
   const [suites, setSuites] = useState([]);
   const [releases, setReleases] = useState([]);
   const [builds, setBuilds] = useState([]);
@@ -122,7 +116,6 @@ export default function ExecutionPage({ project, section, workspaceView }) {
   const runCreateOperation = useRef(null);
   const defectCreateOperations = useRef(new Map());
   const defectCreateInFlight = useRef(new Set());
-  const [runSubsection, setRunSubsection] = useState("runs");
   const [runForm, setRunForm] = useState({
     name: "",
     release: "",
@@ -144,11 +137,6 @@ export default function ExecutionPage({ project, section, workspaceView }) {
     () => project.current_permissions || [],
     [project.current_permissions],
   );
-  const runSubsectionTabs = [
-    ...(can("testrun.read") ? [{ id: "runs", label: "Lần chạy" }] : []),
-    ...(can("environmentincident.read") ? [{ id: "incidents", label: "Sự cố môi trường" }] : []),
-    ...(can("nfrtest.read") ? [{ id: "nonfunctional", label: "Kiểm thử phi chức năng" }] : []),
-  ];
   const terminalResultStatuses = project.settings?.allow_not_applicable_results
     ? ["PASS", "FAIL", "BLOCKED", "SKIPPED", "NOT_APPLICABLE"]
     : ["PASS", "FAIL", "BLOCKED", "SKIPPED"];
@@ -185,7 +173,6 @@ export default function ExecutionPage({ project, section, workspaceView }) {
         releaseValues,
         buildValues,
         environmentValues,
-        strategyValues,
         requirementValues,
         scenarioValues,
         memberValues,
@@ -211,9 +198,6 @@ export default function ExecutionPage({ project, section, workspaceView }) {
         permissions.includes("environment.read")
           ? testingApi.listEnvironments(project._id)
           : Promise.resolve([]),
-        permissions.includes("teststrategy.read")
-          ? testingApi.listTestStrategies(project._id, { page_size: 200 })
-          : Promise.resolve({ items: [] }),
         permissions.includes("requirement.read")
           ? testingApi.listRequirements(project._id, { page_size: 500, status: "BASELINED" })
           : Promise.resolve([]),
@@ -245,7 +229,6 @@ export default function ExecutionPage({ project, section, workspaceView }) {
       setReleases(releaseValues);
       setBuilds(buildValues);
       setEnvironments(environmentValues);
-      setStrategies(strategyValues.items || []);
       setScenarios(scenarioValues);
       setRequirements(requirementValues);
       setMembers(memberValues);
@@ -480,14 +463,6 @@ export default function ExecutionPage({ project, section, workspaceView }) {
       .map((step) => docText(step.expected_doc))
       .filter(Boolean)
       .join("\n");
-    const activeStrategy = strategies.find((item) => item.active_approved);
-    const activeRiskModel = withRiskModelDefaults(activeStrategy?.risk_model);
-    const defectSeverities = activeRiskModel.severity_scale
-      .map((item) => String(item.label || "").trim())
-      .filter(Boolean);
-    const defectPriorities = activeRiskModel.priority_scale
-      .map((item) => String(item.label || "").trim())
-      .filter(Boolean);
     const initialPriority = String(version.priority || "").toLowerCase();
     await ask({
       title: aiDraft ? "Rà soát bản nháp lỗi từ AI" : "Tạo lỗi từ kết quả kiểm thử",
@@ -533,23 +508,13 @@ export default function ExecutionPage({ project, section, workspaceView }) {
           name: "severity",
           label: "Mức độ ảnh hưởng",
           required: true,
-          options: [
-            { value: "", label: "Chọn mức độ" },
-            ...defectSeverities.map((value) => ({ value, label: value })),
-          ],
+          initialValue: aiDraft?.severity || "",
         },
         {
           name: "priority",
           label: "Ưu tiên xử lý",
           required: true,
-          initialValue:
-            defectPriorities.find((value) => value.toLowerCase() === initialPriority) ||
-            defectPriorities[0] ||
-            "",
-          options: [
-            { value: "", label: "Chọn mức ưu tiên" },
-            ...defectPriorities.map((value) => ({ value, label: value })),
-          ],
+          initialValue: aiDraft?.priority || initialPriority,
         },
       ],
       onConfirm: async (values) => {
@@ -905,7 +870,6 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                 creating && sourceRequirementId ? [sourceRequirementId] : []
               }
               readOnly={!creating && !editing}
-              strategies={strategies}
               requirements={requirements}
               scenarios={scenarios}
               suites={suites}
@@ -952,8 +916,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
               Tạo bộ kiểm thử
             </button>
           )}
-          {(workspaceView === "" || (workspaceView === "test-runs" && runSubsection === "runs")) &&
-            can("testrun.create") && (
+          {(workspaceView === "" || workspaceView === "test-runs") && can("testrun.create") && (
               <button className="apple-button" type="button" onClick={() => setCreatingRun(true)}>
                 Tạo lần chạy
               </button>
@@ -967,18 +930,6 @@ export default function ExecutionPage({ project, section, workspaceView }) {
       }
     >
       {error && <ErrorState message={error} />}
-      {workspaceView === "test-runs" && runSubsectionTabs.length > 1 && (
-        <SegmentedTabs
-          label="Khu vực lần chạy kiểm thử"
-          value={
-            runSubsectionTabs.some((item) => item.id === runSubsection)
-              ? runSubsection
-              : runSubsectionTabs[0].id
-          }
-          onChange={setRunSubsection}
-          tabs={runSubsectionTabs}
-        />
-      )}
       {workspaceView !== "test-plans" && can("build.read") && (
         <Panel title="Bản dựng của dự án">
           {builds.length ? (
@@ -1259,9 +1210,6 @@ export default function ExecutionPage({ project, section, workspaceView }) {
           can={can}
           onError={setError}
         />
-      )}
-      {workspaceView === "" && can("device_matrix.read") && (
-        <DeviceMatricesPanel project={project} plans={plans} runs={runs} onChanged={load} />
       )}
       {can("testplan.read") && (workspaceView === "" || workspaceView === "test-plans") && (
         <div className="w-full">
@@ -1769,8 +1717,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
           )}
         </Panel>
       )}
-      {can("testrun.read") &&
-        (workspaceView === "" || (workspaceView === "test-runs" && runSubsection === "runs")) && (
+      {can("testrun.read") && (workspaceView === "" || workspaceView === "test-runs") && (
           <div>
             <Panel title="Danh sách lần chạy">
               <details className="border-b border-border p-4" open={workspaceView === "test-runs"}>
@@ -1887,16 +1834,6 @@ export default function ExecutionPage({ project, section, workspaceView }) {
               <Pagination value={runPageInfo} onChange={setRunPage} />
             </Panel>
           </div>
-        )}
-      {(workspaceView === "" || workspaceView === "test-runs") &&
-        project.current_permissions?.includes("environmentincident.read") &&
-        (workspaceView === "" || runSubsection === "incidents") && (
-          <EnvironmentIncidentPanel project={project} />
-        )}
-      {(workspaceView === "" || workspaceView === "test-runs") &&
-        project.current_permissions?.includes("nfrtest.read") &&
-        (workspaceView === "" || runSubsection === "nonfunctional") && (
-          <NonFunctionalTestPanel project={project} />
         )}
       {dialog}
     </WorkspacePage>

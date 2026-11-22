@@ -5,7 +5,6 @@ import { BadgeCheck, Check, FilePlus2, Pencil, RefreshCw, UserRoundPlus } from "
 import DataTable from "../../components/DataTable";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import TestConditionEditor from "../../components/TestConditionEditor";
-import { withRiskModelDefaults } from "../../components/RiskModelEditor";
 import TestConditionTable from "../../components/TestConditionTable";
 import {
   ErrorState,
@@ -58,7 +57,6 @@ export default function TestAnalysisPage({ project }) {
   const { ask, dialog } = useActionDialog();
   const [conditions, setConditions] = useState([]);
   const [requirements, setRequirements] = useState([]);
-  const [strategies, setStrategies] = useState([]);
   const [members, setMembers] = useState([]);
   const [coverage, setCoverage] = useState(null);
   const [findings, setFindings] = useState([]);
@@ -84,14 +82,6 @@ export default function TestAnalysisPage({ project }) {
     [project.current_permissions],
   );
   const can = useCallback((permission) => permissions.includes(permission), [permissions]);
-  const activeStrategy = strategies.find((item) => item.active_approved) || null;
-  const activeRiskModel = withRiskModelDefaults(activeStrategy?.risk_model);
-  const conditionRiskLevels = (activeRiskModel.thresholds || [])
-    .map((item) => String(item.level || "").trim())
-    .filter(Boolean);
-  const conditionPriorityLevels = activeRiskModel.priority_scale
-    .map((item) => String(item.label || "").trim())
-    .filter(Boolean);
   const load = useCallback(async () => {
     if (loadedProjectId.current !== project._id) {
       loadedProjectId.current = project._id;
@@ -107,7 +97,6 @@ export default function TestAnalysisPage({ project }) {
         findingValues,
         aiResultValues,
         memberValues,
-        strategyValues,
       ] = await Promise.all([
         can("testcondition.read")
           ? testingApi.listTestConditions(project._id, { q: query, status, page_size: 200 })
@@ -124,11 +113,6 @@ export default function TestAnalysisPage({ project }) {
         can("testanalysis.read")
           ? testingApi.listTestAnalysisAiResults(project._id)
           : Promise.resolve([]),
-        can("teststrategy.read")
-          ? testingApi
-              .listTestStrategies(project._id, { status: "APPROVED", page_size: 200 })
-              .catch(() => ({ items: [] }))
-          : Promise.resolve({ items: [] }),
         can("testanalysis.finding.assign") && can("project.members.read")
           ? testingApi.listMembers(project._id).catch((reason) => {
               memberLoadError = `Không tải được danh sách thành viên để phân công: ${messageOf(reason)}`;
@@ -142,7 +126,6 @@ export default function TestAnalysisPage({ project }) {
       setCoverage(coverageValue);
       setFindings(findingValues.items || []);
       setAiResults(aiResultValues || []);
-      setStrategies(strategyValues.items || []);
       setMembers(memberValues || []);
       setError(memberLoadError);
       setSelected(
@@ -1113,10 +1096,6 @@ export default function TestAnalysisPage({ project }) {
               : null
           }
           requirements={requirements}
-          strategies={strategies}
-          riskLevels={conditionRiskLevels}
-          priorityLevels={conditionPriorityLevels}
-          projectId={project._id}
           onCancel={() => setEditing(false)}
           onSave={async (payload) => {
             const value = selected?._id

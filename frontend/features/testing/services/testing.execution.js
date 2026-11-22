@@ -7,15 +7,6 @@ import {
 } from "./testing.transport";
 
 export const executionTestingApi = {
-  listEligibleReportParticipants: (projectId) =>
-    testingRequest(`/du-an/${projectId}/bao-cao-cong-viec/nguoi-tham-gia`),
-  listReportAssignments: (projectId, offset = 0) =>
-    testingRequest(`/du-an/${projectId}/bao-cao-cong-viec/phan-cong?limit=50&offset=${offset}`),
-  updateReportAssignments: (reportId, payload) =>
-    testingRequest(`/bao-cao-cong-viec/${reportId}/phan-cong`, {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-    }),
   listJUnitResultImports: (projectId) =>
     testingRequest(`/du-an/${projectId}/ket-qua-tu-dong/junit`),
   importJUnitResult: (projectId, testRunId, file) => {
@@ -138,29 +129,6 @@ export const executionTestingApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
-  listDeviceMatrices: (id, includeArchived = false) =>
-    testingRequest(`/du-an/${id}/ma-tran-thiet-bi?include_archived=${includeArchived}`),
-  getDeviceMatrix: (id) => testingRequest(`/ma-tran-thiet-bi/${id}`),
-  createDeviceMatrix: (projectId, payload) =>
-    testingRequest(`/du-an/${projectId}/ma-tran-thiet-bi`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  updateDeviceMatrix: (id, payload) =>
-    testingRequest(`/ma-tran-thiet-bi/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-    }),
-  archiveDeviceMatrix: (id, payload) =>
-    testingRequest(`/ma-tran-thiet-bi/${id}/luu-tru`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  assignDeviceMatrix: (id, payload) =>
-    testingRequest(`/ma-tran-thiet-bi/${id}/gan`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
   listProjectNotificationWatches: (projectId, artifactType = "") =>
     testingRequest(
       `/du-an/${projectId}/thong-bao/theo-doi${artifactType ? `?artifact_type=${encodeURIComponent(artifactType)}` : ""}`,
@@ -184,10 +152,6 @@ export const executionTestingApi = {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
-  listSecurityTestSuggestions: (projectId) =>
-    testingRequest(`/du-an/${projectId}/ai/goi-y-kiem-thu-bao-mat`),
-  listPerformancePlanDrafts: (projectId) =>
-    testingRequest(`/du-an/${projectId}/ai/ke-hoach-hieu-nang`),
   listAutomationScriptDrafts: (projectId) =>
     testingRequest(`/du-an/${projectId}/ban-nhap-kich-ban-tu-dong`),
   getAutomationScriptDraft: (draftId) => testingRequest(`/ban-nhap-kich-ban-tu-dong/${draftId}`),

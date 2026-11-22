@@ -817,23 +817,6 @@ async def aggregate(state):
                 warnings.append("TEST_CASE_PARENT_VERSION_READBACK_UNAVAILABLE")
             if trace_result is None:
                 warnings.append("TEST_CASE_TRACE_IMPACT_READBACK_UNAVAILABLE")
-    if trigger == "WORK_ITEM_CHANGED":
-        context = next(
-            (
-                observation.get("result")
-                for observation in run.observations
-                if observation.get("tool_name") == "get_work_item_impact_context"
-                and observation.get("status") == ToolExecutionStatus.COMPLETED
-            ),
-            None,
-        )
-        if isinstance(context, str):
-            try:
-                context = json.loads(context)
-            except (TypeError, ValueError):
-                context = None
-        if isinstance(context, dict) and context.get("status") != "completed":
-            warnings.append("WORK_ITEM_IMPACT_CONTEXT_UNAVAILABLE")
     if trigger == "RELEASE_CHANGED":
         release_result = next(
             (

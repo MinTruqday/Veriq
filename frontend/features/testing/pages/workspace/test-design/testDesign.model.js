@@ -38,7 +38,6 @@ export function createTestCaseForm() {
     dataSetVersionIds: [],
     testConditionIds: [],
     repositoryNodeId: "",
-    reusableStepVersionIds: [],
     testStyle: "MANUAL",
     feature: "",
     scenario: "",

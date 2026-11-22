@@ -6,211 +6,8 @@ from langchain_core.runnables import RunnableConfig
 from pydantic import Field
 
 from src.core.infrastructure.configuration import settings
-from src.prompts.defect_analysis import causal_hypothesis_instruction
 from src.tools.registry import with_tool_access
 from src.tools.testing_api import call, parse
-
-
-@with_tool_access(("analysis",), "MUTATE", "causalanalysis.create", owner_domain="analysis")
-async def process_recorded_defect(
-    project_id: Annotated[str, Field(description="Testing project identifier")],
-    defect_id: Annotated[str, Field(min_length=1, description="Verified defect identifier")],
-    source_event_id: Annotated[str, Field(min_length=1, max_length=200)],
-    source_event_revision: Annotated[int, Field(ge=1)],
-    config: RunnableConfig = None,
-) -> str:
-    """Create an idempotent defect-analysis record, generate hypotheses, and verify the saved record"""
-    configurable = (config or {}).get("configurable", {})
-    execution_user_id = configurable.get("user_id")
-    ai_run_id = configurable.get("ai_run_id")
-    permissions = set(configurable.get("permissions", []))
-    if not execution_user_id or not ai_run_id:
-        return json.dumps(
-            {"status": "blocked", "reason_code": "AI_RUN_IDENTITY_REQUIRED"}
-        )
-    if "causalanalysis.update" not in permissions:
-        return json.dumps(
-            {
-                "status": "blocked",
-                "reason_code": "CAUSAL_ANALYSIS_UPDATE_PERMISSION_REQUIRED",
-            }
-        )
-    event_trigger = configurable.get("event_trigger") or configurable.get("trigger")
-    if event_trigger not in {"DEFECT_RECORDED", "DEFECT_CHANGED"}:
-        return json.dumps(
-            {"status": "blocked", "reason_code": "VERIFIED_DEFECT_EVENT_REQUIRED"}
-        )
-    source = next(
-        (
-            item
-            for item in configurable.get("evidence", [])
-            if isinstance(item, dict)
-            and item.get("project_id") == project_id
-            and str(item.get("artifact_type", "")).casefold() == "defect"
-            and defect_id
-            in {str(item.get("artifact_id") or ""), str(item.get("artifact_version_id") or "")}
-            and item.get("artifact_revision") == source_event_revision
-        ),
-        None,
-    )
-    if not source or not str(source.get("text") or "").strip():
-        return json.dumps(
-            {"status": "blocked", "reason_code": "DEFECT_SOURCE_EVIDENCE_REQUIRED"}
-        )
-    evidence_ref = str(source.get("artifact_version_id") or source.get("artifact_id"))
-    expected_event_id = f"defect:{defect_id}:{source_event_revision}"
-    if source_event_id != expected_event_id:
-        return json.dumps(
-            {"status": "blocked", "reason_code": "DEFECT_EVENT_IDENTITY_MISMATCH"}
-        )
-    current_defect = parse(await call("GET", f"/du-an/{project_id}/loi/{defect_id}", config))
-    if not current_defect or current_defect.get("project_id") != project_id:
-        return json.dumps(
-            {"status": "blocked", "reason_code": "DEFECT_PROJECT_SCOPE_INVALID"}
-        )
-    if current_defect.get("revision") != source_event_revision:
-        return json.dumps(
-            {
-                "status": "completed",
-                "action": "SKIPPED",
-                "reason_code": "DEFECT_EVENT_SUPERSEDED",
-                "defect_id": defect_id,
-                "event_revision": source_event_revision,
-                "current_revision": current_defect.get("revision"),
-                "verification": {
-                    "status": "COMPLETED",
-                    "project_id": project_id,
-                    "artifact_ids": [defect_id],
-                    "checks": ["project_scope", "source_event_revision", "superseded_event_noop"],
-                },
-            },
-            ensure_ascii=False,
-        )
-    idempotency_key = f"ai-automation-{ai_run_id}"
-    analysis = parse(
-        await call(
-            "POST",
-            f"/du-an/{project_id}/phan-tich-nguyen-nhan",
-            config,
-            {
-                "idempotency_key": idempotency_key,
-                "defect_ids": [defect_id],
-                "problem_statement": str(source["text"]).strip(),
-                "evidence_refs": [evidence_ref],
-                "owner_id": execution_user_id,
-                "source_event_id": source_event_id,
-                "source_event_revision": source_event_revision,
-                "source_event_trigger": event_trigger,
-            },
-        )
-    )
-    if not analysis or not analysis.get("_id"):
-        return json.dumps(
-            {"status": "partial_failure", "reason_code": "CAUSAL_ANALYSIS_CREATE_FAILED"}
-        )
-    analysis_id = str(analysis["_id"])
-    hypotheses = parse(
-        await call(
-            "POST",
-            f"/phan-tich-nguyen-nhan/{analysis_id}/ai/goi-y",
-            config,
-            {"idempotency_key": idempotency_key, "instruction": causal_hypothesis_instruction()},
-            timeout=settings.MODEL_TIMEOUT_SECONDS,
-        )
-    )
-    if not hypotheses or hypotheses.get("status") == "qa_operation_failed":
-        return json.dumps(
-            {
-                "status": "partial_failure",
-                "analysis_id": analysis_id,
-                "reason_code": "CAUSAL_HYPOTHESES_FAILED",
-            }
-        )
-    readback = parse(await call("GET", f"/phan-tich-nguyen-nhan/{analysis_id}", config))
-    if (
-        not readback
-        or readback.get("_id") != analysis_id
-        or readback.get("project_id") != project_id
-        or readback.get("defect_ids") != [defect_id]
-        or readback.get("source_event_id") != source_event_id
-        or readback.get("source_event_revision") != source_event_revision
-        or readback.get("source_event_trigger") != event_trigger
-        or readback.get("source_ai_run_id") != ai_run_id
-    ):
-        return json.dumps(
-            {
-                "status": "partial_failure",
-                "analysis_id": analysis_id,
-                "reason_code": "CAUSAL_ANALYSIS_READBACK_FAILED",
-            }
-        )
-    trace_result = None
-    if "ai.suggest_bug_trace" in permissions:
-        trace_result = parse(
-            await call(
-                "POST",
-                f"/du-an/{project_id}/ai/loi/{defect_id}/goi-y-truy-vet",
-                config,
-                {
-                    "idempotency_key": f"ai-automation-{ai_run_id}-bug-trace",
-                    "source_event_id": source_event_id,
-                    "source_event_revision": source_event_revision,
-                    "source_event_trigger": event_trigger,
-                },
-            )
-        )
-        if (
-            not trace_result
-            or trace_result.get("project_id") != project_id
-            or trace_result.get("subject_id") != defect_id
-            or trace_result.get("source_event_id") != source_event_id
-            or trace_result.get("source_event_revision") != source_event_revision
-            or trace_result.get("source_event_trigger") != event_trigger
-            or trace_result.get("result_type") != "BUG_TRACE_SUGGESTION"
-        ):
-            return json.dumps(
-                {
-                    "status": "partial_failure",
-                    "analysis_id": analysis_id,
-                    "reason_code": "DEFECT_TRACE_SUGGESTION_READBACK_FAILED",
-                }
-            )
-    return json.dumps(
-        {
-            "status": "completed",
-            "analysis_id": analysis_id,
-            "analysis_status": readback.get("status"),
-            "hypothesis_result_id": hypotheses.get("_id"),
-            "trace_suggestion_id": trace_result.get("_id") if trace_result else None,
-            "trace_suggestion_deferred": trace_result is None,
-            "candidate_only": hypotheses.get("candidate_only", True),
-            "verification": {
-                "status": "COMPLETED",
-                "project_id": project_id,
-                "artifact_ids": [
-                    analysis_id,
-                    *([str(hypotheses["_id"])] if hypotheses.get("_id") else []),
-                    *(
-                        [str(trace_result["_id"])]
-                        if trace_result and trace_result.get("_id")
-                        else []
-                    ),
-                ],
-                "checks": [
-                    "causal_analysis_readback",
-                    "project_scope",
-                    "source_evidence",
-                    *(
-                        ["defect_trace_candidate_readback"]
-                        if trace_result
-                        else ["trace_permission_not_granted"]
-                    ),
-                ],
-            },
-        },
-        ensure_ascii=False,
-        default=str,
-    )
 
 
 @with_tool_access(("reporting",), "MUTATE", "teststatusreport.update", owner_domain="reporting")
@@ -572,104 +369,6 @@ async def process_approved_test_plan(
     )
 
 
-@with_tool_access(("test_design",), "MUTATE", "ai.generate_performance_plan", owner_domain="test_design")
-async def process_approved_performance_configuration(
-    project_id: Annotated[str, Field(description="Testing project identifier")],
-    plan_id: Annotated[str, Field(min_length=1, description="Approved performance configuration identifier")],
-    source_event_id: Annotated[str, Field(min_length=1, max_length=240)],
-    source_event_revision: Annotated[int, Field(ge=1)],
-    config: RunnableConfig = None,
-) -> str:
-    """Generate a performance-plan draft from one verified approved configuration event."""
-    configurable = (config or {}).get("configurable", {})
-    ai_run_id = configurable.get("ai_run_id")
-    event_trigger = configurable.get("event_trigger") or configurable.get("trigger")
-    expected_event_id = (
-        f"performance-configuration:{plan_id}:{source_event_revision}:"
-        "PERFORMANCE_CONFIGURATION_APPROVED"
-    )
-    source = next(
-        (
-            item
-            for item in configurable.get("evidence", [])
-            if isinstance(item, dict)
-            and item.get("project_id") == project_id
-            and item.get("artifact_type") == "non_functional_test_plan"
-            and str(item.get("artifact_id") or "") == plan_id
-            and item.get("artifact_revision") == source_event_revision
-        ),
-        None,
-    )
-    if (
-        not ai_run_id
-        or event_trigger != "PERFORMANCE_CONFIGURATION_APPROVED"
-        or source_event_id != expected_event_id
-        or not source
-    ):
-        return json.dumps(
-            {"status": "blocked", "reason_code": "VERIFIED_PERFORMANCE_CONFIGURATION_EVENT_REQUIRED"}
-        )
-    approved_plan = parse(await call("GET", f"/ke-hoach-phi-chuc-nang/{plan_id}", config))
-    if (
-        not approved_plan
-        or approved_plan.get("project_id") != project_id
-        or approved_plan.get("plan_type") != "PERFORMANCE_TEST_PLAN"
-        or approved_plan.get("status") != "APPROVED"
-        or approved_plan.get("revision") != source_event_revision
-    ):
-        return json.dumps(
-            {"status": "blocked", "reason_code": "APPROVED_PERFORMANCE_CONFIGURATION_CHANGED"}
-        )
-    result = parse(
-        await call(
-            "POST",
-            f"/du-an/{project_id}/ai/ke-hoach-hieu-nang/tu-cau-hinh-da-duyet",
-            config,
-            {
-                "plan_id": plan_id,
-                "source_event_id": source_event_id,
-                "source_event_revision": source_event_revision,
-            },
-        )
-    )
-    if not result:
-        return json.dumps(
-            {"status": "failed", "reason_code": "PERFORMANCE_CONFIGURATION_RESPONSE_INVALID"}
-        )
-    if result.get("status") == "awaiting_input":
-        return json.dumps(result, ensure_ascii=False)
-    draft = result.get("draft")
-    try:
-        saved_drafts = json.loads(
-            await call("GET", f"/du-an/{project_id}/ai/ke-hoach-hieu-nang", config)
-        )
-    except (TypeError, json.JSONDecodeError):
-        saved_drafts = None
-    readback = next(
-        (
-            item
-            for item in saved_drafts
-            if isinstance(item, dict)
-            and isinstance(draft, dict)
-            and item.get("_id") == draft.get("_id")
-        ),
-        None,
-    ) if isinstance(saved_drafts, list) else None
-    if (
-        result.get("status") != "completed"
-        or not isinstance(readback, dict)
-        or readback.get("source_configuration_id") != plan_id
-        or readback.get("source_event_id") != source_event_id
-        or readback.get("source_event_revision") != source_event_revision
-        or readback.get("project_id") != project_id
-    ):
-        return json.dumps(
-            {"status": "failed", "reason_code": "PERFORMANCE_DRAFT_READBACK_MISMATCH"}
-        )
-    result["draft"] = readback
-    return json.dumps(result, ensure_ascii=False, default=str)
-
-
 async def _create_test_run_draft_from_approved_plan(
     project_id: str,
     test_plan_id: str,
@@ -909,7 +608,7 @@ async def process_changed_release(
     ],
     config: RunnableConfig = None,
 ) -> str:
-    """Close an active Release only after its authoritative completion and assurance gates pass."""
+    """Close an active Release after its test completion reports are verified."""
     configurable = (config or {}).get("configurable", {})
     ai_run_id = configurable.get("ai_run_id")
     permissions = set(configurable.get("permissions", []))
@@ -1140,7 +839,7 @@ async def process_changed_release(
             config,
             {
                 "expected_revision": release["revision"],
-                "reason": 'Điều kiện hoàn tất và hồ sơ bảo đảm Release đã được xác minh.',
+                "reason": 'Các báo cáo hoàn tất kiểm thử đã được xác minh.',
             },
         )
     )
@@ -1200,7 +899,6 @@ async def process_changed_release(
                     "deterministic_plan_scope_evaluation",
                     "immutable_automation_completion_snapshots",
                     "release_completion_gate",
-                    "release_assurance_gate",
                     "closed_release_readback",
                 ],
             },

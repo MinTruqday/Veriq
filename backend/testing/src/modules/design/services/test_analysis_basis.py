@@ -23,7 +23,7 @@ async def resolve_basis(project_id, refs, user):
         if key in seen:
             raise HTTPException(status_code=422, detail={"code": 'DUPLICATE_TEST_BASIS_REF'})
         seen.add(key)
-        collection = "requirement_versions" if ref.artifact_type == "REQUIREMENT_VERSION" else "acceptance_criteria" if ref.artifact_type == "ACCEPTANCE_CRITERION" else "api_operations" if ref.artifact_type == "API_OPERATION" else "requirement_documents" if ref.artifact_type in {"KNOWLEDGE_SOURCE", "REGULATION"} else "business_rules" if ref.artifact_type == "BUSINESS_RULE" else "risk_rankings" if ref.artifact_type == "RISK_RANKING" else "defects" if ref.artifact_type == "DEFECT" else None
+        collection = "requirement_versions" if ref.artifact_type == "REQUIREMENT_VERSION" else "acceptance_criteria" if ref.artifact_type == "ACCEPTANCE_CRITERION" else "api_operations" if ref.artifact_type == "API_OPERATION" else "requirement_documents" if ref.artifact_type in {"KNOWLEDGE_SOURCE", "REGULATION"} else "business_rules" if ref.artifact_type == "BUSINESS_RULE" else "defects" if ref.artifact_type == "DEFECT" else None
         if collection is None:
             raise HTTPException(status_code=422, detail={"code": "TEST_BASIS_TYPE_INVALID"})
         identifier = ref.artifact_version_id or ref.artifact_id
@@ -87,10 +87,10 @@ async def resolve_basis(project_id, refs, user):
 
 async def list_test_basis(project_id, user, artifact_type="", query_text="", limit=200):
     await get_project(project_id, user, "testanalysis.read")
-    types = [artifact_type] if artifact_type else ["REQUIREMENT_VERSION", "ACCEPTANCE_CRITERION", "API_OPERATION", "KNOWLEDGE_SOURCE", "BUSINESS_RULE", "RISK_RANKING", "DEFECT", "REGULATION"]
+    types = [artifact_type] if artifact_type else ["REQUIREMENT_VERSION", "ACCEPTANCE_CRITERION", "API_OPERATION", "KNOWLEDGE_SOURCE", "BUSINESS_RULE", "DEFECT", "REGULATION"]
     items = []
     for kind in types:
-        collection_name = "requirement_versions" if kind == "REQUIREMENT_VERSION" else "acceptance_criteria" if kind == "ACCEPTANCE_CRITERION" else "api_operations" if kind == "API_OPERATION" else "requirement_documents" if kind in {"KNOWLEDGE_SOURCE", "REGULATION"} else "business_rules" if kind == "BUSINESS_RULE" else "risk_rankings" if kind == "RISK_RANKING" else "defects" if kind == "DEFECT" else None
+        collection_name = "requirement_versions" if kind == "REQUIREMENT_VERSION" else "acceptance_criteria" if kind == "ACCEPTANCE_CRITERION" else "api_operations" if kind == "API_OPERATION" else "requirement_documents" if kind in {"KNOWLEDGE_SOURCE", "REGULATION"} else "business_rules" if kind == "BUSINESS_RULE" else "defects" if kind == "DEFECT" else None
         if not collection_name:
             raise HTTPException(status_code=422, detail={"code": 'TEST_BASIS_TYPE_INVALID'})
         query = {"project_id": project_id}

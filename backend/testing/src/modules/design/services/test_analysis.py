@@ -739,7 +739,7 @@ async def create_analysis_finding(project_id, payload, user):
     
     await get_project(project_id, user, 'testanalysis.finding.create')
     ref_type = payload.artifact_type.upper()
-    collection_name = "requirement_versions" if ref_type == "REQUIREMENT_VERSION" else "acceptance_criteria" if ref_type == "ACCEPTANCE_CRITERION" else "api_operations" if ref_type == "API_OPERATION" else "requirement_documents" if ref_type in {"KNOWLEDGE_SOURCE", "REGULATION"} else "business_rules" if ref_type == "BUSINESS_RULE" else "risk_rankings" if ref_type == "RISK_RANKING" else "defects" if ref_type == "DEFECT" else None
+    collection_name = "requirement_versions" if ref_type == "REQUIREMENT_VERSION" else "acceptance_criteria" if ref_type == "ACCEPTANCE_CRITERION" else "api_operations" if ref_type == "API_OPERATION" else "requirement_documents" if ref_type in {"KNOWLEDGE_SOURCE", "REGULATION"} else "business_rules" if ref_type == "BUSINESS_RULE" else "defects" if ref_type == "DEFECT" else None
     if not collection_name:
         raise HTTPException(
             status_code=422, detail={"code": 'TEST_BASIS_TYPE_INVALID'}

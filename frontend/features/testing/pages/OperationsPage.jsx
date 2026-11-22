@@ -5,7 +5,6 @@ import { RotateCcw } from "lucide-react";
 import DataTable from "../components/DataTable";
 import PlatformOperationsPanel from "../components/PlatformOperationsPanel";
 import PlatformUsersPanel from "../components/PlatformUsersPanel";
-import ResourceCapacityPanel from "../components/ResourceCapacityPanel";
 import {
   ErrorState,
   LoadingState,
@@ -165,15 +164,12 @@ export default function OperationsPage() {
         tabs={[
           { id: "overview", label: "Tổng quan" },
           { id: "users", label: "Tài khoản" },
-          { id: "capacity", label: "Công suất" },
           { id: "platform", label: "Cấu hình nền tảng" },
         ]}
       />
       {error && <ErrorState message={error} />}
       {section === "users" ? (
         <PlatformUsersPanel />
-      ) : section === "capacity" ? (
-        <ResourceCapacityPanel />
       ) : section === "platform" ? (
         <PlatformOperationsPanel />
       ) : !value ? (

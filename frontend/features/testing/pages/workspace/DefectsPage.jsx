@@ -5,7 +5,6 @@ import { Eye } from "lucide-react";
 import { uploadAssetAPI } from "@/features/cloud/services/upload.service";
 import DataTable from "../../components/DataTable";
 import FilePicker from "../../components/FilePicker";
-import CausalAnalysisPanel from "../../components/CausalAnalysisPanel";
 import {
   ErrorState,
   LoadingState,
@@ -1227,9 +1226,6 @@ export default function DefectsPage({ project }) {
         )}
         <Pagination value={pageInfo} onChange={setPage} />
       </Panel>
-      {project.current_permissions?.includes("causalanalysis.read") && (
-        <CausalAnalysisPanel project={project} />
-      )}
       {dialog}
     </WorkspacePage>
   );

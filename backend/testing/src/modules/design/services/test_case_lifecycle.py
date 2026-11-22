@@ -371,7 +371,6 @@ async def approved_test_case_result(draft, user):
         for field in (
             "trace_status",
             "approval_audit_status",
-            "adequacy_invalidation_status",
         )
     )
     ready = (
@@ -441,15 +440,6 @@ async def finalize_test_case_derivatives(draft, version, user):
             audit_ready = True
         except Exception:
             audit_ready = False
-    adequacy_ready = version.get("adequacy_invalidation_status") == 'READY'
-    if not adequacy_ready:
-        try:
-            from src.modules.design.services.test_adequacy import invalidate_adequacy_for_test_case_version
-
-            await invalidate_adequacy_for_test_case_version(version)
-            adequacy_ready = True
-        except Exception:
-            adequacy_ready = False
     derived_status = {
         "index_status": 'INDEXED' if indexed else 'FAILED',
         "index_error_code": None if indexed else 'KNOWLEDGE_INDEX_FAILED',
@@ -458,8 +448,6 @@ async def finalize_test_case_derivatives(draft, version, user):
         "trace_error_code": None if trace_ready else 'TRACE_LINK_CREATION_FAILED',
         "approval_audit_status": 'READY' if audit_ready else 'FAILED',
         "approval_audit_error_code": None if audit_ready else 'APPROVAL_AUDIT_FAILED',
-        "adequacy_invalidation_status": 'READY' if adequacy_ready else 'FAILED',
-        "adequacy_invalidation_error_code": None if adequacy_ready else 'ADEQUACY_INVALIDATION_FAILED',
     }
     try:
         persisted = await test_design_repository.set_case_version_approval_result(
@@ -472,8 +460,6 @@ async def finalize_test_case_derivatives(draft, version, user):
             derived_status["trace_error_code"],
             derived_status["approval_audit_status"],
             derived_status["approval_audit_error_code"],
-            derived_status["adequacy_invalidation_status"],
-            derived_status["adequacy_invalidation_error_code"],
         )
         if getattr(persisted, "matched_count", 0) != 1:
             raise RuntimeError("APPROVAL_STATUS_PERSIST_FAILED")
@@ -490,12 +476,10 @@ async def finalize_test_case_derivatives(draft, version, user):
                 "trace_error_code": 'APPROVAL_STATUS_PERSIST_FAILED',
                 "approval_audit_status": 'FAILED',
                 "approval_audit_error_code": 'APPROVAL_STATUS_PERSIST_FAILED',
-                "adequacy_invalidation_status": 'FAILED',
-                "adequacy_invalidation_error_code": 'APPROVAL_STATUS_PERSIST_FAILED',
             }
         )
     version.update(derived_status)
-    return trace_ready and indexed and audit_ready and adequacy_ready
+    return trace_ready and indexed and audit_ready
 
 def build_test_case_version(draft, test_case_id, version_number, parent_version_id, payload, user, timestamp):
     return {
@@ -572,8 +556,6 @@ def build_test_case_version(draft, test_case_id, version_number, parent_version_
         "trace_error_code": None,
         "approval_audit_status": 'PENDING',
         "approval_audit_error_code": None,
-        "adequacy_invalidation_status": 'PENDING',
-        "adequacy_invalidation_error_code": None,
         "approved_by": user.id,
         "created_at": timestamp,
     }

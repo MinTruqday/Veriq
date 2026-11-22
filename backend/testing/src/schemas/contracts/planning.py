@@ -106,7 +106,6 @@ class TestPlanCreate(BaseModel):
     exit_criteria: list[str] = Field(default_factory=list, max_length=200)
     test_types: list[str] = Field(default_factory=list, max_length=100)
     members: list[str] = Field(default_factory=list, max_length=500)
-    strategy_version_id: str | None = Field(default=None, max_length=200)
     test_level: str | None = Field(default=None, min_length=1, max_length=100)
     test_approach: str = Field(default="", max_length=10000)
     assumptions: list[str] = Field(default_factory=list, max_length=200)

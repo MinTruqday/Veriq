@@ -178,18 +178,6 @@ agent_capabilities = [
         True,
     ),
     testing_skill(
-        "security_test_generation",
-        "Generate security test candidates",
-        ["test_design"],
-        "ai.generate_security_tests",
-    ),
-    testing_skill(
-        "performance_plan_generation",
-        "Generate performance test plan candidates",
-        ["test_design"],
-        "ai.generate_performance_plan",
-    ),
-    testing_skill(
         "automation_script_generation",
         "Generate an automation script draft",
         ["execution"],
@@ -200,12 +188,6 @@ agent_capabilities = [
         "Generate structured test conditions",
         ["test_design"],
         "testanalysis.run_ai",
-    ),
-    testing_skill(
-        "causal_analysis",
-        "Generate evidence grounded causal hypotheses",
-        ["analysis"],
-        "causalanalysis.update",
     ),
     testing_skill(
         "completion_report_narrative",

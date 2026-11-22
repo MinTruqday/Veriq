@@ -3,8 +3,6 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
 import AIRunPanel from "../../components/AIRunPanel";
-import ProjectComplexityAssessmentPanel from "../../components/ProjectComplexityAssessmentPanel";
-import ProjectCompletenessReviewPanel from "../../components/ProjectCompletenessReviewPanel";
 import DataTable from "../../components/DataTable";
 import {
   ErrorState,
@@ -101,7 +99,6 @@ export default function DashboardPage({ project }) {
   const [reloadVersion, setReloadVersion] = useState(0);
   const [projectDetails, setProjectDetails] = useState(project);
   const [projectMembers, setProjectMembers] = useState([]);
-  const [showAiReview, setShowAiReview] = useState(false);
   const permissions = project.current_permissions || [];
   const can = (permission) => permissions.includes(permission);
   const canReadAnalytics = can("analytics.read");
@@ -505,19 +502,6 @@ export default function DashboardPage({ project }) {
                 </Panel>
               )}
             </div>
-          )}
-          {project.current_permissions?.includes("ai.ask_project") && (
-            <details onToggle={(event) => setShowAiReview(event.currentTarget.open)}>
-              <summary className="cursor-pointer border-y border-border py-3 text-sm font-medium">
-                Đánh giá và rà soát bằng AI
-              </summary>
-              {showAiReview && (
-                <div className="mt-3 grid gap-3">
-                  <ProjectComplexityAssessmentPanel project={project} />
-                  <ProjectCompletenessReviewPanel project={project} user={user} />
-                </div>
-              )}
-            </details>
           )}
           {(dashboard || coverage) && hasQualityMetrics && (
             <details className="border-y border-border">

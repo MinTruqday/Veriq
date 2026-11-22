@@ -337,14 +337,12 @@ async def _result_with_derived_state(result):
             "index_status": 1,
             "trace_status": 1,
             "approval_audit_status": 1,
-            "adequacy_invalidation_status": 1,
         },
     ).to_list(100)
     ready = {
         "index_status": "INDEXED",
         "trace_status": "READY",
         "approval_audit_status": "READY",
-        "adequacy_invalidation_status": "READY",
     }
     found_ids = {str(version.get("_id") or "") for version in versions}
     pending = set(version_ids) - found_ids

@@ -45,8 +45,6 @@ PUBLIC_DEFECT_FIELDS = frozenset(['_id',
  'build_id',
  'environment',
  'environment_id',
- 'root_cause_category',
- 'prevention_candidate',
  'revision',
  'created_at',
  'updated_at'])

@@ -31,7 +31,6 @@ const labels = {
   APPLY_PARTIAL: "Áp dụng một phần",
   ANALYZED: "Đã phân tích",
   APPROVED: "Đã phê duyệt",
-  ASSURED: "Đã có hồ sơ đảm bảo",
   AWAITING_AUTHORIZATION: "Cần kiểm tra quyền truy cập",
   AWAITING_INPUT: "Cần bổ sung thông tin",
   ACTION_STARTED: "Đang thực hiện tác vụ",
@@ -47,7 +46,6 @@ const labels = {
   CHANGED: "Đã thay đổi",
   CLOSED: "Đã đóng",
   COMPLETED: "Đã hoàn tất",
-  CONDITIONAL: "Đảm bảo có điều kiện",
   CONFIRMED: "Đã xác nhận",
   CREATED: "Đã tạo",
   CRITICAL: "Nghiêm trọng",
@@ -73,8 +71,6 @@ const labels = {
   INACTIVE: "Đã vô hiệu hóa",
   NOT_READY: "Chưa sẵn sàng",
   ON_TRACK: "Đúng tiến độ",
-  SCRUM: "Scrum",
-  KANBAN: "Kanban",
   INVITED: "Đã mời",
   LOCKED: "Đã khóa",
   LOW: "Thấp",
@@ -200,15 +196,8 @@ const valueLabels = {
   gitlab: "GitLab",
   azure_devops: "Azure DevOps",
   REQUIREMENT: "Yêu cầu",
-  INITIATIVE: "Sáng kiến",
-  EPIC: "Hạng mục lớn",
-  STORY: "Câu chuyện người dùng",
   TASK: "Công việc",
   BUG: "Lỗi",
-  SUBTASK: "Công việc con",
-  SCRUM: "Scrum",
-  KANBAN: "Kanban",
-  TEST_STRATEGY: "Chiến lược kiểm thử",
   TEST_PLAN: "Kế hoạch kiểm thử",
   TEST_CONDITION: "Điều kiện kiểm thử",
   TEST_CASE: "Ca kiểm thử",
@@ -268,7 +257,6 @@ const valueLabels = {
   ADMIN_USER_BULK_COMPLETED: "Hoàn tất thao tác hàng loạt",
   ADMIN_SYSTEM_ROLE_UPDATED: "Cập nhật quyền quản trị hệ thống",
   ADMIN_USER_MEMBERSHIPS_VIEWED: "Xem tư cách thành viên dự án",
-  work_item_created: "Tạo công việc",
   Project: "Dự án",
   RELEASE: "Bản phát hành",
   SPRINT: "Đợt lặp",
@@ -392,10 +380,6 @@ const valueLabels = {
   test_case_approved: "Duyệt ca kiểm thử",
   test_case_draft_created: "Tạo bản nháp ca kiểm thử",
   defect_created: "Ghi nhận lỗi",
-  test_adequacy_assessment_refreshed: "Cập nhật hồ sơ đảm bảo",
-  test_adequacy_review_submitted: "Gửi rà soát hồ sơ đảm bảo",
-  test_adequacy_coverage_decided: "Cập nhật quyết định nghĩa vụ kiểm thử",
-  test_adequacy_changes_requested: "Yêu cầu chỉnh sửa hồ sơ đảm bảo",
   project_task_created: "Tạo công việc dự án",
   project_completion_percent_updated: "Cập nhật tiến độ dự án",
   requirement_import_confirmed: "Xác nhận nhập yêu cầu",
@@ -406,16 +390,10 @@ const valueLabels = {
   test_plan_approved: "Duyệt kế hoạch kiểm thử",
   test_run_created: "Tạo lần chạy kiểm thử",
   test_run_started: "Bắt đầu lần chạy kiểm thử",
-  test_strategy_created: "Tạo chiến lược kiểm thử",
-  test_strategy_submitted: "Gửi chiến lược kiểm thử để rà soát",
-  test_strategy_reviewed: "Rà soát chiến lược kiểm thử",
-  test_strategy_approved: "Duyệt chiến lược kiểm thử",
   test_case_review_submitted: "Gửi ca kiểm thử để rà soát",
   requirement_review_submitted: "Gửi yêu cầu để rà soát",
   requirement_version_baselined: "Chốt phiên bản yêu cầu làm mốc",
   TestCaseDraft: "Bản nháp ca kiểm thử",
-  TestAdequacyAssessment: "Hồ sơ đảm bảo yêu cầu",
-  CoverageItem: "Nghĩa vụ kiểm thử",
   ProjectTask: "Công việc dự án",
   RequirementImport: "Lần nhập yêu cầu",
   requirement_document_reindexed: "Lập chỉ mục lại tài liệu yêu cầu",
@@ -500,7 +478,6 @@ const valueLabels = {
   test_result: "Kết quả kiểm thử",
   test_status_report: "Báo cáo trạng thái kiểm thử",
   test_completion_report: "Báo cáo hoàn tất kiểm thử",
-  work_report: "Báo cáo công việc",
   CLARIFICATION: "Điểm cần làm rõ",
   test_case_versions: "Phiên bản ca kiểm thử",
   test_run: "Lần chạy kiểm thử",
@@ -622,22 +599,6 @@ export function messageOf(reason) {
     DOCUMENT_NOT_FOUND: "Không tìm thấy tài liệu hoặc quyền xem đã thay đổi.",
   };
   if (documentMessages[reason?.code]) return documentMessages[reason.code];
-  if (reason?.code === "PROJECT_COMPLEXITY_SOURCE_SCOPE_TOO_LARGE") {
-    return "Tài liệu và yêu cầu đã chọn có quá nhiều nội dung để đánh giá trong một lượt. Hãy chọn phạm vi nhỏ hơn rồi thử lại; kết quả chưa được tạo.";
-  }
-  if (reason?.code === "ADEQUACY_UNRESOLVED_ITEMS") {
-    const count = reason.details?.coverage_item_ids?.length;
-    const countLabel = Number.isInteger(count) ? `còn ${count} nghĩa vụ` : "còn nghĩa vụ";
-    return `Chưa thể xác nhận hồ sơ vì ${countLabel} chưa có bằng chứng kiểm thử khớp với nguồn yêu cầu. Kiểm tra ca đã liên kết, tiêu chí nguồn và trích dẫn trong từng nghĩa vụ, rồi cập nhật hồ sơ.`;
-  }
-  if (reason?.code === "ADEQUACY_OPEN_CLARIFICATIONS") {
-    const count = reason.details?.clarification_ids?.length;
-    const countLabel = Number.isInteger(count) ? `còn ${count} Phiếu làm rõ` : "còn Phiếu làm rõ";
-    return `Chưa thể xác nhận hồ sơ vì ${countLabel} chưa được giải quyết. Hoàn tất các phiếu rồi thử lại.`;
-  }
-  if (reason?.code === "ADEQUACY_NO_COVERAGE_ITEMS") {
-    return "Hồ sơ chưa có nghĩa vụ kiểm thử. Cập nhật hồ sơ từ Requirement trước khi gửi rà soát.";
-  }
   const aiRunMessages = {
     AI_RUN_PUBLICATION_NOT_AUTHORIZED:
       "AI không được phép tự công bố kết quả này. Người có quyền cần kiểm tra và xác nhận.",
@@ -717,12 +678,6 @@ export function messageOf(reason) {
     TEST_CASE_DRAFT_REVISION_STALE:
       "Bản nháp đã thay đổi trong lúc xử lý. Tải lại và đối chiếu trước khi tiếp tục.",
     SYSTEM_ADMIN_REQUIRED: "Thao tác này chỉ dành cho Admin hệ thống.",
-    CAPACITY_PERIOD_OVERLAP:
-      "Khoảng thời gian này trùng với kỳ công suất đã khai báo. Chọn một kỳ không chồng lấn.",
-    CAPACITY_REVISION_CONFLICT:
-      "Kỳ công suất đã được cập nhật ở nơi khác. Tải lại dữ liệu rồi lưu lại thay đổi.",
-    CAPACITY_USER_NOT_FOUND:
-      "Có tài khoản trong danh sách công suất không còn hợp lệ. Tải lại danh sách nhân sự.",
     PROJECT_NOT_FOUND: "Không tìm thấy dự án hoặc bạn không còn quyền truy cập.",
     TEST_PLAN_NOT_FOUND: "Không tìm thấy kế hoạch kiểm thử. Tải lại danh sách rồi thử lại.",
     TEST_PLAN_SCOPE_EMPTY:
@@ -812,18 +767,10 @@ export function messageOf(reason) {
       "Người tạo hoặc sửa kịch bản rà soát không thể tự duyệt kịch bản đó.",
     TEST_CONDITION_SELF_REVIEW_FORBIDDEN:
       "Người tạo hoặc sửa điều kiện rà soát không thể tự duyệt điều kiện đó.",
-    TEST_ADEQUACY_SELF_REVIEW_FORBIDDEN:
-      "Người tạo hoặc sửa hồ sơ bảo đảm rà soát không thể tự duyệt hồ sơ đó.",
     TEST_STATUS_REPORT_SELF_REVIEW_FORBIDDEN:
       "Người tạo hoặc sửa báo cáo trạng thái rà soát không thể tự duyệt báo cáo đó.",
     TEST_COMPLETION_SELF_REVIEW_FORBIDDEN:
       "Người tạo hoặc sửa báo cáo hoàn tất rà soát không thể tự duyệt báo cáo đó.",
-    TEST_STRATEGY_SELF_REVIEW_FORBIDDEN:
-      "Người tạo hoặc sửa chiến lược rà soát không thể tự duyệt chiến lược đó.",
-    CAUSAL_ANALYSIS_SELF_REVIEW_FORBIDDEN:
-      "Người tạo hoặc sửa phân tích nguyên nhân rà soát không thể tự duyệt phân tích đó.",
-    QUALITY_EVALUATION_SELF_REVIEW_FORBIDDEN:
-      "Người tạo hoặc sửa đánh giá chất lượng rà soát không thể tự duyệt đánh giá đó.",
     PROJECT_MISMATCH:
       "Mục đã chọn không thuộc dự án hiện tại. Tải lại dữ liệu và chọn mục trong đúng dự án.",
     CLARIFICATION_ANSWER_REQUIRED: "Cần có câu trả lời trước khi yêu cầu cập nhật Requirement.",
@@ -1004,40 +951,6 @@ export function messageOf(reason) {
       "Không xác minh được kết quả duyệt nhóm. Hãy tải lại danh sách để kiểm tra trạng thái từng ca trước khi thao tác tiếp.",
     MULTIPLE_DRAFTS_FOR_SAME_TEST_CASE:
       "Nhóm có nhiều bản nháp cho cùng một mã ca. Chỉ chọn một bản cho mỗi mã rồi thử lại.",
-    MAX_CONCURRENT_PROJECTS_REACHED:
-      "Người được chọn đã đạt giới hạn số dự án đang thực hiện. Thay đổi chưa được lưu; hãy chọn người khác hoặc nhờ Admin cập nhật giới hạn.",
-    RESOURCE_CAPACITY_CHANGED_RETRY_ASSIGNMENT:
-      "Giới hạn công suất vừa thay đổi. Hãy tải lại dữ liệu rồi thử phân công lại.",
-    PROJECT_COMPLEXITY_EVIDENCE_REQUIRED:
-      "Chưa có tài liệu được phép dùng AI hoặc yêu cầu đã duyệt để đánh giá dự án.",
-    PROJECT_COMPLEXITY_SOURCE_SCOPE_UNAVAILABLE:
-      "Nguồn đã chọn không còn hợp lệ hoặc không còn trong phạm vi được phép. Hãy tải lại danh sách nguồn.",
-    PROJECT_COMPLEXITY_SOURCE_SCOPE_REQUIRED:
-      "Hãy chọn ít nhất một tài liệu hoặc yêu cầu đã duyệt để đánh giá.",
-    PROJECT_COMPLEXITY_SOURCE_SCOPE_TOO_LARGE:
-      "Phạm vi tài liệu vượt giới hạn cho một lượt đánh giá. Hãy thu hẹp nguồn hoặc chia phạm vi trước khi chạy; hệ thống chưa đánh giá một phần.",
-    PROJECT_COMPLEXITY_RESPONSE_INVALID:
-      "AI trả về hồ sơ đánh giá chưa đầy đủ. Không có kết quả nào được lưu.",
-    PROJECT_COMPLEXITY_DIMENSIONS_INVALID:
-      "AI chưa đánh giá đủ các chiều cần thiết. Không có kết quả nào được lưu.",
-    PROJECT_COMPLEXITY_EVIDENCE_REFERENCE_INVALID:
-      "AI dẫn đến nguồn không thuộc phạm vi dự án. Không có kết quả nào được lưu.",
-    PROJECT_COMPLEXITY_GROUNDING_REQUIRED:
-      "AI chưa đưa ra căn cứ cho một mức đánh giá. Không có kết quả nào được lưu.",
-    PROJECT_COMPLEXITY_GROUNDING_INVALID:
-      "Một trích dẫn không khớp nguyên văn với nguồn. Không có kết quả nào được lưu.",
-    PROJECT_COMPLEXITY_SOURCES_CHANGED:
-      "Nguồn đã thay đổi trong lúc đánh giá. Hãy chạy lại để dùng phiên bản mới nhất.",
-    PROJECT_COMPLEXITY_RUBRIC_CHANGED:
-      "Tiêu chí đánh giá đã thay đổi trong lúc AI xử lý. Hãy chạy lại để dùng bộ tiêu chí mới nhất.",
-    PROJECT_COMPLEXITY_IDEMPOTENCY_KEY_REUSED:
-      "Yêu cầu đánh giá đã đổi nhưng đang dùng lại mã của lần trước. Hãy bấm đánh giá lại.",
-    PROJECT_COMPLEXITY_ASSESSMENT_IN_PROGRESS:
-      "Lần đánh giá này vẫn đang chạy. Hãy đợi hoàn tất rồi tải lại kết quả.",
-    PROJECT_COMPLEXITY_RESERVATION_INVALID:
-      "Không thể khôi phục lần đánh giá trước. Hãy tạo một lượt đánh giá mới.",
-    PROJECT_COMPLEXITY_RESERVATION_EXPIRED:
-      "Lượt đánh giá đã hết thời gian giữ. Hãy thử lại để tạo lượt mới.",
     EXECUTION_RESULT_NOT_RECORDED: "Cần lưu kết quả kiểm thử trước khi yêu cầu AI phân tích.",
     EXECUTION_ASSISTANCE_UNAVAILABLE:
       "Chưa thể phân tích kết quả lúc này. Kết quả kiểm thử vẫn được giữ nguyên; bạn có thể thử lại.",

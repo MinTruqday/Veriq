@@ -1,6 +1,5 @@
 from fastapi import HTTPException
 from pymongo import ReturnDocument
-from pymongo.errors import OperationFailure
 
 from src.core.common import audit, get_project, new_id, now, optimistic_patch, resolve_user_reference
 from src.core.database import database
@@ -29,72 +28,19 @@ def task_summary(tasks):
 async def task_summaries(project_ids):
     if not project_ids:
         return {}
-    migrated = {
-        value["project_id"]
-        for value in await database.value.project_task_migrations.find(
-            {"project_id": {"$in": project_ids}}
-        ).to_list(len(project_ids))
-    }
-    legacy_tasks = await project_repository.list_tasks_for_projects(
-        [project_id for project_id in project_ids if project_id not in migrated]
-    )
-    work_items = await database.value.work_items.find(
-        {
-            "project_id": {"$in": project_ids},
-            "item_type": {"$in": ["TASK", "SUBTASK"]},
-        }
-    ).to_list(length=None)
-    workflows = await database.value.planning_workflows.find(
-        {"project_id": {"$in": project_ids}}
-    ).to_list(len(project_ids))
-    completed_statuses = {
-        workflow["project_id"]: {
-            value["key"] for value in workflow.get("statuses", []) if value.get("counts_as_completed")
-        }
-        for workflow in workflows
-    }
+    tasks = await project_repository.list_tasks_for_projects(project_ids)
     grouped = {project_id: [] for project_id in project_ids}
-    for task in legacy_tasks:
+    for task in tasks:
         grouped.setdefault(task["project_id"], []).append(task)
-    for item in work_items:
-        grouped.setdefault(item["project_id"], []).append(
-            {
-                "status": "COMPLETED"
-                if item["status"] in completed_statuses.get(item["project_id"], {"DONE"})
-                else item["status"],
-                "weight": item.get("estimate") or 1,
-            }
-        )
     return {project_id: task_summary(items) for project_id, items in grouped.items()}
 
 
-async def _ensure_legacy_task_catalog_writable(project_id, session):
-    lock = await project_repository.lock_legacy_task_catalog(project_id, session)
-    if lock.matched_count != 1:
-        raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND"})
-    if await database.value.project_task_migrations.find_one(
-        {"project_id": project_id}, session=session
-    ):
-        raise HTTPException(
-            status_code=409,
-            detail={"code": "PROJECT_TASKS_MIGRATED_USE_WORK_ITEM"},
-        )
-
-
-async def _run_legacy_task_write(project_id, operation):
+async def _run_task_write(operation):
     client = database.client
     if client is None:
         raise RuntimeError("Cơ sở dữ liệu chưa sẵn sàng")
     async with await client.start_session() as session:
-        try:
-            return await session.with_transaction(operation)
-        except OperationFailure as exc:
-            if exc.code == 112 or exc.has_error_label("TransientTransactionError"):
-                raise HTTPException(
-                    status_code=409,
-                    detail={"code": "PROJECT_TASK_CATALOG_CONCURRENT_UPDATE"},
-                ) from exc
-            raise
+        return await session.with_transaction(operation)
 
 
 class ProjectProgressService:
@@ -152,16 +98,6 @@ class ProjectProgressService:
     @staticmethod
     async def list_tasks(project_id, user, status=None):
         await get_project(project_id, user, "project.read")
-        migration = await database.value.project_task_migrations.find_one(
-            {"project_id": project_id}
-        )
-        if migration:
-            return {
-                "items": [],
-                "summary": task_summary([]),
-                "migration": migration,
-                "read_only": True,
-            }
         items = await project_repository.list_tasks(project_id, status=status)
         return {"items": items, "summary": task_summary(items)}
 
@@ -182,7 +118,6 @@ class ProjectProgressService:
         }
 
         async def operation(session):
-            await _ensure_legacy_task_catalog_writable(project_id, session)
             await database.value.project_tasks.insert_one(task, session=session)
             await audit(
                 user.id,
@@ -193,7 +128,7 @@ class ProjectProgressService:
                 session=session,
             )
 
-        await _run_legacy_task_write(project_id, operation)
+        await _run_task_write(operation)
         return task
 
     @staticmethod
@@ -210,7 +145,6 @@ class ProjectProgressService:
         changes["updated_at"] = now()
 
         async def operation(session):
-            await _ensure_legacy_task_catalog_writable(project_id, session)
             updated = await database.value.project_tasks.find_one_and_update(
                 {
                     "_id": task_id,
@@ -227,15 +161,11 @@ class ProjectProgressService:
                 )
                 if not existing:
                     raise HTTPException(
-                        status_code=404,
-                        detail={"code": "PROJECT_TASK_NOT_FOUND"},
+                        status_code=404, detail={"code": "PROJECT_TASK_NOT_FOUND"}
                     )
                 raise HTTPException(
                     status_code=409,
-                    detail={
-                        "code": "REVISION_CONFLICT",
-                        "current_revision": existing.get("revision"),
-                    },
+                    detail={"code": "REVISION_CONFLICT", "current_revision": existing.get("revision")},
                 )
             await audit(
                 user.id,
@@ -248,15 +178,13 @@ class ProjectProgressService:
             )
             return updated
 
-        updated = await _run_legacy_task_write(project_id, operation)
-        return updated
+        return await _run_task_write(operation)
 
     @staticmethod
     async def delete_task(project_id, task_id, payload, user):
         await ProjectProgressService._require_project_editor(project_id, user)
 
         async def operation(session):
-            await _ensure_legacy_task_catalog_writable(project_id, session)
             result = await database.value.project_tasks.delete_one(
                 {
                     "_id": task_id,
@@ -271,15 +199,11 @@ class ProjectProgressService:
                 )
                 if not existing:
                     raise HTTPException(
-                        status_code=404,
-                        detail={"code": "PROJECT_TASK_NOT_FOUND"},
+                        status_code=404, detail={"code": "PROJECT_TASK_NOT_FOUND"}
                     )
                 raise HTTPException(
                     status_code=409,
-                    detail={
-                        "code": "REVISION_CONFLICT",
-                        "current_revision": existing.get("revision"),
-                    },
+                    detail={"code": "REVISION_CONFLICT", "current_revision": existing.get("revision")},
                 )
             await audit(
                 user.id,
@@ -290,7 +214,7 @@ class ProjectProgressService:
                 session=session,
             )
 
-        await _run_legacy_task_write(project_id, operation)
+        await _run_task_write(operation)
         return {"deleted": True, "task_id": task_id}
 
     @staticmethod

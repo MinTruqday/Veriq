@@ -81,11 +81,6 @@ async def monitoring_sources(project_id, plan, release_id, payload):
     api_operations = await test_monitoring_repository.list_api_operations(
         project_id, 20000
     )
-    nfr_plans = await test_monitoring_repository.list_approved_non_functional_plans(
-        project_id,
-        'APPROVED',
-        5000,
-    )
     latest = await test_monitoring_repository.find_latest_snapshot(
         project_id, plan["_id"], release_id
     )
@@ -102,14 +97,6 @@ async def monitoring_sources(project_id, plan, release_id, payload):
     stale = await test_monitoring_repository.count_stale_test_cases(
         project_id, 'NEEDS_UPDATE'
     )
-    incidents = await test_monitoring_repository.list_environment_incidents(
-        project_id,
-        ['OPEN', 'INVESTIGATING', 'MITIGATED'],
-        bool(release_id),
-        [item.get("build_id") for item in runs if item.get("build_id")],
-        run_ids,
-        10000,
-    )
     return {
         "runs": runs,
         "results": results,
@@ -119,12 +106,10 @@ async def monitoring_sources(project_id, plan, release_id, payload):
         "conditions": conditions,
         "versions": versions,
         "api_operations": api_operations,
-        "nfr_plans": nfr_plans,
         "changed_requirements": changes,
         "impact_pending": impact_pending,
         "proposal_pending": proposal_pending,
         "stale_testcases": stale,
-        "environment_incidents": incidents,
         "since": since,
         "release_id": release_id,
         "actual_effort": payload.actual_effort,
@@ -159,12 +144,6 @@ def build_metrics(plan, sources, snapshot_at):
     }
     api_operation_ids = {item["_id"] for item in sources["api_operations"]}
     executed_version_ids = {item["_id"] for item in versions}
-    covered_nfr_plans = {
-        item["_id"]
-        for item in sources["nfr_plans"]
-        if set(item.get("test_case_version_ids", [])) & executed_version_ids
-        or set(item.get("test_condition_ids", [])) & covered_conditions
-    }
     condition_ids = {item["_id"] for item in sources["conditions"]}
     assessed_risk_ids = {
         item["_id"]
@@ -252,9 +231,6 @@ def build_metrics(plan, sources, snapshot_at):
         )
         if api_operation_ids
         else None,
-        "nfr_coverage": percent(len(covered_nfr_plans), len(sources["nfr_plans"]))
-        if sources["nfr_plans"]
-        else None,
         "open_blocker": sum(defect_is_blocking(item) for item in open_defects),
         "open_critical": sum(defect_is_critical(item) for item in open_defects),
         "new_defects": new_defects,
@@ -275,16 +251,6 @@ def build_metrics(plan, sources, snapshot_at):
         "effort_variance": round(actual_effort - planned_effort, 2)
         if actual_effort is not None and planned_effort is not None
         else None,
-        "open_environment_incidents": len(sources["environment_incidents"]),
-        "blocker_environment_incidents": sum(
-            defect_is_blocking(item)
-            for item in sources["environment_incidents"]
-        ),
-        "environment_downtime_seconds": sum(
-            int(item.get("downtime") or max(0, (snapshot_at - item["observed_at"]).total_seconds()))
-            for item in sources["environment_incidents"]
-            if isinstance(item.get("observed_at"), datetime)
-        ),
     }
 
 

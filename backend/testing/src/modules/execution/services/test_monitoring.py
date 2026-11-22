@@ -109,24 +109,6 @@ async def create_monitoring_snapshot(project_id, payload: MonitoringSnapshotCrea
             if item.get("status") == 'COMPLETED'
         ],
     )
-    blocker_incidents = [
-        item
-        for item in sources["environment_incidents"]
-        if defect_is_blocking(item)
-    ]
-    if blocker_incidents:
-        evaluations.append(
-            {
-                **{'criterion_id': 'ENVIRONMENT-INCIDENT-GATE',
- 'criterion': 'Không có incident môi trường blocker hoặc critical',
- 'type': 'ENVIRONMENT_INCIDENT_MAX',
- 'threshold': 0},
-                "actual": len(blocker_incidents),
-                "status": 'FAIL',
-                "overridden": False,
-                "evidence_refs": [item["_id"] for item in blocker_incidents],
-            }
-        )
     source_state = {
         "plan": {
             "id": plan["_id"],
@@ -198,33 +180,12 @@ async def create_monitoring_snapshot(project_id, payload: MonitoringSnapshotCrea
             key=lambda item: item["id"],
         ),
         "api_operations": sorted(item["_id"] for item in sources["api_operations"]),
-        "nfr_plans": sorted(
-            (
-                {"id": item["_id"], "revision": item.get("revision")}
-                for item in sources["nfr_plans"]
-            ),
-            key=lambda item: item["id"],
-        ),
         "maintenance": {
             "changed_requirements": sources["changed_requirements"],
             "impact_pending": sources["impact_pending"],
             "proposal_pending": sources["proposal_pending"],
             "stale_testcases": sources["stale_testcases"],
         },
-        "environment_incidents": sorted(
-            [
-                {
-                    "id": item["_id"],
-                    "revision": item.get("revision"),
-                    "status": item.get("status"),
-                    "severity": item.get("severity"),
-                    "environment_id": item.get("environment_id"),
-                    "build_id": item.get("build_id"),
-                }
-                for item in sources["environment_incidents"]
-            ],
-            key=lambda item: item["id"],
-        ),
     }
     build_ids = {run["build_id"] for run in sources["runs"] if run.get("build_id")}
     snapshot = {
@@ -269,14 +230,6 @@ async def create_monitoring_snapshot(project_id, payload: MonitoringSnapshotCrea
                 for item in sources["defects"]
                 if item.get("status") in OPEN_DEFECT_STATUSES
                 and defect_is_blocking(item)
-            ],
-            *[
-                {
-                    "environment_incident_id": item["_id"],
-                    "severity": item.get("severity"),
-                    "description": item.get("description"),
-                }
-                for item in blocker_incidents
             ],
         ],
         "quality_gate_status": quality_gate_status(evaluations),

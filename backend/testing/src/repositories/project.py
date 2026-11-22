@@ -230,14 +230,6 @@ class ProjectRepository:
         await self.tasks.insert_one(task)
         return task
 
-    async def lock_legacy_task_catalog(self, project_id, session):
-        """Serialize legacy task writes against their one-time Work Item migration."""
-        return await self.projects.update_one(
-            {"_id": project_id},
-            {"$inc": {"legacy_task_catalog_revision": 1}},
-            session=session,
-        )
-
     async def update_task(self, project_id, task_id, revision, changes):
         return await self.tasks.find_one_and_update(
             {"_id": task_id, "project_id": project_id, "revision": revision},

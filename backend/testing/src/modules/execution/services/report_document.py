@@ -118,7 +118,7 @@ def paragraph(text="", heading=None):
     return {"type": "heading" if heading else "paragraph", **({"attrs": {"level": heading}} if heading else {}), "content": [{"type": "text", "text": text}] if text else []}
 
 
-REPORT_FIELDS = {"report.title", "period.start", "period.end", "project.name", "owner.name", "metrics.work_items_total", "metrics.work_items_completed_at_capture", "metrics.work_items_changed_in_period", "snapshot.captured_at"}
+REPORT_FIELDS = {"report.title", "period.start", "period.end", "project.name", "owner.name", "snapshot.captured_at"}
 
 
 def format_report_datetime(value, timezone_name, language):

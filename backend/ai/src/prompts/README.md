@@ -12,10 +12,9 @@ Prompt text and prompt-building logic belong to the capability module that owns 
 | `requirement_templates.py` | Requirement synthesis and review instructions | `tools/requirement_document_workflow.py`, `prompts/testing.py` | Draft or review Requirement templates from verified facts without deciding whether to publish them. |
 | `test_generation.py` | Requirement test-generation instructions | Requirement ingestion and change workflows | Generate source-grounded Test Cases for the requested scope and avoid duplicates. |
 | `test_design.py` | Test Case, technique, and condition contracts | `prompts/testing.py`, `tools/test_design_tools.py` | Define test-design output contracts and evidence rules. |
-| `quality_capabilities.py` | Security, performance, automation-script, analysis, report, and assistance contracts | `prompts/testing.py` | Define specialized testing and reporting outputs. |
+| `quality_capabilities.py` | Automation-script, analysis, report, and assistance contracts | `prompts/testing.py` | Define testing outputs used by the active workflow. |
 | `change_simulation.py` | Change-impact report contract | `agents/runner/nodes.py`, `prompts/testing.py` | Compare a proposed source change with the exact baseline and linked Test Case versions in read-only mode. |
 | `project_assistance.py` | Project-question contract | `prompts/testing.py` | Answer project questions only from retrieved evidence. |
-| `defect_analysis.py` | Causal hypothesis instruction | `tools/execution_workflows.py` | Produce evidence-grounded hypotheses without presenting an unconfirmed cause as fact. |
 | `requirement_analysis.py` | Requirement quality-analysis instruction | `tools/requirement_change_workflow.py` | Analyze Requirement quality within the explicitly requested workflow. |
 | `prompt_data.py` | `prompt_json` | Prompt builders | Serialize untrusted data safely before embedding it in a prompt. |
 

@@ -96,11 +96,6 @@ async def find_build(project_id, build_id):
     return await database.value.builds.find_one({"_id": build_id, "project_id": project_id})
 
 
-async def find_strategy(project_id, strategy_id):
-    return await database.value.test_strategies.find_one(
-        {"_id": strategy_id, "project_id": project_id}
-    )
-
 
 async def list_runs(project_id, identifiers, limit=10000):
     if not identifiers:

@@ -71,10 +71,10 @@ async def generate_test_case_draft_records(version_id, payload, user):
         },
         {"_id": 1, "acceptance_criterion_ids": 1},
     ).to_list(500)
-    from src.modules.design.services.test_adequacy import _sources
+    from src.modules.design.services.test_case_records import coverage_source_items
     coverage_by_criterion = {
         item["source_id"]: item["coverage_item_id"]
-        for item in await _sources(version)
+        for item in await coverage_source_items(version)
         if item["source_type"] == "acceptance_criterion"
     }
     linked_criterion_ids = criterion_ids.intersection(

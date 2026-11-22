@@ -16,7 +16,6 @@ from src.core.common import (
 )
 from src.core.database import database
 from src.core.human_decisions import content_authorship_changes
-from src.modules.design.services.test_adequacy import assessment_status_for_list
 from src.modules.requirements.services.requirement_indexing import (
     index_requirement_version,
     validate_requirement_api_operations,
@@ -25,7 +24,6 @@ from src.modules.requirements.services.requirement_indexing import (
 from src.repositories.requirement import requirement_repository
 from src.repositories.requirement_clarification import requirement_clarification_repository
 from src.repositories.requirement_template import requirement_template_repository
-from src.repositories.test_adequacy import test_adequacy_repository
 from src.schemas.contracts.requirements import RequirementCreate
 
 async def persist_acceptance_criteria(version, values, session=None):
@@ -213,8 +211,6 @@ async def list_requirement_records(
         project_id, version_ids, ["REVIEWED", "CLOSED", "REJECTED"], 20000
     )
     pending_ids = {item["to_version_id"] for item in change_sets}
-    assessments = await test_adequacy_repository.list_for_versions(project_id, version_ids)
-    assessments_by_version = {item["requirement_version_id"]: item for item in assessments}
     open_clarifications = await requirement_clarification_repository.list_open_for_versions(
         project_id, version_ids
     )
@@ -225,17 +221,6 @@ async def list_requirement_records(
         item["tags"] = sorted(set(item.get("tags", [])) | set(version.get("tags", [])))
         item["covered"] = item.get("current_version_id") in covered_ids
         item["has_pending_impact"] = item.get("current_version_id") in pending_ids
-        assessment = assessments_by_version.get(item.get("current_version_id"))
-        assessment_status = assessment_status_for_list(assessment)
-        item["assurance_status"] = (
-            "NEEDS_CLARIFICATION"
-            if item.get("current_version_id") in clarification_version_ids
-            else "ASSURED"
-            if assessment_status == "ASSURED"
-            else "CONDITIONAL"
-            if assessment_status == "CONDITIONAL"
-            else "NEEDS_TEST_COVERAGE"
-        )
         item["source_types"] = sorted(
             {
                 str(ref.get("source_type") or ref.get("type") or "manual")
@@ -518,16 +503,10 @@ async def create_requirement_version_record(requirement_id, payload, user, sessi
         )
         if not activated:
             raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
-        from src.modules.design.services.test_adequacy import (
-            supersede_requirement_assessments,
-        )
         from src.modules.requirements.services.requirement_clarifications import (
             supersede_requirement_clarifications,
         )
 
-        await supersede_requirement_assessments(
-            requirement["project_id"], requirement_id, version["_id"], user.id, active_session
-        )
         await supersede_requirement_clarifications(
             requirement["project_id"], requirement_id, version["_id"], active_session
         )
