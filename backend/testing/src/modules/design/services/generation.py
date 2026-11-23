@@ -201,7 +201,7 @@ async def generate_requirement_drafts(
     requested_limit = (
         len(categories) * payload.count_per_category
         if categories
-        else payload.max_cases or len(criteria)
+        else payload.max_cases or max(1, len(criteria))
     )
     if requested_limit > 100:
         raise HTTPException(422, detail={"code": 'GENERATION_LIMIT_EXCEEDED'})
@@ -429,7 +429,7 @@ async def generate_requirement_drafts(
         {
             "categories": categories,
             "count_per_category": payload.count_per_category,
-            "maximum_cases": payload.max_cases or (len(payload.techniques) if technique_mode else (len(criteria) if not categories else None)),
+            "maximum_cases": payload.max_cases or (len(payload.techniques) if technique_mode else (max(1, len(criteria)) if not categories else None)),
             "selected_design_techniques": payload.techniques if not scenario else [],
             "allowed_acceptance_criterion_ids": [item["_id"] for item in criteria],
             "upstream_approved_context": related_context,
@@ -437,7 +437,8 @@ async def generate_requirement_drafts(
                 "Treat the exact Requirement version, acceptance criteria, and current related artifacts as distinct sources. Do not assume one source is always correct when they disagree.",
                 "Use the exact Requirement version, acceptance criteria, and current related artifacts supplied in this request.",
                 "If generated content conflicts with a source or existing Scenario and none of the supplied sources establishes which value governs, report the conflict in warnings for the user to resolve; never silently choose a side.",
-                "Cite only Requirement and acceptance-criterion evidence references in generated cases.",
+                "Cite the exact Requirement version and any selected acceptance-criterion evidence in generated cases. Acceptance criteria may be empty; when empty, derive cases only from behavior explicitly stated in the Requirement content and cite that Requirement version.",
+                "Set risk and priority to unassessed. Do not infer or copy Requirement-level risk or priority onto a Test Case.",
             ],
             "user_instruction": payload.instruction,
         },
@@ -502,7 +503,7 @@ async def generate_requirement_drafts(
             ):
                 raise ValueError("scenario category count mismatch")
         elif scenario:
-            if len(generated) > (payload.max_cases or len(criteria)) or any(
+            if len(generated) > (payload.max_cases or max(1, len(criteria))) or any(
                 not item.category.strip() for item in generated
             ):
                 raise ValueError("automatic scenario count or category is invalid")
@@ -517,7 +518,7 @@ async def generate_requirement_drafts(
                 or requested_counts - generated_counts and not result.get("warnings")
             ):
                 raise ValueError("test case category count mismatch")
-        elif len(generated) > (payload.max_cases or len(criteria)) or any(
+        elif len(generated) > (payload.max_cases or max(1, len(criteria))) or any(
             not item.category.strip() for item in generated
         ):
             raise ValueError("automatic test case count or category is invalid")
@@ -554,6 +555,16 @@ async def generate_requirement_drafts(
                 for quote in item.evidence_quotes
             ):
                 raise ValueError("invalid evidence quote")
+            if not criteria and not any(
+                quote.evidence_ref == version["_id"]
+                and quote.quote.strip()
+                and quote.quote.strip() in str(
+                    version.get("plain_text_projection")
+                    or plain_text(version.get("content_doc", {}))
+                )
+                for quote in item.evidence_quotes
+            ):
+                raise ValueError("missing requirement content evidence")
             if selected_techniques and (not item.techniques or not set(item.techniques) <= selected_techniques):
                 raise ValueError("unselected design technique")
             if selected_techniques and not item.evidence_refs:
@@ -568,16 +579,8 @@ async def generate_requirement_drafts(
                 drafts.append(
                     ScenarioCreate(
                         **common,
-                        priority=(
-                            item.priority
-                            if item.priority != "unassessed"
-                            else version.get("priority") or "unassessed"
-                        ),
-                        risk=(
-                            item.risk
-                            if item.risk != "unassessed"
-                            else version.get("risk") or "unassessed"
-                        ),
+                        priority="unassessed",
+                        risk="unassessed",
                         category=item.category,
                         objective=item.objective,
                     )
@@ -596,8 +599,8 @@ async def generate_requirement_drafts(
                 drafts.append(
                     TestCaseDraftCreate(
                         **common,
-                        priority=item.priority,
-                        risk=item.risk,
+                        priority="unassessed",
+                        risk="unassessed",
                         type=item.category,
                         objective_doc=text_document(item.objective),
                         preconditions_doc=text_document(item.preconditions),

@@ -820,16 +820,6 @@ export default function RequirementTemplatePanel({
                   onChange={(event) => updateRequirement(index, { priority: event.target.value })}
                 />
               </label>
-              <label className="field-label">
-                Rủi ro
-                <input
-                  className="apple-input mt-2"
-                  value={item.risk}
-                  maxLength={100}
-                  placeholder="Mức rủi ro theo quy ước dự án"
-                  onChange={(event) => updateRequirement(index, { risk: event.target.value })}
-                />
-              </label>
             </div>
             <DocumentEditor
               label={`Nội dung yêu cầu ${index + 1}`}

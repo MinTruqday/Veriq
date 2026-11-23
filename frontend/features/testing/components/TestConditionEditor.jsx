@@ -18,12 +18,7 @@ const defaults = {
   analysis_findings: [],
 };
 
-export default function TestConditionEditor({
-  initialValue,
-  requirements,
-  onSave,
-  onCancel,
-}) {
+export default function TestConditionEditor({ initialValue, requirements, onSave, onCancel }) {
   const [value, setValue] = useState(defaults);
   const [error, setError] = useState("");
   useEffect(

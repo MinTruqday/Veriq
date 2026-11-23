@@ -69,13 +69,15 @@ export function createInitialRequirementForm() {
   return {
     customValues: {},
     title: "",
-    type: "",
+    type: "Chưa phân loại",
     priority: "",
     risk: "",
     content_doc: emptyDoc(),
     acceptance: "",
     businessRules: "",
     dependencies: "",
+    designReference: "",
+    progressStatus: "",
     tags: "",
     ownerId: "",
   };

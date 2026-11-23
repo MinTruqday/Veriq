@@ -1,7 +1,6 @@
 import DataTable from "../../../components/DataTable";
 import { LoadingState, Panel, StatusPill } from "../../../components/WorkspacePrimitives";
 import { Pagination } from "@/shared/components/ui/Pagination";
-import { valueLabel } from "../../../lib/testing";
 import SearchField from "@/shared/components/ui/SearchField";
 import {
   REQUIREMENT_COVERAGE_FILTERS,
@@ -203,22 +202,6 @@ export default function RequirementsListPanel({
                   </span>
                 ),
                 mobileRender: (item) => item.current_version?.title,
-              },
-              {
-                key: "type",
-                label: "Loại",
-                minWidth: 130,
-                render: (item) => (
-                  <span className="break-words">{valueLabel(item.current_version?.type)}</span>
-                ),
-              },
-              {
-                key: "risk",
-                label: "Rủi ro",
-                minWidth: 104,
-                render: (item) => (
-                  <span className="break-words">{valueLabel(item.current_version?.risk)}</span>
-                ),
               },
               {
                 key: "status",

@@ -10,8 +10,8 @@ def evaluate_rules(scope, value):
             finding
             for finding in (
                 _finding("MISSING_REQUIREMENT_CONTENT", "error", "Nội dung yêu cầu đang để trống", "Nhập mô tả phạm vi hoặc chức năng mà hệ thống phải đáp ứng", "content") if not _text(value.get("content")) else None,
-                _finding("MISSING_BUSINESS_RULE", "error", "Yêu cầu chưa có quy tắc nghiệp vụ", "Bổ sung quy tắc có căn cứ hoặc xác nhận rõ yêu cầu không có quy tắc nghiệp vụ", "business_rules") if not _values(value.get("business_rules")) else None,
-                _finding("MISSING_ACCEPTANCE_CRITERIA", "error", "Yêu cầu chưa có tiêu chí chấp nhận", "Bổ sung ít nhất một điều kiện chấp nhận có thể kiểm thử", "acceptance_criteria") if not _values(value.get("acceptance_criteria")) else None,
+                _finding("MISSING_BUSINESS_RULE", "info", "Chưa có quy tắc nghiệp vụ riêng", "Chỉ bổ sung nếu yêu cầu có quy tắc nghiệp vụ áp dụng", "business_rules") if not _values(value.get("business_rules")) else None,
+                _finding("MISSING_ACCEPTANCE_CRITERIA", "info", "Chưa có tiêu chí chấp nhận riêng", "Có thể bổ sung khi cần tách điều kiện kiểm tra để truy vết", "acceptance_criteria") if not _values(value.get("acceptance_criteria")) else None,
             )
             if finding
         ]
@@ -75,17 +75,6 @@ def requirement_findings(version, acceptance_criteria=None):
         else version.get("acceptance_criterion_ids", []),
     }
     findings = evaluate_rules("requirement", normalized_version)
-    has_business_rules = bool(_values(normalized_version.get("business_rules")))
-    has_acceptance_criteria = bool(_values(normalized_version.get("acceptance_criteria")))
-    for finding in findings:
-        if (
-            finding.get("rule_id") == "MISSING_BUSINESS_RULE"
-            and has_acceptance_criteria
-        ) or (
-            finding.get("rule_id") == "MISSING_ACCEPTANCE_CRITERIA"
-            and has_business_rules
-        ):
-            finding["severity"] = "warning"
     for criterion in criteria:
         identity = {"criterion_id": criterion["id"], "criterion_key": criterion["key"]}
         findings.extend(

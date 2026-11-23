@@ -59,7 +59,11 @@ PLAN_SNAPSHOT_FIELDS = (
 )
 
 def plan_snapshot(plan):
-    return {field: plan.get(field) for field in PLAN_SNAPSHOT_FIELDS}
+    snapshot = {field: plan.get(field) for field in PLAN_SNAPSHOT_FIELDS}
+    for field in ("test_data_notes", "environment_notes"):
+        if field in plan:
+            snapshot[field] = plan[field]
+    return snapshot
 
 def plan_snapshot_hash(plan):
     canonical = json.dumps(
@@ -152,24 +156,8 @@ def plan_completeness(plan):
             'TEST_PLAN_APPROACH_REQUIRED',
             bool(str(plan.get('test_approach') or '').strip()),
         ),
-        *[
-            (requirement["code"], bool(plan.get(requirement["field"])))
-            for requirement in [{'code': 'TEST_PLAN_OBJECTIVE_REQUIRED', 'field': 'objective'},
- {'code': 'TEST_PLAN_SCOPE_REQUIRED', 'field': 'scope_in'},
- {'code': 'TEST_PLAN_REQUIREMENT_SCOPE_REQUIRED', 'field': 'requirement_version_ids'},
- {'code': 'TEST_PLAN_ENTRY_CRITERIA_REQUIRED', 'field': 'entry_criteria'},
- {'code': 'TEST_PLAN_EXIT_CRITERIA_REQUIRED', 'field': 'exit_criteria'},
- {'code': 'TEST_PLAN_TEST_TYPE_REQUIRED', 'field': 'test_types'},
- {'code': 'TEST_PLAN_QUALITY_TARGET_REQUIRED', 'field': 'quality_targets'}]
-        ],
-        ('TEST_PLAN_TEST_LEVEL_REQUIRED', bool(plan.get('test_level'))),
-        (
-            'TEST_PLAN_SCHEDULE_REQUIRED',
-            all(
-                (plan.get('schedule') or {}).get(field)
-                for field in ['planned_start_at', 'planned_end_at']
-            ),
-        ),
+        ('TEST_PLAN_OBJECTIVE_REQUIRED', bool(str(plan.get('objective') or '').strip())),
+        ('TEST_PLAN_SCOPE_REQUIRED', any(str(item or '').strip() for item in (plan.get('scope_in') or []))),
     ]
     findings = [
         {"code": code, "blocks_approval": True}
@@ -612,14 +600,14 @@ async def clone_test_plan_record(plan_id, user):
 
 def validate_test_plan_ai_field_grounding(proposal, source_text):
     fields = (
-        "objective", "scope_in", "scope_out", "test_approach", "test_level", "test_types",
-        "environment", "entry_criteria", "exit_criteria", "risks", "assumptions",
-        "constraints",
+        "objective", "scope_in", "scope_out", "test_approach",
     )
     field_evidence = {}
     unsupported_fields = []
     for item in proposal.get("field_evidence") or []:
         field_name = item.get("field")
+        if field_name not in fields:
+            continue
         if field_name in field_evidence:
             raise HTTPException(502, detail={"code": "TEST_PLAN_AI_FIELD_EVIDENCE_DUPLICATE"})
         quotes = item.get("evidence_quotes") or []
@@ -649,6 +637,13 @@ def validate_test_plan_ai_field_grounding(proposal, source_text):
         {"field": field_name, "evidence_quotes": quotes}
         for field_name, quotes in field_evidence.items()
     ]
+    # Keep the response schema compatible while returning only the concise
+    # project-plan fields supported by Requirement evidence.
+    for field_name in (
+        "test_level", "test_types", "environment", "entry_criteria",
+        "exit_criteria", "risks", "assumptions", "constraints",
+    ):
+        proposal[field_name] = [] if isinstance(proposal.get(field_name), list) else ""
     return list(dict.fromkeys(unsupported_fields))
 
 async def generate_test_plan_draft_suggestion(project_id, payload, user):
@@ -715,6 +710,8 @@ async def generate_test_plan_draft_suggestion(project_id, payload, user):
         "user_instruction": payload.instruction,
         "current_test_plan_draft": current_plan,
         "consistency_rules": [
+            "Suggest only objective, included/excluded scope, and test approach when directly supported by the supplied Requirement evidence.",
+            "Do not propose risk register entries, priority, dates, effort, people, environment, quality targets, or generic planning boilerplate. These are project decisions, not facts inferred from Requirement text.",
             "Use only the exact requirement versions, acceptance criteria, and current draft supplied in this request.",
             "Use the current Test Plan draft as context for suggestions. Preserve entered values unless the user explicitly applies a field suggestion.",
             "If sources disagree and none explicitly establishes which value governs, report the conflict and ask for clarification; do not silently choose a side or assume the Test Plan is wrong.",
@@ -752,9 +749,7 @@ async def generate_test_plan_draft_suggestion(project_id, payload, user):
         else bool(str(value or "").strip())
         for field_name, value in proposal.items()
         if field_name in {
-            "objective", "scope_in", "scope_out", "test_approach", "test_level", "test_types",
-            "environment", "entry_criteria", "exit_criteria", "risks", "assumptions",
-            "constraints",
+            "objective", "scope_in", "scope_out", "test_approach",
         }
     ):
         raise HTTPException(502, detail={"code": "TEST_PLAN_AI_NO_GROUNDED_FIELDS"})

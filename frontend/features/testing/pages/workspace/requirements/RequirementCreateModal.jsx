@@ -1,14 +1,12 @@
 import DocumentEditor from "../../../editor/DocumentEditor";
 import { ErrorState } from "../../../components/WorkspacePrimitives";
-import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
+import RequirementLines from "./RequirementLines";
 
 export default function RequirementCreateModal({
-  isOpen,
   onClose,
   error,
   form,
   setForm,
-  members,
   customFields,
   saving,
   onSubmit,
@@ -16,17 +14,7 @@ export default function RequirementCreateModal({
   const updateForm = (patch) => setForm((value) => ({ ...value, ...patch }));
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={() => {
-        if (!saving) onClose();
-      }}
-      ariaLabel="Tạo yêu cầu"
-      className="max-w-3xl max-h-[90dvh] overflow-y-auto"
-    >
-      <ModalHeader>
-        <ModalTitle>Tạo yêu cầu</ModalTitle>
-      </ModalHeader>
+    <div className="rounded-control border border-border bg-surface">
       {error && (
         <div className="px-5 pt-4">
           <ErrorState message={error} />
@@ -43,39 +31,6 @@ export default function RequirementCreateModal({
             onChange={(event) => updateForm({ title: event.target.value })}
           />
         </label>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <label className="field-label">
-            Loại
-            <input
-              className="apple-input mt-2"
-              required
-              maxLength={100}
-              value={form.type}
-              onChange={(event) => updateForm({ type: event.target.value })}
-              placeholder="Nhập loại yêu cầu"
-            />
-          </label>
-          <label className="field-label">
-            Ưu tiên
-            <input
-              className="apple-input mt-2"
-              value={form.priority}
-              maxLength={100}
-              placeholder="Nhập mức ưu tiên theo quy ước dự án"
-              onChange={(event) => updateForm({ priority: event.target.value })}
-            />
-          </label>
-          <label className="field-label">
-            Rủi ro
-            <input
-              className="apple-input mt-2"
-              value={form.risk}
-              maxLength={100}
-              placeholder="Nhập mức rủi ro theo quy ước dự án"
-              onChange={(event) => updateForm({ risk: event.target.value })}
-            />
-          </label>
-        </div>
         <div>
           <p className="field-label mb-2">Nội dung yêu cầu</p>
           <DocumentEditor
@@ -84,67 +39,86 @@ export default function RequirementCreateModal({
             label="Nội dung yêu cầu"
           />
         </div>
+        <RequirementLines
+          label="Tiêu chí chấp nhận"
+          value={form.acceptance}
+          required
+          onChange={(acceptance) => updateForm({ acceptance })}
+        />
+        <RequirementLines
+          label="Quy tắc nghiệp vụ"
+          value={form.businessRules}
+          required
+          onChange={(businessRules) => updateForm({ businessRules })}
+        />
         <label className="field-label">
-          Tiêu chí chấp nhận (mỗi dòng một điều kiện)
-          <textarea
-            className="apple-input mt-2 min-h-28"
-            value={form.acceptance}
-            onChange={(event) => updateForm({ acceptance: event.target.value })}
+          Liên kết thiết kế hoặc tài liệu
+          <input
+            className="apple-input mt-2"
+            required
+            value={form.designReference}
+            onChange={(event) => updateForm({ designReference: event.target.value })}
+            placeholder="Dán liên kết liên quan"
           />
         </label>
-        <label className="field-label">
-          Quy tắc nghiệp vụ (mỗi dòng một quy tắc)
-          <textarea
-            className="apple-input mt-2 min-h-24"
-            value={form.businessRules}
-            onChange={(event) => updateForm({ businessRules: event.target.value })}
-          />
-        </label>
-        <label className="field-label">
-          Yêu cầu phụ thuộc (mỗi dòng một mục)
-          <textarea
-            className="apple-input mt-2 min-h-20"
-            value={form.dependencies}
-            onChange={(event) => updateForm({ dependencies: event.target.value })}
-          />
-        </label>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="field-label">
-            Nhãn (phân cách bằng dấu phẩy)
-            <input
-              className="apple-input mt-2"
-              value={form.tags}
-              onChange={(event) => updateForm({ tags: event.target.value })}
-            />
-          </label>
-          <label className="field-label">
-            Người phụ trách
-            <select
-              className="apple-input mt-2"
-              value={form.ownerId}
-              onChange={(event) => updateForm({ ownerId: event.target.value })}
-            >
-              <option value="">Chưa phân công</option>
-              {members.map((item) => (
-                <option key={item.user_id} value={item.user_id}>
-                  {item.user_label ||
-                    item.user?.full_name ||
-                    item.user?.email ||
-                    "Thành viên dự án"}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
+        <details className="rounded-control border border-border p-4">
+          <summary className="cursor-pointer font-medium">Tùy chọn</summary>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label className="field-label">
+              Ưu tiên
+              <select
+                className="apple-input mt-2"
+                value={form.priority}
+                onChange={(event) => updateForm({ priority: event.target.value })}
+              >
+                <option value="">-</option>
+                <option value="HIGH">Cao</option>
+                <option value="MEDIUM">Trung bình</option>
+                <option value="LOW">Thấp</option>
+              </select>
+            </label>
+            <label className="field-label">
+              Trạng thái theo dõi
+              <select
+                className="apple-input mt-2"
+                value={form.progressStatus}
+                onChange={(event) => updateForm({ progressStatus: event.target.value })}
+              >
+                <option value="">-</option>
+                <option value="DRAFT">Bản nháp</option>
+                <option value="APPROVED">Đã phê duyệt</option>
+                <option value="IN_DEV">Đang phát triển</option>
+                <option value="DONE">Hoàn thành</option>
+              </select>
+            </label>
+          </div>
+        </details>
         {customFields
           .filter(
             (field) =>
-              !field.requirement_types?.length || field.requirement_types.includes(form.type),
+              field.required &&
+              (!field.requirement_types?.length || field.requirement_types.includes(form.type)),
           )
           .map((field) => (
             <label className="field-label block" key={field.key}>
-              {field.label}
-              {field.value_type === "boolean" ? (
+              {field.label} (bắt buộc theo cấu hình dự án)
+              {field.value_type === "choice" ? (
+                <select
+                  className="apple-input mt-2"
+                  required
+                  value={form.customValues?.[field.key] || ""}
+                  onChange={(event) =>
+                    updateForm({
+                      customValues: { ...form.customValues, [field.key]: event.target.value },
+                    })
+                  }
+                >
+                  <option value="">-</option>
+                  {field.choices.map((choice) => (
+                    <option key={choice}>{choice}</option>
+                  ))}
+                </select>
+              ) : field.value_type === "boolean" ? (
                 <input
                   className="ml-2"
                   type="checkbox"
@@ -155,26 +129,10 @@ export default function RequirementCreateModal({
                     })
                   }
                 />
-              ) : field.value_type === "choice" ? (
-                <select
-                  className="apple-input mt-2"
-                  required={field.required}
-                  value={form.customValues?.[field.key] || ""}
-                  onChange={(event) =>
-                    updateForm({
-                      customValues: { ...form.customValues, [field.key]: event.target.value },
-                    })
-                  }
-                >
-                  <option value="">Chưa chọn</option>
-                  {field.choices.map((choice) => (
-                    <option key={choice}>{choice}</option>
-                  ))}
-                </select>
               ) : (
                 <input
                   className="apple-input mt-2"
-                  required={field.required}
+                  required
                   type={
                     field.value_type === "number"
                       ? "number"
@@ -207,6 +165,6 @@ export default function RequirementCreateModal({
           </button>
         </div>
       </form>
-    </Modal>
+    </div>
   );
 }

@@ -29,18 +29,6 @@ def validate_requirement_document_access(visibility, shared_with):
         raise ValueError("Chỉ tài liệu chia sẻ mới có danh sách thành viên")
 
 
-def strip_requirement_actor(values):
-    if not isinstance(values, dict):
-        return values
-    cleaned = dict(values)
-    story = cleaned.get("user_story")
-    if isinstance(story, dict) and "actor" in story:
-        cleaned["user_story"] = {
-            key: item for key, item in story.items() if key != "actor"
-        }
-    return cleaned
-
-
 class AcceptanceCriterionInput(BaseModel):
     key: str = Field(min_length=1, max_length=80)
     content_doc: dict[str, Any] = Field(default_factory=empty_doc)
@@ -77,11 +65,6 @@ class RequirementCreate(BaseModel):
             for key, state in value.items()
             if key not in {"actors", "user_story.actor"}
         }
-
-    @field_validator("details", mode="before")
-    @classmethod
-    def remove_requirement_story_actor(cls, value):
-        return strip_requirement_actor(value)
 
     @field_validator("type")
     @classmethod
@@ -141,11 +124,6 @@ class RequirementDraftPatch(BaseModel):
             for key, state in value.items()
             if key not in {"actors", "user_story.actor"}
         }
-
-    @field_validator("details", mode="before")
-    @classmethod
-    def remove_requirement_story_actor(cls, value):
-        return strip_requirement_actor(value)
 
     @field_validator("priority", "risk")
     @classmethod
@@ -249,7 +227,7 @@ class RequirementAIAnalysisInput(BaseModel):
 
 
 class RequirementVersionCreate(RequirementCreate):
-    change_reason: str = Field(min_length=2, max_length=2000)
+    change_reason: str = Field(default="", max_length=2000)
     expected_current_version_id: str
 
 

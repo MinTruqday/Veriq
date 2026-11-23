@@ -102,6 +102,8 @@ class TestPlanCreate(BaseModel):
     test_case_version_ids: list[str] = Field(default_factory=list, max_length=5000)
     environment: str = Field(default="", max_length=200)
     environment_id: str | None = Field(default=None, max_length=200)
+    environment_notes: str = Field(default="", max_length=5000)
+    test_data_notes: str = Field(default="", max_length=5000)
     entry_criteria: list[str] = Field(default_factory=list, max_length=200)
     exit_criteria: list[str] = Field(default_factory=list, max_length=200)
     test_types: list[str] = Field(default_factory=list, max_length=100)

@@ -94,6 +94,16 @@ async def validate_requirement_custom_values(project_id, requirement):
 
 async def create_requirement_record(project_id, payload, user, origin="manual", session=None):
     await get_project(project_id, user, "requirement.create")
+    if origin == "manual":
+        missing = []
+        if not any(plain_text(item.content_doc).strip() for item in payload.acceptance_criteria):
+            missing.append("acceptance_criteria")
+        if not any(str(item).strip() for item in payload.business_rules):
+            missing.append("business_rules")
+        if not str(payload.details.get("design_reference") or "").strip():
+            missing.append("design_reference")
+        if missing:
+            raise HTTPException(status_code=422, detail={"code": "REQUIREMENT_FIELDS_REQUIRED", "fields": missing, "message": "Vui lòng nhập tiêu chí chấp nhận, quy tắc nghiệp vụ và liên kết thiết kế hoặc tài liệu."})
     await validate_requirement_custom_values(project_id, payload)
     await validate_requirement_sources(project_id, payload.source_refs, user)
     await validate_requirement_api_operations(

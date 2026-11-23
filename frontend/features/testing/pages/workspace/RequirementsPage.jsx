@@ -45,7 +45,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
   const [detailTab, setDetailTab] = useState("requirement");
   const [versions, setVersions] = useState([]);
   const [form, setForm] = useState(createInitialRequirementForm);
-  const [creating, setCreating] = useState(false);
+  const creating = sectionKey === "new";
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
   const [query, setQuery] = useState("");
@@ -387,7 +387,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
     setComparison(null);
     setDuplicateScan(null);
     setImporting(false);
-    setCreating(false);
     setForm(createInitialRequirementForm());
     setPreview(null);
     setSelectedIndexes([]);
@@ -607,6 +606,10 @@ export default function RequirementsPage({ project, section, workspaceView }) {
           .map((value) => value.trim())
           .filter(Boolean),
         source_refs: [],
+        details: {
+          ...(form.designReference.trim() ? { design_reference: form.designReference.trim() } : {}),
+          ...(form.progressStatus ? { progress_status: form.progressStatus } : {}),
+        },
         tags: form.tags
           .split(",")
           .map((value) => value.trim())
@@ -615,8 +618,8 @@ export default function RequirementsPage({ project, section, workspaceView }) {
         custom_values: form.customValues,
       });
       setForm(createInitialRequirementForm());
-      setCreating(false);
       await load();
+      window.location.assign(projectRoute(project._id, PROJECT_SECTION_SLUGS.requirements));
     } catch (reason) {
       setError(messageOf(reason));
     } finally {
@@ -659,9 +662,8 @@ export default function RequirementsPage({ project, section, workspaceView }) {
         },
         {
           name: "reason",
-          label: "Lý do thay đổi",
-          initialValue: "Cập nhật quy tắc nghiệp vụ",
-          required: true,
+          label: "Nội dung thay đổi (tùy chọn)",
+          initialValue: "",
           multiline: true,
         },
       ],
@@ -684,7 +686,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
             source_refs: current.source_refs || [],
             tags: selected.tags || current.tags || [],
             owner_id: selected.owner_id || current.owner_id || null,
-            details: current.details || {},
+            details: { ...(current.details || {}), change_impact: {} },
             section_states: current.section_states || {},
             custom_values: current.custom_values || {},
             change_reason: answer.reason,
@@ -1635,6 +1637,27 @@ export default function RequirementsPage({ project, section, workspaceView }) {
   const activeDetailTab = detailTabs.some((item) => item.id === detailTab)
     ? detailTab
     : detailTabs[0].id;
+  if (creating) {
+    return (
+      <WorkspacePage title="Tạo yêu cầu" actions={<ProjectCrumb projectId={project._id} />}>
+        {projectDataReady && can("requirement.create") ? (
+          <RequirementCreateModal
+            onClose={() =>
+              window.location.assign(projectRoute(project._id, PROJECT_SECTION_SLUGS.requirements))
+            }
+            error={error}
+            form={form}
+            setForm={setForm}
+            customFields={customFields}
+            saving={saving}
+            onSubmit={create}
+          />
+        ) : (
+          <p>Đang tải dữ liệu hoặc bạn không có quyền tạo yêu cầu.</p>
+        )}
+      </WorkspacePage>
+    );
+  }
   return (
     <WorkspacePage
       title={routeSelected ? current?.title || selected.requirement_key : "Yêu cầu"}
@@ -1667,7 +1690,9 @@ export default function RequirementsPage({ project, section, workspaceView }) {
               className="apple-button"
               onClick={() => {
                 setError("");
-                setCreating(true);
+                window.location.assign(
+                  projectRoute(project._id, PROJECT_SECTION_SLUGS.requirements, "new"),
+                );
               }}
             >
               Tạo yêu cầu
@@ -1726,6 +1751,22 @@ export default function RequirementsPage({ project, section, workspaceView }) {
               reload={load}
               onDraftChange={changeDraft}
             />
+            {versions.length > 1 && (
+              <RequirementHistoryPanel
+                projectId={project._id}
+                selected={routeSelected}
+                versions={versions.map((version) =>
+                  version._id === current._id ? current : version,
+                )}
+                compareFrom={compareFrom}
+                setCompareFrom={setCompareFrom}
+                compareTo={compareTo}
+                setCompareTo={setCompareTo}
+                comparison={comparison}
+                setComparison={setComparison}
+                onError={setError}
+              />
+            )}
             {can("requirement_document.read") && (
               <RequirementTracePanel current={current} sourceDocuments={visibleSourceDocuments} />
             )}
@@ -1810,19 +1851,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
             />
           )}
           <div className="grid gap-5 xl:grid-cols-2">
-            {can("requirement.create") && (
-              <RequirementCreateModal
-                isOpen={creating && projectDataReady}
-                onClose={() => setCreating(false)}
-                error={error}
-                form={form}
-                setForm={setForm}
-                members={visibleMembers}
-                customFields={customFields}
-                saving={saving}
-                onSubmit={create}
-              />
-            )}
             {can("requirement_document.upload") && (
               <RequirementImportModal
                 isOpen={importing && projectDataReady}

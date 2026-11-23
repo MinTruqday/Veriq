@@ -7,7 +7,6 @@ import {
   ClipboardCheck,
   FileCheck2,
   FolderKanban,
-  GitCompareArrows,
   LayoutDashboard,
   Network,
   PlayCircle,
@@ -130,13 +129,6 @@ export function navigationGroupsFor(pathname) {
             href: `${root}/${PROJECT_SECTION_SLUGS.requirements}`,
             icon: FileCheck2,
             permission: "requirement.read",
-          },
-          {
-            id: "changes",
-            label: "Phân tích thay đổi",
-            href: `${root}/${PROJECT_SECTION_SLUGS.changes}`,
-            icon: GitCompareArrows,
-            permission: "changeset.read",
           },
         ],
         design: [

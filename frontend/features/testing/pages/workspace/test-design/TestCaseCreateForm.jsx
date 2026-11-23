@@ -176,121 +176,129 @@ export default function TestCaseCreateForm({
                   placeholder="Nhập loại ca kiểm thử"
                 />
               </label>
-              <label className="field-label">
-                Ưu tiên
-                {priorityOptions.length ? (
-                  <select
-                    aria-label="Ưu tiên ca kiểm thử"
-                    className="apple-input mt-2"
-                    value={form.priority || ""}
-                    onChange={(event) => update({ priority: event.target.value })}
-                  >
-                    <option value="">Chọn theo thang ưu tiên dự án</option>
-                    {priorityOptions.map((value) => (
-                      <option key={value} value={value}>
-                        {valueLabel(value)}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    aria-label="Ưu tiên ca kiểm thử"
-                    className="apple-input mt-2"
-                    maxLength={100}
-                    placeholder="Nhập mức ưu tiên theo quy ước dự án"
-                    value={form.priority ? valueLabel(form.priority) : ""}
-                    onChange={(event) => update({ priority: event.target.value })}
-                  />
-                )}
-                {!priorityOptions.length && (
-                  <span className="mt-1 block text-xs font-normal text-ink-muted">
-                    Chiến lược dự án chưa khai báo thang ưu tiên.
-                  </span>
-                )}
-              </label>
-              <label className="field-label">
-                Rủi ro
-                {riskOptions.length ? (
-                  <select
-                    aria-label="Rủi ro ca kiểm thử"
-                    className="apple-input mt-2"
-                    value={form.risk || ""}
-                    onChange={(event) => update({ risk: event.target.value })}
-                  >
-                    <option value="">Chọn mức rủi ro theo chiến lược dự án</option>
-                    {riskOptions.map((value) => (
-                      <option key={value} value={value}>
-                        {valueLabel(value)}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    aria-label="Rủi ro ca kiểm thử"
-                    className="apple-input mt-2"
-                    maxLength={100}
-                    placeholder="Nhập mức rủi ro theo quy ước dự án"
-                    value={form.risk ? valueLabel(form.risk) : ""}
-                    onChange={(event) => update({ risk: event.target.value })}
-                  />
-                )}
-              </label>
-              <label className="field-label">
-                Ước lượng (phút)
-                <input
-                  aria-label="Ước lượng thời gian thực hiện ca kiểm thử (phút)"
-                  className="apple-input mt-2"
-                  type="number"
-                  min="1"
-                  max="10080"
-                  step="1"
-                  value={form.durationMinutes}
-                  onChange={(event) => update({ durationMinutes: event.target.value })}
-                />
-              </label>
             </div>
-            <div className="grid gap-3 sm:grid-cols-3">
-              {[
-                { field: "testLevel", label: "Cấp kiểm thử", options: testLevelOptions },
-                { field: "testKind", label: "Loại kiểm thử", options: testKindOptions },
-              ].map(({ field, label, options, freeText }) => (
-                <label className="field-label font-medium" key={field}>
-                  {label}
-                  {freeText ? (
-                    <input
-                      className="apple-input mt-2"
-                      value={form[field] ? valueLabel(form[field]) : ""}
-                      aria-label={label}
-                      maxLength={100}
-                      onChange={(event) => update({ [field]: event.target.value })}
-                    />
-                  ) : (
+            <details className="rounded-control border border-border p-3">
+              <summary className="cursor-pointer font-medium">Thông tin quản lý (tùy chọn)</summary>
+              <p className="mt-2 text-sm text-ink-muted">
+                Để ưu tiên và rủi ro ở “Chưa đánh giá” nếu dự án chưa có thang đánh giá.
+              </p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <label className="field-label">
+                  Ưu tiên (tùy chọn)
+                  {priorityOptions.length ? (
                     <select
+                      aria-label="Ưu tiên ca kiểm thử"
                       className="apple-input mt-2"
-                      value={form[field] || ""}
-                      aria-label={label}
-                      disabled={!options.length}
-                      onChange={(event) => update({ [field]: event.target.value })}
+                      value={form.priority || ""}
+                      onChange={(event) => update({ priority: event.target.value })}
                     >
-                      <option value="">Chưa chọn</option>
-                      {form[field] && !options.includes(form[field]) && (
-                        <option value={form[field]}>{valueLabel(form[field])}</option>
-                      )}
-                      {options.map((option) => (
-                        <option key={option} value={option}>
-                          {valueLabel(option)}
+                      <option value="">Chọn theo thang ưu tiên dự án</option>
+                      {priorityOptions.map((value) => (
+                        <option key={value} value={value}>
+                          {valueLabel(value)}
                         </option>
                       ))}
                     </select>
+                  ) : (
+                    <input
+                      aria-label="Ưu tiên ca kiểm thử"
+                      className="apple-input mt-2"
+                      maxLength={100}
+                      placeholder="Nhập mức ưu tiên theo quy ước dự án"
+                      value={form.priority ? valueLabel(form.priority) : ""}
+                      onChange={(event) => update({ priority: event.target.value })}
+                    />
                   )}
-                  {!freeText && !options.length && (
+                  {!priorityOptions.length && (
                     <span className="mt-1 block text-xs font-normal text-ink-muted">
-                      Chọn điều kiện kiểm thử để có danh sách giá trị phù hợp.
+                      Chiến lược dự án chưa khai báo thang ưu tiên.
                     </span>
                   )}
                 </label>
-              ))}
-            </div>
+                <label className="field-label">
+                  Rủi ro (tùy chọn)
+                  {riskOptions.length ? (
+                    <select
+                      aria-label="Rủi ro ca kiểm thử"
+                      className="apple-input mt-2"
+                      value={form.risk || ""}
+                      onChange={(event) => update({ risk: event.target.value })}
+                    >
+                      <option value="">Chọn mức rủi ro theo chiến lược dự án</option>
+                      {riskOptions.map((value) => (
+                        <option key={value} value={value}>
+                          {valueLabel(value)}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      aria-label="Rủi ro ca kiểm thử"
+                      className="apple-input mt-2"
+                      maxLength={100}
+                      placeholder="Nhập mức rủi ro theo quy ước dự án"
+                      value={form.risk ? valueLabel(form.risk) : ""}
+                      onChange={(event) => update({ risk: event.target.value })}
+                    />
+                  )}
+                </label>
+                <label className="field-label">
+                  Ước lượng (phút)
+                  <input
+                    aria-label="Ước lượng thời gian thực hiện ca kiểm thử (phút)"
+                    className="apple-input mt-2"
+                    type="number"
+                    min="1"
+                    max="10080"
+                    step="1"
+                    value={form.durationMinutes}
+                    onChange={(event) => update({ durationMinutes: event.target.value })}
+                  />
+                </label>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {[
+                  { field: "testLevel", label: "Cấp kiểm thử", options: testLevelOptions },
+                  { field: "testKind", label: "Loại kiểm thử", options: testKindOptions },
+                ].map(({ field, label, options, freeText }) => (
+                  <label className="field-label font-medium" key={field}>
+                    {label}
+                    {freeText ? (
+                      <input
+                        className="apple-input mt-2"
+                        value={form[field] ? valueLabel(form[field]) : ""}
+                        aria-label={label}
+                        maxLength={100}
+                        onChange={(event) => update({ [field]: event.target.value })}
+                      />
+                    ) : (
+                      <select
+                        className="apple-input mt-2"
+                        value={form[field] || ""}
+                        aria-label={label}
+                        disabled={!options.length}
+                        onChange={(event) => update({ [field]: event.target.value })}
+                      >
+                        <option value="">Chưa chọn</option>
+                        {form[field] && !options.includes(form[field]) && (
+                          <option value={form[field]}>{valueLabel(form[field])}</option>
+                        )}
+                        {options.map((option) => (
+                          <option key={option} value={option}>
+                            {valueLabel(option)}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    {!freeText && !options.length && (
+                      <span className="mt-1 block text-xs font-normal text-ink-muted">
+                        Chọn điều kiện kiểm thử để có danh sách giá trị phù hợp.
+                      </span>
+                    )}
+                  </label>
+                ))}
+              </div>
+            </details>
             {canReadMembers && (
               <div>
                 <label className="field-label">

@@ -159,6 +159,12 @@ export default function ManualTestGenerationPanel({ projectId, requirements, mod
             </Link>
           </div>
         )}
+        {source && !(source.current_version?.acceptance_criteria || []).length && (
+          <p className="text-sm text-ink-muted">
+            Yêu cầu chưa có tiêu chí chấp nhận riêng. Đề xuất sẽ dựa trên nội dung yêu cầu và trích
+            dẫn nội dung làm căn cứ.
+          </p>
+        )}
         <label className="field-label block">
           Yêu cầu bổ sung cho AI
           <textarea

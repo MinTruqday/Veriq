@@ -5,7 +5,6 @@ import { testingApi } from "../../../services/testing.service";
 import { StructuredValueView } from "../../../components/StructuredValueEditor";
 
 export default function RequirementHistoryPanel({
-  projectId,
   selected,
   versions,
   compareFrom,
@@ -18,7 +17,7 @@ export default function RequirementHistoryPanel({
 }) {
   return (
     <>
-      <Panel title="Lịch sử phiên bản">
+      <Panel title="Lịch sử và ảnh hưởng thay đổi">
         <DataTable
           items={versions}
           columns={[
@@ -34,7 +33,31 @@ export default function RequirementHistoryPanel({
               label: "Trạng thái",
               render: (item) => <StatusPill value={item.status} />,
             },
-            { key: "change_reason", label: "Lý do" },
+            {
+              key: "created_at",
+              label: "Ngày tạo phiên bản",
+              render: (item) =>
+                item.created_at && !Number.isNaN(new Date(item.created_at).getTime())
+                  ? new Date(item.created_at).toLocaleDateString("vi-VN")
+                  : "-",
+            },
+            {
+              key: "change_reason",
+              label: "Nội dung thay đổi",
+              render: (item) =>
+                item.details?.change_impact?.change ??
+                (item.parent_version_id ? item.change_reason || "-" : "-"),
+            },
+            {
+              key: "impact",
+              label: "Ảnh hưởng",
+              render: (item) => item.details?.change_impact?.impact || "-",
+            },
+            {
+              key: "time",
+              label: "Ảnh hưởng đến thời gian",
+              render: (item) => item.details?.change_impact?.time || "-",
+            },
           ]}
         />
         {versions.length > 1 && (
@@ -83,28 +106,7 @@ export default function RequirementHistoryPanel({
         )}
       </Panel>
       {comparison && (
-        <Panel
-          title="Khác biệt phiên bản"
-          actions={
-            <button
-              className="apple-button"
-              type="button"
-              onClick={async () => {
-                try {
-                  await testingApi.createChangeSet(selected._id, {
-                    from_version_id: compareFrom,
-                    to_version_id: compareTo,
-                  });
-                  window.location.assign(`/du-an/${projectId}/thay-doi`);
-                } catch (reason) {
-                  onError(messageOf(reason));
-                }
-              }}
-            >
-              Tạo bộ thay đổi
-            </button>
-          }
-        >
+        <Panel title="Khác biệt phiên bản">
           <DataTable
             items={comparison.changes.map((item, index) => ({ ...item, _id: index }))}
             empty="Hai phiên bản không có khác biệt ngữ nghĩa"

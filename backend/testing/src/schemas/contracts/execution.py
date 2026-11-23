@@ -53,6 +53,8 @@ class TestPlanPatch(BaseModel):
     test_case_version_ids: list[str] | None = Field(default=None, max_length=5000)
     environment: str | None = Field(default=None, max_length=200)
     environment_id: str | None = Field(default=None, max_length=200)
+    environment_notes: str | None = Field(default=None, max_length=5000)
+    test_data_notes: str | None = Field(default=None, max_length=5000)
     entry_criteria: list[str] | None = Field(default=None, max_length=200)
     exit_criteria: list[str] | None = Field(default=None, max_length=200)
     test_types: list[str] | None = Field(default=None, max_length=100)

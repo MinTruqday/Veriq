@@ -50,20 +50,14 @@ export default function ScenarioCreateModal({
   );
   const testLevelOptions = [
     ...new Set(
-      [
-        ...conditionsForClassification.map((condition) => condition.test_level),
-        form.test_level,
-      ]
+      [...conditionsForClassification.map((condition) => condition.test_level), form.test_level]
         .map((item) => String(item || "").trim())
         .filter(Boolean),
     ),
   ];
   const testKindOptions = [
     ...new Set(
-      [
-        ...conditionsForClassification.map((condition) => condition.test_type),
-        form.test_kind,
-      ]
+      [...conditionsForClassification.map((condition) => condition.test_type), form.test_kind]
         .map((item) => String(item || "").trim())
         .filter(Boolean),
     ),
@@ -201,10 +195,7 @@ export default function ScenarioCreateModal({
                   className="apple-input mt-2"
                   aria-label={label}
                   value={form[key] || ""}
-                  disabled={
-                    !options.length ||
-                    !canReadTestConditions
-                  }
+                  disabled={!options.length || !canReadTestConditions}
                   onChange={(event) => update({ [key]: event.target.value })}
                 >
                   <option value="">Chưa chọn</option>

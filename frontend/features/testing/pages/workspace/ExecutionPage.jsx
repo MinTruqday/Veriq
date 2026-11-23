@@ -917,10 +917,10 @@ export default function ExecutionPage({ project, section, workspaceView }) {
             </button>
           )}
           {(workspaceView === "" || workspaceView === "test-runs") && can("testrun.create") && (
-              <button className="apple-button" type="button" onClick={() => setCreatingRun(true)}>
-                Tạo lần chạy
-              </button>
-            )}
+            <button className="apple-button" type="button" onClick={() => setCreatingRun(true)}>
+              Tạo lần chạy
+            </button>
+          )}
           {workspaceView !== "test-plans" && can("build.create") && (
             <button className="secondary-button" type="button" onClick={createBuild}>
               Tạo bản dựng
@@ -1718,123 +1718,123 @@ export default function ExecutionPage({ project, section, workspaceView }) {
         </Panel>
       )}
       {can("testrun.read") && (workspaceView === "" || workspaceView === "test-runs") && (
-          <div>
-            <Panel title="Danh sách lần chạy">
-              <details className="border-b border-border p-4" open={workspaceView === "test-runs"}>
-                <summary className="cursor-pointer text-sm font-medium">
-                  Tìm kiếm, lọc và sắp xếp
-                </summary>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  <SearchField
-                    ariaLabel="Tìm lần chạy"
-                    onChange={(event) => setRunNameSearch(event.target.value)}
-                    placeholder="Tên lần chạy"
-                    value={runNameSearch}
-                  />
-                  <select
-                    aria-label="Lọc trạng thái lần chạy"
-                    className="apple-input"
-                    value={runFilters.status}
-                    onChange={(event) => {
-                      setRunFilters({ ...runFilters, status: event.target.value });
-                      setRunPage(1);
-                    }}
-                  >
-                    <option value="">Mọi trạng thái</option>
-                    {["DRAFT", "READY", "IN_PROGRESS", "COMPLETED", "ABORTED"].map((value) => (
-                      <option key={value} value={value}>
-                        {valueLabel(value)}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    aria-label="Lọc môi trường lần chạy"
-                    className="apple-input"
-                    placeholder="Môi trường"
-                    value={runEnvironmentSearch}
-                    onChange={(event) => setRunEnvironmentSearch(event.target.value)}
-                  />
-                  <select
-                    aria-label="Sắp xếp lần chạy"
-                    className="apple-input"
-                    value={runFilters.sort}
-                    onChange={(event) => {
-                      setRunFilters({ ...runFilters, sort: event.target.value });
-                      setRunPage(1);
-                    }}
-                  >
-                    <option value="-updated_at">Mới cập nhật</option>
-                    <option value="updated_at">Cũ cập nhật</option>
-                    <option value="name">Tên tăng dần</option>
-                  </select>
-                </div>
-              </details>
-              {runs.length > 0 ? (
-                <ul className="divide-y divide-border" aria-label="Lần chạy kiểm thử">
-                  {runs.map((item) => {
-                    const name = item.name || "Lần chạy chưa có tên";
-                    const caseCount = Array.isArray(item.test_case_version_ids)
-                      ? item.test_case_version_ids.length
-                      : null;
-                    return (
-                      <li className="min-w-0 px-4 py-4 sm:px-5" key={item._id}>
-                        <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
-                          <button
-                            className="min-w-0 flex-1 text-left text-[15px] font-semibold leading-6 text-ink hover:text-brand"
-                            type="button"
-                            onClick={() =>
-                              router.push(
-                                projectRoute(project._id, PROJECT_SECTION_SLUGS.testRuns, item._id),
-                              )
-                            }
-                          >
-                            <span className="line-clamp-2 break-words [overflow-wrap:anywhere]">
-                              {name}
-                            </span>
-                          </button>
-                          <StatusPill value={item.status} />
+        <div>
+          <Panel title="Danh sách lần chạy">
+            <details className="border-b border-border p-4" open={workspaceView === "test-runs"}>
+              <summary className="cursor-pointer text-sm font-medium">
+                Tìm kiếm, lọc và sắp xếp
+              </summary>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <SearchField
+                  ariaLabel="Tìm lần chạy"
+                  onChange={(event) => setRunNameSearch(event.target.value)}
+                  placeholder="Tên lần chạy"
+                  value={runNameSearch}
+                />
+                <select
+                  aria-label="Lọc trạng thái lần chạy"
+                  className="apple-input"
+                  value={runFilters.status}
+                  onChange={(event) => {
+                    setRunFilters({ ...runFilters, status: event.target.value });
+                    setRunPage(1);
+                  }}
+                >
+                  <option value="">Mọi trạng thái</option>
+                  {["DRAFT", "READY", "IN_PROGRESS", "COMPLETED", "ABORTED"].map((value) => (
+                    <option key={value} value={value}>
+                      {valueLabel(value)}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  aria-label="Lọc môi trường lần chạy"
+                  className="apple-input"
+                  placeholder="Môi trường"
+                  value={runEnvironmentSearch}
+                  onChange={(event) => setRunEnvironmentSearch(event.target.value)}
+                />
+                <select
+                  aria-label="Sắp xếp lần chạy"
+                  className="apple-input"
+                  value={runFilters.sort}
+                  onChange={(event) => {
+                    setRunFilters({ ...runFilters, sort: event.target.value });
+                    setRunPage(1);
+                  }}
+                >
+                  <option value="-updated_at">Mới cập nhật</option>
+                  <option value="updated_at">Cũ cập nhật</option>
+                  <option value="name">Tên tăng dần</option>
+                </select>
+              </div>
+            </details>
+            {runs.length > 0 ? (
+              <ul className="divide-y divide-border" aria-label="Lần chạy kiểm thử">
+                {runs.map((item) => {
+                  const name = item.name || "Lần chạy chưa có tên";
+                  const caseCount = Array.isArray(item.test_case_version_ids)
+                    ? item.test_case_version_ids.length
+                    : null;
+                  return (
+                    <li className="min-w-0 px-4 py-4 sm:px-5" key={item._id}>
+                      <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+                        <button
+                          className="min-w-0 flex-1 text-left text-[15px] font-semibold leading-6 text-ink hover:text-brand"
+                          type="button"
+                          onClick={() =>
+                            router.push(
+                              projectRoute(project._id, PROJECT_SECTION_SLUGS.testRuns, item._id),
+                            )
+                          }
+                        >
+                          <span className="line-clamp-2 break-words [overflow-wrap:anywhere]">
+                            {name}
+                          </span>
+                        </button>
+                        <StatusPill value={item.status} />
+                      </div>
+                      <dl className="mt-3 grid min-w-0 gap-x-6 gap-y-2 text-[12px] sm:grid-cols-2 xl:grid-cols-4">
+                        <div className="min-w-0">
+                          <dt className="text-ink-faint">Môi trường</dt>
+                          <dd className="mt-0.5 break-words font-medium text-ink">
+                            {item.environment || "Chưa xác định"}
+                          </dd>
                         </div>
-                        <dl className="mt-3 grid min-w-0 gap-x-6 gap-y-2 text-[12px] sm:grid-cols-2 xl:grid-cols-4">
+                        <div className="min-w-0">
+                          <dt className="text-ink-faint">Bản dựng</dt>
+                          <dd className="mt-0.5 break-all font-medium text-ink">
+                            {item.build || "Chưa có bản dựng"}
+                          </dd>
+                        </div>
+                        <div className="min-w-0">
+                          <dt className="text-ink-faint">Ca kiểm thử</dt>
+                          <dd className="mt-0.5 font-medium text-ink">
+                            {caseCount === null ? "Chưa có dữ liệu" : caseCount}
+                          </dd>
+                        </div>
+                        {item.updated_at && (
                           <div className="min-w-0">
-                            <dt className="text-ink-faint">Môi trường</dt>
-                            <dd className="mt-0.5 break-words font-medium text-ink">
-                              {item.environment || "Chưa xác định"}
-                            </dd>
-                          </div>
-                          <div className="min-w-0">
-                            <dt className="text-ink-faint">Bản dựng</dt>
-                            <dd className="mt-0.5 break-all font-medium text-ink">
-                              {item.build || "Chưa có bản dựng"}
-                            </dd>
-                          </div>
-                          <div className="min-w-0">
-                            <dt className="text-ink-faint">Ca kiểm thử</dt>
+                            <dt className="text-ink-faint">Cập nhật lúc</dt>
                             <dd className="mt-0.5 font-medium text-ink">
-                              {caseCount === null ? "Chưa có dữ liệu" : caseCount}
+                              {formatDate(item.updated_at)}
                             </dd>
                           </div>
-                          {item.updated_at && (
-                            <div className="min-w-0">
-                              <dt className="text-ink-faint">Cập nhật lúc</dt>
-                              <dd className="mt-0.5 font-medium text-ink">
-                                {formatDate(item.updated_at)}
-                              </dd>
-                            </div>
-                          )}
-                        </dl>
-                      </li>
-                    );
-                  })}
-                </ul>
-              ) : (
-                <p className="px-5 py-5 text-[13px] text-ink-muted" role="status">
-                  Chưa có lần chạy
-                </p>
-              )}
-              <Pagination value={runPageInfo} onChange={setRunPage} />
-            </Panel>
-          </div>
-        )}
+                        )}
+                      </dl>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="px-5 py-5 text-[13px] text-ink-muted" role="status">
+                Chưa có lần chạy
+              </p>
+            )}
+            <Pagination value={runPageInfo} onChange={setRunPage} />
+          </Panel>
+        </div>
+      )}
       {dialog}
     </WorkspacePage>
   );

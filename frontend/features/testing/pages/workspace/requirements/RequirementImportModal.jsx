@@ -762,11 +762,6 @@ export default function RequirementImportModal({
                 ),
               },
               {
-                key: "type",
-                label: "Loại",
-                render: (item) => valueLabel(item.type),
-              },
-              {
                 key: "candidate_relation",
                 label: "Kết quả đối chiếu",
                 render: (item) => {
