@@ -384,7 +384,7 @@ async def run_ai_analysis(project_id, payload, user):
     basis_snapshots = await resolve_basis(project_id, payload.basis_refs, user)
     if not event_scoped and any(
         item.get("artifact_type") == "REQUIREMENT_VERSION"
-        and item.get("status") != "BASELINED"
+        and item.get("status") not in {"READY", "BASELINED"}
         for item in basis_snapshots
     ):
         raise HTTPException(409, detail={"code": "TEST_BASIS_NOT_BASELINED"})

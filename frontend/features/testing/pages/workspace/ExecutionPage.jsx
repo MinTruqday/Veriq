@@ -199,7 +199,9 @@ export default function ExecutionPage({ project, section, workspaceView }) {
           ? testingApi.listEnvironments(project._id)
           : Promise.resolve([]),
         permissions.includes("requirement.read")
-          ? testingApi.listRequirements(project._id, { page_size: 500, status: "BASELINED" })
+          ? testingApi
+              .listRequirements(project._id, { page_size: 500 })
+              .then((items) => items.filter((item) => ["READY", "BASELINED"].includes(item.status)))
           : Promise.resolve([]),
         workspaceView === "test-plans" && permissions.includes("testscenario.read")
           ? testingApi.listScenarios(project._id)
@@ -819,7 +821,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
     const creating = planRoute === "tao-moi";
     const editing = section[1] === "chinh-sua";
     const plan = plans.find((item) => item._id === planRoute);
-    const editable = plan?.status === "DRAFT" && can("testplan.update");
+    const editable = ["DRAFT", "READY"].includes(plan?.status) && can("testplan.update");
     const title = creating
       ? "Tạo kế hoạch kiểm thử"
       : editing
@@ -839,7 +841,22 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                 <button className="secondary-button" type="button" onClick={goBack}>
                   Hủy
                 </button>
-                <button className="apple-button" type="submit" form="test-plan-editor">
+                {creating && (
+                  <button
+                    className="secondary-button"
+                    type="submit"
+                    form="test-plan-editor"
+                    value="draft"
+                  >
+                    Lưu nháp
+                  </button>
+                )}
+                <button
+                  className="apple-button"
+                  type="submit"
+                  form="test-plan-editor"
+                  value="ready"
+                >
                   Lưu kế hoạch
                 </button>
               </>
@@ -1232,9 +1249,9 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                   }
                 >
                   <option value="">Mọi trạng thái</option>
-                  {["DRAFT", "IN_REVIEW", "APPROVED", "ARCHIVED"].map((value) => (
+                  {["DRAFT", "READY", "IN_REVIEW", "APPROVED", "ARCHIVED"].map((value) => (
                     <option value={value} key={value}>
-                      {valueLabel(value)}
+                      {value === "READY" ? "Đã lưu, chưa duyệt" : valueLabel(value)}
                     </option>
                   ))}
                 </select>
@@ -1304,9 +1321,9 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                     }
                   >
                     <option value="">Mọi trạng thái</option>
-                    {["DRAFT", "IN_REVIEW", "APPROVED", "ARCHIVED"].map((value) => (
+                    {["DRAFT", "READY", "IN_REVIEW", "APPROVED", "ARCHIVED"].map((value) => (
                       <option value={value} key={value}>
-                        {valueLabel(value)}
+                        {value === "READY" ? "Đã lưu, chưa duyệt" : valueLabel(value)}
                       </option>
                     ))}
                   </select>
@@ -1387,7 +1404,11 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                   minWidth: 140,
                   render: (item) => (
                     <div className="space-y-2">
-                      <StatusPill value={item.status} />
+                      {item.status === "READY" ? (
+                        "Đã lưu, chưa duyệt"
+                      ) : (
+                        <StatusPill value={item.status} />
+                      )}
                       {planValidation?.planId === item._id &&
                         planValidation?.revision === item.revision && (
                           <p
@@ -1429,9 +1450,9 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                           item.submitted_by !== project.current_membership?.user_id)) &&
                       can("testplan.approve");
                     const hasMenuActions =
-                      (item.status === "DRAFT" && can("testplan.update")) ||
+                      (["DRAFT", "READY"].includes(item.status) && can("testplan.update")) ||
                       can("testplan.read") ||
-                      (item.status === "DRAFT" && can("testplan.submit_review")) ||
+                      (["DRAFT", "READY"].includes(item.status) && can("testplan.submit_review")) ||
                       canApprove ||
                       (item.status === "IN_REVIEW" && can("testplan.review")) ||
                       can("testplan.create") ||
@@ -1448,18 +1469,21 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                               <MoreHorizontal size={18} aria-hidden="true" />
                             </summary>
                             <div className="absolute right-0 top-10 z-50 w-52 rounded-control border border-border bg-surface p-1 shadow-panel">
-                              {item.status === "DRAFT" && can("testplan.update") && (
-                                <button
-                                  className="w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
-                                  type="button"
-                                  onClick={(event) => {
-                                    event.currentTarget.closest("details")?.removeAttribute("open");
-                                    updatePlan(item);
-                                  }}
-                                >
-                                  Sửa kế hoạch
-                                </button>
-                              )}
+                              {["DRAFT", "READY"].includes(item.status) &&
+                                can("testplan.update") && (
+                                  <button
+                                    className="w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.currentTarget
+                                        .closest("details")
+                                        ?.removeAttribute("open");
+                                      updatePlan(item);
+                                    }}
+                                  >
+                                    Sửa kế hoạch
+                                  </button>
+                                )}
                               {can("testplan.read") && (
                                 <button
                                   className="w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
@@ -1480,18 +1504,21 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                                   Kiểm tra kế hoạch
                                 </button>
                               )}
-                              {item.status === "DRAFT" && can("testplan.submit_review") && (
-                                <button
-                                  className="w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
-                                  type="button"
-                                  onClick={(event) => {
-                                    event.currentTarget.closest("details")?.removeAttribute("open");
-                                    transitionPlan(item, "submit");
-                                  }}
-                                >
-                                  Gửi rà soát
-                                </button>
-                              )}
+                              {["DRAFT", "READY"].includes(item.status) &&
+                                can("testplan.submit_review") && (
+                                  <button
+                                    className="w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.currentTarget
+                                        .closest("details")
+                                        ?.removeAttribute("open");
+                                      transitionPlan(item, "submit");
+                                    }}
+                                  >
+                                    Gửi rà soát
+                                  </button>
+                                )}
                               {canApprove && (
                                 <button
                                   className="w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"

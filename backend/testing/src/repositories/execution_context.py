@@ -335,7 +335,7 @@ class ExecutionContextRepository:
             {
                 "_id": {"$in": requirement_ids},
                 "project_id": project_id,
-                "status": "BASELINED",
+                "status": {"$in": ["READY", "BASELINED"]},
             },
             {"_id": 1, "current_version_id": 1},
             **options,

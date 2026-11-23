@@ -329,6 +329,11 @@ export const designTestingApi = {
         include_business_rules: includeBusinessRules,
       }),
     }),
+  saveRequirement: (projectId, requirementId, payload) =>
+    testingRequest(`/du-an/${projectId}/yeu-cau/${requirementId}/luu`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   submitRequirementReview: (projectId, requirementId, payload) =>
     testingRequest(`/du-an/${projectId}/yeu-cau/${requirementId}/gui-ra-soat`, {
       method: "POST",

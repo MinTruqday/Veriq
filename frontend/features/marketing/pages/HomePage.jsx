@@ -1,18 +1,12 @@
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowRight, GitBranch, SearchCheck, Sparkles } from "lucide-react";
+import { ArrowRight, SearchCheck, Sparkles } from "lucide-react";
 
 const capabilities = [
   {
     icon: SearchCheck,
     title: "Liên kết yêu cầu và kiểm thử",
     description: "Theo dõi yêu cầu, tiêu chí chấp nhận, ca kiểm thử và kết quả theo từng phiên bản",
-  },
-  {
-    icon: GitBranch,
-    title: "Phân tích thay đổi",
-    description:
-      "Xác định các ca kiểm thử và hồ sơ liên quan cần được rà soát khi yêu cầu thay đổi",
   },
   {
     icon: Sparkles,

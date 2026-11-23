@@ -45,6 +45,7 @@ import DataSetsPanel from "./test-design/DataSetsPanel";
 import ScenariosPanel from "./test-design/ScenariosPanel";
 import ManualTestGenerationPanel from "../../components/ManualTestGenerationPanel";
 import TestCaseCreateForm from "./test-design/TestCaseCreateForm";
+import CompactDraftEditor from "./test-design/CompactDraftEditor";
 import RequirementCoverageSelector from "./test-design/RequirementCoverageSelector";
 import TestSetEditorModal from "./test-design/TestSetEditorModal";
 import TestCaseCompareWorkspace from "./test-design/TestCaseCompareWorkspace";
@@ -169,6 +170,7 @@ export default function TestDesignPage({ project, workspaceView, section }) {
   const [selectedCaseLoading, setSelectedCaseLoading] = useState(false);
   const [testVersions, setTestVersions] = useState([]);
   const [draftEdit, setDraftEdit] = useState(null);
+  const [draftFull, setDraftFull] = useState(false);
   const [draftDirty, setDraftDirty] = useState(false);
   const [draftSaveState, setDraftSaveState] = useState("saved");
   const draftSequence = useRef(0);
@@ -294,11 +296,12 @@ export default function TestDesignPage({ project, workspaceView, section }) {
       ] = await Promise.all([
         (showCases || showAIRuns || showScenarios || workspaceView === "test-data") &&
         permissions.includes("requirement.read")
-          ? testingApi.listRequirements(project._id, {
-              page_size: 500,
-              status: "BASELINED",
-              include_acceptance_criteria: true,
-            })
+          ? testingApi
+              .listRequirements(project._id, {
+                page_size: 500,
+                include_acceptance_criteria: true,
+              })
+              .then((items) => items.filter((item) => ["READY", "BASELINED"].includes(item.status)))
           : Promise.resolve([]),
         (showCases || showScenarios) && permissions.includes("testcondition.read")
           ? testingApi.listTestConditions(project._id, { status: "APPROVED", page_size: 200 })
@@ -486,9 +489,12 @@ export default function TestDesignPage({ project, workspaceView, section }) {
     }
     if (loadedDraft.current === selectedDraft._id) return;
     loadedDraft.current = selectedDraft._id;
+    setDraftFull(Boolean(selectedDraft.bdd));
     setTestLint(null);
     setDraftEdit({
       title: selectedDraft.title,
+      module_name: selectedDraft.module_name || "",
+      flow_type: selectedDraft.flow_type || "",
       type: selectedDraft.type,
       priority: selectedDraft.priority,
       risk: selectedDraft.risk,
@@ -581,10 +587,14 @@ export default function TestDesignPage({ project, workspaceView, section }) {
       if (requestProjectId === currentProjectId.current) setSavingCreation(false);
     }
   };
-  const create = (event) =>
-    submitCreation(event, async () => {
+  const create = (event) => {
+    const saveAsDraft = event.nativeEvent.submitter?.value === "draft";
+    return submitCreation(event, async () => {
       await testingApi.createTestDraft(project._id, {
+        save_as_draft: saveAsDraft,
         title: form.title,
+        module_name: form.moduleName,
+        flow_type: form.flowType,
         scenario_id: form.scenarioId || null,
         type: form.type,
         priority: form.priority,
@@ -646,6 +656,7 @@ export default function TestDesignPage({ project, workspaceView, section }) {
       setForm(createTestCaseForm());
       router.replace(caseListPath);
     });
+  };
   const createScenario = (event) =>
     submitCreation(event, async () => {
       await testingApi.createScenario(project._id, {
@@ -1008,7 +1019,7 @@ export default function TestDesignPage({ project, workspaceView, section }) {
     if (
       !draftDirty ||
       comparisonDraftId ||
-      selectedDraft?.status !== "DRAFT" ||
+      !["DRAFT", "READY"].includes(selectedDraft?.status) ||
       !draftEdit ||
       !canUseAssignedDraft(project, selectedDraft, "testcase.update")
     )
@@ -1071,13 +1082,44 @@ export default function TestDesignPage({ project, workspaceView, section }) {
   }
   if (creatingCase) {
     return (
-      <WorkspacePage title="Tạo ca kiểm thử">
+      <WorkspacePage
+        title="Tạo ca kiểm thử"
+        actions={
+          <>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => router.push(caseListPath)}
+              disabled={savingCreation}
+            >
+              Hủy
+            </button>
+            <button
+              className="secondary-button"
+              type="submit"
+              form="test-case-create-form"
+              value="draft"
+              formNoValidate
+              disabled={savingCreation || !canCreateCase}
+            >
+              {savingCreation ? "Đang lưu" : "Lưu nháp"}
+            </button>
+            <button
+              className="apple-button"
+              type="submit"
+              form="test-case-create-form"
+              value="ready"
+              disabled={savingCreation || !canCreateCase}
+            >
+              {savingCreation ? "Đang lưu" : "Lưu ca kiểm thử"}
+            </button>
+          </>
+        }
+      >
         {error && <ErrorState message={error} />}
         {canCreateCase ? (
           <Panel title="Thông tin ca kiểm thử">
             <TestCaseCreateForm
-              onClose={() => router.push(caseListPath)}
-              saving={savingCreation}
               form={form}
               setForm={setForm}
               dataSets={dataSets}
@@ -1209,6 +1251,22 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                   <dt className="text-xs text-ink-muted">Tên ca kiểm thử</dt>
                   <dd className="mt-1 break-words text-sm font-medium">
                     {selectedTestRecord.current_version?.title || selectedTestRecord.title}
+                  </dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-xs text-ink-muted">Module / Tính năng</dt>
+                  <dd className="mt-1 text-sm">
+                    {selectedTestRecord.current_version?.module_name || "-"}
+                  </dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-xs text-ink-muted">Loại luồng</dt>
+                  <dd className="mt-1 text-sm">
+                    {{
+                      MAIN: "Luồng chính",
+                      ALTERNATIVE: "Luồng thay thế",
+                      EXCEPTION: "Luồng ngoại lệ",
+                    }[selectedTestRecord.current_version?.flow_type] || "-"}
                   </dd>
                 </div>
                 <div className="min-w-0">
@@ -1616,7 +1674,12 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                         key: "status",
                         label: "Trạng thái",
                         minWidth: 136,
-                        render: (item) => <StatusPill value={item.status} />,
+                        render: (item) =>
+                          item.status === "READY" ? (
+                            "Đã lưu, chưa duyệt"
+                          ) : (
+                            <StatusPill value={item.status} />
+                          ),
                       },
                       {
                         key: "action",
@@ -1625,7 +1688,7 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                         hideWhenEmpty: true,
                         render: (item) => {
                           const hasActions =
-                            (item.status === "DRAFT" &&
+                            (["DRAFT", "READY"].includes(item.status) &&
                               (canDraft("testcase.submit_review", item) ||
                                 canDraft("testcase.update", item))) ||
                             (item.status === "IN_REVIEW" && can("testcase.review")) ||
@@ -1647,7 +1710,7 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                               </summary>
                               <div className="absolute right-0 top-10 z-50 w-56 rounded-control border border-border bg-surface p-1 shadow-panel">
                                 <span className="flex flex-col gap-1">
-                                  {item.status === "DRAFT" &&
+                                  {["DRAFT", "READY"].includes(item.status) &&
                                     canDraft("testcase.submit_review", item) && (
                                       <button
                                         className="w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
@@ -1660,37 +1723,38 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                                         Gửi rà soát
                                       </button>
                                     )}
-                                  {item.status === "DRAFT" && canDraft("testcase.update", item) && (
-                                    <button
-                                      className="w-full rounded-control px-3 py-2 text-left text-sm text-danger hover:bg-danger/10"
-                                      type="button"
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        event.currentTarget
-                                          .closest("details")
-                                          ?.removeAttribute("open");
-                                        void ask({
-                                          title: "Xóa bản nháp ca kiểm thử",
-                                          description: `${item.test_case_key} chưa được gửi rà soát và sẽ bị xóa khỏi dự án.`,
-                                          confirmLabel: "Xóa bản nháp",
-                                          danger: true,
-                                          onConfirm: async () => {
-                                            try {
-                                              await testingApi.deleteTestDraft(item._id);
-                                              if (selectedDraftId === item._id) {
-                                                setSelectedDraftId("");
+                                  {["DRAFT", "READY"].includes(item.status) &&
+                                    canDraft("testcase.update", item) && (
+                                      <button
+                                        className="w-full rounded-control px-3 py-2 text-left text-sm text-danger hover:bg-danger/10"
+                                        type="button"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          event.currentTarget
+                                            .closest("details")
+                                            ?.removeAttribute("open");
+                                          void ask({
+                                            title: "Xóa bản nháp ca kiểm thử",
+                                            description: `${item.test_case_key} chưa được gửi rà soát và sẽ bị xóa khỏi dự án.`,
+                                            confirmLabel: "Xóa bản nháp",
+                                            danger: true,
+                                            onConfirm: async () => {
+                                              try {
+                                                await testingApi.deleteTestDraft(item._id);
+                                                if (selectedDraftId === item._id) {
+                                                  setSelectedDraftId("");
+                                                }
+                                                await load();
+                                              } catch (reason) {
+                                                throw new Error(messageOf(reason));
                                               }
-                                              await load();
-                                            } catch (reason) {
-                                              throw new Error(messageOf(reason));
-                                            }
-                                          },
-                                        });
-                                      }}
-                                    >
-                                      Xóa bản nháp
-                                    </button>
-                                  )}
+                                            },
+                                          });
+                                        }}
+                                      >
+                                        Xóa bản nháp
+                                      </button>
+                                    )}
                                   {item.status === "IN_REVIEW" && can("testcase.review") && (
                                     <button
                                       className="w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
@@ -2100,8 +2164,15 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                     valueLabel(item.current_version?.priority || item.priority || "UNASSESSED"),
                 },
                 {
+                  key: "latest_result",
+                  label: "Kết quả gần nhất",
+                  minWidth: 110,
+                  render: (item) =>
+                    item.latest_result ? <StatusPill value={item.latest_result} /> : "Chưa chạy",
+                },
+                {
                   key: "status",
-                  label: "Trạng thái",
+                  label: "Trạng thái ca",
                   minWidth: 110,
                   render: (item) => <StatusPill value={item.status} />,
                 },
@@ -2391,7 +2462,7 @@ export default function TestDesignPage({ project, workspaceView, section }) {
             )}
           </div>
           <Panel
-            title={`${canDraft("testcase.update", selectedDraft) && selectedDraft.status === "DRAFT" ? "Biên tập" : "Chi tiết"} ${selectedDraft.test_case_key}`}
+            title={`${canDraft("testcase.update", selectedDraft) && ["DRAFT", "READY"].includes(selectedDraft.status) ? "Biên tập" : "Chi tiết"} ${selectedDraft.test_case_key}`}
           >
             <div className="border-b border-border px-5 py-3">
               <ContentOriginBadge origin={selectedDraft.origin || "manual"} />
@@ -2414,555 +2485,636 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                   dung hiện tại; hãy rà soát lại căn cứ trước khi duyệt.
                 </p>
               )}
-            {canDraft("testcase.update", selectedDraft) && selectedDraft.status === "DRAFT" ? (
-              <div className="test-design-form grid gap-4 p-5 lg:grid-cols-2">
-                <label className="field-label lg:col-span-2">
-                  Tên ca kiểm thử
-                  <input
-                    className="apple-input mt-2"
-                    value={draftEdit.title}
-                    onChange={(event) => changeDraftEdit({ title: event.target.value })}
-                  />
-                </label>
-                <div className="grid gap-3 lg:col-span-2 sm:grid-cols-3">
-                  <label className="field-label">
-                    Loại ca kiểm thử
-                    <input
-                      aria-label="Loại bản nháp ca kiểm thử"
-                      className="apple-input mt-2"
-                      required
-                      maxLength={100}
-                      value={draftEdit.type ? valueLabel(draftEdit.type) : ""}
-                      onChange={(event) => changeDraftEdit({ type: event.target.value })}
-                      placeholder="Ví dụ: Chức năng, hồi quy"
-                    />
-                  </label>
-                  <label className="field-label">
-                    Mức ưu tiên
-                    <input
-                      aria-label="Ưu tiên bản nháp ca kiểm thử"
-                      className="apple-input mt-2"
-                      maxLength={100}
-                      placeholder="Theo quy ước dự án"
-                      value={draftEdit.priority ? valueLabel(draftEdit.priority) : ""}
-                      onChange={(event) => changeDraftEdit({ priority: event.target.value })}
-                    />
-                  </label>
-                  <label className="field-label">
-                    Mức rủi ro
-                    <input
-                      aria-label="Rủi ro bản nháp ca kiểm thử"
-                      className="apple-input mt-2"
-                      maxLength={100}
-                      placeholder="Theo quy ước dự án"
-                      value={draftEdit.risk ? valueLabel(draftEdit.risk) : ""}
-                      onChange={(event) => changeDraftEdit({ risk: event.target.value })}
-                    />
-                  </label>
-                  <label className="field-label">
-                    Ước lượng (phút)
-                    <input
-                      aria-label="Ước lượng thời gian thực hiện bản nháp (phút)"
-                      className="apple-input mt-2"
-                      type="number"
-                      min="1"
-                      max="10080"
-                      step="1"
-                      value={draftEdit.durationMinutes}
-                      onChange={(event) => changeDraftEdit({ durationMinutes: event.target.value })}
-                    />
-                  </label>
-                </div>
-                <div className="grid gap-3 lg:col-span-2 sm:grid-cols-3">
-                  <label className="field-label">
-                    Cấp kiểm thử
-                    <select
-                      aria-label="Cấp kiểm thử bản nháp"
-                      className="apple-input mt-2"
-                      value={draftEdit.test_level}
-                      onChange={(event) => changeDraftEdit({ test_level: event.target.value })}
-                      disabled={!draftTestLevelOptions.length}
-                    >
-                      <option value="">Chọn cấp kiểm thử</option>
-                      {draftTestLevelOptions.map((value) => (
-                        <option key={value} value={value}>
-                          {valueLabel(value)}
-                        </option>
-                      ))}
-                    </select>
-                    {!draftTestLevelOptions.length && (
-                      <span className="mt-1 block font-normal">
-                        Chưa có giá trị từ điều kiện kiểm thử đã duyệt liên quan.
-                      </span>
-                    )}
-                  </label>
-                  <label className="field-label">
-                    Loại kiểm thử
-                    <select
-                      aria-label="Loại kiểm thử bản nháp"
-                      className="apple-input mt-2"
-                      value={draftEdit.test_kind}
-                      onChange={(event) => changeDraftEdit({ test_kind: event.target.value })}
-                      disabled={!draftTestKindOptions.length}
-                    >
-                      <option value="">Chọn loại kiểm thử</option>
-                      {draftTestKindOptions.map((value) => (
-                        <option key={value} value={value}>
-                          {valueLabel(value)}
-                        </option>
-                      ))}
-                    </select>
-                    {!draftTestKindOptions.length && (
-                      <span className="mt-1 block font-normal">
-                        Chưa có giá trị từ điều kiện kiểm thử đã duyệt liên quan.
-                      </span>
-                    )}
-                  </label>
-                </div>
-                <div className="grid gap-4 lg:col-span-2">
-                  <label className="field-label">
-                    Kịch bản liên kết
-                    <select
-                      className="apple-input mt-2"
-                      aria-label="Kịch bản liên kết"
-                      value={draftEdit.scenarioId}
-                      onChange={(event) => changeDraftEdit({ scenarioId: event.target.value })}
-                    >
-                      <option value="">Chưa liên kết kịch bản</option>
-                      {scenarios.map((scenario) => (
-                        <option key={scenario._id} value={scenario._id}>
-                          {scenario.scenario_key || scenario._id} · {scenario.title || "Kịch bản"}
-                        </option>
-                      ))}
-                      {draftEdit.scenarioId &&
-                        !scenarios.some((scenario) => scenario._id === draftEdit.scenarioId) && (
-                          <option value={draftEdit.scenarioId}>Kịch bản đã liên kết</option>
-                        )}
-                    </select>
-                  </label>
-                  <MultiSelect
-                    label="Phiên bản yêu cầu liên quan"
-                    searchPlaceholder="Tìm yêu cầu"
-                    options={[
-                      ...requirements.map((item) => ({
-                        value: item.current_version_id,
-                        label: `${item.requirement_key} · ${item.current_version?.title || "Không có tiêu đề"}`,
-                      })),
-                      ...draftEdit.requirementVersionIds
-                        .filter(
-                          (id) => !requirements.some((item) => item.current_version_id === id),
-                        )
-                        .map((id) => ({
-                          value: id,
-                          label: "Phiên bản yêu cầu đã liên kết",
-                          description: "Phiên bản này không còn trong danh sách hiện tại.",
-                        })),
-                    ]}
-                    value={draftEdit.requirementVersionIds}
-                    onChange={(requirementVersionIds) => {
-                      const allowed = new Set(
-                        requirements
-                          .filter((item) => requirementVersionIds.includes(item.current_version_id))
-                          .flatMap((item) =>
-                            (item.current_version?.acceptance_criteria || []).map(
-                              (criterion) => criterion._id,
-                            ),
-                          ),
-                      );
-                      changeDraftEdit({
-                        requirementVersionIds,
-                        acceptanceCriterionIds: draftEdit.acceptanceCriterionIds.filter((id) =>
-                          allowed.has(id),
-                        ),
-                      });
-                    }}
-                  />
-                  <MultiSelect
-                    label="Tiêu chí chấp nhận liên kết"
-                    searchPlaceholder="Tìm tiêu chí chấp nhận"
-                    options={[
-                      ...requirements
-                        .filter((item) =>
-                          draftEdit.requirementVersionIds.includes(item.current_version_id),
-                        )
-                        .flatMap((item) =>
-                          (item.current_version?.acceptance_criteria || []).map((criterion) => ({
-                            value: criterion._id,
-                            label: `${item.requirement_key} · ${criterion.key || "Tiêu chí"}`,
-                            description: criterion.plain_text || docText(criterion.content_doc),
-                          })),
-                        ),
-                      ...draftEdit.acceptanceCriterionIds
-                        .filter(
-                          (id) =>
-                            !requirements.some((item) =>
-                              (item.current_version?.acceptance_criteria || []).some(
-                                (criterion) => criterion._id === id,
-                              ),
-                            ),
-                        )
-                        .map((id) => ({
-                          value: id,
-                          label: "Tiêu chí chấp nhận đã liên kết",
-                          description: "Tiêu chí này không còn trong phiên bản yêu cầu hiện tại.",
-                        })),
-                    ]}
-                    value={draftEdit.acceptanceCriterionIds}
-                    onChange={(acceptanceCriterionIds) =>
-                      changeDraftEdit({ acceptanceCriterionIds })
-                    }
-                  />
-                  <RequirementCoverageSelector
-                    requirements={requirements}
-                    requirementVersionIds={draftEdit.requirementVersionIds}
-                    value={draftEdit.coverageItemIds || []}
-                    onChange={(coverageItemIds) => changeDraftEdit({ coverageItemIds })}
-                  />
-                </div>
-                {draftEdit.bdd && (
-                  <section
-                    className="space-y-3 rounded-control border border-border p-4 lg:col-span-2"
-                    aria-label="Kịch bản BDD"
+            {canDraft("testcase.update", selectedDraft) &&
+            ["DRAFT", "READY"].includes(selectedDraft.status) ? (
+              <>
+                <div
+                  className="flex flex-wrap gap-2 px-5 pt-5"
+                  role="group"
+                  aria-label="Chế độ nhập"
+                >
+                  <button
+                    type="button"
+                    className={draftFull ? "secondary-button" : "apple-button"}
+                    aria-pressed={!draftFull}
+                    disabled={Boolean(draftEdit.bdd)}
+                    onClick={() => setDraftFull(false)}
                   >
-                    <h3 className="font-semibold">Kịch bản BDD</h3>
-                    <label className="field-label">
-                      Tính năng
+                    Rút gọn
+                  </button>
+                  <button
+                    type="button"
+                    className={draftFull ? "apple-button" : "secondary-button"}
+                    aria-pressed={draftFull}
+                    onClick={() => setDraftFull(true)}
+                  >
+                    Đầy đủ
+                  </button>
+                </div>
+                {!draftFull ? (
+                  <CompactDraftEditor
+                    draft={draftEdit}
+                    onChange={changeDraftEdit}
+                    onSave={saveDraft}
+                    saveState={draftSaveState}
+                  />
+                ) : (
+                  <div className="test-design-form grid gap-4 p-5 lg:grid-cols-2">
+                    <label className="field-label lg:col-span-2">
+                      Tên ca kiểm thử
                       <input
                         className="apple-input mt-2"
-                        value={draftEdit.bdd.feature}
-                        onChange={(event) =>
-                          changeDraftEdit({
-                            bdd: { ...draftEdit.bdd, feature: event.target.value },
-                          })
-                        }
+                        value={draftEdit.title}
+                        onChange={(event) => changeDraftEdit({ title: event.target.value })}
                       />
                     </label>
                     <label className="field-label">
-                      Kịch bản
+                      Module / Tính năng
                       <input
                         className="apple-input mt-2"
-                        value={draftEdit.bdd.scenario}
-                        onChange={(event) =>
-                          changeDraftEdit({
-                            bdd: { ...draftEdit.bdd, scenario: event.target.value },
-                          })
-                        }
+                        maxLength={300}
+                        value={draftEdit.module_name}
+                        onChange={(event) => changeDraftEdit({ module_name: event.target.value })}
                       />
                     </label>
-                    {draftEdit.bdd.steps.map((step, index) => (
-                      <label className="field-label" key={step.id || index}>
-                        {valueLabel(step.keyword)}
-                        <textarea
-                          className="apple-input mt-2 min-h-16"
-                          value={step.text}
-                          onChange={(event) =>
-                            changeDraftEdit({
-                              bdd: {
-                                ...draftEdit.bdd,
-                                steps: draftEdit.bdd.steps.map((item, stepIndex) =>
-                                  stepIndex === index
-                                    ? { ...item, text: event.target.value }
-                                    : item,
-                                ),
-                              },
-                            })
-                          }
-                        />
-                      </label>
-                    ))}
-                  </section>
-                )}
-                <label className="field-label lg:col-span-2">
-                  Mục tiêu kiểm thử
-                  <textarea
-                    className="apple-input mt-2 min-h-20"
-                    value={draftEdit.objective}
-                    onChange={(event) => changeDraftEdit({ objective: event.target.value })}
-                  />
-                </label>
-                <label className="field-label">
-                  Điều kiện trước
-                  <textarea
-                    className="apple-input mt-2 min-h-24"
-                    value={draftEdit.preconditions}
-                    onChange={(event) => changeDraftEdit({ preconditions: event.target.value })}
-                  />
-                </label>
-                <div className="space-y-4 lg:col-span-2">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <p className="field-label">Các bước kiểm thử</p>
-                    {selectedDraft.status === "DRAFT" &&
-                      canDraft("testcase.update", selectedDraft) && (
-                        <button
-                          className="secondary-button"
-                          type="button"
-                          onClick={() =>
-                            changeDraftEdit({
-                              steps: [
-                                ...draftEdit.steps,
-                                { id: crypto.randomUUID(), action: "", data: {}, expected: "" },
-                              ],
-                            })
-                          }
-                        >
-                          Thêm bước
-                        </button>
-                      )}
-                  </div>
-                  {draftEdit.steps.map((step, index) => (
-                    <fieldset
-                      className="grid gap-3 rounded-xl border border-border p-4 lg:grid-cols-2"
-                      key={step.id}
-                    >
-                      <legend className="px-2 text-[12px] font-semibold">Bước {index + 1}</legend>
+                    <label className="field-label">
+                      Loại luồng
+                      <select
+                        className="apple-input mt-2"
+                        value={draftEdit.flow_type}
+                        onChange={(event) => changeDraftEdit({ flow_type: event.target.value })}
+                      >
+                        <option value="">-</option>
+                        <option value="MAIN">Luồng chính</option>
+                        <option value="ALTERNATIVE">Luồng thay thế</option>
+                        <option value="EXCEPTION">Luồng ngoại lệ</option>
+                      </select>
+                    </label>
+                    <div className="grid gap-3 lg:col-span-2 sm:grid-cols-3">
                       <label className="field-label">
-                        Thao tác
-                        <textarea
-                          className="apple-input mt-2 min-h-24"
-                          value={step.action}
-                          onChange={(event) => {
-                            const steps = [...draftEdit.steps];
-                            steps[index] = { ...step, action: event.target.value };
-                            changeDraftEdit({ steps });
-                          }}
-                        />
-                      </label>
-                      <label className="field-label">
-                        Kết quả mong đợi
-                        <textarea
-                          className="apple-input mt-2 min-h-24"
-                          value={step.expected}
-                          onChange={(event) => {
-                            const steps = [...draftEdit.steps];
-                            steps[index] = { ...step, expected: event.target.value };
-                            changeDraftEdit({ steps });
-                          }}
-                        />
-                      </label>
-                      <div className="min-w-0 space-y-2 lg:col-span-2">
-                        <p className="field-label">Dữ liệu của bước</p>
-                        <StructuredValueEditor
-                          label={`Dữ liệu bước ${index + 1}`}
-                          value={step.data || {}}
-                          fixedType="object"
-                          onChange={(data) => {
-                            const steps = [...draftEdit.steps];
-                            steps[index] = { ...step, data };
-                            changeDraftEdit({ steps });
-                          }}
-                        />
-                      </div>
-                      {selectedDraft.status === "DRAFT" &&
-                        canDraft("testcase.update", selectedDraft) &&
-                        draftEdit.steps.length > 1 && (
-                          <button
-                            className="secondary-button w-fit"
-                            type="button"
-                            onClick={() =>
-                              changeDraftEdit({
-                                steps: draftEdit.steps.filter(
-                                  (_, stepIndex) => stepIndex !== index,
-                                ),
-                              })
-                            }
-                          >
-                            Xóa bước
-                          </button>
-                        )}
-                    </fieldset>
-                  ))}
-                </div>
-                <div className="min-w-0 space-y-2">
-                  <p className="field-label">Dữ liệu dùng chung</p>
-                  <StructuredValueEditor
-                    label="Dữ liệu dùng chung"
-                    value={draftEdit.testData || {}}
-                    fixedType="object"
-                    onChange={(testData) => changeDraftEdit({ testData })}
-                  />
-                </div>
-                <MultiSelect
-                  label="Phiên bản bộ dữ liệu tham số"
-                  options={dataSets.map((item) => ({
-                    value: item.current_version_id,
-                    label: `${item.name} v${item.current_version?.version}`,
-                  }))}
-                  searchPlaceholder="Tìm bộ dữ liệu"
-                  value={draftEdit.dataSetVersionIds}
-                  onChange={(dataSetVersionIds) => changeDraftEdit({ dataSetVersionIds })}
-                />
-                <MultiSelect
-                  label="Điều kiện kiểm thử đã phê duyệt"
-                  options={testConditions.map((item) => ({
-                    value: item._id,
-                    label: `${item.condition_key} ${item.title}`,
-                  }))}
-                  searchPlaceholder="Tìm điều kiện kiểm thử"
-                  value={draftEdit.testConditionIds}
-                  onChange={(testConditionIds) => changeDraftEdit({ testConditionIds })}
-                />
-                <label className="field-label">
-                  Kết quả mong đợi tổng thể
-                  <textarea
-                    className="apple-input mt-2 min-h-28"
-                    value={draftEdit.expected}
-                    onChange={(event) => changeDraftEdit({ expected: event.target.value })}
-                  />
-                </label>
-                <label className="field-label lg:col-span-2">
-                  Điều kiện sau
-                  <textarea
-                    className="apple-input mt-2 min-h-24"
-                    value={draftEdit.postconditions}
-                    onChange={(event) => changeDraftEdit({ postconditions: event.target.value })}
-                  />
-                </label>
-                {[
-                  ["alternateFlows", "Luồng thay thế"],
-                  ["exceptionFlows", "Luồng ngoại lệ"],
-                ].map(([field, label]) => (
-                  <label className="field-label" key={field}>
-                    {label}
-                    <textarea
-                      className="apple-input mt-2 min-h-24"
-                      value={draftEdit[field]}
-                      onChange={(event) => changeDraftEdit({ [field]: event.target.value })}
-                    />
-                  </label>
-                ))}
-                <label className="field-label">
-                  Kỹ thuật kiểm thử phân tách bằng dấu phẩy
-                  <input
-                    className="apple-input mt-2"
-                    value={draftEdit.techniques}
-                    onChange={(event) => changeDraftEdit({ techniques: event.target.value })}
-                  />
-                </label>
-                <label className="field-label">
-                  Nhãn phân tách bằng dấu phẩy
-                  <input
-                    className="apple-input mt-2"
-                    value={draftEdit.tags}
-                    onChange={(event) => changeDraftEdit({ tags: event.target.value })}
-                  />
-                </label>
-                <label className="field-label">
-                  Trạng thái tự động hóa
-                  <select
-                    className="apple-input mt-2"
-                    value={draftEdit.automationStatus}
-                    onChange={(event) => changeDraftEdit({ automationStatus: event.target.value })}
-                  >
-                    {["manual", "candidate", "automated"].map((value) => (
-                      <option value={value} key={value}>
-                        {valueLabel(value)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <div>
-                  <label className="field-label">
-                    Người phụ trách ca kiểm thử
-                    {permissions.includes("project.members.read") ? (
-                      <>
-                        <select
-                          aria-label="Người phụ trách ca kiểm thử"
+                        Loại ca kiểm thử
+                        <input
+                          aria-label="Loại bản nháp ca kiểm thử"
                           className="apple-input mt-2"
-                          value={draftEdit.ownerId}
-                          disabled={projectMembersUnavailable}
-                          onChange={(event) => changeDraftEdit({ ownerId: event.target.value })}
+                          maxLength={100}
+                          value={draftEdit.type ? valueLabel(draftEdit.type) : ""}
+                          onChange={(event) => changeDraftEdit({ type: event.target.value })}
+                          placeholder="Ví dụ: Chức năng, hồi quy"
+                        />
+                      </label>
+                      <label className="field-label">
+                        Mức ưu tiên
+                        <input
+                          aria-label="Ưu tiên bản nháp ca kiểm thử"
+                          className="apple-input mt-2"
+                          maxLength={100}
+                          placeholder="Theo quy ước dự án"
+                          value={draftEdit.priority ? valueLabel(draftEdit.priority) : ""}
+                          onChange={(event) => changeDraftEdit({ priority: event.target.value })}
+                        />
+                      </label>
+                      <label className="field-label">
+                        Mức rủi ro
+                        <input
+                          aria-label="Rủi ro bản nháp ca kiểm thử"
+                          className="apple-input mt-2"
+                          maxLength={100}
+                          placeholder="Theo quy ước dự án"
+                          value={draftEdit.risk ? valueLabel(draftEdit.risk) : ""}
+                          onChange={(event) => changeDraftEdit({ risk: event.target.value })}
+                        />
+                      </label>
+                      <label className="field-label">
+                        Ước lượng (phút)
+                        <input
+                          aria-label="Ước lượng thời gian thực hiện bản nháp (phút)"
+                          className="apple-input mt-2"
+                          type="number"
+                          min="1"
+                          max="10080"
+                          step="1"
+                          value={draftEdit.durationMinutes}
+                          onChange={(event) =>
+                            changeDraftEdit({ durationMinutes: event.target.value })
+                          }
+                        />
+                      </label>
+                    </div>
+                    <div className="grid gap-3 lg:col-span-2 sm:grid-cols-3">
+                      <label className="field-label">
+                        Cấp kiểm thử
+                        <select
+                          aria-label="Cấp kiểm thử bản nháp"
+                          className="apple-input mt-2"
+                          value={draftEdit.test_level}
+                          onChange={(event) => changeDraftEdit({ test_level: event.target.value })}
+                          disabled={!draftTestLevelOptions.length}
                         >
-                          <option value="">Chưa phân công</option>
-                          {draftEdit.ownerId &&
-                            !projectMembers.some(
-                              (member) => member.user_id === draftEdit.ownerId,
-                            ) && (
-                              <option value={draftEdit.ownerId}>
-                                Người phụ trách hiện tại không còn hoạt động trong dự án
-                              </option>
-                            )}
-                          {projectMembers.map((member) => (
-                            <option key={member.user_id} value={member.user_id}>
-                              {member.user_label ||
-                                member.user?.full_name ||
-                                member.user?.email ||
-                                member.user_id}
-                              {member.project_roles?.length
-                                ? ` · ${member.project_roles.map(valueLabel).join(", ")}`
-                                : member.project_role
-                                  ? ` · ${valueLabel(member.project_role)}`
-                                  : ""}
+                          <option value="">Chọn cấp kiểm thử</option>
+                          {draftTestLevelOptions.map((value) => (
+                            <option key={value} value={value}>
+                              {valueLabel(value)}
                             </option>
                           ))}
                         </select>
-                        {projectMembersUnavailable && (
-                          <span role="status" className="text-sm text-amber-800">
-                            Không tải được thành viên dự án; người phụ trách hiện tại được giữ
-                            nguyên.
+                        {!draftTestLevelOptions.length && (
+                          <span className="mt-1 block font-normal">
+                            Chưa có giá trị từ điều kiện kiểm thử đã duyệt liên quan.
                           </span>
                         )}
-                      </>
-                    ) : (
-                      <p className="mt-2 text-sm text-ink-muted">
-                        {draftEdit.ownerId || "Chưa phân công"}
-                      </p>
+                      </label>
+                      <label className="field-label">
+                        Loại kiểm thử
+                        <select
+                          aria-label="Loại kiểm thử bản nháp"
+                          className="apple-input mt-2"
+                          value={draftEdit.test_kind}
+                          onChange={(event) => changeDraftEdit({ test_kind: event.target.value })}
+                          disabled={!draftTestKindOptions.length}
+                        >
+                          <option value="">Chọn loại kiểm thử</option>
+                          {draftTestKindOptions.map((value) => (
+                            <option key={value} value={value}>
+                              {valueLabel(value)}
+                            </option>
+                          ))}
+                        </select>
+                        {!draftTestKindOptions.length && (
+                          <span className="mt-1 block font-normal">
+                            Chưa có giá trị từ điều kiện kiểm thử đã duyệt liên quan.
+                          </span>
+                        )}
+                      </label>
+                    </div>
+                    <div className="grid gap-4 lg:col-span-2">
+                      <label className="field-label">
+                        Kịch bản liên kết
+                        <select
+                          className="apple-input mt-2"
+                          aria-label="Kịch bản liên kết"
+                          value={draftEdit.scenarioId}
+                          onChange={(event) => changeDraftEdit({ scenarioId: event.target.value })}
+                        >
+                          <option value="">Chưa liên kết kịch bản</option>
+                          {scenarios.map((scenario) => (
+                            <option key={scenario._id} value={scenario._id}>
+                              {scenario.scenario_key || scenario._id} ·{" "}
+                              {scenario.title || "Kịch bản"}
+                            </option>
+                          ))}
+                          {draftEdit.scenarioId &&
+                            !scenarios.some(
+                              (scenario) => scenario._id === draftEdit.scenarioId,
+                            ) && <option value={draftEdit.scenarioId}>Kịch bản đã liên kết</option>}
+                        </select>
+                      </label>
+                      <MultiSelect
+                        label="Phiên bản yêu cầu liên quan"
+                        searchPlaceholder="Tìm yêu cầu"
+                        options={[
+                          ...requirements.map((item) => ({
+                            value: item.current_version_id,
+                            label: `${item.requirement_key} · ${item.current_version?.title || "Không có tiêu đề"}`,
+                          })),
+                          ...draftEdit.requirementVersionIds
+                            .filter(
+                              (id) => !requirements.some((item) => item.current_version_id === id),
+                            )
+                            .map((id) => ({
+                              value: id,
+                              label: "Phiên bản yêu cầu đã liên kết",
+                              description: "Phiên bản này không còn trong danh sách hiện tại.",
+                            })),
+                        ]}
+                        value={draftEdit.requirementVersionIds}
+                        onChange={(requirementVersionIds) => {
+                          const allowed = new Set(
+                            requirements
+                              .filter((item) =>
+                                requirementVersionIds.includes(item.current_version_id),
+                              )
+                              .flatMap((item) =>
+                                (item.current_version?.acceptance_criteria || []).map(
+                                  (criterion) => criterion._id,
+                                ),
+                              ),
+                          );
+                          changeDraftEdit({
+                            requirementVersionIds,
+                            acceptanceCriterionIds: draftEdit.acceptanceCriterionIds.filter((id) =>
+                              allowed.has(id),
+                            ),
+                          });
+                        }}
+                      />
+                      <MultiSelect
+                        label="Tiêu chí chấp nhận liên kết"
+                        searchPlaceholder="Tìm tiêu chí chấp nhận"
+                        options={[
+                          ...requirements
+                            .filter((item) =>
+                              draftEdit.requirementVersionIds.includes(item.current_version_id),
+                            )
+                            .flatMap((item) =>
+                              (item.current_version?.acceptance_criteria || []).map(
+                                (criterion) => ({
+                                  value: criterion._id,
+                                  label: `${item.requirement_key} · ${criterion.key || "Tiêu chí"}`,
+                                  description:
+                                    criterion.plain_text || docText(criterion.content_doc),
+                                }),
+                              ),
+                            ),
+                          ...draftEdit.acceptanceCriterionIds
+                            .filter(
+                              (id) =>
+                                !requirements.some((item) =>
+                                  (item.current_version?.acceptance_criteria || []).some(
+                                    (criterion) => criterion._id === id,
+                                  ),
+                                ),
+                            )
+                            .map((id) => ({
+                              value: id,
+                              label: "Tiêu chí chấp nhận đã liên kết",
+                              description:
+                                "Tiêu chí này không còn trong phiên bản yêu cầu hiện tại.",
+                            })),
+                        ]}
+                        value={draftEdit.acceptanceCriterionIds}
+                        onChange={(acceptanceCriterionIds) =>
+                          changeDraftEdit({ acceptanceCriterionIds })
+                        }
+                      />
+                      <RequirementCoverageSelector
+                        requirements={requirements}
+                        requirementVersionIds={draftEdit.requirementVersionIds}
+                        value={draftEdit.coverageItemIds || []}
+                        onChange={(coverageItemIds) => changeDraftEdit({ coverageItemIds })}
+                      />
+                    </div>
+                    {draftEdit.bdd && (
+                      <section
+                        className="space-y-3 rounded-control border border-border p-4 lg:col-span-2"
+                        aria-label="Kịch bản BDD"
+                      >
+                        <h3 className="font-semibold">Kịch bản BDD</h3>
+                        <label className="field-label">
+                          Tính năng
+                          <input
+                            className="apple-input mt-2"
+                            value={draftEdit.bdd.feature}
+                            onChange={(event) =>
+                              changeDraftEdit({
+                                bdd: { ...draftEdit.bdd, feature: event.target.value },
+                              })
+                            }
+                          />
+                        </label>
+                        <label className="field-label">
+                          Kịch bản
+                          <input
+                            className="apple-input mt-2"
+                            value={draftEdit.bdd.scenario}
+                            onChange={(event) =>
+                              changeDraftEdit({
+                                bdd: { ...draftEdit.bdd, scenario: event.target.value },
+                              })
+                            }
+                          />
+                        </label>
+                        {draftEdit.bdd.steps.map((step, index) => (
+                          <label className="field-label" key={step.id || index}>
+                            {valueLabel(step.keyword)}
+                            <textarea
+                              className="apple-input mt-2 min-h-16"
+                              value={step.text}
+                              onChange={(event) =>
+                                changeDraftEdit({
+                                  bdd: {
+                                    ...draftEdit.bdd,
+                                    steps: draftEdit.bdd.steps.map((item, stepIndex) =>
+                                      stepIndex === index
+                                        ? { ...item, text: event.target.value }
+                                        : item,
+                                    ),
+                                  },
+                                })
+                              }
+                            />
+                          </label>
+                        ))}
+                      </section>
                     )}
-                  </label>
-                  <p className="mt-2 text-sm text-ink-muted">
-                    Người phụ trách gắn với bản Test Case; người thực chạy được phân công riêng theo
-                    từng Test Run.
-                  </p>
-                </div>
-                <div className="min-w-0">
-                  <FilePicker
-                    label="Tệp đính kèm"
-                    onChange={async (event) => {
-                      const file = event.target.files?.[0];
-                      if (!file) return;
-                      try {
-                        const uploaded = await uploadAssetAPI(file);
-                        changeDraftEdit({
-                          attachments: [...draftEdit.attachments, uploaded.data],
-                        });
-                      } catch (reason) {
-                        setError(messageOf(reason));
-                      }
-                    }}
-                  />
-                  {draftEdit.attachments.map((attachment) => (
-                    <span
-                      className="mt-2 block break-all text-[11px] text-ink-muted"
-                      key={attachment.url}
-                    >
-                      {attachment.filename}
-                    </span>
-                  ))}
-                </div>
-                {selectedDraft.status === "DRAFT" && canDraft("testcase.update", selectedDraft) && (
-                  <div className="flex flex-wrap items-center gap-3 lg:col-span-2">
-                    <button
-                      className="secondary-button w-fit"
-                      type="button"
-                      disabled={draftSaveState === "saving"}
-                      onClick={saveDraft}
-                    >
-                      Lưu bản nháp
-                    </button>
-                    <span className="text-[12px] text-ink-muted" aria-live="polite">
-                      {draftSaveState === "saving"
-                        ? "Đang tự động lưu"
-                        : draftSaveState === "pending"
-                          ? "Có thay đổi chưa lưu"
-                          : draftSaveState === "error"
-                            ? "Tự động lưu thất bại"
-                            : "Đã tự động lưu"}
-                    </span>
+                    <label className="field-label lg:col-span-2">
+                      Mục tiêu kiểm thử
+                      <textarea
+                        className="apple-input mt-2 min-h-20"
+                        value={draftEdit.objective}
+                        onChange={(event) => changeDraftEdit({ objective: event.target.value })}
+                      />
+                    </label>
+                    <label className="field-label">
+                      Điều kiện trước
+                      <textarea
+                        className="apple-input mt-2 min-h-24"
+                        value={draftEdit.preconditions}
+                        onChange={(event) => changeDraftEdit({ preconditions: event.target.value })}
+                      />
+                    </label>
+                    <div className="space-y-4 lg:col-span-2">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <p className="field-label">Các bước kiểm thử</p>
+                        {["DRAFT", "READY"].includes(selectedDraft.status) &&
+                          canDraft("testcase.update", selectedDraft) && (
+                            <button
+                              className="secondary-button"
+                              type="button"
+                              onClick={() =>
+                                changeDraftEdit({
+                                  steps: [
+                                    ...draftEdit.steps,
+                                    { id: crypto.randomUUID(), action: "", data: {}, expected: "" },
+                                  ],
+                                })
+                              }
+                            >
+                              Thêm bước
+                            </button>
+                          )}
+                      </div>
+                      {draftEdit.steps.map((step, index) => (
+                        <fieldset
+                          className="grid gap-3 rounded-xl border border-border p-4 lg:grid-cols-2"
+                          key={step.id}
+                        >
+                          <legend className="px-2 text-[12px] font-semibold">
+                            Bước {index + 1}
+                          </legend>
+                          <label className="field-label">
+                            Thao tác
+                            <textarea
+                              className="apple-input mt-2 min-h-24"
+                              value={step.action}
+                              onChange={(event) => {
+                                const steps = [...draftEdit.steps];
+                                steps[index] = { ...step, action: event.target.value };
+                                changeDraftEdit({ steps });
+                              }}
+                            />
+                          </label>
+                          <label className="field-label">
+                            Kết quả mong đợi
+                            <textarea
+                              className="apple-input mt-2 min-h-24"
+                              value={step.expected}
+                              onChange={(event) => {
+                                const steps = [...draftEdit.steps];
+                                steps[index] = { ...step, expected: event.target.value };
+                                changeDraftEdit({ steps });
+                              }}
+                            />
+                          </label>
+                          <div className="min-w-0 space-y-2 lg:col-span-2">
+                            <p className="field-label">Dữ liệu của bước</p>
+                            <StructuredValueEditor
+                              label={`Dữ liệu bước ${index + 1}`}
+                              value={step.data || {}}
+                              fixedType="object"
+                              onChange={(data) => {
+                                const steps = [...draftEdit.steps];
+                                steps[index] = { ...step, data };
+                                changeDraftEdit({ steps });
+                              }}
+                            />
+                          </div>
+                          {["DRAFT", "READY"].includes(selectedDraft.status) &&
+                            canDraft("testcase.update", selectedDraft) &&
+                            draftEdit.steps.length > 1 && (
+                              <button
+                                className="secondary-button w-fit"
+                                type="button"
+                                onClick={() =>
+                                  changeDraftEdit({
+                                    steps: draftEdit.steps.filter(
+                                      (_, stepIndex) => stepIndex !== index,
+                                    ),
+                                  })
+                                }
+                              >
+                                Xóa bước
+                              </button>
+                            )}
+                        </fieldset>
+                      ))}
+                    </div>
+                    <div className="min-w-0 space-y-2">
+                      <p className="field-label">Dữ liệu dùng chung</p>
+                      <StructuredValueEditor
+                        label="Dữ liệu dùng chung"
+                        value={draftEdit.testData || {}}
+                        fixedType="object"
+                        onChange={(testData) => changeDraftEdit({ testData })}
+                      />
+                    </div>
+                    <MultiSelect
+                      label="Phiên bản bộ dữ liệu tham số"
+                      options={dataSets.map((item) => ({
+                        value: item.current_version_id,
+                        label: `${item.name} v${item.current_version?.version}`,
+                      }))}
+                      searchPlaceholder="Tìm bộ dữ liệu"
+                      value={draftEdit.dataSetVersionIds}
+                      onChange={(dataSetVersionIds) => changeDraftEdit({ dataSetVersionIds })}
+                    />
+                    <MultiSelect
+                      label="Điều kiện kiểm thử đã phê duyệt"
+                      options={testConditions.map((item) => ({
+                        value: item._id,
+                        label: `${item.condition_key} ${item.title}`,
+                      }))}
+                      searchPlaceholder="Tìm điều kiện kiểm thử"
+                      value={draftEdit.testConditionIds}
+                      onChange={(testConditionIds) => changeDraftEdit({ testConditionIds })}
+                    />
+                    <label className="field-label">
+                      Kết quả mong đợi tổng thể
+                      <textarea
+                        className="apple-input mt-2 min-h-28"
+                        value={draftEdit.expected}
+                        onChange={(event) => changeDraftEdit({ expected: event.target.value })}
+                      />
+                    </label>
+                    <label className="field-label lg:col-span-2">
+                      Điều kiện sau
+                      <textarea
+                        className="apple-input mt-2 min-h-24"
+                        value={draftEdit.postconditions}
+                        onChange={(event) =>
+                          changeDraftEdit({ postconditions: event.target.value })
+                        }
+                      />
+                    </label>
+                    {[
+                      ["alternateFlows", "Luồng thay thế"],
+                      ["exceptionFlows", "Luồng ngoại lệ"],
+                    ].map(([field, label]) => (
+                      <label className="field-label" key={field}>
+                        {label}
+                        <textarea
+                          className="apple-input mt-2 min-h-24"
+                          value={draftEdit[field]}
+                          onChange={(event) => changeDraftEdit({ [field]: event.target.value })}
+                        />
+                      </label>
+                    ))}
+                    <label className="field-label">
+                      Kỹ thuật kiểm thử phân tách bằng dấu phẩy
+                      <input
+                        className="apple-input mt-2"
+                        value={draftEdit.techniques}
+                        onChange={(event) => changeDraftEdit({ techniques: event.target.value })}
+                      />
+                    </label>
+                    <label className="field-label">
+                      Nhãn phân tách bằng dấu phẩy
+                      <input
+                        className="apple-input mt-2"
+                        value={draftEdit.tags}
+                        onChange={(event) => changeDraftEdit({ tags: event.target.value })}
+                      />
+                    </label>
+                    <label className="field-label">
+                      Trạng thái tự động hóa
+                      <select
+                        className="apple-input mt-2"
+                        value={draftEdit.automationStatus}
+                        onChange={(event) =>
+                          changeDraftEdit({ automationStatus: event.target.value })
+                        }
+                      >
+                        {["manual", "candidate", "automated"].map((value) => (
+                          <option value={value} key={value}>
+                            {valueLabel(value)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div>
+                      <label className="field-label">
+                        Người phụ trách ca kiểm thử
+                        {permissions.includes("project.members.read") ? (
+                          <>
+                            <select
+                              aria-label="Người phụ trách ca kiểm thử"
+                              className="apple-input mt-2"
+                              value={draftEdit.ownerId}
+                              disabled={projectMembersUnavailable}
+                              onChange={(event) => changeDraftEdit({ ownerId: event.target.value })}
+                            >
+                              <option value="">Chưa phân công</option>
+                              {draftEdit.ownerId &&
+                                !projectMembers.some(
+                                  (member) => member.user_id === draftEdit.ownerId,
+                                ) && (
+                                  <option value={draftEdit.ownerId}>
+                                    Người phụ trách hiện tại không còn hoạt động trong dự án
+                                  </option>
+                                )}
+                              {projectMembers.map((member) => (
+                                <option key={member.user_id} value={member.user_id}>
+                                  {member.user_label ||
+                                    member.user?.full_name ||
+                                    member.user?.email ||
+                                    member.user_id}
+                                  {member.project_roles?.length
+                                    ? ` · ${member.project_roles.map(valueLabel).join(", ")}`
+                                    : member.project_role
+                                      ? ` · ${valueLabel(member.project_role)}`
+                                      : ""}
+                                </option>
+                              ))}
+                            </select>
+                            {projectMembersUnavailable && (
+                              <span role="status" className="text-sm text-amber-800">
+                                Không tải được thành viên dự án; người phụ trách hiện tại được giữ
+                                nguyên.
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <p className="mt-2 text-sm text-ink-muted">
+                            {draftEdit.ownerId || "Chưa phân công"}
+                          </p>
+                        )}
+                      </label>
+                      <p className="mt-2 text-sm text-ink-muted">
+                        Người phụ trách gắn với bản Test Case; người thực chạy được phân công riêng
+                        theo từng Test Run.
+                      </p>
+                    </div>
+                    <div className="min-w-0">
+                      <FilePicker
+                        label="Tệp đính kèm"
+                        onChange={async (event) => {
+                          const file = event.target.files?.[0];
+                          if (!file) return;
+                          try {
+                            const uploaded = await uploadAssetAPI(file);
+                            changeDraftEdit({
+                              attachments: [...draftEdit.attachments, uploaded.data],
+                            });
+                          } catch (reason) {
+                            setError(messageOf(reason));
+                          }
+                        }}
+                      />
+                      {draftEdit.attachments.map((attachment) => (
+                        <span
+                          className="mt-2 block break-all text-[11px] text-ink-muted"
+                          key={attachment.url}
+                        >
+                          {attachment.filename}
+                        </span>
+                      ))}
+                    </div>
+                    {["DRAFT", "READY"].includes(selectedDraft.status) &&
+                      canDraft("testcase.update", selectedDraft) && (
+                        <div className="flex flex-wrap items-center gap-3 lg:col-span-2">
+                          <button
+                            className="secondary-button w-fit"
+                            type="button"
+                            disabled={draftSaveState === "saving"}
+                            onClick={saveDraft}
+                          >
+                            Lưu bản nháp
+                          </button>
+                          <span className="text-[12px] text-ink-muted" aria-live="polite">
+                            {draftSaveState === "saving"
+                              ? "Đang tự động lưu"
+                              : draftSaveState === "pending"
+                                ? "Có thay đổi chưa lưu"
+                                : draftSaveState === "error"
+                                  ? "Tự động lưu thất bại"
+                                  : "Đã tự động lưu"}
+                          </span>
+                        </div>
+                      )}
                   </div>
                 )}
-              </div>
+              </>
             ) : (
               <dl className="grid gap-4 p-5 sm:grid-cols-2">
                 {[
+                  ["Module / Tính năng", draftEdit.module_name],
+                  [
+                    "Loại luồng",
+                    {
+                      MAIN: "Luồng chính",
+                      ALTERNATIVE: "Luồng thay thế",
+                      EXCEPTION: "Luồng ngoại lệ",
+                    }[draftEdit.flow_type],
+                  ],
                   ["Loại ca", valueLabel(draftEdit.type)],
                   ["Mức ưu tiên", valueLabel(draftEdit.priority)],
                   ["Rủi ro", valueLabel(draftEdit.risk)],

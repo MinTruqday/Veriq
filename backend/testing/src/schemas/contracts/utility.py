@@ -5,10 +5,8 @@ from pydantic import BaseModel, Field
 
 class DelegatedJobEnqueueInput(BaseModel):
     event: Literal[
-        "impact.analysis.requested",
         "duplicate.scan.requested",
         "test.generate.requested",
-        "requirement.semantic_diff.requested",
         "knowledge.index.requested",
         "requirement.extract.requested",
         "document.parse.requested",

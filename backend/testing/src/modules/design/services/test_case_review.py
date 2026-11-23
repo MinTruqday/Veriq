@@ -190,7 +190,7 @@ async def assert_sources_current_in_session(draft, session):
             {"current_version_id": 1},
             session=session,
         )
-        if not requirement or requirement.get("current_version_id") != version_id or version.get("status") != "BASELINED":
+        if not requirement or requirement.get("current_version_id") != version_id or version.get("status") not in {"READY", "BASELINED"}:
             stale.append("REQUIREMENT_VERSION_CHANGED")
         criteria = await list_acceptance_criteria_in_session(version_id, session)
         observed_criterion_ids.update(criterion["_id"] for criterion in criteria)
@@ -339,7 +339,7 @@ async def comparison_sources(draft):
     criterion_ids = []
     for version in versions:
         current = await test_design_repository.find_current_requirement(project_id, version["requirement_id"])
-        if not current or current.get("current_version_id") != version["_id"] or version.get("status") != "BASELINED":
+        if not current or current.get("current_version_id") != version["_id"] or version.get("status") not in {"READY", "BASELINED"}:
             reasons.append("REQUIREMENT_VERSION_CHANGED")
         text = requirement_test_evidence_text(version)
         expected[version["_id"]] = text

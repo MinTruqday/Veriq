@@ -90,6 +90,7 @@ class TestPlanCommunication(BaseModel):
 
 
 class TestPlanCreate(BaseModel):
+    save_as_draft: bool = True
     owner_id: str | None = Field(default=None, max_length=200)
     scenario_ids: list[str] = Field(default_factory=list, max_length=1000)
     project_id: str

@@ -31,7 +31,8 @@ export default function RequirementHistoryPanel({
             {
               key: "status",
               label: "Trạng thái",
-              render: (item) => <StatusPill value={item.status} />,
+              render: (item) =>
+                item.status === "READY" ? "Đã lưu, chưa duyệt" : <StatusPill value={item.status} />,
             },
             {
               key: "created_at",

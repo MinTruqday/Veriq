@@ -4,7 +4,7 @@ from src.core.database import database
 class TestPlanRepository:
     async def count_requirement_versions(self, project_id, version_ids):
         return await database.value.requirement_versions.count_documents(
-            {"project_id": project_id, "_id": {"$in": version_ids}, "status": "BASELINED"}
+            {"project_id": project_id, "_id": {"$in": version_ids}, "status": {"$in": ["READY", "BASELINED"]}}
         )
 
     async def list_suites(self, project_id, suite_ids):

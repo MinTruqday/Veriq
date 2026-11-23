@@ -184,8 +184,8 @@ async def require_current_baselined_version(version):
     )
     baselined = bool(
         current_version
-        and requirement.get("status") == "BASELINED"
-        and version.get("status") == "BASELINED"
+        and requirement.get("status") in {"READY", "BASELINED"}
+        and version.get("status") in {"READY", "BASELINED"}
     )
     if not baselined:
         raise HTTPException(409, detail={"code": "TEST_DESIGN_REQUIREMENT_CHANGED", "message": "Phiên bản yêu cầu đã thay đổi hoặc chưa được duyệt  Hãy tải lại trước khi thiết kế ca kiểm thử"})
@@ -214,7 +214,7 @@ async def comparison_cases(project_id):
         ) from error
     drafts = []
     async for page in test_design_repository.iter_case_draft_pages(
-        project_id, ["DRAFT", "IN_REVIEW", "APPROVING"]
+        project_id, ["DRAFT", "READY", "IN_REVIEW", "APPROVING"]
     ):
         drafts.extend(page)
     settings = await test_design_repository.find_project_settings(project_id)
@@ -449,6 +449,10 @@ async def create_test_case_draft_record(
 ):
     
     payload = await require_test_case_creation_scope(project_id, payload, user)
+    if not payload.save_as_draft:
+        from src.modules.design.services.linters import has_verifiable_steps
+        if not has_verifiable_steps(payload.model_dump()):
+            raise HTTPException(status_code=422, detail={"code": "TEST_CASE_STEPS_REQUIRED", "message": "Nhập thao tác và kết quả mong đợi cho từng bước trước khi lưu ca kiểm thử."})
     if payload.owner_id and payload.owner_id != user.id:
         await get_project(project_id, user, "project.members.read")
     owner_id = await validate_test_case_owner(project_id, payload.owner_id)
@@ -591,12 +595,13 @@ async def create_test_case_draft_record(
             "target_version_id",
             "version_reason",
             "acceptance_criteria_snapshot_ids",
+            "save_as_draft",
         }),
         "source_evidence": source_evidence,
         "test_case_key": payload.test_case_key
         or await next_key(project_id, 'test_case', 'TC'),
         **({"parent_version_id": parent_version_id, "change_reason": change_reason} if parent_version_id else {}),
-        "status": 'DRAFT',
+        "status": 'DRAFT' if payload.save_as_draft else 'READY',
         "revision": 1,
         "created_by": user.id,
         "content_author_ids": [user.id],
@@ -793,7 +798,7 @@ async def update_test_case_draft_record(draft_id, payload, user, project_id=None
     )
     if project_id is not None and draft["project_id"] != project_id:
         raise HTTPException(status_code=422, detail={"code": 'PROJECT_MISMATCH'})
-    if draft["status"] != 'DRAFT':
+    if draft["status"] not in ('DRAFT', 'READY'):
         raise HTTPException(status_code=409, detail={"code": 'IMMUTABLE_TEST_CASE_DRAFT'})
     if payload.attachments is not None:
         await get_project(draft["project_id"], user, "attachment.manage")
@@ -831,10 +836,12 @@ async def update_test_case_draft_record(draft_id, payload, user, project_id=None
     )
     changes = payload.model_dump(exclude_unset=True)
     changes.pop("expected_revision", None)
+    if draft["status"] == 'READY' and changes:
+        changes["status"] = 'DRAFT'
     if draft.get("evidence_refs") and any(
         changes.get(field) is not None and changes[field] != draft.get(field)
         for field in (
-            "title", "type", "objective_doc", "preconditions_doc", "steps", "test_data",
+            "title", "type", "module_name", "flow_type", "objective_doc", "preconditions_doc", "steps", "test_data",
             "expected_result_doc", "postconditions_doc",
             "alternate_flows_doc", "exception_flows_doc", "techniques",
             "requirement_version_ids", "acceptance_criterion_ids",
@@ -923,7 +930,7 @@ async def delete_test_case_draft_record(draft_id, user):
     draft = await require_assigned_design_draft(
         "test_case_drafts", draft_id, user, "testcase.update"
     )
-    if draft.get("status") != "DRAFT":
+    if draft.get("status") not in ("DRAFT", "READY"):
         raise HTTPException(
             status_code=409,
             detail={"code": "ONLY_UNSUBMITTED_TEST_CASE_DRAFTS_CAN_BE_DELETED"},
@@ -935,7 +942,7 @@ async def delete_test_case_draft_record(draft_id, user):
                     "_id": draft_id,
                     "project_id": draft["project_id"],
                     "revision": draft.get("revision"),
-                    "status": "DRAFT",
+                    "status": draft["status"],
                 },
                 session=session,
             )

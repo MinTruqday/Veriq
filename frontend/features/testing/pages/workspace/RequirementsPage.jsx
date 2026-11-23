@@ -591,6 +591,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
     setError("");
     try {
       await testingApi.createRequirement(project._id, {
+        save_as_draft: event.nativeEvent.submitter?.value === "draft",
         title: form.title,
         type: form.type,
         priority: form.priority,
@@ -650,7 +651,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
   const createVersion = async () => {
     await ask({
       title: "Mở bản nháp để chỉnh sửa yêu cầu",
-      description: `${selected.requirement_key} sẽ được tạo thành phiên bản nháp tiếp theo. Phiên bản đã chốt được giữ nguyên để truy vết; bạn có thể sửa nội dung trong bản nháp rồi gửi rà soát lại.`,
+      description: `${selected.requirement_key} sẽ được tạo thành phiên bản nháp tiếp theo. Phiên bản hiện tại được giữ lại để truy vết.`,
       confirmLabel: "Mở bản nháp",
       fields: [
         {
@@ -1639,17 +1640,52 @@ export default function RequirementsPage({ project, section, workspaceView }) {
     : detailTabs[0].id;
   if (creating) {
     return (
-      <WorkspacePage title="Tạo yêu cầu" actions={<ProjectCrumb projectId={project._id} />}>
+      <WorkspacePage
+        title="Tạo yêu cầu"
+        actions={
+          <>
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={saving}
+              onClick={() =>
+                window.location.assign(
+                  projectRoute(project._id, PROJECT_SECTION_SLUGS.requirements),
+                )
+              }
+            >
+              Hủy
+            </button>
+            <button
+              className="secondary-button"
+              type="submit"
+              form="requirement-create-form"
+              name="save_mode"
+              value="draft"
+              formNoValidate
+              disabled={saving || !projectDataReady || !can("requirement.create")}
+            >
+              Lưu nháp
+            </button>
+            <button
+              className="apple-button"
+              type="submit"
+              form="requirement-create-form"
+              name="save_mode"
+              value="ready"
+              disabled={saving || !projectDataReady || !can("requirement.create")}
+            >
+              {saving ? "Đang lưu" : "Lưu yêu cầu"}
+            </button>
+          </>
+        }
+      >
         {projectDataReady && can("requirement.create") ? (
           <RequirementCreateModal
-            onClose={() =>
-              window.location.assign(projectRoute(project._id, PROJECT_SECTION_SLUGS.requirements))
-            }
             error={error}
             form={form}
             setForm={setForm}
             customFields={customFields}
-            saving={saving}
             onSubmit={create}
           />
         ) : (
@@ -1735,6 +1771,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
             <RequirementCurrentVersionPanel
               projectId={project._id}
               current={current}
+              currentUserId={user?._id || user?.id || project.current_membership?.user_id}
               selected={routeSelected}
               focusAcceptanceCriterionId={focusAcceptanceCriterionId}
               draft={draft}
@@ -1750,23 +1787,22 @@ export default function RequirementsPage({ project, section, workspaceView }) {
               ask={ask}
               reload={load}
               onDraftChange={changeDraft}
+              onError={setError}
             />
-            {versions.length > 1 && (
-              <RequirementHistoryPanel
-                projectId={project._id}
-                selected={routeSelected}
-                versions={versions.map((version) =>
-                  version._id === current._id ? current : version,
-                )}
-                compareFrom={compareFrom}
-                setCompareFrom={setCompareFrom}
-                compareTo={compareTo}
-                setCompareTo={setCompareTo}
-                comparison={comparison}
-                setComparison={setComparison}
-                onError={setError}
-              />
-            )}
+            <RequirementHistoryPanel
+              projectId={project._id}
+              selected={routeSelected}
+              versions={versions.map((version) =>
+                version._id === current._id ? current : version,
+              )}
+              compareFrom={compareFrom}
+              setCompareFrom={setCompareFrom}
+              compareTo={compareTo}
+              setCompareTo={setCompareTo}
+              comparison={comparison}
+              setComparison={setComparison}
+              onError={setError}
+            />
             {can("requirement_document.read") && (
               <RequirementTracePanel current={current} sourceDocuments={visibleSourceDocuments} />
             )}

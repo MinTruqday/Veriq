@@ -6,6 +6,8 @@ export function createTestCaseForm() {
   const emptyDataEntries = () => [{ id: crypto.randomUUID(), name: "", value: "" }];
   return {
     title: "",
+    moduleName: "",
+    flowType: "",
     type: "",
     priority: UNASSESSED_VALUE,
     risk: UNASSESSED_VALUE,
@@ -147,13 +149,22 @@ export function createDataSetForm() {
 export function buildTestCaseDraftChanges(snapshot, draft) {
   const structuredValue = (value) =>
     typeof value === "string" ? JSON.parse(value || "{}") : value || {};
-  const steps = snapshot.steps?.map((step, index) => ({
-    id: step.id || crypto.randomUUID(),
-    order: index + 1,
-    action_doc: textDoc(step.action),
-    test_data: structuredValue(step.data),
-    expected_doc: textDoc(step.expected),
-  }));
+  const steps = snapshot.steps?.map((step, index) => {
+    const previous = (draft.steps || []).find((item) => item.id === step.id);
+    return {
+      id: step.id || crypto.randomUUID(),
+      order: index + 1,
+      action_doc:
+        previous && docText(previous.action_doc) === step.action
+          ? previous.action_doc
+          : textDoc(step.action),
+      test_data: structuredValue(step.data),
+      expected_doc:
+        previous && docText(previous.expected_doc) === step.expected
+          ? previous.expected_doc
+          : textDoc(step.expected),
+    };
+  });
   const changes = {};
   if (
     snapshot.durationMinutes !== undefined &&
@@ -161,7 +172,16 @@ export function buildTestCaseDraftChanges(snapshot, draft) {
   ) {
     changes.duration_minutes = snapshot.durationMinutes ? Number(snapshot.durationMinutes) : null;
   }
-  for (const field of ["title", "type", "priority", "risk", "test_level", "test_kind"]) {
+  for (const field of [
+    "title",
+    "type",
+    "priority",
+    "risk",
+    "test_level",
+    "test_kind",
+    "module_name",
+    "flow_type",
+  ]) {
     if (snapshot[field] !== undefined && snapshot[field] !== draft[field]) {
       changes[field] =
         ["test_level", "test_kind"].includes(field) && !snapshot[field] ? null : snapshot[field];

@@ -222,6 +222,8 @@ async def clone_test_case_record(test_case_id, payload, user):
         test_case["project_id"],
         TestCaseDraftCreate(
             title=payload.title or f"{version['title']}{' bản sao'}",
+            module_name=version.get("module_name", ""),
+            flow_type=version.get("flow_type", ""),
             type=version["type"],
             test_level=version.get("test_level"),
             test_kind=version.get("test_kind"),
@@ -297,6 +299,8 @@ async def create_test_case_version_draft_record(test_case_id, payload, user):
         TestCaseDraftCreate(
             test_case_key=test_case["test_case_key"],
             title=payload.title or version["title"],
+            module_name=version.get("module_name", ""),
+            flow_type=version.get("flow_type", ""),
             type=version["type"],
             priority=version.get("priority") or "unassessed",
             risk=version.get("risk") or "unassessed",

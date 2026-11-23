@@ -94,7 +94,7 @@ async def validate_requirement_custom_values(project_id, requirement):
 
 async def create_requirement_record(project_id, payload, user, origin="manual", session=None):
     await get_project(project_id, user, "requirement.create")
-    if origin == "manual":
+    if origin == "manual" and not payload.save_as_draft:
         missing = []
         if not any(plain_text(item.content_doc).strip() for item in payload.acceptance_criteria):
             missing.append("acceptance_criteria")
@@ -113,6 +113,7 @@ async def create_requirement_record(project_id, payload, user, origin="manual", 
     requirement_key = payload.requirement_key or await next_key(project_id, "requirement", "REQ")
     timestamp = now()
     requirement_id = new_id("REQ")
+    initial_status = "DRAFT" if payload.save_as_draft or origin != "manual" else "READY"
     version = {
         "_id": new_id("REQV"),
         "project_id": project_id,
@@ -136,7 +137,7 @@ async def create_requirement_record(project_id, payload, user, origin="manual", 
         "acceptance_criterion_ids": [],
         "parent_version_id": None,
         "change_reason": "Khởi tạo Requirement",
-        "status": "DRAFT",
+        "status": initial_status,
         "index_status": "PENDING",
         "revision": 1,
         "origin": origin,
@@ -151,7 +152,7 @@ async def create_requirement_record(project_id, payload, user, origin="manual", 
         "project_id": project_id,
         "requirement_key": requirement_key,
         "current_version_id": version["_id"],
-        "status": "DRAFT",
+        "status": initial_status,
         "owner_id": payload.owner_id or user.id,
         "tags": payload.tags,
         "created_at": timestamp,

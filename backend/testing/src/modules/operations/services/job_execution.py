@@ -3,10 +3,7 @@ from fastapi import HTTPException
 from src.core.auth import CurrentUser
 from src.core.common import get_project, now
 from src.repositories.analysis import analysis_repository
-from src.schemas.contracts.requirements import RequirementCompareInput
 from src.schemas.contracts.utility import GenerateInput
-from src.modules.quality.services.change_set import create_change_set_record
-from src.modules.quality.services.impact_analysis import create_impact_analysis_record
 from src.clients.project_knowledge import index_artifact
 from src.modules.design.services.test_case_generation import (
     find_duplicate_test_case_records,
@@ -21,7 +18,7 @@ async def process_delegated_job(
     requester_email: str,
 ):
     
-    if event not in {"impact.analysis.requested", "duplicate.scan.requested", "test.generate.requested", "requirement.semantic_diff.requested", "knowledge.index.requested", "requirement.extract.requested", "document.parse.requested", "document.summary.requested"}:
+    if event not in {"duplicate.scan.requested", "test.generate.requested", "knowledge.index.requested", "requirement.extract.requested", "document.parse.requested", "document.summary.requested"}:
         raise HTTPException(
             status_code=422, detail={"code": 'UNSUPPORTED_JOB_EVENT'}
         )
@@ -35,14 +32,10 @@ async def process_delegated_job(
         email=requester_email or 'worker@internal',
         system_role='USER',
     )
-    if event == "impact.analysis.requested":
-        await get_project(project_id, user, "impact.execute")
-    elif event == "duplicate.scan.requested":
+    if event == "duplicate.scan.requested":
         await get_project(project_id, user, "ai.run_duplicate_check")
     elif event == "test.generate.requested":
         await get_project(project_id, user, "ai.generate_testcase")
-    elif event == "requirement.semantic_diff.requested":
-        await get_project(project_id, user, "changeset.create")
     elif event == "knowledge.index.requested":
         await get_project(project_id, user, "knowledge.manage")
     elif event == "document.summary.requested":
@@ -71,10 +64,6 @@ async def process_delegated_job(
 
 async def execute_job(event: str, body: dict, payload: dict, user: CurrentUser):
     
-    if event == 'impact.analysis.requested':
-        return await create_impact_analysis_record(
-            payload.get("change_set_id") or body.get("artifact_version_id"), None, user
-        )
     if event == 'duplicate.scan.requested':
         return await find_duplicate_test_case_records(body["project_id"], user)
     if event == 'test.generate.requested':
@@ -86,11 +75,6 @@ async def execute_job(event: str, body: dict, payload: dict, user: CurrentUser):
             }
         )
         return await generate_test_case_draft_records(body["artifact_version_id"], request, user)
-    if event == 'requirement.semantic_diff.requested':
-        request = RequirementCompareInput(
-            from_version_id=payload["from_version_id"], to_version_id=payload["to_version_id"]
-        )
-        return await create_change_set_record(payload["requirement_id"], request, user)
     if event == 'knowledge.index.requested':
         return await reindex_artifact(body["project_id"], body["artifact_version_id"])
     if event == 'requirement.extract.requested':

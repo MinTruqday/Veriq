@@ -10,14 +10,10 @@ class DelegatedJobService:
     @staticmethod
     async def enqueue(project_id: str, input: DelegatedJobEnqueueInput, user: CurrentUser):
         event = input.event
-        if event == "impact.analysis.requested":
-            await get_project(project_id, user, "impact.execute")
-        elif event == "duplicate.scan.requested":
+        if event == "duplicate.scan.requested":
             await get_project(project_id, user, "ai.run_duplicate_check")
         elif event == "test.generate.requested":
             await get_project(project_id, user, "ai.generate_testcase")
-        elif event == "requirement.semantic_diff.requested":
-            await get_project(project_id, user, "changeset.create")
         elif event == "knowledge.index.requested":
             await get_project(project_id, user, "knowledge.manage")
         elif event == "document.summary.requested":

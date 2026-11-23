@@ -39,6 +39,7 @@ export const REQUIREMENT_SOURCE_APPROVAL_OPTIONS = [
 export const REQUIREMENT_STATUS_FILTERS = [
   { value: "", label: "Mọi trạng thái" },
   { value: "DRAFT", label: "Bản nháp" },
+  { value: "READY", label: "Đã lưu, chưa duyệt" },
   { value: "IN_REVIEW", label: "Đang rà soát" },
   { value: "BASELINED", label: "Đã phê duyệt" },
   { value: "SUPERSEDED", label: "Đã được thay thế" },

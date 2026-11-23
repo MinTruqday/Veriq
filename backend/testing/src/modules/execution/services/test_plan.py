@@ -267,17 +267,21 @@ async def create_test_plan_record(payload, project_id, user):
         payload.test_suite_ids,
         payload.test_case_version_ids,
     )
+    if not payload.save_as_draft:
+        completeness = plan_completeness(payload.model_dump())
+        if not completeness["ready_for_approval"]:
+            raise HTTPException(status_code=422, detail={"code": "TEST_PLAN_INCOMPLETE", "message": "Nhập mục tiêu, phạm vi kiểm thử và cách tiếp cận trước khi lưu kế hoạch.", **completeness})
     timestamp = now()
     plan = {
         "_id": new_id('TP'),
-        **payload.model_dump(),
+        **payload.model_dump(exclude={"save_as_draft"}),
         "scenario_ids": scenario_ids,
         "test_level": payload.test_level,
         "test_types": payload.test_types,
         **scope,
         "environment": context["environment"],
         "environment_id": context["environment_id"],
-        "status": 'DRAFT',
+        "status": 'DRAFT' if payload.save_as_draft else 'READY',
         "approval_history": [],
         "revision": 1,
         "created_by": user.id,
@@ -340,7 +344,7 @@ async def validate_test_plan_record(plan_id, user):
 async def update_test_plan_record(plan_id, payload, user):
     
     plan = await get_test_plan_record(plan_id, user, "testplan.update")
-    if plan.get("status") != 'DRAFT':
+    if plan.get("status") not in ('DRAFT', 'READY'):
         raise HTTPException(status_code=409, detail={"code": 'TEST_PLAN_NOT_DRAFT'})
     changes = payload.model_dump(exclude_unset=True)
     changes.pop("expected_revision", None)
@@ -384,6 +388,8 @@ async def update_test_plan_record(plan_id, payload, user):
         elif field in plan:
             validation_data[field] = plan[field]
     TestPlanCreate.model_validate(validation_data)
+    if plan.get("status") == 'READY' and not plan_completeness({**plan, **changes})["ready_for_approval"]:
+        raise HTTPException(status_code=422, detail={"code": "TEST_PLAN_INCOMPLETE", "message": "Nhập mục tiêu, phạm vi kiểm thử và cách tiếp cận trước khi lưu kế hoạch."})
     changes = content_authorship_changes(plan, user, changes)
 
     async with await database.client.start_session() as session:
@@ -409,7 +415,7 @@ async def update_test_plan_record(plan_id, payload, user):
 async def submit_test_plan_record(plan_id, payload, user):
     
     plan = await get_test_plan_record(plan_id, user, "testplan.submit_review")
-    if plan.get("status") != 'DRAFT':
+    if plan.get("status") not in ('DRAFT', 'READY'):
         raise HTTPException(status_code=409, detail={"code": 'INVALID_STATE_TRANSITION'})
 
     async with await database.client.start_session() as session:
@@ -653,7 +659,7 @@ async def generate_test_plan_draft_suggestion(project_id, payload, user):
     requirement_ids = list(dict.fromkeys(payload.requirement_version_ids))
     if len(requirement_ids) != len(payload.requirement_version_ids):
         raise HTTPException(422, detail={"code": "DUPLICATE_REQUIREMENT_VERSION"})
-    allowed_statuses = ["BASELINED"]
+    allowed_statuses = ["READY", "BASELINED"]
     if getattr(user, "_ai_capability_intent", "") == "process_ingested_requirement_document":
         allowed_statuses.append("DRAFT")
     versions = await database.value.requirement_versions.find({

@@ -4,7 +4,7 @@ from fastapi import HTTPException
 
 from src.core.auth import CurrentUser
 from src.core.human_decisions import require_ai_publication_authority
-from src.core.human_decisions import require_independent_review
+from src.core.human_decisions import reject_self_approval
 from src.core.common import audit, get_project_entity, now
 from src.core.database import database
 from src.repositories.requirement import requirement_repository
@@ -27,6 +27,38 @@ class RequirementBaselineResult:
     @property
     def degraded_mode(self):
         return None if self.indexed else 'DEGRADED_VECTOR'
+
+async def save_requirement_ready(project_id, requirement_id, expected_revision, user):
+    requirement = await get_project_entity('requirements', requirement_id, user, 'requirement.update')
+    if requirement['project_id'] != project_id:
+        raise HTTPException(422, detail={'code': 'PROJECT_MISMATCH'})
+    version = await requirement_repository.find_version(requirement['current_version_id'], project_id)
+    if not version or version.get('status') != 'DRAFT':
+        raise HTTPException(409, detail={'code': 'INVALID_STATE_TRANSITION'})
+    if version.get('revision') != expected_revision:
+        raise HTTPException(409, detail={'code': 'REVISION_CONFLICT', 'current_revision': version.get('revision')})
+    from src.core.common import plain_text
+    criteria = await requirement_repository.list_acceptance_criteria(version['_id'], None)
+    missing = []
+    if not any(plain_text(item.get('content_doc', {})).strip() for item in criteria):
+        missing.append('acceptance_criteria')
+    if not any(str(item).strip() for item in version.get('business_rules', [])):
+        missing.append('business_rules')
+    if not str((version.get('details') or {}).get('design_reference') or '').strip():
+        missing.append('design_reference')
+    if missing:
+        raise HTTPException(422, detail={'code': 'REQUIREMENT_FIELDS_REQUIRED', 'fields': missing, 'message': 'Vui lòng nhập tiêu chí chấp nhận, quy tắc nghiệp vụ và liên kết thiết kế hoặc tài liệu.'})
+    timestamp = now()
+    async with await database.client.start_session() as session:
+        async with session.start_transaction():
+            updated = await requirement_repository.transition_version(version['_id'], project_id, expected_revision, 'DRAFT', 'READY', {'updated_at': timestamp}, session=session)
+            if not updated:
+                raise HTTPException(409, detail={'code': 'REVISION_CONFLICT'})
+            changed = await requirement_repository.set_requirement_status(requirement_id, project_id, version['_id'], 'READY', timestamp, session=session)
+            if not changed:
+                raise HTTPException(409, detail={'code': 'REQUIREMENT_STATUS_CONFLICT'})
+            await audit(user.id, 'requirement_saved', 'RequirementVersion', version['_id'], project_id, session=session)
+    return await requirement_repository.find_version(version['_id'], project_id)
 
 async def submit_requirement_for_review(
     project_id: str,
@@ -63,7 +95,7 @@ async def submit_requirement_for_review(
                 "current_revision": version["revision"],
             },
         )
-    if version["status"] != 'DRAFT':
+    if version["status"] not in ('DRAFT', 'READY'):
         raise HTTPException(
             status_code=409,
             detail={"code": 'INVALID_STATE_TRANSITION'},
@@ -83,7 +115,7 @@ async def submit_requirement_for_review(
                 version["_id"],
                 project_id,
                 expected_revision,
-                'DRAFT',
+                version["status"],
                 'IN_REVIEW',
                 {
                     "review_note": review_note,
@@ -156,7 +188,7 @@ async def return_requirement_for_changes(
             status_code=409,
             detail={"code": 'INVALID_STATE_TRANSITION'},
         )
-    await require_independent_review(version, user, "REQUIREMENT_SELF_REVIEW_FORBIDDEN")
+    reject_self_approval(version, user, "REQUIREMENT_SELF_REVIEW_FORBIDDEN")
     if version["revision"] != expected_revision:
         raise HTTPException(
             status_code=409,
@@ -299,7 +331,7 @@ async def technical_review_requirement(
     )
     if version.get("status") != "IN_REVIEW":
         raise HTTPException(409, detail={"code": "INVALID_STATE_TRANSITION"})
-    await require_independent_review(version, user, "REQUIREMENT_SELF_REVIEW_FORBIDDEN")
+    reject_self_approval(version, user, "REQUIREMENT_SELF_REVIEW_FORBIDDEN")
     if version.get("revision") != expected_revision:
         if (
             version.get("revision") == expected_revision + 1
@@ -356,7 +388,7 @@ async def baseline_requirement(
             status_code=409,
             detail={"code": 'INVALID_STATE_TRANSITION'},
         )
-    await require_independent_review(version, user, "REQUIREMENT_SELF_REVIEW_FORBIDDEN")
+    reject_self_approval(version, user, "REQUIREMENT_SELF_REVIEW_FORBIDDEN")
     if version["revision"] != expected_revision:
         raise HTTPException(
             status_code=409,
@@ -469,7 +501,7 @@ async def make_requirement_obsolete(
     )
     if (
         not current_version
-        or current_version.get("status") not in ['DRAFT', 'IN_REVIEW', 'BASELINED']
+        or current_version.get("status") not in ['DRAFT', 'READY', 'IN_REVIEW', 'BASELINED']
     ):
         raise HTTPException(
             status_code=409,
@@ -496,7 +528,7 @@ async def make_requirement_obsolete(
                 expected_current_version_id,
                 requirement["project_id"],
                 requirement_id,
-                ['DRAFT', 'IN_REVIEW', 'BASELINED'],
+                ['DRAFT', 'READY', 'IN_REVIEW', 'BASELINED'],
                 'OBSOLETE',
                 version_status,
                 reason,
@@ -567,8 +599,8 @@ async def restore_obsolete_requirement(
     )
     restored_version_status = version.get("status_before_obsolete") or restored_status
     if (
-        restored_status not in ['DRAFT', 'IN_REVIEW', 'BASELINED']
-        or restored_version_status not in ['DRAFT', 'IN_REVIEW', 'BASELINED']
+        restored_status not in ['DRAFT', 'READY', 'IN_REVIEW', 'BASELINED']
+        or restored_version_status not in ['DRAFT', 'READY', 'IN_REVIEW', 'BASELINED']
     ):
         raise HTTPException(
             status_code=409,

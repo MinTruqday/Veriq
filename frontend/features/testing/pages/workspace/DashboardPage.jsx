@@ -369,16 +369,6 @@ export default function DashboardPage({ project }) {
           {canReadAnalytics && (
             <Panel title="Cần xử lý">
               <ul className="divide-y divide-border px-5">
-                {can("impact.read") && dashboard?.changes_waiting_impact > 0 && (
-                  <li className="flex flex-wrap items-center justify-between gap-3 py-3 text-[13px]">
-                    <span>
-                      {dashboard.changes_waiting_impact} thay đổi yêu cầu cần rà soát ảnh hưởng
-                    </span>
-                    <Link className="font-medium text-brand" href={`${base}/thay-doi`}>
-                      Xem thay đổi
-                    </Link>
-                  </li>
-                )}
                 {can("testcase.read") && dashboard?.tests_needing_update > 0 && (
                   <li className="flex flex-wrap items-center justify-between gap-3 py-3 text-[13px]">
                     <span>{dashboard.tests_needing_update} ca kiểm thử cần cập nhật</span>
@@ -401,8 +391,7 @@ export default function DashboardPage({ project }) {
                     </Link>
                   </li>
                 )}
-                {(!can("impact.read") || !dashboard?.changes_waiting_impact) &&
-                  (!can("testcase.read") || !dashboard?.tests_needing_update) &&
+                {(!can("testcase.read") || !dashboard?.tests_needing_update) &&
                   (!can("defect.read") || !dashboard?.open_defects) && (
                     <li className="py-4 text-[13px] text-ink-muted">Không có mục cần xử lý</li>
                   )}
@@ -536,9 +525,6 @@ export default function DashboardPage({ project }) {
                 )}
                 {can("testrun.read") && dashboard && (
                   <Metric label="Lượt chạy kiểm thử chưa kết thúc" value={dashboard.current_runs} />
-                )}
-                {can("impact.read") && dashboard && (
-                  <Metric label="Thay đổi chờ rà soát" value={dashboard.changes_waiting_impact} />
                 )}
               </div>
             </details>

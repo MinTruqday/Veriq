@@ -37,6 +37,7 @@ class AcceptanceCriterionInput(BaseModel):
 
 
 class RequirementCreate(BaseModel):
+    save_as_draft: bool = True
     requirement_key: str | None = Field(default=None, max_length=80)
     title: str = Field(min_length=2, max_length=300)
     type: str = Field(min_length=1, max_length=100)

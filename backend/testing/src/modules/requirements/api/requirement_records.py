@@ -19,6 +19,7 @@ from src.modules.requirements.services.requirement_lifecycle import (
     reopen_requirement_for_editing,
     restore_obsolete_requirement,
     return_requirement_for_changes,
+    save_requirement_ready,
     submit_requirement_for_review,
     technical_review_requirement,
 )
@@ -156,6 +157,11 @@ async def list_requirement_versions(
 ):
     return envelope(await list_requirement_version_records(requirement_id, user))
 
+
+@router.post("/du-an/{project_id}/yeu-cau/{requirement_id}/luu")
+async def save_requirement(project_id: str, requirement_id: str, payload: RequirementBaselineInput, user: CurrentUser = Depends(get_current_user)):
+    version = await save_requirement_ready(project_id, requirement_id, payload.expected_revision, user)
+    return envelope(version, revision=version['revision'])
 
 @router.post("/du-an/{project_id}/yeu-cau/{requirement_id}/gui-ra-soat")
 async def submit_requirement_review(

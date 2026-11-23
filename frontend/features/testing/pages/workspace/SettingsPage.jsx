@@ -61,7 +61,6 @@ const toggleSettingGroups = [
 ];
 
 const numberSettings = [
-  ["impact_confidence_threshold", "Ngưỡng tin cậy phân tích ảnh hưởng", 0, 1, 0.01, null],
   ["testcase_duplicate_threshold", "Ngưỡng phát hiện ca kiểm thử trùng", 0, 1, 0.01, null],
   [
     "trace_recovery_minimum_confidence",
@@ -1247,39 +1246,9 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                   <>
                     <div className="min-w-0 rounded-lg border border-border bg-surface p-4">
                       <p className="text-2xl font-semibold text-ink">
-                        {formatAnalyticsValue(analytics?.impact_analysis_count)}
-                      </p>
-                      <p className="mt-2 text-sm text-ink-muted">Phân tích ảnh hưởng</p>
-                    </div>
-                    <div className="min-w-0 rounded-lg border border-border bg-surface p-4">
-                      <p className="text-2xl font-semibold text-ink">
                         {formatAnalyticsValue(analytics?.tests_stale)}
                       </p>
                       <p className="mt-2 text-sm text-ink-muted">Ca kiểm thử cũ</p>
-                    </div>
-                  </>
-                )}
-                {can("analytics.ai.read") && (
-                  <>
-                    <div className="min-w-0 rounded-lg border border-border bg-surface p-4">
-                      <p className="text-2xl font-semibold text-ink">
-                        {formatAnalyticsValue(analytics?.degraded_count)}
-                      </p>
-                      <p className="mt-2 text-sm text-ink-muted">
-                        Lượt phân tích ảnh hưởng bị suy giảm hoặc không thành công
-                      </p>
-                    </div>
-                    <div className="min-w-0 rounded-lg border border-border bg-surface p-4">
-                      <p className="text-2xl font-semibold text-ink">
-                        {formatAnalyticsValue(
-                          analytics?.average_latency_ms,
-                          "ms",
-                          analytics?.impact_analysis_count,
-                        )}
-                      </p>
-                      <p className="mt-2 text-sm text-ink-muted">
-                        Thời gian phản hồi trung bình của phân tích ảnh hưởng
-                      </p>
                     </div>
                   </>
                 )}

@@ -18,7 +18,6 @@ const workspaceLoading = () => (
     <LoadingState />
   </div>
 );
-const ChangesPage = dynamic(() => import("./workspace/ChangesPage"), { loading: workspaceLoading });
 const DashboardPage = dynamic(() => import("./workspace/DashboardPage"), {
   loading: workspaceLoading,
 });
@@ -71,7 +70,6 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
     [PROJECT_SECTION_SLUGS.testData]: "test-design",
     [PROJECT_SECTION_SLUGS.testSets]: "test-design",
     [PROJECT_SECTION_SLUGS.traceability]: "traceability",
-    [PROJECT_SECTION_SLUGS.changes]: "changes",
     [PROJECT_SECTION_SLUGS.execution]: "execution",
     [PROJECT_SECTION_SLUGS.testPlans]: "execution",
     [PROJECT_SECTION_SLUGS.testRuns]: "execution",
@@ -86,9 +84,11 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
     [PROJECT_SECTION_SLUGS.documentReader]: "document-reader",
   };
   const legacyRedirectTarget =
-    section[0] === PROJECT_SECTION_SLUGS.testDesign
-      ? projectRoute(projectId, PROJECT_SECTION_SLUGS.testCases)
-      : "";
+    section[0] === PROJECT_SECTION_SLUGS.changes
+      ? projectRoute(projectId, PROJECT_SECTION_SLUGS.requirements)
+      : section[0] === PROJECT_SECTION_SLUGS.testDesign
+        ? projectRoute(projectId, PROJECT_SECTION_SLUGS.testCases)
+        : "";
   const area = section[0] ? areaBySlug[section[0]] : "dashboard";
   const caseSubsectionItem =
     section[0] === PROJECT_SECTION_SLUGS.testCases &&
@@ -111,7 +111,6 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
     requirements: "requirement.read",
     "test-design": "testcase.read",
     traceability: "trace.read",
-    changes: null,
     "ai-review": null,
     execution: "testrun.read",
     defects: "defect.read",
@@ -232,7 +231,6 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
     requirements: <RequirementsPage {...props} />,
     "test-design": <TestDesignPage {...props} />,
     traceability: <TraceabilityPage {...props} />,
-    changes: <ChangesPage {...props} />,
     "ai-review": <ReviewQueuePage {...props} />,
     execution: <ExecutionPage {...props} />,
     defects: <DefectsPage {...props} />,

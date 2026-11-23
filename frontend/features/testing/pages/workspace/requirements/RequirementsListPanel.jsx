@@ -207,7 +207,12 @@ export default function RequirementsListPanel({
                 key: "status",
                 label: "Trạng thái",
                 minWidth: 140,
-                render: (item) => <StatusPill value={item.status} wrap />,
+                render: (item) =>
+                  item.status === "READY" ? (
+                    "Đã lưu, chưa duyệt"
+                  ) : (
+                    <StatusPill value={item.status} wrap />
+                  ),
               },
             ]}
           />

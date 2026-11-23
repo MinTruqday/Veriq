@@ -3,30 +3,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from src.core.auth import CurrentUser, get_current_user
 from src.core.common import envelope, get_project_entity
 from src.schemas.contracts.design import (
-    ChangeSetReviewInput,
-    ImpactRerunInput,
-    ImpactReviewInput,
     ProposalAction,
     ProposalRegenerateInput,
     RegressionApprovalInput,
 )
-from src.schemas.contracts.requirements import RequirementCompareInput
-from src.modules.quality.services.change_set import (
-    create_change_set_record,
-    get_change_set_record,
-    list_change_set_records,
-    review_change_set_record,
-)
-from src.modules.quality.services.impact_analysis import (
-    add_impact_review_perspective_record,
-    create_impact_analysis_record,
-    get_change_set_impact_record,
-    get_impact_analysis_record,
-    rerun_impact_analysis_record,
-    review_impact_analysis_record,
-)
 from src.modules.quality.services.maintenance_proposal import (
-    create_maintenance_proposal_records,
     get_maintenance_proposal_record,
     list_maintenance_proposal_records,
     regenerate_maintenance_proposal_record,
@@ -43,98 +24,6 @@ from src.modules.quality.services.regression_recommendation import (
 )
 
 router = APIRouter(prefix="/kiem-thu", tags=["Bảo trì thay đổi kiểm thử"])
-
-
-@router.post("/yeu-cau/{requirement_id}/bo-thay-doi", status_code=201)
-async def create_change_set(
-    requirement_id: str,
-    payload: RequirementCompareInput,
-    user: CurrentUser = Depends(get_current_user),
-):
-    return envelope(await create_change_set_record(requirement_id, payload, user))
-
-
-@router.get("/du-an/{project_id}/bo-thay-doi")
-async def list_change_sets(
-    project_id: str,
-    requirement_id: str = Query(default="", max_length=200),
-    status: str = Query(default="", max_length=30),
-    sort: str = Query(default="-created_at", max_length=80),
-    limit: int = Query(default=100, ge=1, le=500),
-    user: CurrentUser = Depends(get_current_user),
-):
-    return envelope(
-        await list_change_set_records(
-            project_id,
-            user,
-            requirement_id=requirement_id,
-            status=status,
-            sort=sort,
-            limit=limit,
-        )
-    )
-
-
-@router.get("/bo-thay-doi/{change_set_id}")
-async def get_change_set(change_set_id: str, user: CurrentUser = Depends(get_current_user)):
-    return envelope(await get_change_set_record(change_set_id, user))
-
-
-@router.post("/bo-thay-doi/{change_set_id}/ra-soat")
-async def review_change_set(
-    change_set_id: str, payload: ChangeSetReviewInput, user: CurrentUser = Depends(get_current_user)
-):
-    updated = await review_change_set_record(change_set_id, payload, user)
-    return envelope(updated, revision=updated["revision"])
-
-
-@router.post("/bo-thay-doi/{change_set_id}/phan-tich-anh-huong", status_code=201)
-@router.post("/du-an/{project_id}/bo-thay-doi/{change_set_id}/phan-tich-anh-huong", status_code=201)
-async def analyze_impact(
-    change_set_id: str, project_id: str | None = None, user: CurrentUser = Depends(get_current_user)
-):
-    return envelope(await create_impact_analysis_record(change_set_id, project_id, user))
-
-
-@router.get("/bo-thay-doi/{change_set_id}/phan-tich-anh-huong")
-async def get_change_set_impact_analysis(
-    change_set_id: str, user: CurrentUser = Depends(get_current_user)
-):
-    return envelope(await get_change_set_impact_record(change_set_id, user))
-
-
-@router.get("/phan-tich-anh-huong/{analysis_id}")
-async def get_impact_analysis(analysis_id: str, user: CurrentUser = Depends(get_current_user)):
-    return envelope(await get_impact_analysis_record(analysis_id, user))
-
-
-@router.post("/phan-tich-anh-huong/{analysis_id}/chay-lai", status_code=201)
-async def rerun_impact_analysis(
-    analysis_id: str, payload: ImpactRerunInput, user: CurrentUser = Depends(get_current_user)
-):
-    return envelope(await rerun_impact_analysis_record(analysis_id, payload, user))
-
-
-@router.post("/phan-tich-anh-huong/{analysis_id}/ra-soat")
-async def review_impact_analysis(
-    analysis_id: str, payload: ImpactReviewInput, user: CurrentUser = Depends(get_current_user)
-):
-    analysis = await review_impact_analysis_record(analysis_id, payload, user)
-    return envelope(analysis, revision=analysis["revision"])
-
-
-@router.post("/phan-tich-anh-huong/{analysis_id}/goc-nhin", status_code=201)
-async def add_impact_review_perspective(
-    analysis_id: str, payload: dict, user: CurrentUser = Depends(get_current_user)
-):
-    return envelope(await add_impact_review_perspective_record(analysis_id, payload, user))
-
-
-@router.post("/phan-tich-anh-huong/{analysis_id}/de-xuat-bao-tri", status_code=201)
-async def create_maintenance_proposals(
-    analysis_id: str, user: CurrentUser = Depends(get_current_user)
-):
-    return envelope(await create_maintenance_proposal_records(analysis_id, user))
 
 
 @router.get("/du-an/{project_id}/de-xuat-bao-tri")

@@ -253,6 +253,7 @@ export default function TestPlanEditor({
           };
           if (!initialValue) {
             payload.project_id = projectId;
+            payload.save_as_draft = event.nativeEvent.submitter?.value === "draft";
           }
           savingRef.current = true;
           setSaving(true);

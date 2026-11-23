@@ -59,7 +59,7 @@ async def artifact_context(project_id, artifact_type, artifact_id, user, edit=Fa
     )
     if draft["project_id"] != project_id:
         raise HTTPException(status_code=422, detail={"code": 'PROJECT_MISMATCH'})
-    if edit and draft.get("status") != 'DRAFT':
+    if edit and draft.get("status") not in ('DRAFT', 'READY'):
         raise HTTPException(
             status_code=409, detail={"code": 'IMMUTABLE_TEST_CASE_DRAFT'}
         )

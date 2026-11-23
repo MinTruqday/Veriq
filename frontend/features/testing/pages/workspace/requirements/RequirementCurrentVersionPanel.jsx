@@ -16,6 +16,7 @@ const progressLabels = {
 export default function RequirementCurrentVersionPanel({
   projectId,
   current,
+  currentUserId,
   selected,
   focusAcceptanceCriterionId,
   draft,
@@ -30,7 +31,13 @@ export default function RequirementCurrentVersionPanel({
   ask,
   reload,
   onDraftChange,
+  onError,
 }) {
+  const isAuthor = Boolean(
+    currentUserId &&
+      (current.created_by === currentUserId ||
+        (current.content_author_ids || []).includes(currentUserId)),
+  );
   useEffect(() => {
     if (!focusAcceptanceCriterionId || !current?._id) return;
     document
@@ -73,7 +80,7 @@ export default function RequirementCurrentVersionPanel({
       title="Phiên bản hiện tại"
       actions={
         <div className="flex flex-wrap gap-2">
-          {current.status === "BASELINED" && can("testplan.create") && (
+          {["READY", "BASELINED"].includes(current.status) && can("testplan.create") && (
             <Link
               className="secondary-button"
               href={`/du-an/${projectId}/ke-hoach-kiem-thu?requirementVersionId=${encodeURIComponent(current._id)}`}
@@ -92,7 +99,13 @@ export default function RequirementCurrentVersionPanel({
               {checkingWithAi ? "Đang kiểm tra…" : "Kiểm tra AI"}
             </button>
           )}
+          {current.status === "READY" && can("requirement.submit_review") && (
+            <button className="secondary-button" type="button" onClick={submitReview}>
+              Gửi rà soát
+            </button>
+          )}
           {current.status === "IN_REVIEW" &&
+            !isAuthor &&
             can("requirement.review") &&
             current.technical_review_revision !== current.revision && (
               <button
@@ -130,7 +143,7 @@ export default function RequirementCurrentVersionPanel({
                 Ghi nhận rà soát
               </button>
             )}
-          {current.status === "IN_REVIEW" && can("requirement.review") && (
+          {current.status === "IN_REVIEW" && !isAuthor && can("requirement.review") && (
             <button
               className="secondary-button"
               type="button"
@@ -210,7 +223,7 @@ export default function RequirementCurrentVersionPanel({
               Mở lại để chỉnh sửa
             </button>
           )}
-          {current.status === "IN_REVIEW" && can("requirement.approve") && (
+          {current.status === "IN_REVIEW" && !isAuthor && can("requirement.approve") && (
             <button
               className="apple-button"
               type="button"
@@ -245,7 +258,7 @@ export default function RequirementCurrentVersionPanel({
               Rà soát và chấp nhận
             </button>
           )}
-          {current.status === "BASELINED" && can("requirement.version.create") && (
+          {["BASELINED", "READY"].includes(current.status) && can("requirement.version.create") && (
             <button className="secondary-button" type="button" onClick={onCreateVersion}>
               Tạo bản nháp để chỉnh sửa
             </button>
@@ -368,45 +381,34 @@ export default function RequirementCurrentVersionPanel({
         <div>
           <p className="field-label">Trạng thái</p>
           <div className="mt-2">
-            <StatusPill value={current.status} />
+            {current.status === "READY" ? (
+              <span className="text-sm">Đã lưu, chưa duyệt</span>
+            ) : (
+              <StatusPill value={current.status} />
+            )}
           </div>
-          {current.status === "IN_REVIEW" &&
-            current.technical_review_revision === current.revision && (
-              <p className="mt-2 text-sm text-ink-muted">Đã ghi nhận rà soát cho phiên bản này</p>
-            )}
-          {current.status === "IN_REVIEW" && (
-            <p className="mt-2 max-w-prose text-sm text-ink-muted">
-              Requirement đang chờ rà soát. Cảnh báo nhẹ có thể chấp nhận; lỗi bắt buộc cần được sửa
-              trong nội dung trước khi chấp nhận.
-            </p>
-          )}
-          {current.status === "DRAFT" &&
-            current.changes_requested_by &&
-            can("requirement.update") && (
-              <p className="mt-2 max-w-prose text-sm text-ink-muted">
-                Có yêu cầu chỉnh sửa. Hãy cập nhật bản nháp bên dưới rồi gửi rà soát lại.
-              </p>
-            )}
         </div>
         <div>
           <p className="field-label">Phiên bản</p>
           <p className="mt-2 font-semibold">v{current.version}</p>
         </div>
-        <details className="rounded-control border border-border p-3 md:col-span-3">
-          <summary className="cursor-pointer text-sm font-medium">Tùy chọn</summary>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <div>
-              <p className="field-label">Ưu tiên</p>
-              <p className="mt-1 font-semibold">{valueLabel(current.priority || "unassessed")}</p>
+        {!(current.status === "DRAFT" && draft && can("requirement.update")) && (
+          <details className="rounded-control border border-border p-3 md:col-span-3">
+            <summary className="cursor-pointer text-sm font-medium">Tùy chọn</summary>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div>
+                <p className="field-label">Ưu tiên</p>
+                <p className="mt-1 font-semibold">{valueLabel(current.priority || "unassessed")}</p>
+              </div>
+              <div>
+                <p className="field-label">Trạng thái theo dõi</p>
+                <p className="mt-1 font-semibold">
+                  {progressLabels[current.details?.progress_status] || "Chưa chọn"}
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="field-label">Trạng thái theo dõi</p>
-              <p className="mt-1 font-semibold">
-                {progressLabels[current.details?.progress_status] || "Chưa chọn"}
-              </p>
-            </div>
-          </div>
-        </details>
+          </details>
+        )}
         {current.status === "DRAFT" && draft && can("requirement.update") ? (
           <div className="space-y-4 md:col-span-3">
             <label className="grid gap-2 text-sm font-medium text-ink">
@@ -529,6 +531,23 @@ export default function RequirementCurrentVersionPanel({
             <div className="flex flex-wrap items-center gap-3">
               <button className="secondary-button" type="button" onClick={saveDraft}>
                 Lưu bản nháp
+              </button>
+              <button
+                className="apple-button"
+                type="button"
+                onClick={async () => {
+                  try {
+                    const saved = await saveDraft();
+                    await testingApi.saveRequirement(projectId, selected._id, {
+                      expected_revision: (saved?.current_version || current).revision,
+                    });
+                    await reload();
+                  } catch (reason) {
+                    onError(messageOf(reason));
+                  }
+                }}
+              >
+                Lưu yêu cầu
               </button>
               {current.status === "DRAFT" && can("requirement.submit_review") && (
                 <button className="apple-button" type="button" onClick={submitReview}>

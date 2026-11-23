@@ -84,7 +84,7 @@ async def submit_test_case_review_record(project_id, draft_id, payload, user):
         raise HTTPException(status_code=422, detail={"code": 'PROJECT_MISMATCH'})
     if draft["status"] == 'IN_REVIEW':
         return draft
-    if draft["status"] != 'DRAFT':
+    if draft["status"] not in ('DRAFT', 'READY'):
         raise HTTPException(status_code=409, detail={"code": 'INVALID_STATE_TRANSITION'})
     if draft["revision"] != payload.expected_revision:
         raise HTTPException(
@@ -114,7 +114,7 @@ async def submit_test_case_review_record(project_id, draft_id, payload, user):
         draft_id,
         project_id,
         payload.expected_revision,
-        'DRAFT',
+        draft["status"],
         'IN_REVIEW',
         {
             "review_note": payload.review_note,
@@ -489,6 +489,8 @@ def build_test_case_version(draft, test_case_id, version_number, parent_version_
         "test_case_key": draft["test_case_key"],
         "version": version_number,
         "title": draft["title"],
+        "module_name": draft.get("module_name", ""),
+        "flow_type": draft.get("flow_type", ""),
         "type": draft["type"],
         "test_level": draft.get("test_level"),
         "test_kind": draft.get("test_kind"),

@@ -238,7 +238,9 @@ async def preview_test_import(
         try:
             draft = TestCaseDraftCreate(
                 title=title,
-                type=row.get("type") or "custom",
+                module_name=str(row.get("module_name") or "").strip(),
+                flow_type=str(row.get("flow_type") or "").strip(),
+                type=row.get("type") or "",
                 priority=row.get("priority") or "unassessed",
                 risk=row.get("risk") or "unassessed",
                 duration_minutes=str(row.get("duration_minutes") or "").strip() or None,
@@ -568,6 +570,8 @@ async def export_test_cases(
         "test_case_key": item.get("test_case_key"),
         "version": item.get("version"),
         "title": item.get("title"),
+        "module_name": item.get("module_name", ""),
+        "flow_type": item.get("flow_type", ""),
         "type": item.get("type"),
         "priority": item.get("priority"),
         "risk": item.get("risk"),
@@ -601,7 +605,7 @@ async def export_test_cases(
         "plain_text_projection": item.get("plain_text_projection"),
     } for item in versions]
     fields = [
-        "project_id", "test_case_key", "version", "title", "type", "priority", "risk", "duration_minutes",
+        "project_id", "test_case_key", "version", "title", "module_name", "flow_type", "type", "priority", "risk", "duration_minutes",
         "automation_status", "status", "objective", "preconditions", "steps_json",
         "test_data_json", "expected_result", "postconditions", "alternate_flows", "exception_flows", "tags", "owner_id",
         "techniques", "data_set_version_ids", "requirement_version_ids",

@@ -112,9 +112,9 @@ class BddStep(BaseModel):
 
 
 class BddScenario(BaseModel):
-    feature: str = Field(min_length=2, max_length=300)
-    scenario: str = Field(min_length=2, max_length=300)
-    steps: list[BddStep] = Field(min_length=1, max_length=200)
+    feature: str = Field(default="", max_length=300)
+    scenario: str = Field(default="", max_length=300)
+    steps: list[BddStep] = Field(default_factory=list, max_length=200)
 
     @model_validator(mode="after")
     def unique_step_ids(self):
@@ -144,9 +144,12 @@ class TestImportConfirm(BaseModel):
 
 
 class TestCaseDraftCreate(BaseModel):
+    save_as_draft: bool = True
     test_case_key: str | None = Field(default=None, max_length=80)
     title: str = Field(min_length=2, max_length=300)
-    type: TestCaseType = Field(min_length=1, max_length=100)
+    type: str = Field(default="", max_length=100)
+    module_name: str = Field(default="", max_length=300)
+    flow_type: Literal["", "MAIN", "ALTERNATIVE", "EXCEPTION"] = ""
     test_level: str | None = Field(default=None, max_length=100)
     test_kind: str | None = Field(default=None, max_length=100)
     priority: str = Field(default="unassessed", min_length=1, max_length=100)
@@ -186,8 +189,6 @@ class TestCaseDraftCreate(BaseModel):
     @classmethod
     def normalize_type(cls, value):
         normalized = value.strip()
-        if not normalized:
-            raise ValueError("Test case type must not be empty")
         return normalized
 
     @field_validator("priority", "risk")
@@ -237,6 +238,8 @@ class TestCaseDraftBatchComparisonInput(BaseModel):
 class TestCaseDraftPatch(BaseModel):
     expected_revision: int = Field(ge=1)
     title: str | None = Field(default=None, min_length=2, max_length=300)
+    module_name: str | None = Field(default=None, max_length=300)
+    flow_type: Literal["", "MAIN", "ALTERNATIVE", "EXCEPTION"] | None = None
     type: TestCaseType | None = None
     test_level: str | None = Field(default=None, max_length=100)
     test_kind: str | None = Field(default=None, max_length=100)
@@ -271,8 +274,6 @@ class TestCaseDraftPatch(BaseModel):
         if value is None:
             return value
         normalized = value.strip()
-        if not normalized:
-            raise ValueError("Test case type must not be empty")
         return normalized
 
     @field_validator("priority", "risk")

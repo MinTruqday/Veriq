@@ -2,15 +2,7 @@ import DocumentEditor from "../../../editor/DocumentEditor";
 import { ErrorState } from "../../../components/WorkspacePrimitives";
 import RequirementLines from "./RequirementLines";
 
-export default function RequirementCreateModal({
-  onClose,
-  error,
-  form,
-  setForm,
-  customFields,
-  saving,
-  onSubmit,
-}) {
+export default function RequirementCreateModal({ error, form, setForm, customFields, onSubmit }) {
   const updateForm = (patch) => setForm((value) => ({ ...value, ...patch }));
 
   return (
@@ -20,7 +12,7 @@ export default function RequirementCreateModal({
           <ErrorState message={error} />
         </div>
       )}
-      <form className="space-y-4 p-5" onSubmit={onSubmit}>
+      <form id="requirement-create-form" className="space-y-4 p-5" onSubmit={onSubmit}>
         <label className="field-label">
           Tên
           <input
@@ -156,14 +148,6 @@ export default function RequirementCreateModal({
               )}
             </label>
           ))}
-        <div className="action-dialog-footer flex justify-end gap-3">
-          <button className="secondary-button" type="button" disabled={saving} onClick={onClose}>
-            Hủy
-          </button>
-          <button className="apple-button" type="submit" disabled={saving}>
-            {saving ? "Đang lưu" : "Lưu yêu cầu"}
-          </button>
-        </div>
       </form>
     </div>
   );
