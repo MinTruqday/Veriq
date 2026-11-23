@@ -149,7 +149,7 @@ class ProjectService:
     @staticmethod
     async def validate_owner(user_id):
         account = (await load_accounts([user_id])).get(user_id, {})
-        if account.get("is_active") is not True or account.get("system_role") != "USER":
+        if account.get("is_active") is not True or account.get("system_role") not in {"USER", "ADMIN"}:
             raise HTTPException(422, detail={"code": "PROJECT_OWNER_INELIGIBLE"})
 
     @staticmethod
@@ -173,8 +173,8 @@ class ProjectService:
             )
         timestamp = now()
         _validate_project_dates(payload.planned_start_at, payload.planned_end_at)
-        owner_id = payload.project_owner_user_id if user.is_system_admin else user.id
-        if not owner_id or (not user.is_system_admin and payload.project_owner_user_id not in {None, user.id}):
+        owner_id = payload.project_owner_user_id if user.is_system_admin and payload.project_owner_user_id else user.id
+        if not user.is_system_admin and payload.project_owner_user_id not in {None, user.id}:
             raise HTTPException(422, detail={"code": "PROJECT_OWNER_REQUIRED"})
         if user.is_system_admin:
             owner_id = await resolve_account(owner_id)

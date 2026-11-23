@@ -4,6 +4,7 @@ import {
   BrainCircuit,
   Bug,
   BarChart3,
+  ClipboardCheck,
   FileCheck2,
   FolderKanban,
   GitCompareArrows,

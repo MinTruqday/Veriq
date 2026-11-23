@@ -562,7 +562,8 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                       {members
                         .filter(
                           (member) =>
-                            member.status === "ACTIVE" && member.user?.system_role === "USER",
+                            member.status === "ACTIVE" &&
+                            ["USER", "ADMIN"].includes(member.user?.system_role),
                         )
                         .map((member) => (
                           <option key={member.user_id} value={member.user_id}>

@@ -240,14 +240,12 @@ export default function AppShell({ children, requireAuth }) {
       projectContextRequest.current += 1;
       setProjectPermissions(null);
       setPermissionsProjectId(null);
-      setPlanningMethod(null);
       setProjectContext(null);
       setProjectContextError("");
       return;
     }
     setProjectPermissions(null);
     setPermissionsProjectId(null);
-    setPlanningMethod(null);
     setProjectContext(null);
     void refreshProjectContext(projectId);
     return () => {

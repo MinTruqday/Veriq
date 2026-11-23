@@ -314,12 +314,11 @@ export default function ProjectsPage() {
               Chủ dự án
               <input
                 className="apple-input mt-2"
-                required
                 value={form.project_owner_user_id || ""}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, project_owner_user_id: event.target.value }))
                 }
-                placeholder="Mã tài khoản hoặc email"
+                placeholder="Để trống để tạm giao cho bạn"
               />
             </label>
           )}

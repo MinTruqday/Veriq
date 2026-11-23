@@ -216,8 +216,13 @@ def project_membership_permissions(project, membership, user_is_admin=False):
     if not membership or membership.get("status") != "ACTIVE":
         return set()
     if user_is_admin:
-        return {permission for permission in project_permissions() if not requires_project_approval(permission)}
-    permissions = permissions_for_membership(membership, project.get("settings"))
+        permissions = {
+            permission
+            for permission in project_permissions()
+            if not requires_project_approval(permission)
+        }
+    else:
+        permissions = permissions_for_membership(membership, project.get("settings"))
     if membership.get("user_id") == project.get("project_owner_user_id"):
         permissions.update(project_permissions())
     return permissions
