@@ -90,6 +90,17 @@ class NewTestCandidateOutput(BaseModel):
 
 ImpactClassificationSuggestionOutput.model_rebuild()
 
+class PlanImpactOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    plan_id: str = Field(min_length=1, max_length=128)
+    classification: Literal["POTENTIALLY_AFFECTED", "STILL_VALID", "INSUFFICIENT_EVIDENCE"]
+    reason: str = Field(min_length=2, max_length=5000)
+    suggestion: str = Field(default="", max_length=5000)
+    requirement_before_quote: str | None = Field(default=None, max_length=1000)
+    requirement_after_quote: str | None = Field(default=None, max_length=1000)
+    plan_quote: str | None = Field(default=None, max_length=1000)
+
+
 class ImpactClassificationOutput(BaseModel):
     """Structured Test Case impact classifications and maintenance candidates."""
     model_config = ConfigDict(extra="forbid")
@@ -97,6 +108,7 @@ class ImpactClassificationOutput(BaseModel):
     capability: Literal["impact_analysis"]
     suggestions: List[ImpactClassificationSuggestionOutput] = Field(default_factory=list, max_length=100)
     new_test_candidates: List[NewTestCandidateOutput] = Field(default_factory=list, max_length=100)
+    plan_suggestions: List[PlanImpactOutput] = Field(default_factory=list, max_length=100)
     evidence_refs: List[str] = Field(min_length=1, max_length=200)
     confidence: float = Field(ge=0, le=1)
     warnings: List[str] = Field(default_factory=list, max_length=20)

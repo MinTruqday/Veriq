@@ -1,6 +1,7 @@
 """Durable, read-only impact analysis for approved requirement revisions."""
 import asyncio
 import logging
+import json
 from datetime import timedelta
 from uuid import uuid4
 
@@ -96,7 +97,7 @@ async def _analyze(job):
     current = {case["current_version_id"]: case for case in owners if case.get("status") in ("ACTIVE", "NEEDS_UPDATE")}
     versions = [version for version in versions if version["_id"] in current]
     case_ids = [version["_id"] for version in versions]
-    plans = await database.value.test_plans.find({"project_id": project_id, "$or": [{"requirement_version_ids": old["_id"]}, {"test_case_version_ids": {"$in": case_ids}}, {"test_suite_snapshots.test_case_version_ids": {"$in": case_ids}}]}, {"name": 1, "status": 1}).to_list(10001)
+    plans = await database.value.test_plans.find({"project_id": project_id, "$or": [{"requirement_version_ids": old["_id"]}, {"test_case_version_ids": {"$in": case_ids}}, {"test_suite_snapshots.test_case_version_ids": {"$in": case_ids}}]}).to_list(10001)
     if len(plans) > 10000:
         raise ValueError("IMPACT_SOURCE_LIMIT_EXCEEDED")
     runs = await database.value.test_runs.find({"project_id": project_id, "$or": [{"test_case_version_ids": {"$in": case_ids}}, {"test_plan_id": {"$in": [p["_id"] for p in plans]}}]}, {"name": 1, "status": 1}).to_list(10001)
@@ -105,6 +106,38 @@ async def _analyze(job):
     before_text = "\n".join(item["before"] for item in comparison["changes"] if item["before"])
     after_text = "\n".join(item["after"] for item in comparison["changes"] if item["after"])
     results, limitations, new_candidates = [], [], []
+    plan_results = []
+    account = (await load_accounts([job["requested_by"]])).get(job["requested_by"], {})
+    requester = CurrentUser(_id=job["requested_by"], email="", system_role=SystemRole(account.get("system_role", "USER")))
+    try:
+        await get_project(project_id, requester, "testplan.read")
+        can_read_plans = True
+    except HTTPException as error:
+        if error.status_code != 403:
+            raise
+        can_read_plans = False
+    fields = ("objective", "scope_in", "scope_out", "test_types", "test_techniques", "test_level", "test_approach", "environment", "environment_notes", "test_data_notes", "entry_criteria", "exit_criteria", "schedule", "estimation", "risk_register")
+    if can_read_plans:
+        for plan in plans:
+            content = json.dumps({key: plan[key] for key in fields if plan.get(key)}, ensure_ascii=False, sort_keys=True, default=str)
+            suggestion = {}
+            if content != "{}" and len(content) <= 4000 and max(len(before_text), len(after_text)) <= 4000:
+                evidence = []
+                for kind, version, value in (("requirement_before", old, before_text), ("requirement_after", new, after_text)):
+                    if value:
+                        evidence.append({"artifact_type": kind, "artifact_id": version["_id"], "artifact_version_id": version["_id"], "text": value})
+                evidence.append({"artifact_type": "test_plan", "artifact_id": plan["_id"], "artifact_version_id": plan["_id"], "text": content})
+                ai = await request_ai_capability("impact_analysis", project_id, "Analyze the supplied Test Plan against the Requirement change. Return a plan_suggestion with exact source quotations; do not assess Test Cases or invent information.", evidence, output_language=output_language)
+                if ai.get("status") == "SUCCESS" and not ai.get("degraded_mode"):
+                    suggestion = next((item for item in ai.get("plan_suggestions", []) if item.get("plan_id") == plan["_id"]), {})
+                else:
+                    limitations.append("AI_UNAVAILABLE")
+            def valid_quote(field, source):
+                quote = suggestion.get(field)
+                return (not source and not quote) or (isinstance(quote, str) and len(quote.strip()) >= 2 and quote in source)
+            if not (suggestion.get("classification") in {"STILL_VALID", "POTENTIALLY_AFFECTED", "INSUFFICIENT_EVIDENCE"} and valid_quote("requirement_before_quote", before_text) and valid_quote("requirement_after_quote", after_text) and valid_quote("plan_quote", content)):
+                suggestion = {}
+            plan_results.append({"_id": plan["_id"], "name": plan.get("name"), "status": plan.get("status"), "revision": plan.get("revision"), "classification": suggestion.get("classification", "INSUFFICIENT_EVIDENCE"), "reason": suggestion.get("reason", "Chưa đủ căn cứ để phân tích tự động."), "suggestion": suggestion.get("suggestion", ""), "evidence": {key: suggestion.get(key) for key in ("requirement_before_quote", "requirement_after_quote", "plan_quote")}})
     if not versions:
         limitations.append("NO_LINKED_CASES")
     if len(before_text) > 4000 or len(after_text) > 4000:
@@ -188,7 +221,11 @@ async def _analyze(job):
     latest_versions = {case.get("current_version_id") for case in latest_cases if case.get("status") in ("ACTIVE", "NEEDS_UPDATE")}
     if set(case_ids) != latest_versions:
         return {"status": "STALE", "comparison": comparison, "cases": [], "limitations": ["TEST_CASE_CHANGED"]}
-    return {"status": "PARTIAL" if limitations or any(c["classification"] == "INSUFFICIENT_EVIDENCE" for c in results) else "COMPLETED", "comparison": comparison, "cases": results, "new_candidates": new_candidates, "plans": plans, "runs": runs, "limitations": list(set(limitations))}
+    if can_read_plans:
+        latest_plans = await database.value.test_plans.find({"project_id": project_id, "_id": {"$in": [p["_id"] for p in plans]}}, {"revision": 1}).to_list(10001)
+        if {p["_id"]: p.get("revision") for p in latest_plans} != {p["_id"]: p.get("revision") for p in plans}:
+            return {"status": "STALE", "comparison": comparison, "cases": [], "limitations": ["TEST_PLAN_CHANGED"]}
+    return {"status": "PARTIAL" if limitations or any(c["classification"] == "INSUFFICIENT_EVIDENCE" for c in results + plan_results) else "COMPLETED", "comparison": comparison, "cases": results, "new_candidates": new_candidates, "plans": plan_results, "runs": runs, "limitations": list(set(limitations))}
 
 
 async def process_next_requirement_impact():

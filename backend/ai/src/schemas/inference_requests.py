@@ -116,6 +116,7 @@ class TestingCapabilityResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     capability: str = Field(description="Executed testing capability")
+    plan_suggestions: List[dict[str, Any]] = Field(default_factory=list, max_length=100)
     suggestions: List[dict[str, Any]] = Field(
         default_factory=list,
         max_length=100,

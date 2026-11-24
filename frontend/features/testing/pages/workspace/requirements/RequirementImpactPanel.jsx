@@ -89,7 +89,7 @@ export default function RequirementImpactPanel({ version, project }) {
         {impact?.status === "FAILED" && (
           <p>Chưa thể phân tích tự động. Mã lỗi: {impact.error_code}</p>
         )}
-        {impact?.status === "STALE" && <p>Yêu cầu đã thay đổi sau khi bắt đầu phân tích.</p>}
+        {impact?.status === "STALE" && <p>Dữ liệu đã thay đổi sau khi bắt đầu phân tích.</p>}
         {["FAILED", "PARTIAL", "STALE"].includes(impact?.status) &&
           project.current_permissions?.includes("ai.run_impact") && (
             <button type="button" className="secondary-button" disabled={retrying} onClick={retry}>
@@ -227,7 +227,25 @@ export default function RequirementImpactPanel({ version, project }) {
               </details>
             )}
             {impact.plans?.length > 0 && (
-              <p>Kế hoạch liên quan: {impact.plans.map((p) => p.name).join(", ")}</p>
+              <section className="space-y-3">
+                <p className="font-medium">Kế hoạch kiểm thử liên quan ({impact.plans.length})</p>
+                {impact.plans.map((plan) => (
+                  <div key={plan._id} className="rounded-control border border-border p-3">
+                    <p className="font-medium">{plan.name}</p>
+                    <p className="mt-1">{labels[plan.classification] || "Chưa có đánh giá"}</p>
+                    {plan.reason && <p className="mt-1 whitespace-pre-wrap">{plan.reason}</p>}
+                    {plan.suggestion && <p className="mt-1 whitespace-pre-wrap">Đề xuất: {plan.suggestion}</p>}
+                    {plan.evidence?.plan_quote && (
+                      <details className="mt-2">
+                        <summary className="cursor-pointer">Căn cứ</summary>
+                        <p className="mt-2">Yêu cầu trước: {plan.evidence.requirement_before_quote || "-"}</p>
+                        <p className="mt-2">Yêu cầu sau: {plan.evidence.requirement_after_quote || "-"}</p>
+                        <p className="mt-2">Kế hoạch: {plan.evidence.plan_quote}</p>
+                      </details>
+                    )}
+                  </div>
+                ))}
+              </section>
             )}
             {impact.runs?.length > 0 && (
               <p>Lần chạy liên quan: {impact.runs.map((r) => r.name).join(", ")}</p>

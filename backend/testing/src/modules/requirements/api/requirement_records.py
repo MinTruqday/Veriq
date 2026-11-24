@@ -133,6 +133,14 @@ async def requirement_impact(version_id: str, user: CurrentUser = Depends(get_cu
             if error.status_code != 403:
                 raise
             job.pop(key, None)
+    if job.get("status") in {"COMPLETED", "PARTIAL"} and job.get("plans"):
+        expected_plans = {item["_id"]: item.get("revision") for item in job["plans"]}
+        current_plans = await database.value.test_plans.find(
+            {"project_id": version["project_id"], "_id": {"$in": list(expected_plans)}},
+            {"revision": 1},
+        ).to_list(len(expected_plans))
+        if {item["_id"]: item.get("revision") for item in current_plans} != expected_plans:
+            job["status"] = "STALE"
     for key in ("requested_by", "lease_token", "lease_until"):
         job.pop(key, None)
     return envelope(job)
