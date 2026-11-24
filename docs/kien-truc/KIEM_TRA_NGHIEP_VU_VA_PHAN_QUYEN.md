@@ -56,6 +56,12 @@ Giám sát, rủi ro, quản lý thay đổi và truy nguyên chạy xuyên su�
 | Người quyết định phát hành | Chấp nhận/từ chối phát hành dựa trên hồ sơ chất lượng | Không sửa kết quả kiểm thử; nêu lý do và rủi ro khi quyết định vượt khuyến nghị |
 | AI Agent | Yêu cầu người dùng, nguồn được phép, đề xuất/bản nháp có dẫn chứng | Không tự duyệt/phát hành/ghi PASS-FAIL hoặc tăng quyền bằng tài khoản dịch vụ |
 
+### Phân biệt vai trò dự án và quản trị nền tảng
+
+Các nhãn BA, QA, QC và DEVELOPER là role dự án được cấp capability qua chính sách đang hoạt động. PM là một thành viên hiện có được chỉ định làm chủ dự án, không phải role thứ sáu. PM/chủ dự án và System Admin có toàn quyền thao tác trong dự án. Khi họ chọn lưu/chốt hoặc gửi chốt một nội dung hợp lệ, hệ thống hoàn tất phê duyệt luôn; nội dung của các vai trò còn lại đi qua người rà soát độc lập theo capability.
+
+Luồng duyệt phải kiểm tra capability trên API và quyền tác giả của đúng phiên bản. Việc gửi hộ không tự biến người gửi thành tác giả. Quyền tự chốt là ngoại lệ rõ ràng chỉ dành cho PM/chủ dự án và System Admin; các thành viên khác không thể tự rà soát/phê duyệt nội dung mình tạo hoặc sửa. Không có cài đặt dự án nào tắt được quy tắc này.
+
 ## 5. Kiểm kê mã hiện có
 
 Kiểm kê tĩnh ban đầu đếm được 653 khai báo route HTTP trong `backend/testing/src/modules/*/api/*.py` bằng AST. Đây là số khai báo decorator, không phải số URL duy nhất, số chức năng độc lập hoặc số luồng đã nghiệm thu. Chưa bao gồm route của authentication, AI, cloud, content, notification và các service ngoài module testing; các service đó phải được nối vào chương trình nghiệm thu khi kiểm tra luồng xuyên suốt.

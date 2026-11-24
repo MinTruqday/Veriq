@@ -208,6 +208,11 @@ export const executionTestingApi = {
       `/du-an/${id}/ket-qua-kiem-thu${status ? `?status=${encodeURIComponent(status)}` : ""}`,
     ),
   getTestResult: (resultId) => testingRequest(`/ket-qua-kiem-thu/${resultId}`),
+  linkResultDefect: (projectId, resultId, payload) =>
+    testingRequest(`/du-an/${projectId}/ket-qua-kiem-thu/${resultId}/lien-ket-loi`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   createRun: (payload) =>
     testingRequest("/lan-chay-kiem-thu", { method: "POST", body: JSON.stringify(payload) }),
   getRun: (id) => testingRequest(`/lan-chay-kiem-thu/${id}`),
@@ -249,18 +254,6 @@ export const executionTestingApi = {
   listDefects: (id, query = "") =>
     listPage(`/du-an/${id}/loi`, query).then((result) => result.items),
   findDuplicateDefects: (id) => testingRequest(`/du-an/${id}/loi/trung-lap`),
-  listAutomatedDefectTraceSuggestions: (projectId, defectIds) => {
-    const query = new URLSearchParams();
-    (defectIds || []).forEach((defectId) => query.append("defect_ids", defectId));
-    return testingRequest(
-      `/du-an/${projectId}/ai/goi-y-truy-vet${query.size ? `?${query.toString()}` : ""}`,
-    );
-  },
-  suggestDefectTrace: (projectId, defectId, payload) =>
-    testingRequest(`/du-an/${projectId}/ai/loi/${defectId}/goi-y-truy-vet`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
   updateDefectTrace: (projectId, defectId, payload) =>
     testingRequest(`/du-an/${projectId}/loi/${defectId}/truy-vet`, {
       method: "PATCH",
@@ -299,7 +292,6 @@ export const executionTestingApi = {
     return testingRequest(`/du-an/${id}/nhat-ky${suffix}`);
   },
   maintenanceAnalytics: (id) => testingRequest(`/du-an/${id}/phan-tich-bao-tri`),
-  aiAnalytics: (id) => testingRequest(`/du-an/${id}/phan-tich-ai`),
   executionReport: (id, scope = {}) =>
     testingRequest(`/du-an/${id}/bao-cao/thuc-thi?${listQuery(scope)}`),
   defectReport: (id, scope = {}) => testingRequest(`/du-an/${id}/bao-cao/loi?${listQuery(scope)}`),

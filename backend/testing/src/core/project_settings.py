@@ -12,12 +12,14 @@ def default_project_settings():
         "trace_recovery_minimum_confidence": 0.18,
         "completion_open_blocker_threshold": 0,
         "read_after_archive_policy": "ALLOW_READ",
-        "require_independent_review": False,
     }
 
 
 def resolve_project_settings(settings):
-    return {**default_project_settings(), **(settings or {})}
+    values = {**default_project_settings(), **(settings or {})}
+    # Maker-checker is enforced by the approval services, not a project toggle.
+    values.pop("require_independent_review", None)
+    return values
 
 
 def validate_project_settings(settings):
@@ -45,11 +47,6 @@ def validate_project_settings(settings):
         raise HTTPException(
             status_code=422,
             detail={"code": "PROJECT_SETTING_VALUE_INVALID", "setting": "read_after_archive_policy"},
-        )
-    if not isinstance(values.get("require_independent_review"), bool):
-        raise HTTPException(
-            status_code=422,
-            detail={"code": "PROJECT_SETTING_VALUE_INVALID", "setting": "require_independent_review"},
         )
     return values
 

@@ -93,7 +93,7 @@ def _idempotent_run_matches(existing, payload, version_ids, context, actor_id):
     )
 
 
-def _verify_rerun_replay(existing, user):
+def _verify_rerun_replay(existing, user, failed_only=False, selected_ids=None):
     created_by = existing.get("created_by")
     if not created_by:
         raise HTTPException(
@@ -105,11 +105,16 @@ def _verify_rerun_replay(existing, user):
             status_code=403,
             detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH"},
         )
+    if (bool(existing.get("rerun_failed_only", False)) != failed_only or
+        set(existing.get("rerun_selected_case_version_ids") or []) != set(selected_ids or [])):
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
 
 
 def _pin_run_to_plan(run, snapshot, snapshot_hash):
     run["test_plan_snapshot_hash"] = snapshot_hash
+    run["phase"] = snapshot.get("phase") or run.get("phase") or ""
     run["requirement_version_ids"] = list(snapshot.get("requirement_version_ids") or [])
+    run["carry_over_items"] = [dict(item) for item in snapshot.get("carry_over_items", [])]
     schedule = snapshot.get("schedule")
     run["test_plan_schedule_snapshot"] = dict(schedule) if isinstance(schedule, dict) else {}
     return run
@@ -358,6 +363,9 @@ async def create_test_run_record(payload, project_id, user):
 
 
 async def rerun_test_run_record(project_id, run_id, payload, user):
+    selected_ids = payload.test_case_version_ids
+    if selected_ids is not None and (not payload.failed_only or not selected_ids or len(set(selected_ids)) != len(selected_ids)):
+        raise HTTPException(status_code=422, detail={"code": "TEST_RUN_INVALID_FAILED_SELECTION"})
     source = await get_project_entity("test_runs", run_id, user, "testrun.create")
     if source.get("project_id") != project_id:
         raise HTTPException(status_code=422, detail={"code": "PROJECT_MISMATCH"})
@@ -370,7 +378,7 @@ async def rerun_test_run_record(project_id, run_id, payload, user):
         project_id, run_id, payload.idempotency_key
     )
     if existing:
-        _verify_rerun_replay(existing, user)
+        _verify_rerun_replay(existing, user, payload.failed_only, selected_ids)
         return existing
     key_owner = await test_run_repository.find_run_by_idempotency_key(
         project_id, payload.idempotency_key
@@ -378,6 +386,18 @@ async def rerun_test_run_record(project_id, run_id, payload, user):
     if key_owner:
         raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
     version_ids = list(dict.fromkeys(source.get("test_case_version_ids", [])))
+    if payload.failed_only:
+        source_results = await test_run_repository.list_results(
+            {"project_id": project_id, "test_run_id": run_id, "status": "FAIL"}, 10000
+        )
+        failed_ids = {item["test_case_version_id"] for item in source_results}
+        if selected_ids is not None:
+            if not set(selected_ids).issubset(failed_ids.intersection(version_ids)):
+                raise HTTPException(status_code=409, detail={"code": "TEST_RUN_INVALID_FAILED_SELECTION"})
+            failed_ids = set(selected_ids)
+        version_ids = [version_id for version_id in version_ids if version_id in failed_ids]
+        if not version_ids:
+            raise HTTPException(status_code=409, detail={"code": "TEST_RUN_NO_FAILED_CASES"})
     if not version_ids:
         raise HTTPException(status_code=409, detail={"code": "TEST_RUN_SCOPE_EMPTY"})
     await validate_test_versions(project_id, version_ids)
@@ -399,7 +419,7 @@ async def rerun_test_run_record(project_id, run_id, payload, user):
     rerun = {
         key: source.get(key)
         for key in (
-            "project_id", "test_plan_id", "test_suite_ids",
+            "project_id", "test_plan_id", "test_suite_ids", "phase",
             "environment", "environment_id", "release", "release_id", "build", "build_id",
             "test_case_assignments",
             "assignee_id", "test_plan_snapshot_hash",
@@ -413,12 +433,20 @@ async def rerun_test_run_record(project_id, run_id, payload, user):
         "test_case_version_ids": version_ids,
         "requirement_version_ids": requirement_version_ids,
         "rerun_of_run_id": run_id,
+        "rerun_failed_only": payload.failed_only,
+        "rerun_selected_case_version_ids": selected_ids,
         "status": "DRAFT",
         "revision": 1,
         "created_by": user.id,
         "created_at": timestamp,
         "updated_at": timestamp,
     })
+    rerun["test_case_assignments"] = {
+        case_id: assignee for case_id, assignee in (source.get("test_case_assignments") or {}).items()
+        if case_id in version_ids
+    }
+    if payload.failed_only:
+        rerun["test_suite_ids"] = []
     try:
         async with await database.client.start_session() as session:
             async with session.start_transaction():
@@ -431,7 +459,7 @@ async def rerun_test_run_record(project_id, run_id, payload, user):
                     project_id, run_id, payload.idempotency_key, session=session
                 )
                 if existing:
-                    _verify_rerun_replay(existing, user)
+                    _verify_rerun_replay(existing, user, payload.failed_only, selected_ids)
                     return existing
                 if plan:
                     current_plan = await test_run_repository.find_plan(
@@ -490,7 +518,7 @@ async def rerun_test_run_record(project_id, run_id, payload, user):
             project_id, run_id, payload.idempotency_key
         )
         if existing:
-            _verify_rerun_replay(existing, user)
+            _verify_rerun_replay(existing, user, payload.failed_only, selected_ids)
             return existing
         key_owner = await test_run_repository.find_run_by_idempotency_key(
             project_id, payload.idempotency_key

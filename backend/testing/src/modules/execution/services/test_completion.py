@@ -8,6 +8,7 @@ from src.core.common import idempotency_request_hash as _create_request_hash
 from src.core.common import verify_idempotency_replay as _verify_create_replay
 from src.core.database import database
 from src.core.human_decisions import (
+    can_auto_approve_project_content,
     content_authorship_changes,
     require_ai_publication_authority,
     require_independent_review,
@@ -480,6 +481,7 @@ async def sign_off_completion(report_id, payload, user):
     report = await get_completion_for_user(report_id, user, "testcompletion.review")
     if report["status"] != "IN_REVIEW":
         raise HTTPException(status_code=409, detail={"code": "COMPLETION_SIGN_OFF_STATE_INVALID"})
+    await require_independent_review(report, user, "TEST_COMPLETION_SELF_REVIEW_FORBIDDEN")
     sign_offs = [item for item in report.get("sign_offs", []) if item.get("user_id") != user.id]
     sign_offs.append(
         {
@@ -601,4 +603,7 @@ async def transition_completion(report_id, payload, user, transition_action):
         report["project_id"],
         {"from": source, "to": target, "note": payload.note},
     )
+    if target == "IN_REVIEW" and await can_auto_approve_project_content(report["project_id"], user):
+        approval_payload = payload.model_copy(update={"expected_revision": updated["revision"]})
+        return await transition_completion(report_id, approval_payload, user, "approve")
     return updated

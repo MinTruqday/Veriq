@@ -2,7 +2,6 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
-import AIRunPanel from "../../components/AIRunPanel";
 import DataTable from "../../components/DataTable";
 import {
   ErrorState,
@@ -103,7 +102,6 @@ export default function DashboardPage({ project }) {
   const can = (permission) => permissions.includes(permission);
   const canReadAnalytics = can("analytics.read");
   const canReadCoverage = can("coverage.read");
-  const canReadAIRuns = can("proposal.read") || can("requirement.read");
   const canReadProjectMembers = can("project.members.read");
   useEffect(() => {
     let active = true;
@@ -398,9 +396,7 @@ export default function DashboardPage({ project }) {
               </ul>
             </Panel>
           )}
-          {(canReadAIRuns ||
-            (dashboard && (can("defect.read") || can("testrun.read"))) ||
-            hasRecentChanges) && (
+          {((dashboard && (can("defect.read") || can("testrun.read"))) || hasRecentChanges) && (
             <div className="grid min-w-0 items-stretch gap-5 xl:grid-cols-2">
               {dashboard && can("testrun.read") && (
                 <Panel className="h-full" title="Lần chạy mới nhất">
@@ -458,11 +454,6 @@ export default function DashboardPage({ project }) {
                     <p className="p-5 text-[13px] text-ink-muted">Không có lỗi đang mở</p>
                   )}
                 </Panel>
-              )}
-              {canReadAIRuns && (
-                <div className="min-w-0 [&>section]:h-full">
-                  <AIRunPanel project={project} compact />
-                </div>
               )}
               {hasRecentChanges && (
                 <Panel className="h-full" title="Thay đổi gần đây">

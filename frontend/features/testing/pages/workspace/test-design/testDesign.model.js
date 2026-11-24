@@ -32,6 +32,7 @@ export function createTestCaseForm() {
     testData: emptyDataEntries(),
     expectedResult: emptyDoc(),
     postconditions: emptyDoc(),
+    mainFlow: emptyDoc(),
     alternateFlows: emptyDoc(),
     exceptionFlows: emptyDoc(),
     tags: "",
@@ -141,7 +142,6 @@ export function createDataSetForm() {
     name: "",
     variables: {},
     secretRefs: {},
-    generationSource: "USER",
     sourceRequirementVersionIds: [],
   };
 }
@@ -192,6 +192,7 @@ export function buildTestCaseDraftChanges(snapshot, draft) {
     ["preconditions_doc", "preconditions"],
     ["expected_result_doc", "expected"],
     ["postconditions_doc", "postconditions"],
+    ["main_flow_doc", "mainFlow"],
     ["alternate_flows_doc", "alternateFlows"],
     ["exception_flows_doc", "exceptionFlows"],
   ]) {

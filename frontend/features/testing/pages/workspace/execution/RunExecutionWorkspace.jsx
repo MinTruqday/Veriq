@@ -26,6 +26,7 @@ export default function RunExecutionWorkspace({
   onError,
   onTransition,
   onCreateDefect,
+  onCreateInlineDefect,
   creatingDefectResultIds = new Set(),
   stepResults,
   onStepResultsChange,
@@ -44,17 +45,18 @@ export default function RunExecutionWorkspace({
   const [assignmentDraft, setAssignmentDraft] = useState({});
   const [runAssigneeDraft, setRunAssigneeDraft] = useState("");
   const [savingAssignment, setSavingAssignment] = useState(false);
-  const [executionAssistanceByResult, setExecutionAssistanceByResult] = useState({});
-  const [executionAssistanceErrors, setExecutionAssistanceErrors] = useState({});
-  const [loadingExecutionAssistanceIds, setLoadingExecutionAssistanceIds] = useState(
-    () => new Set(),
-  );
   const [creatingRerun, setCreatingRerun] = useState(false);
+  const [selectedFailedCases, setSelectedFailedCases] = useState([]);
+  const [pendingFail, setPendingFail] = useState({});
   const [resumingRun, setResumingRun] = useState(false);
   const [focusedCaseIndex, setFocusedCaseIndex] = useState(0);
   const rerunKey = useRef(null);
   const resumeOperation = useRef(null);
   const testCaseVersions = run.test_case_versions || [];
+  const totalCases = (run.test_case_version_ids || []).length;
+  const recordedCases = (run.results || []).filter((result) =>
+    ["PASS", "FAIL", "BLOCKED", "SKIPPED", "NOT_APPLICABLE"].includes(result.status),
+  ).length;
   const navigateCase = (index) => {
     const nextIndex = Math.max(0, Math.min(index, testCaseVersions.length - 1));
     setFocusedCaseIndex(nextIndex);
@@ -95,37 +97,6 @@ export default function RunExecutionWorkspace({
       setSavingAssignment(false);
     }
   };
-  const analyzeExecutionResult = async (result) => {
-    setLoadingExecutionAssistanceIds((current) => new Set(current).add(result._id));
-    setExecutionAssistanceErrors((current) => ({ ...current, [result._id]: "" }));
-    setExecutionAssistanceByResult((current) => {
-      const next = { ...current };
-      delete next[result._id];
-      return next;
-    });
-    try {
-      const cached = await testingApi.getExecutionAssistance(projectId, run._id, result._id);
-      if (cached?.stale) {
-        setExecutionAssistanceByResult((current) => ({ ...current, [result._id]: cached }));
-      }
-      const response =
-        cached && !cached.stale && cached.suggestions?.length
-          ? cached
-          : await testingApi.analyzeExecutionResult(projectId, run._id, result._id);
-      setExecutionAssistanceByResult((current) => ({ ...current, [result._id]: response }));
-    } catch (reason) {
-      setExecutionAssistanceErrors((current) => ({
-        ...current,
-        [result._id]: messageOf(reason),
-      }));
-    } finally {
-      setLoadingExecutionAssistanceIds((current) => {
-        const next = new Set(current);
-        next.delete(result._id);
-        return next;
-      });
-    }
-  };
   return (
     <WorkspacePage title={run.name} actions={<ProjectCrumb projectId={projectId} />}>
       {error && <ErrorState message={error} />}
@@ -156,30 +127,67 @@ export default function RunExecutionWorkspace({
                 Xuất báo cáo
               </button>
             )}
-            {["COMPLETED", "ABORTED"].includes(run.status) && can("testrun.create") && (
-              <button
-                className="secondary-button"
-                type="button"
-                disabled={creatingRerun}
-                onClick={async () => {
-                  setCreatingRerun(true);
-                  rerunKey.current ||= crypto.randomUUID();
-                  try {
-                    const created = await testingApi.rerunRun(projectId, run._id, {
-                      idempotency_key: rerunKey.current,
-                    });
-                    rerunKey.current = null;
-                    window.location.assign(`/du-an/${projectId}/thuc-thi/${created._id}`);
-                  } catch (reason) {
-                    onError(messageOf(reason));
-                  } finally {
-                    setCreatingRerun(false);
-                  }
-                }}
-              >
-                {creatingRerun ? "Đang tạo lần chạy mới…" : "Chạy lại bằng lần chạy mới"}
-              </button>
-            )}
+            {["COMPLETED", "ABORTED"].includes(run.status) &&
+              can("testrun.create") &&
+              run.results?.some((result) => result.status === "FAIL") && (
+                <details className="rounded-control border border-border p-3">
+                  <summary className="cursor-pointer">Chạy lại ca thất bại</summary>
+                  <div className="mt-3 space-y-2">
+                    {(run.results || [])
+                      .filter((result) => result.status === "FAIL")
+                      .map((result) => {
+                        const version = testCaseVersions.find(
+                          (item) => item._id === result.test_case_version_id,
+                        );
+                        return (
+                          <label className="flex items-center gap-2" key={result._id}>
+                            <input
+                              type="checkbox"
+                              checked={selectedFailedCases.includes(result.test_case_version_id)}
+                              onChange={(event) => {
+                                rerunKey.current = null;
+                                setSelectedFailedCases((current) =>
+                                  event.target.checked
+                                    ? [...current, result.test_case_version_id]
+                                    : current.filter((id) => id !== result.test_case_version_id),
+                                );
+                              }}
+                            />
+                            <span>
+                              {version
+                                ? `${version.test_case_key} · ${version.title}`
+                                : result.test_case_version_id}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    <button
+                      className="apple-button"
+                      type="button"
+                      disabled={creatingRerun || !selectedFailedCases.length}
+                      onClick={async () => {
+                        setCreatingRerun(true);
+                        rerunKey.current ||= crypto.randomUUID();
+                        try {
+                          const created = await testingApi.rerunRun(projectId, run._id, {
+                            idempotency_key: rerunKey.current,
+                            failed_only: true,
+                            test_case_version_ids: selectedFailedCases,
+                          });
+                          rerunKey.current = null;
+                          window.location.assign(`/du-an/${projectId}/thuc-thi/${created._id}`);
+                        } catch (reason) {
+                          onError(messageOf(reason));
+                        } finally {
+                          setCreatingRerun(false);
+                        }
+                      }}
+                    >
+                      {creatingRerun ? "Đang tạo lần chạy mới…" : "Tạo lần chạy lại"}
+                    </button>
+                  </div>
+                </details>
+              )}
             {run.status === "DRAFT" && can("testrun.start") && (
               <button
                 className="apple-button"
@@ -299,6 +307,26 @@ export default function RunExecutionWorkspace({
       >
         <div className="flex flex-wrap items-center gap-x-6 gap-y-3 p-4">
           <StatusPill value={run.status} />
+          <p className="text-sm">Mã: {run._id}</p>
+          {run.test_plan_id && (
+            <a
+              className="text-sm underline"
+              href={`/du-an/${encodeURIComponent(projectId)}/ke-hoach-kiem-thu/${encodeURIComponent(run.test_plan_id)}`}
+            >
+              Xem kế hoạch
+            </a>
+          )}
+          <div className="min-w-48 text-sm">
+            <p>
+              Đã ghi nhận {recordedCases}/{totalCases} ca
+            </p>
+            <progress
+              className="mt-1 w-full"
+              value={recordedCases}
+              max={totalCases || 1}
+              aria-label="Tiến độ ghi nhận kết quả"
+            />
+          </div>
           {run.environment && (
             <p className="text-[13px]">
               <span className="text-ink-muted">Môi trường: </span>
@@ -482,7 +510,12 @@ export default function RunExecutionWorkspace({
                   "Thành viên không còn trong dự án"
                 : "Chưa phân công";
               const linkedDefect = result
-                ? run.defects?.some((defect) => defect.linked_test_result_id === result._id)
+                ? (result.linked_defect_ids || []).length > 0 ||
+                  run.defects?.some(
+                    (defect) =>
+                      defect.linked_test_result_id === result._id ||
+                      (result.linked_defect_ids || []).includes(defect._id),
+                  )
                 : false;
 
               return (
@@ -587,76 +620,86 @@ export default function RunExecutionWorkspace({
                         </div>
                       </details>
                       <div className="flex flex-wrap items-center gap-3">
-                        {can("testrun.execute") && (
-                          <button
-                            className="secondary-button border-violet-300 text-violet-800"
-                            type="button"
-                            disabled={loadingExecutionAssistanceIds.has(result._id)}
-                            onClick={() => void analyzeExecutionResult(result)}
-                          >
-                            {loadingExecutionAssistanceIds.has(result._id)
-                              ? "Đang xem kết quả"
-                              : "Nhờ Veriq phân tích kết quả"}
-                          </button>
-                        )}
-                        {result.status === "FAIL" && !linkedDefect && can("defect.create") && (
-                          <button
-                            className="apple-button"
-                            type="button"
-                            disabled={creatingDefectResultIds.has(result._id)}
-                            onClick={() => onCreateDefect(result, item)}
-                          >
-                            {creatingDefectResultIds.has(result._id)
-                              ? "Đang tạo lỗi…"
-                              : "Tạo lỗi từ kết quả thất bại"}
-                          </button>
-                        )}
                         {linkedDefect && (
                           <span className="text-sm text-ink-muted">Đã liên kết lỗi</span>
                         )}
                       </div>
-                      {executionAssistanceErrors[result._id] && (
-                        <p className="text-sm text-danger" role="alert">
-                          {executionAssistanceErrors[result._id]}
-                        </p>
-                      )}
-                      {executionAssistanceByResult[result._id]?.stale && (
-                        <p className="text-sm text-ink-muted" role="status">
-                          Kết quả thực thi đã thay đổi. Gợi ý cũ đã được ẩn; hãy chạy phân tích lại.
-                        </p>
-                      )}
-                      {executionAssistanceByResult[result._id]?.suggestions?.[0] && (
-                        <ExecutionAssistanceResult
-                          result={executionAssistanceByResult[result._id]}
-                          testResult={result}
-                          caseVersion={item}
-                          canCreateDefect={can("defect.create") && !linkedDefect}
-                          creatingDefect={creatingDefectResultIds.has(result._id)}
-                          onCreateDefect={onCreateDefect}
-                        />
-                      )}
+                      {result.status === "FAIL" &&
+                        !linkedDefect &&
+                        (can("defect.create") ||
+                          (can("defect.read") && can("testrun.execute"))) && (
+                          <InlineDefectForm
+                            key={result._id}
+                            result={result}
+                            version={item}
+                            members={members}
+                            projectId={projectId}
+                            canCreate={can("defect.create")}
+                            canLink={can("defect.read") && can("testrun.execute")}
+                            onLinked={async () => onRunChange(await testingApi.getRun(run._id))}
+                            saving={creatingDefectResultIds.has(result._id)}
+                            onCreate={onCreateInlineDefect}
+                          />
+                        )}
+                      {linkedDefect &&
+                        (run.defects || [])
+                          .filter(
+                            (defect) =>
+                              defect.linked_test_result_id === result._id ||
+                              (result.linked_defect_ids || []).includes(defect._id),
+                          )
+                          .map((defect) => {
+                            const next = {
+                              NEW: ["CONFIRMED", "defect.triage"],
+                              CONFIRMED: ["IN_PROGRESS", "defect.transition.resolve"],
+                              IN_PROGRESS: ["RESOLVED", "defect.transition.resolve"],
+                              RESOLVED: ["READY_FOR_RETEST", "defect.transition.resolve"],
+                              REOPENED: ["IN_PROGRESS", "defect.transition.resolve"],
+                            }[defect.status];
+                            return (
+                              <div
+                                className="flex flex-wrap items-center gap-3 text-sm"
+                                key={defect._id}
+                              >
+                                <span>
+                                  {defect.defect_key || defect._id} · {defect.title} ·{" "}
+                                  {valueLabel(defect.status)} · {valueLabel(defect.severity)}
+                                </span>
+                                {next && can(next[1]) && (
+                                  <button
+                                    className="secondary-button"
+                                    type="button"
+                                    onClick={() =>
+                                      ask({
+                                        title: "Cập nhật trạng thái lỗi",
+                                        confirmLabel: "Cập nhật",
+                                        fields: [
+                                          {
+                                            name: "reason",
+                                            label: "Lý do",
+                                            required: true,
+                                            multiline: true,
+                                          },
+                                        ],
+                                        onConfirm: async ({ reason }) => {
+                                          await testingApi.transitionDefect(defect._id, {
+                                            expected_revision: defect.revision,
+                                            to_status: next[0],
+                                            reason,
+                                          });
+                                          onRunChange(await testingApi.getRun(run._id));
+                                        },
+                                      })
+                                    }
+                                  >
+                                    {valueLabel(next[0])}
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
                     </div>
-                  ) : run.status !== "IN_PROGRESS" ||
-                    !can("testrun.execute") ? null : result.status === "NOT_RUN" ? (
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        className="secondary-button"
-                        type="button"
-                        disabled={savingExecution}
-                        onClick={() => onTransition(result, "IN_PROGRESS", item)}
-                      >
-                        Bắt đầu ca kiểm thử
-                      </button>
-                      <button
-                        className="secondary-button"
-                        type="button"
-                        disabled={savingExecution}
-                        onClick={() => onTransition(result, "SKIPPED", item)}
-                      >
-                        Bỏ qua
-                      </button>
-                    </div>
-                  ) : (
+                  ) : run.status !== "IN_PROGRESS" || !can("testrun.execute") ? null : (
                     <div className="min-w-0 space-y-4">
                       {(item.steps || []).map((step, stepIndex) => {
                         const existing = result.step_results?.find(
@@ -688,14 +731,17 @@ export default function RunExecutionWorkspace({
                                   </p>
                                 </div>
                               </div>
-                              <div className="min-w-0 space-y-3">
+                              <details className="min-w-0 space-y-3">
+                                <summary className="cursor-pointer text-sm">
+                                  Kết quả từng bước (tùy chọn)
+                                </summary>
                                 <label className="field-label block">
                                   Kết quả bước
                                   <select
                                     aria-label={`Trạng thái bước ${stepIndex + 1} ${item.test_case_key}`}
                                     className="apple-input mt-1 w-full min-w-0"
                                     disabled={savingExecution}
-                                    value={edited.status || existing?.status || "PASS"}
+                                    value={edited.status || existing?.status || ""}
                                     onChange={(event) =>
                                       onStepResultsChange((values) => ({
                                         ...values,
@@ -709,6 +755,7 @@ export default function RunExecutionWorkspace({
                                       }))
                                     }
                                   >
+                                    <option value="">-</option>
                                     {terminalResultStatuses.map((value) => (
                                       <option value={value} key={value}>
                                         {valueLabel(value)}
@@ -759,13 +806,19 @@ export default function RunExecutionWorkspace({
                                     placeholder="Bắt buộc khi chọn Không áp dụng"
                                   />
                                 </label>
-                              </div>
+                              </details>
                             </div>
                           </fieldset>
                         );
                       })}
+                      {pendingFail[result._id] && (
+                        <p className="text-sm">
+                          Nhập kết quả thực tế. Bạn có thể lưu kết quả hoặc tạo hay liên kết lỗi
+                          ngay bên dưới.
+                        </p>
+                      )}
                       <label className="field-label block">
-                        Kết quả chung của ca
+                        Kết quả thực tế
                         <textarea
                           aria-label={`Kết quả thực tế ${item.test_case_key}`}
                           className="apple-input mt-1 min-h-20 w-full min-w-0"
@@ -776,6 +829,33 @@ export default function RunExecutionWorkspace({
                           }
                         />
                       </label>
+                      {pendingFail[result._id] &&
+                        !linkedDefect &&
+                        (can("defect.create") ||
+                          (can("defect.read") && can("testrun.execute"))) && (
+                          <InlineDefectForm
+                            result={result}
+                            version={item}
+                            members={members}
+                            projectId={projectId}
+                            canCreate={can("defect.create")}
+                            canLink={can("defect.read") && can("testrun.execute")}
+                            onLinked={async () => onRunChange(await testingApi.getRun(run._id))}
+                            saving={creatingDefectResultIds.has(result._id) || savingExecution}
+                            onCreate={onCreateInlineDefect}
+                            ensureFail={async () => {
+                              if (!(await onTransition(result, "FAIL", item)))
+                                throw new Error("Chưa lưu được kết quả thất bại.");
+                              const refreshed = await testingApi.getRun(run._id);
+                              const updated = refreshed.results?.find(
+                                (entry) => entry._id === result._id,
+                              );
+                              if (!updated || updated.status !== "FAIL")
+                                throw new Error("Không tìm thấy kết quả thất bại vừa lưu.");
+                              return updated;
+                            }}
+                          />
+                        )}
                       <FilePicker
                         ariaLabel={`Tệp bằng chứng ${item.test_case_key}`}
                         buttonLabel="Chọn tệp bằng chứng"
@@ -818,7 +898,20 @@ export default function RunExecutionWorkspace({
                             type="button"
                             disabled={savingExecution}
                             key={value}
-                            onClick={() => onTransition(result, value, item)}
+                            onClick={async () => {
+                              if (value === "FAIL" && !pendingFail[result._id]) {
+                                setPendingFail((current) => ({ ...current, [result._id]: true }));
+                                return;
+                              }
+                              const saved = await onTransition(result, value, item);
+                              if (
+                                saved &&
+                                value === "PASS" &&
+                                caseIndex + 1 < testCaseVersions.length
+                              ) {
+                                navigateCase(caseIndex + 1);
+                              }
+                            }}
                           >
                             {valueLabel(value)}
                           </button>
@@ -837,104 +930,165 @@ export default function RunExecutionWorkspace({
   );
 }
 
-function ExecutionAssistanceResult({
+function InlineDefectForm({
   result,
-  testResult,
-  caseVersion,
-  canCreateDefect,
-  creatingDefect,
-  onCreateDefect,
+  version,
+  members,
+  saving,
+  onCreate,
+  projectId,
+  canLink,
+  canCreate,
+  onLinked,
+  ensureFail,
 }) {
-  const suggestion = result.suggestions[0];
-  const warningLabels = (result.warnings || []).flatMap((warning) => {
-    if (warning === "SENSITIVE_REQUEST_SUPPRESSED")
-      return [
-        "AI đã bỏ qua yêu cầu cung cấp thông tin đăng nhập; không gửi mật khẩu hoặc mã truy cập.",
-      ];
-    return /^[A-Z0-9]+(?:_[A-Z0-9]+)*$/.test(warning) ? [] : [warning];
-  });
-  const sourceLabel = (reference) =>
-    reference.startsWith(`${testResult._id}:`)
-      ? "Kết quả đã ghi"
-      : reference.startsWith(`${caseVersion._id}:`)
-        ? "Ca kiểm thử đang chạy"
-        : "Thông tin lần chạy";
-
+  const [title, setTitle] = useState(version.title || "");
+  const [severity, setSeverity] = useState("");
+  const [assignee, setAssignee] = useState("");
+  const [error, setError] = useState("");
+  const [candidates, setCandidates] = useState(null);
+  const [selectedDefect, setSelectedDefect] = useState("");
+  const [linking, setLinking] = useState(false);
   return (
-    <section className="space-y-3 rounded-control border border-violet-300 bg-violet-50/60 p-4 text-sm">
-      <div>
-        <p className="font-semibold text-violet-950">Veriq gợi ý xem xét</p>
-        <p className="mt-1 text-violet-900">
-          Đây là nhận xét tham khảo từ ca và kết quả đã lưu. Trạng thái kiểm thử không bị thay đổi.
+    <section className="space-y-3 rounded-control border border-border p-4">
+      <h4 className="font-medium">Lỗi từ kết quả thất bại</h4>
+      {error && (
+        <p className="text-sm text-danger" role="alert">
+          {error}
         </p>
-      </div>
-      {suggestion.observations.map((observation, index) => (
-        <article
-          className="space-y-1 rounded-control border border-violet-200 bg-white/70 p-3"
-          key={`${observation.step_id || "general"}-${index}`}
-        >
-          <p className="font-medium text-ink">
-            {observation.kind === "OBSERVED"
-              ? "Thông tin đã ghi"
-              : observation.kind === "POSSIBLE_INTERPRETATION"
-                ? "Cách diễn giải có thể có"
-                : "Giới hạn thông tin"}
-            {observation.step_id ? ` · Bước ${observation.step_id}` : ""}
-          </p>
-          <p className="whitespace-pre-wrap text-ink-muted">{observation.text}</p>
-          {observation.evidence_quotes.map((quote, quoteIndex) => (
-            <blockquote
-              className="border-l-2 border-violet-300 pl-3 text-xs text-ink-muted"
-              key={`${quote.evidence_ref}-${quoteIndex}`}
-            >
-              “{quote.quote}” <span>— {sourceLabel(quote.evidence_ref)}</span>
-            </blockquote>
-          ))}
-        </article>
-      ))}
-      {!!suggestion.missing_information.length && (
-        <div>
-          <p className="font-medium">Thông tin nên bổ sung</p>
-          <ul className="mt-1 list-disc space-y-1 pl-5 text-ink-muted">
-            {suggestion.missing_information.map((value, index) => (
-              <li key={`${index}-${value}`}>{value}</li>
-            ))}
-          </ul>
-        </div>
       )}
-      {!!warningLabels.length && <p className="text-ink-muted">{warningLabels.join(" · ")}</p>}
-      {suggestion.defect_draft && (
-        <div className="space-y-2 rounded-control border border-violet-200 bg-white/70 p-3">
-          <div>
-            <p className="font-medium">Bản nháp lỗi</p>
-            <p className="text-xs text-ink-muted">
-              Chưa tạo lỗi. Bạn có thể mở bản nháp, chỉnh nội dung và xác nhận riêng.
-            </p>
+      {canCreate && (
+        <>
+          <label className="field-label block">
+            Tiêu đề lỗi
+            <input
+              className="apple-input mt-2"
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+            />
+          </label>
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="field-label">
+              Mức độ nghiêm trọng
+              <select
+                className="apple-input mt-2"
+                value={severity}
+                onChange={(event) => setSeverity(event.target.value)}
+              >
+                <option value="">-</option>
+                {[
+                  ["critical", "Nghiêm trọng"],
+                  ["high", "Cao"],
+                  ["medium", "Trung bình"],
+                  ["low", "Thấp"],
+                ].map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field-label">
+              Người phụ trách
+              <select
+                className="apple-input mt-2"
+                value={assignee}
+                onChange={(event) => setAssignee(event.target.value)}
+              >
+                <option value="">-</option>
+                {(members || [])
+                  .filter((member) => member.status === "ACTIVE")
+                  .map((member) => (
+                    <option key={member.user_id} value={member.user_id}>
+                      {member.user_label || member.user?.full_name || member.user_id}
+                    </option>
+                  ))}
+              </select>
+            </label>
           </div>
-          <p className="font-medium">{suggestion.defect_draft.title}</p>
-          <p className="whitespace-pre-wrap text-ink-muted">
-            {suggestion.defect_draft.description}
-          </p>
-          {suggestion.defect_draft.evidence_quotes.map((quote, index) => (
-            <blockquote
-              className="border-l-2 border-violet-300 pl-3 text-xs text-ink-muted"
-              key={`${quote.evidence_ref}-${index}`}
-            >
-              “{quote.quote}” <span>— {sourceLabel(quote.evidence_ref)}</span>
-            </blockquote>
-          ))}
-          {canCreateDefect && (
+          <button
+            className="apple-button"
+            type="button"
+            disabled={saving}
+            onClick={async () => {
+              if (title.trim().length < 2 || !severity) {
+                setError("Nhập tiêu đề và chọn mức độ nghiêm trọng.");
+                return;
+              }
+              setError("");
+              try {
+                const savedResult = ensureFail ? await ensureFail() : result;
+                await onCreate(savedResult, version, { title, severity, assignee });
+              } catch (reason) {
+                setError(messageOf(reason));
+              }
+            }}
+          >
+            {saving ? "Đang tạo lỗi…" : "Tạo lỗi"}
+          </button>
+        </>
+      )}
+      {canLink && (
+        <div className="space-y-2 border-t border-border pt-3">
+          {candidates === null ? (
             <button
-              className="secondary-button border-violet-300 text-violet-800"
+              className="secondary-button"
               type="button"
-              disabled={creatingDefect}
-              onClick={() => onCreateDefect(testResult, caseVersion, suggestion.defect_draft)}
+              onClick={async () => {
+                try {
+                  setCandidates(await testingApi.listDefects(projectId, { page_size: 500 }));
+                } catch (reason) {
+                  setError(messageOf(reason));
+                }
+              }}
             >
-              {creatingDefect ? "Đang mở bản nháp" : "Rà soát bản nháp lỗi"}
+              Liên kết lỗi đã có
             </button>
+          ) : (
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="field-label min-w-0 flex-1">
+                Lỗi đã có
+                <select
+                  className="apple-input mt-2"
+                  value={selectedDefect}
+                  onChange={(event) => setSelectedDefect(event.target.value)}
+                >
+                  <option value="">-</option>
+                  {candidates.map((defect) => (
+                    <option key={defect._id} value={defect._id}>
+                      {defect.defect_key || defect._id} · {defect.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={!selectedDefect || linking}
+                onClick={async () => {
+                  setLinking(true);
+                  setError("");
+                  try {
+                    const savedResult = ensureFail ? await ensureFail() : result;
+                    await testingApi.linkResultDefect(projectId, savedResult._id, {
+                      defect_id: selectedDefect,
+                      expected_revision: savedResult.revision,
+                    });
+                    await onLinked();
+                  } catch (reason) {
+                    setError(messageOf(reason));
+                  } finally {
+                    setLinking(false);
+                  }
+                }}
+              >
+                {linking ? "Đang liên kết…" : "Liên kết"}
+              </button>
+            </div>
           )}
         </div>
       )}
     </section>
   );
 }
+

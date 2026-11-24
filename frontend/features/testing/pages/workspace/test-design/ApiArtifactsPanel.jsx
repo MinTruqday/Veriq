@@ -1,8 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Panel, StatusPill } from "../../../components/WorkspacePrimitives";
-import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import { messageOf } from "../../../lib/testing";
-import { aiRunErrorMessage } from "../../../lib/aiRun.logic";
 import { testingApi } from "../../../services/testing.service";
 
 export default function ApiArtifactsPanel({
@@ -27,50 +25,9 @@ export default function ApiArtifactsPanel({
   const [selectedOperationIndexes, setSelectedOperationIndexes] = useState([]);
   const [reviewNote, setReviewNote] = useState("");
   const [reviewBusy, setReviewBusy] = useState(false);
-  const [impactAnalysis, setImpactAnalysis] = useState(null);
-  const [impactBusy, setImpactBusy] = useState(false);
-  const impactBusyRef = useRef(false);
   const [comparisonBusy, setComparisonBusy] = useState(false);
   const comparisonBusyRef = useRef(false);
-  const [aiRuns, setAIRuns] = useState([]);
-  const [aiRunsError, setAIRunsError] = useState("");
   const confirmed = artifacts.filter((item) => item.status === "CONFIRMED");
-  const canReadAIRuns = can("requirement.read") || can("proposal.read");
-
-  useEffect(() => {
-    if (!canReadAIRuns || !confirmed.length) return undefined;
-    let active = true;
-    let pending = false;
-    const refreshRuns = async () => {
-      if (pending) return;
-      pending = true;
-      try {
-        const runs = await testingApi.listAIRuns(projectId);
-        if (active) {
-          setAIRuns(runs || []);
-          setAIRunsError("");
-        }
-      } catch (reason) {
-        if (active) setAIRunsError(messageOf(reason));
-      } finally {
-        pending = false;
-      }
-    };
-    void refreshRuns();
-    return () => {
-      active = false;
-    };
-  }, [canReadAIRuns, confirmed.length, projectId]);
-
-  const aiRunFor = (operation) => {
-    const eventId = `api-operation:${operation._id}:r${operation.revision}`;
-    return aiRuns.find(
-      (run) =>
-        run.trigger === "API_OPERATION_CONFIRMED" &&
-        (run.source_event_id === eventId ||
-          (!run.source_event_id && (run.target_artifact_ids || []).includes(operation._id))),
-    );
-  };
   const importArtifact = async (event) => {
     event.preventDefault();
     try {
@@ -171,28 +128,6 @@ export default function ApiArtifactsPanel({
       setComparisonBusy(false);
     }
   };
-  const analyzeImpact = async () => {
-    if (impactBusyRef.current) return;
-    impactBusyRef.current = true;
-    setImpactBusy(true);
-    try {
-      const analysis = await testingApi.analyzeApiArtifactImpact(projectId, {
-        from_artifact_id: compareFrom,
-        to_artifact_id: compareTo,
-      });
-      setImpactAnalysis({
-        fromArtifactId: compareFrom,
-        toArtifactId: compareTo,
-        affectedCount: analysis.affected_test_cases?.length || 0,
-        newTestCount: analysis.new_test_requirements?.length || 0,
-      });
-    } catch (reason) {
-      onError(messageOf(reason));
-    } finally {
-      impactBusyRef.current = false;
-      setImpactBusy(false);
-    }
-  };
   const openTestImportPreview = async (operation) => {
     try {
       if (!operation.test_import_preview_id) return;
@@ -201,18 +136,6 @@ export default function ApiArtifactsPanel({
       onError(messageOf(reason));
     }
   };
-  const refreshAgentState = async () => {
-    try {
-      await reload();
-      if (canReadAIRuns) {
-        setAIRuns(await testingApi.listAIRuns(projectId));
-        setAIRunsError("");
-      }
-    } catch (reason) {
-      onError(messageOf(reason));
-    }
-  };
-
   return (
     <Panel title="OpenAPI và Postman">
       <div className="grid gap-5 p-5">
@@ -302,7 +225,7 @@ export default function ApiArtifactsPanel({
                         disabled={reviewBusy || reviewArtifact?._id === item._id}
                         onClick={() => confirm(item)}
                       >
-                        Xác nhận và gửi thao tác cho AI
+                        Xác nhận thao tác đã chọn
                       </button>
                     )}
                     {item.status !== "ARCHIVED" && can("apiartifact.archive") && (
@@ -420,10 +343,9 @@ export default function ApiArtifactsPanel({
                 <select
                   className="apple-input mt-2"
                   value={compareFrom}
-                  disabled={comparisonBusy || impactBusy}
+                  disabled={comparisonBusy}
                   onChange={(event) => {
                     setCompareFrom(event.target.value);
-                    setImpactAnalysis(null);
                     setDifference(null);
                   }}
                 >
@@ -439,10 +361,9 @@ export default function ApiArtifactsPanel({
                 <select
                   className="apple-input mt-2"
                   value={compareTo}
-                  disabled={comparisonBusy || impactBusy}
+                  disabled={comparisonBusy}
                   onChange={(event) => {
                     setCompareTo(event.target.value);
-                    setImpactAnalysis(null);
                     setDifference(null);
                   }}
                 >
@@ -459,41 +380,14 @@ export default function ApiArtifactsPanel({
                 className="secondary-button"
                 disabled={
                   !compareFrom ||
-                  !compareTo ||
-                  compareFrom === compareTo ||
-                  comparisonBusy ||
-                  impactBusy
+                  !compareTo || compareFrom === compareTo || comparisonBusy
                 }
                 type="button"
                 onClick={compare}
               >
                 {comparisonBusy ? "Đang so sánh…" : "So sánh đặc tả"}
               </button>
-              {can("impact.execute") && (
-                <button
-                  className="secondary-button"
-                  disabled={
-                    !compareFrom ||
-                    !compareTo ||
-                    compareFrom === compareTo ||
-                    comparisonBusy ||
-                    impactBusy
-                  }
-                  type="button"
-                  onClick={analyzeImpact}
-                >
-                  {impactBusy ? "Đang tính ảnh hưởng…" : "Phân tích ảnh hưởng"}
-                </button>
-              )}
             </div>
-            {impactAnalysis &&
-              impactAnalysis.fromArtifactId === compareFrom &&
-              impactAnalysis.toArtifactId === compareTo && (
-                <p className="mt-3 text-sm text-ink-muted" role="status">
-                  Đã ghi nhận {impactAnalysis.affectedCount} ca cần rà soát và{" "}
-                  {impactAnalysis.newTestCount} thao tác API mới cần kiểm thử.
-                </p>
-              )}
             {difference && (
               <p className="mt-3 text-sm text-ink-muted">
                 Thêm {difference.added.length} thay đổi {difference.changed.length} loại bỏ{" "}
@@ -505,23 +399,13 @@ export default function ApiArtifactsPanel({
         <section className="space-y-3 border-t border-border pt-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="font-semibold">Thao tác API đã xác nhận</h3>
-            {canReadAIRuns && confirmed.length > 0 && (
-              <button
-                className="secondary-button"
-                type="button"
-                onClick={() => void refreshAgentState()}
-              >
-                Cập nhật trạng thái AI
-              </button>
-            )}
           </div>
           {operations.length ? (
             <div className="divide-y divide-border border-b border-border">
               {operations.map((item) => {
-                const run = aiRunFor(item);
                 return (
                   <article
-                    className="grid min-w-0 gap-3 py-4 lg:grid-cols-[minmax(0,1fr)_minmax(17rem,0.7fr)] lg:gap-6"
+                    className="grid min-w-0 gap-3 py-4"
                     key={item._id}
                   >
                     <div className="min-w-0 space-y-2">
@@ -547,35 +431,6 @@ export default function ApiArtifactsPanel({
                             Xem bản xem trước ca kiểm thử
                           </button>
                         </div>
-                      )}
-                    </div>
-                    <div className="min-w-0 space-y-2 text-[13px] text-ink-muted">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide">AI</p>
-                      {run ? (
-                        <>
-                          <StatusPill value={run.status} />
-                          {(run.error_code || run.result?.summary) && (
-                            <div className="grid justify-items-start gap-1">
-                              {run.result?.summary && <ContentOriginBadge origin="ai_generated" />}
-                              <span className="break-words">
-                                {run.error_code
-                                  ? aiRunErrorMessage(run.error_code)
-                                  : run.result.summary}
-                              </span>
-                            </div>
-                          )}
-                          <a
-                            className="block text-accent underline underline-offset-2"
-                            href={`/du-an/${projectId}/ca-kiem-thu/ai`}
-                          >
-                            Xem hoạt động AI
-                          </a>
-                        </>
-                      ) : (
-                        <p>Chưa có lượt AI</p>
-                      )}
-                      {aiRunsError && canReadAIRuns && (
-                        <p role="status">Chưa tải được trạng thái AI: {aiRunsError}</p>
                       )}
                     </div>
                   </article>

@@ -12,6 +12,7 @@ from src.schemas.test_monitoring import (
 from src.modules.execution.services.test_monitoring import (
     create_control_action,
     create_monitoring_snapshot,
+    get_live_plan_progress,
     create_quality_decision,
     export_quality_gate,
     get_quality_gate,
@@ -24,6 +25,11 @@ from src.modules.execution.services.test_monitoring import (
 )
 
 router = APIRouter(prefix="/kiem-thu", tags=["Giám sát và điều khiển kiểm thử"])
+
+
+@router.get("/du-an/{project_id}/ke-hoach-kiem-thu/{plan_id}/tien-do")
+async def get_plan_progress(project_id: str, plan_id: str, user: CurrentUser = Depends(get_current_user)):
+    return envelope(await get_live_plan_progress(project_id, plan_id, user))
 
 
 @router.get("/du-an/{project_id}/giam-sat-kiem-thu")

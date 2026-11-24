@@ -31,6 +31,7 @@ class UserBase(BaseModel):
     email: EmailStr
     full_name: str = Field(min_length=2, max_length=100)
     slug: str = Field(min_length=3, max_length=50, pattern=r"^[a-zA-Z0-9_-]+$")
+    locale: Optional[str] = Field(default=None, min_length=2, max_length=20)
     system_role: SystemRole = SystemRole.USER
     bio: Optional[str] = None
     avatar_url: Optional[str] = None

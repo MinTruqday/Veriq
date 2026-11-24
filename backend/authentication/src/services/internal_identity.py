@@ -10,7 +10,7 @@ class InternalIdentityService:
         identifiers = sorted(set(user_ids))
         accounts = await IdentityRepository.find_auth_credentials(
             {"_id": {"$in": identifiers}},
-            {"email": 1, "full_name": 1, "slug": 1, "system_role": 1, "is_active": 1},
+            {"email": 1, "full_name": 1, "slug": 1, "locale": 1, "system_role": 1, "is_active": 1},
             len(identifiers),
         )
         return {
@@ -19,6 +19,7 @@ class InternalIdentityService:
                 "email": account.get("email"),
                 "full_name": account.get("full_name"),
                 "slug": account.get("slug"),
+                "locale": account.get("locale"),
                 "system_role": account.get("system_role", "USER"),
                 "is_active": account.get("is_active", True),
                 "label": account.get("full_name")

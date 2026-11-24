@@ -24,19 +24,7 @@ async def list_ai_run_capabilities(
     token: str = Depends(oauth2_scheme),
     user: CurrentUser = Depends(get_current_user),
 ):
-    _, permissions = await project_access(project_id, token)
-    capabilities = []
-    for tool in agent_available_tools(permissions).values():
-        access = tool_access(tool)
-        if not access:
-            continue
-        capabilities.append(
-            {
-                "name": access.name,
-                "label": tool.metadata.get("label", access.name),
-            }
-        )
-    return sorted(capabilities, key=lambda item: item["label"])
+    raise HTTPException(status_code=410, detail={"code": "AI_AGENT_REMOVED"})
 
 
 @router.post("/luot-chay", status_code=201)
@@ -45,10 +33,7 @@ async def create_user_ai_run(
     token: str = Depends(oauth2_scheme),
     user: CurrentUser = Depends(get_current_user),
 ):
-    role, permissions = await project_access(payload.project_id, token)
-    if any(item.project_id != payload.project_id for item in payload.evidence):
-        raise HTTPException(status_code=422, detail={"code": "AGENT_EVIDENCE_PROJECT_MISMATCH"})
-    return await ai_run_service.create_user_run(payload, user.id, role, permissions)
+    raise HTTPException(status_code=410, detail={"code": "AI_AGENT_REMOVED"})
 
 
 @router.post(
@@ -58,8 +43,7 @@ async def create_user_ai_run(
     response_model=AIRunAcceptedResponse,
 )
 async def create_requirement_document_run(payload: RequirementDocumentRunRequest):
-    run = await ai_run_service.create_requirement_document_run(payload)
-    return {"status": "accepted", "runs": [run]}
+    raise HTTPException(status_code=410, detail={"code": "DOCUMENT_REQUIREMENT_EXTRACTION_REMOVED"})
 
 
 async def _readable_run(run_id: str, token: str, user: CurrentUser):

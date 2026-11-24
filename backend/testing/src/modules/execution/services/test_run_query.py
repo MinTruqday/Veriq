@@ -7,9 +7,11 @@ from fastapi import HTTPException
 from src.core.common import (
     get_project,
     get_project_entity,
+    get_project_permissions,
     load_user_identities,
     page_payload,
     sort_spec,
+    visible_defect,
 )
 from src.repositories.test_run import test_run_repository
 
@@ -56,6 +58,9 @@ async def list_test_run_records(
     items = await test_run_repository.list_runs(
         query, sort_field, direction, (page - 1) * page_size, page_size
     )
+    recorded = await test_run_repository.count_recorded_results_by_run(project_id, [item["_id"] for item in items])
+    for item in items:
+        item["recorded_case_count"] = recorded.get(item["_id"], 0)
     return page_payload(items, page, page_size, total)
 
 
@@ -86,8 +91,14 @@ async def get_test_run_record(run_id, user):
         {"test_run_id": run_id}, 10000
     )
     defects = await test_run_repository.list_defects_for_results(
-        run["project_id"], [item["_id"] for item in results], 10000
+        run["project_id"], [item["_id"] for item in results], 10000,
+        [defect_id for result in results for defect_id in result.get("linked_defect_ids", [])],
     )
+    permissions = await get_project_permissions(run["project_id"], user.id)
+    defects = [
+        {**visible_defect(item, permissions), "linked_test_result_id": item.get("linked_test_result_id")}
+        for item in defects
+    ] if "defect.read" in permissions else []
     assigned_users = set((run.get("test_case_assignments") or {}).values())
     try:
         identities = await load_user_identities(assigned_users)

@@ -5,10 +5,13 @@ from src.core.auth import project_membership_permissions
 from src.core.common import audit, get_project, new_id, now
 from src.core.database import database
 from src.modules.execution.services.exit_criteria import evaluate_exit_criteria, quality_gate_status
+from src.modules.execution.services.test_plan import verified_approved_plan_snapshot
 from src.modules.execution.services.test_monitoring_snapshot import (
     OPEN_DEFECT_STATUSES,
     build_deviations,
     build_metrics,
+    latest_plan_results,
+    percent,
     monitoring_sources,
 )
 from src.modules.quality.services.defect_classification import defect_is_blocking
@@ -33,6 +36,34 @@ __all__ = [
     "get_quality_gate",
     "list_quality_decisions",
 ]
+
+
+async def get_live_plan_progress(project_id, plan_id, user):
+    await get_project(project_id, user, "testmonitor.read")
+    await get_project(project_id, user, "testplan.read")
+    plan = await test_monitoring_repository.find_test_plan(plan_id, project_id)
+    if not plan or plan.get("status") != "APPROVED":
+        raise HTTPException(status_code=404, detail={"code": "TEST_PLAN_NOT_APPROVED"})
+    approved_snapshot, _ = verified_approved_plan_snapshot(plan, project_id)
+    runs = await test_monitoring_repository.list_test_runs(project_id, plan_id, None, 10000)
+    results = await test_monitoring_repository.list_test_results(project_id, [item["_id"] for item in runs], 50000)
+    latest = latest_plan_results(plan, {"runs": runs, "results": results})
+    statuses = {status: sum(item.get("status") == status for item in latest) for status in ("NOT_RUN", "IN_PROGRESS", "PASS", "FAIL", "BLOCKED", "SKIPPED", "NOT_APPLICABLE")}
+    executed = sum(statuses[status] for status in ("PASS", "FAIL", "BLOCKED"))
+    decisive = executed
+    defects = await test_monitoring_repository.list_defects(project_id, None, 50000)
+    if len(runs) >= 10000 or len(results) >= 50000 or len(defects) >= 50000:
+        raise HTTPException(status_code=409, detail={"code": "MONITORING_SCOPE_TOO_LARGE"})
+    result_ids = {item["_id"] for item in results}
+    defect_ids = {defect_id for item in results for defect_id in item.get("linked_defect_ids", [])}
+    linked_open = [item for item in defects if item.get("status") in OPEN_DEFECT_STATUSES and (item.get("linked_test_result_id") in result_ids or item.get("_id") in defect_ids)]
+    high = sum(str(item.get("severity") or "").strip().casefold() in {"critical", "high", "nghiêm trọng", "cao"} for item in linked_open)
+    return {
+        "total": len(latest), "executed": executed, "execution_percent": percent(executed, len(latest)) if latest else None,
+        "pass_rate": percent(statuses["PASS"], decisive) if decisive else None, "statuses": statuses,
+        "open_critical_high": high,
+        "critical_high_criterion_enabled": any(item.get("type") == "OPEN_CRITICAL_HIGH_MAX" for item in approved_snapshot.get("quality_targets", [])),
+    }
 
 
 def _verify_snapshot_replay(existing, payload, user):

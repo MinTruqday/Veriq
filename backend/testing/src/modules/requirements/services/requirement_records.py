@@ -15,7 +15,7 @@ from src.core.common import (
     validate_doc,
 )
 from src.core.database import database
-from src.core.human_decisions import content_authorship_changes
+from src.core.human_decisions import can_auto_approve_project_content, content_authorship_changes
 from src.modules.requirements.services.requirement_indexing import (
     index_requirement_version,
     validate_requirement_api_operations,
@@ -183,6 +183,21 @@ async def create_requirement_record(project_id, payload, user, origin="manual", 
         raise HTTPException(status_code=409, detail={"code": "REQUIREMENT_KEY_EXISTS"}) from error
     if session is None:
         await index_requirement_version(version)
+        if (
+            origin == "manual"
+            and not payload.save_as_draft
+            and await can_auto_approve_project_content(project_id, user)
+        ):
+            from src.modules.requirements.services.requirement_lifecycle import submit_requirement_for_review
+
+            await submit_requirement_for_review(
+                project_id, requirement_id, version["revision"], "", user
+            )
+            requirement = await requirement_repository.find_requirement(requirement_id, project_id)
+            version = await requirement_repository.find_version(
+                requirement["current_version_id"], project_id
+            )
+            return {**requirement, "current_version": version}
     return {**requirement, "current_version": version}
 
 async def list_requirement_records(

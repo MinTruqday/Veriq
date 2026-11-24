@@ -161,6 +161,7 @@ class TestCaseDraftCreate(BaseModel):
     test_data: dict[str, Any] = Field(default_factory=dict)
     expected_result_doc: dict[str, Any] = Field(default_factory=empty_doc)
     postconditions_doc: dict[str, Any] = Field(default_factory=empty_doc)
+    main_flow_doc: dict[str, Any] = Field(default_factory=empty_doc)
     alternate_flows_doc: dict[str, Any] = Field(default_factory=empty_doc)
     exception_flows_doc: dict[str, Any] = Field(default_factory=empty_doc)
     tags: list[str] = Field(default_factory=list, max_length=100)
@@ -201,7 +202,7 @@ class TestCaseDraftCreate(BaseModel):
 
     @field_validator(
         "preconditions_doc", "objective_doc", "expected_result_doc", "postconditions_doc",
-        "alternate_flows_doc", "exception_flows_doc",
+        "main_flow_doc", "alternate_flows_doc", "exception_flows_doc",
     )
     @classmethod
     def validate_documents(cls, value):
@@ -252,6 +253,7 @@ class TestCaseDraftPatch(BaseModel):
     test_data: dict[str, Any] | None = None
     expected_result_doc: dict[str, Any] | None = None
     postconditions_doc: dict[str, Any] | None = None
+    main_flow_doc: dict[str, Any] | None = None
     alternate_flows_doc: dict[str, Any] | None = None
     exception_flows_doc: dict[str, Any] | None = None
     tags: list[str] | None = None
@@ -288,7 +290,7 @@ class TestCaseDraftPatch(BaseModel):
 
     @field_validator(
         "preconditions_doc", "objective_doc", "expected_result_doc", "postconditions_doc",
-        "alternate_flows_doc", "exception_flows_doc",
+        "main_flow_doc", "alternate_flows_doc", "exception_flows_doc",
     )
     @classmethod
     def validate_documents(cls, value):
@@ -353,7 +355,6 @@ class DataSetCreate(BaseModel):
     name: str = Field(min_length=2, max_length=300)
     variables: dict[str, Any] = Field(default_factory=dict)
     secret_refs: dict[str, str] = Field(default_factory=dict)
-    generation_source: Literal["USER", "AI_ASSISTED"] = "USER"
     source_requirement_version_ids: list[str] = Field(default_factory=list, max_length=20)
 
     @model_validator(mode="after")
@@ -372,19 +373,6 @@ class DataSetCreate(BaseModel):
             raise ValueError("Secret reference phải bắt đầu bằng secret://")
         if len(set(self.source_requirement_version_ids)) != len(self.source_requirement_version_ids):
             raise ValueError("Nguồn yêu cầu không được trùng")
-        if self.generation_source == "AI_ASSISTED" and not self.source_requirement_version_ids:
-            raise ValueError("Bộ dữ liệu có hỗ trợ AI phải lưu nguồn yêu cầu")
-        return self
-
-
-class DataSetAISuggestionInput(BaseModel):
-    requirement_version_ids: list[str] = Field(min_length=1, max_length=20)
-    instruction: str = Field(default="", max_length=3000)
-
-    @model_validator(mode="after")
-    def unique_requirement_versions(self):
-        if len(set(self.requirement_version_ids)) != len(self.requirement_version_ids):
-            raise ValueError("Không được chọn phiên bản yêu cầu trùng")
         return self
 
 

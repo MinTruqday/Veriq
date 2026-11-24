@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from src.core.auth import CurrentUser, get_current_user
-from src.core.common import envelope, get_project_entity
+from src.core.common import envelope, get_project, get_project_entity
+from src.core.database import database
 from src.schemas.contracts.requirements import (
     RequirementBaselineInput,
     RequirementCreate,
@@ -97,6 +98,65 @@ async def list_requirements(
 @router.get("/yeu-cau/{requirement_id}")
 async def requirement_detail(requirement_id: str, user: CurrentUser = Depends(get_current_user)):
     return envelope(await get_requirement_record(requirement_id, user))
+
+
+@router.get("/phien-ban-yeu-cau/{version_id}/anh-huong-kiem-thu")
+async def requirement_impact(version_id: str, user: CurrentUser = Depends(get_current_user)):
+    version = await get_project_entity("requirement_versions", version_id, user, "requirement.read")
+    await get_project(version["project_id"], user, "testcase.read")
+    job = await database.value.requirement_impact_jobs.find_one({"_id": version_id, "project_id": version["project_id"]})
+    if not job:
+        return envelope(None)
+    requirement = await database.value.requirements.find_one(
+        {"_id": version["requirement_id"], "project_id": version["project_id"]},
+        {"current_version_id": 1},
+    )
+    if not requirement or requirement.get("current_version_id") != version_id:
+        job["status"] = "STALE"
+    if job.get("status") in {"COMPLETED", "PARTIAL"} and job.get("cases"):
+        expected = {item["case_id"]: item["version_id"] for item in job["cases"]}
+        cases = await database.value.test_cases.find(
+            {"project_id": version["project_id"], "_id": {"$in": list(expected)}},
+            {"current_version_id": 1, "status": 1},
+        ).to_list(len(expected))
+        if len(cases) != len(expected) or any(
+            item.get("current_version_id") != expected.get(item["_id"])
+            or item.get("status") not in {"ACTIVE", "NEEDS_UPDATE"}
+            for item in cases
+        ):
+            job["status"] = "STALE"
+    # Plan and run details have their own access permissions.
+    for key, permission in (("plans", "testplan.read"), ("runs", "testrun.read")):
+        try:
+            await get_project(version["project_id"], user, permission)
+        except HTTPException as error:
+            if error.status_code != 403:
+                raise
+            job.pop(key, None)
+    for key in ("requested_by", "lease_token", "lease_until"):
+        job.pop(key, None)
+    return envelope(job)
+
+
+@router.post("/phien-ban-yeu-cau/{version_id}/anh-huong-kiem-thu/thu-lai")
+async def retry_requirement_impact(version_id: str, user: CurrentUser = Depends(get_current_user)):
+    version = await get_project_entity("requirement_versions", version_id, user, "requirement.read")
+    await get_project(version["project_id"], user, "testcase.read")
+    await get_project(version["project_id"], user, "ai.run_impact")
+    current = await database.value.requirements.find_one({
+        "_id": version["requirement_id"], "project_id": version["project_id"],
+        "current_version_id": version_id,
+    }, {"_id": 1})
+    if not current:
+        raise HTTPException(409, detail={"code": "REQUIREMENT_VERSION_NOT_CURRENT"})
+    updated = await database.value.requirement_impact_jobs.find_one_and_update(
+        {"_id": version_id, "project_id": version["project_id"], "status": {"$in": ["FAILED", "PARTIAL", "STALE", "COMPLETED"]}},
+        {"$set": {"status": "PENDING", "requested_by": user.id},
+         "$unset": {"error_code": "", "comparison": "", "cases": "", "new_candidates": "", "plans": "", "runs": "", "limitations": ""}},
+    )
+    if not updated:
+        raise HTTPException(409, detail={"code": "IMPACT_NOT_RETRYABLE"})
+    return envelope({"status": "PENDING"})
 
 
 @router.patch("/du-an/{project_id}/yeu-cau/{requirement_id}")

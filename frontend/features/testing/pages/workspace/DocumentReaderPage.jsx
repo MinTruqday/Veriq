@@ -9,7 +9,7 @@ import { load as loadYaml } from "js-yaml";
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
 import { ErrorState, LoadingState, Panel } from "../../components/WorkspacePrimitives";
 import { messageOf } from "../../lib/testing";
-import { projectRoute } from "../../routes";
+import { PROJECT_SECTION_SLUGS, projectRoute } from "../../routes";
 import { testingApi } from "../../services/testing.service";
 import HorizontalScrollCue from "@/shared/components/navigation/HorizontalScrollCue";
 import { preferredSummaryLocale } from "../../lib/summaryLanguage";
@@ -567,14 +567,17 @@ export default function DocumentReaderPage({ project, section = [] }) {
         <div className="min-w-0">
           <a
             className="text-sm text-ink-muted hover:text-primary"
-            href={projectRoute(project._id, "yeu-cau")}
+            href={projectRoute(project._id, PROJECT_SECTION_SLUGS.documentReader)}
           >
             Tài liệu dự án
           </a>
           <h1 className="mt-2 text-3xl font-semibold text-ink">Không thể mở tài liệu</h1>
         </div>
         <ErrorState message={error} />
-        <a className="secondary-button inline-flex" href={projectRoute(project._id, "yeu-cau")}>
+        <a
+          className="secondary-button inline-flex"
+          href={projectRoute(project._id, PROJECT_SECTION_SLUGS.documentReader)}
+        >
           Quay lại danh sách tài liệu
         </a>
       </div>
@@ -586,7 +589,7 @@ export default function DocumentReaderPage({ project, section = [] }) {
         <div className="min-w-0 flex-1 basis-80">
           <a
             className="text-sm text-ink-muted hover:text-primary"
-            href={projectRoute(project._id, "yeu-cau")}
+            href={projectRoute(project._id, PROJECT_SECTION_SLUGS.documentReader)}
           >
             Tài liệu dự án
           </a>

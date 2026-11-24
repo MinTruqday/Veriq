@@ -58,6 +58,8 @@ async def monitoring_sources(project_id, plan, release_id, payload):
     defects = await test_monitoring_repository.list_defects(
         project_id, release_id, 50000
     )
+    if len(runs) >= 10000 or len(results) >= 50000 or len(defects) >= 50000:
+        raise HTTPException(status_code=409, detail={"code": "MONITORING_SCOPE_TOO_LARGE"})
     requirements = await test_monitoring_repository.list_baselined_requirements(
         project_id,
         'BASELINED',
@@ -117,8 +119,27 @@ async def monitoring_sources(project_id, plan, release_id, payload):
     }
 
 
+def latest_plan_results(plan, sources):
+    snapshot = plan.get("approved_snapshot") or plan
+    scope = set(snapshot.get("test_case_version_ids") or [])
+    if not scope:
+        scope = {case_id for run in sources["runs"] for case_id in run.get("test_case_version_ids", [])}
+    if not scope:
+        scope = {item.get("test_case_version_id") for item in sources["results"] if item.get("test_case_version_id")}
+    latest = {}
+    for result in sources["results"]:
+        case_id = result.get("test_case_version_id")
+        if case_id not in scope:
+            continue
+        timestamp = parse_datetime(result.get("completed_at") or result.get("updated_at") or result.get("created_at"))
+        rank = (result.get("status") not in {"NOT_RUN", "IN_PROGRESS"}, timestamp.timestamp() if timestamp else 0, str(result.get("_id") or ""))
+        if case_id not in latest or rank > latest[case_id][0]:
+            latest[case_id] = (rank, result)
+    return [latest[case_id][1] if case_id in latest else {"status": "NOT_RUN"} for case_id in scope]
+
+
 def build_metrics(plan, sources, snapshot_at):
-    results = sources["results"]
+    results = latest_plan_results(plan, sources)
     counts = {
         status: sum(item.get("status") == status for item in results)
         for status in ['NOT_RUN', 'IN_PROGRESS', 'PASS', 'FAIL', 'BLOCKED', 'SKIPPED', 'NOT_APPLICABLE']
@@ -152,6 +173,13 @@ def build_metrics(plan, sources, snapshot_at):
     }
     defects = sources["defects"]
     open_defects = [item for item in defects if item.get("status") in OPEN_DEFECT_STATUSES]
+    plan_result_ids = {item["_id"] for item in sources["results"] if item.get("_id")}
+    plan_defect_ids = {defect_id for item in sources["results"] for defect_id in item.get("linked_defect_ids", [])}
+    linked_open_critical_high = [
+        item for item in open_defects
+        if (item.get("linked_test_result_id") in plan_result_ids or item.get("_id") in plan_defect_ids)
+        and str(item.get("severity") or "").strip().casefold() in {"critical", "high", "nghiêm trọng", "cao"}
+    ]
     since = sources["since"]
     new_defects = sum(
         1
@@ -233,6 +261,10 @@ def build_metrics(plan, sources, snapshot_at):
         else None,
         "open_blocker": sum(defect_is_blocking(item) for item in open_defects),
         "open_critical": sum(defect_is_critical(item) for item in open_defects),
+        "open_critical_high": len(linked_open_critical_high),
+        "open_critical_high_result_count": sum(
+            1 for item in results if item.get("status") in EXECUTED_RESULT_STATUSES
+        ),
         "new_defects": new_defects,
         "resolved": resolved,
         "reopened": reopened,

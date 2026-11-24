@@ -21,6 +21,8 @@ export default function RequirementsListPanel({
   selectedIds,
   setSelectedIds,
   pageInfo,
+  pageSize,
+  onPageSizeChange,
   can,
   onBulkTags,
   onScanDuplicates,
@@ -216,7 +218,13 @@ export default function RequirementsListPanel({
               },
             ]}
           />
-          <Pagination value={pageInfo} onChange={setPage} />
+          <Pagination
+            value={pageInfo}
+            pageSize={pageSize}
+            onChange={setPage}
+            pageSizeOptions={[10, 20, 40]}
+            onPageSizeChange={onPageSizeChange}
+          />
         </>
       )}
     </Panel>

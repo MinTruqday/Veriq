@@ -39,10 +39,6 @@ const toggleSettings = [
   ["trace_before_testcase_approve", "Bắt buộc truy vết trước khi duyệt ca kiểm thử"],
   ["partial_complete_allowed", "Cho phép hoàn tất một phần lần chạy kiểm thử"],
   ["allow_not_applicable_results", "Cho phép kết quả Không áp dụng khi có lý do"],
-  [
-    "require_independent_review",
-    "Bắt buộc thành viên khác duyệt nội dung do người tạo hoặc người sửa thực hiện",
-  ],
 ];
 
 const toggleSettingGroups = [
@@ -53,10 +49,6 @@ const toggleSettingGroups = [
   {
     label: "Lần chạy kiểm thử",
     keys: ["partial_complete_allowed", "allow_not_applicable_results"],
-  },
-  {
-    label: "Phê duyệt nội dung",
-    keys: ["require_independent_review"],
   },
 ];
 
@@ -251,7 +243,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
     {
       id: "analytics",
       label: "Phân tích",
-      permissions: ["analytics.read", "analytics.ai.read"],
+      permissions: ["analytics.read"],
     },
   ].filter((section) => section.permissions.some(can));
   const visibleSettingsSection = settingsSections.some(
@@ -303,9 +295,6 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
       visibleSettingsSection === "analytics" && permissions.has("analytics.read")
         ? testingApi.maintenanceAnalytics(project._id)
         : Promise.resolve({}),
-      visibleSettingsSection === "analytics" && permissions.has("analytics.ai.read")
-        ? testingApi.aiAnalytics(project._id)
-        : Promise.resolve({}),
       ["members", "project"].includes(visibleSettingsSection) &&
       permissions.has("project.members.read")
         ? testingApi.listMembers(project._id)
@@ -320,8 +309,8 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
       return fallback;
     };
     setAudit(valueAt(0, "audit", []));
-    setAnalytics({ ...valueAt(1, "analytics", {}), ...valueAt(2, "analytics", {}) });
-    setMembers(valueAt(3, "members", []));
+    setAnalytics(valueAt(1, "analytics", {}));
+    setMembers(valueAt(2, "members", []));
     setLoadErrors(nextErrors);
     setDataLoading(false);
   }, [project._id, project.current_permissions, visibleSettingsSection, workspaceView]);

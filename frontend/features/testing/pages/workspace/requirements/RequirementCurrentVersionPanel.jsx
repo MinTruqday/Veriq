@@ -17,14 +17,13 @@ export default function RequirementCurrentVersionPanel({
   projectId,
   current,
   currentUserId,
+  canSelfApprove = false,
   selected,
   focusAcceptanceCriterionId,
   draft,
   customFields,
   saveState,
   can,
-  checkingWithAi,
-  onCheckWithAI,
   saveDraft,
   onCreateVersion,
   onSplit,
@@ -46,10 +45,13 @@ export default function RequirementCurrentVersionPanel({
   }, [current?._id, focusAcceptanceCriterionId]);
 
   const submitReview = async () => {
+    const title = canSelfApprove ? "Chốt Requirement" : "Gửi yêu cầu đi rà soát";
     await ask({
-      title: "Gửi yêu cầu đi rà soát",
-      description: `${selected.requirement_key} sẽ được chuyển sang người rà soát. Bản nháp sẽ được lưu trước khi gửi.`,
-      confirmLabel: "Gửi rà soát",
+      title,
+      description: canSelfApprove
+        ? `${selected.requirement_key} sẽ được kiểm tra điều kiện và chốt ngay.`
+        : `${selected.requirement_key} sẽ được chuyển sang người rà soát. Bản nháp sẽ được lưu trước khi gửi.`,
+      confirmLabel: canSelfApprove ? "Chốt Requirement" : "Gửi rà soát",
       fields: [
         {
           name: "review_note",
@@ -88,24 +90,13 @@ export default function RequirementCurrentVersionPanel({
               Lập kế hoạch kiểm thử
             </Link>
           )}
-          {can("ai.run_lint") && (
-            <button
-              className="secondary-button"
-              aria-busy={checkingWithAi}
-              disabled={checkingWithAi}
-              type="button"
-              onClick={onCheckWithAI}
-            >
-              {checkingWithAi ? "Đang kiểm tra…" : "Kiểm tra AI"}
-            </button>
-          )}
           {current.status === "READY" && can("requirement.submit_review") && (
             <button className="secondary-button" type="button" onClick={submitReview}>
-              Gửi rà soát
+              {canSelfApprove ? "Chốt Requirement" : "Gửi rà soát"}
             </button>
           )}
           {current.status === "IN_REVIEW" &&
-            !isAuthor &&
+            (!isAuthor || canSelfApprove) &&
             can("requirement.review") &&
             current.technical_review_revision !== current.revision && (
               <button
@@ -143,49 +134,51 @@ export default function RequirementCurrentVersionPanel({
                 Ghi nhận rà soát
               </button>
             )}
-          {current.status === "IN_REVIEW" && !isAuthor && can("requirement.review") && (
-            <button
-              className="secondary-button"
-              type="button"
-              onClick={() =>
-                ask({
-                  title: "Yêu cầu chỉnh sửa",
-                  description:
-                    "Phiên bản sẽ trở về bản nháp để người phụ trách cập nhật nội dung. Ghi rõ điểm cần sửa.",
-                  confirmLabel: "Trả về bản nháp",
-                  fields: [
-                    {
-                      name: "review_note",
-                      label: "Nội dung cần chỉnh sửa",
-                      required: true,
-                      minLength: 2,
-                      multiline: true,
-                      autoFocus: true,
-                    },
-                  ],
-                  onConfirm: async (answer) => {
-                    try {
-                      await testingApi.requestRequirementChanges(projectId, selected._id, {
-                        expected_revision: current.revision,
-                        review_note: answer.review_note.trim(),
-                      });
-                      await reload();
-                    } catch (value) {
-                      const detail = value?.response?.data?.detail || value?.detail;
-                      if (detail?.code === "REQUIREMENT_LINT_BLOCKED") {
-                        throw new Error(
-                          "Còn lỗi kiểm tra bắt buộc. Xem gợi ý hoàn thiện yêu cầu, sửa nội dung rồi gửi lại.",
-                        );
+          {current.status === "IN_REVIEW" &&
+            (!isAuthor || canSelfApprove) &&
+            can("requirement.review") && (
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() =>
+                  ask({
+                    title: "Yêu cầu chỉnh sửa",
+                    description:
+                      "Phiên bản sẽ trở về bản nháp để người phụ trách cập nhật nội dung. Ghi rõ điểm cần sửa.",
+                    confirmLabel: "Trả về bản nháp",
+                    fields: [
+                      {
+                        name: "review_note",
+                        label: "Nội dung cần chỉnh sửa",
+                        required: true,
+                        minLength: 2,
+                        multiline: true,
+                        autoFocus: true,
+                      },
+                    ],
+                    onConfirm: async (answer) => {
+                      try {
+                        await testingApi.requestRequirementChanges(projectId, selected._id, {
+                          expected_revision: current.revision,
+                          review_note: answer.review_note.trim(),
+                        });
+                        await reload();
+                      } catch (value) {
+                        const detail = value?.response?.data?.detail || value?.detail;
+                        if (detail?.code === "REQUIREMENT_LINT_BLOCKED") {
+                          throw new Error(
+                            "Còn lỗi kiểm tra bắt buộc. Xem gợi ý hoàn thiện yêu cầu, sửa nội dung rồi gửi lại.",
+                          );
+                        }
+                        throw new Error(messageOf(value));
                       }
-                      throw new Error(messageOf(value));
-                    }
-                  },
-                })
-              }
-            >
-              Yêu cầu chỉnh sửa
-            </button>
-          )}
+                    },
+                  })
+                }
+              >
+                Yêu cầu chỉnh sửa
+              </button>
+            )}
           {current.status === "IN_REVIEW" && can("requirement.update") && (
             <button
               className="secondary-button"
@@ -223,41 +216,43 @@ export default function RequirementCurrentVersionPanel({
               Mở lại để chỉnh sửa
             </button>
           )}
-          {current.status === "IN_REVIEW" && !isAuthor && can("requirement.approve") && (
-            <button
-              className="apple-button"
-              type="button"
-              onClick={async () => {
-                await ask({
-                  title: "Chấp nhận Requirement",
-                  description: `${selected.requirement_key} sẽ trở thành phiên bản chuẩn để các bước kiểm thử sử dụng. Cảnh báo nhẹ không chặn thao tác; các lỗi bắt buộc cần được xử lý trong nội dung yêu cầu trước khi chấp nhận.`,
-                  confirmLabel: "Chấp nhận Requirement",
-                  fields: [
-                    {
-                      name: "review_note",
-                      label: "Ghi chú rà soát",
-                      initialValue: "",
-                      multiline: true,
-                      autoFocus: true,
+          {current.status === "IN_REVIEW" &&
+            (!isAuthor || canSelfApprove) &&
+            can("requirement.approve") && (
+              <button
+                className="apple-button"
+                type="button"
+                onClick={async () => {
+                  await ask({
+                    title: "Chấp nhận Requirement",
+                    description: `${selected.requirement_key} sẽ trở thành phiên bản chuẩn để các bước kiểm thử sử dụng. Cảnh báo nhẹ không chặn thao tác; các lỗi bắt buộc cần được xử lý trong nội dung yêu cầu trước khi chấp nhận.`,
+                    confirmLabel: "Chấp nhận Requirement",
+                    fields: [
+                      {
+                        name: "review_note",
+                        label: "Ghi chú rà soát",
+                        initialValue: "",
+                        multiline: true,
+                        autoFocus: true,
+                      },
+                    ],
+                    onConfirm: async (answer) => {
+                      try {
+                        await testingApi.approveRequirement(projectId, selected._id, {
+                          expected_revision: current.revision,
+                          review_note: answer.review_note.trim(),
+                        });
+                        await reload();
+                      } catch (value) {
+                        throw new Error(messageOf(value));
+                      }
                     },
-                  ],
-                  onConfirm: async (answer) => {
-                    try {
-                      await testingApi.approveRequirement(projectId, selected._id, {
-                        expected_revision: current.revision,
-                        review_note: answer.review_note.trim(),
-                      });
-                      await reload();
-                    } catch (value) {
-                      throw new Error(messageOf(value));
-                    }
-                  },
-                });
-              }}
-            >
-              Rà soát và chấp nhận
-            </button>
-          )}
+                  });
+                }}
+              >
+                Rà soát và chấp nhận
+              </button>
+            )}
           {["BASELINED", "READY"].includes(current.status) && can("requirement.version.create") && (
             <button className="secondary-button" type="button" onClick={onCreateVersion}>
               Tạo bản nháp để chỉnh sửa
@@ -551,7 +546,7 @@ export default function RequirementCurrentVersionPanel({
               </button>
               {current.status === "DRAFT" && can("requirement.submit_review") && (
                 <button className="apple-button" type="button" onClick={submitReview}>
-                  Gửi rà soát
+                  {canSelfApprove ? "Chốt Requirement" : "Gửi rà soát"}
                 </button>
               )}
               <span className="text-[12px] text-ink-muted" aria-live="polite">

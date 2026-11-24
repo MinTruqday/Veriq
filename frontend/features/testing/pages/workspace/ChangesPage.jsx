@@ -620,21 +620,6 @@ export default function ChangesPage({ project }) {
           </div>
         </div>
       )}
-      {(can("requirement.read") || can("proposal.read")) && (
-        <Panel className="mt-5" title="Nhật ký AI">
-          <div className="flex flex-wrap items-center justify-between gap-3 p-4">
-            <p className="text-sm text-ink-muted">
-              Xem các lượt AI đã chạy trong dự án, kể cả những lượt chưa gắn với thay đổi yêu cầu.
-            </p>
-            <Link
-              className="secondary-button"
-              href={projectRoute(project._id, PROJECT_SECTION_SLUGS.aiReview)}
-            >
-              Mở nhật ký AI
-            </Link>
-          </div>
-        </Panel>
-      )}
     </WorkspacePage>
   );
 }

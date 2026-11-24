@@ -20,7 +20,7 @@ def normalize_criterion(raw, index):
     elif rule_type == "STALE_TESTCASES":
         rule_type = "STALE_TESTCASE_MAX"
     threshold = raw.get("threshold", raw.get("value"))
-    supported = {"EXECUTION_PERCENT_MIN", "PASS_RATE_MIN", "OPEN_BLOCKER_MAX", "OPEN_CRITICAL_MAX", "REQUIREMENT_COVERAGE_MIN", "AC_COVERAGE_MIN", "CONDITION_COVERAGE_MIN", "STALE_TESTCASE_MAX", "REQUIRED_RUNS_COMPLETED", "CUSTOM_MANUAL_GATE"}
+    supported = {"EXECUTION_PERCENT_MIN", "PASS_RATE_MIN", "OPEN_BLOCKER_MAX", "OPEN_CRITICAL_MAX", "OPEN_CRITICAL_HIGH_MAX", "REQUIREMENT_COVERAGE_MIN", "AC_COVERAGE_MIN", "CONDITION_COVERAGE_MIN", "STALE_TESTCASE_MAX", "REQUIRED_RUNS_COMPLETED", "CUSTOM_MANUAL_GATE"}
     if rule_type not in supported:
         rule_type = 'CUSTOM_MANUAL_GATE'
         threshold = False
@@ -48,8 +48,13 @@ def evaluate_exit_criteria(definitions, metrics, completed_run_ids):
             missing = sorted(required - set(completed_run_ids))
             actual = {"completed": sorted(required & set(completed_run_ids)), "missing": missing}
             status = 'PASS' if not missing else 'FAIL'
+        elif definition.type == "OPEN_CRITICAL_HIGH_MAX" and (
+            "open_critical_high" not in metrics or not metrics.get("open_critical_high_result_count")
+        ):
+            actual = None
+            status = "INSUFFICIENT_DATA"
         else:
-            actual = metrics.get({"EXECUTION_PERCENT_MIN": "execution_percent", "PASS_RATE_MIN": "pass_rate", "OPEN_BLOCKER_MAX": "open_blocker", "OPEN_CRITICAL_MAX": "open_critical", "REQUIREMENT_COVERAGE_MIN": "requirement_coverage", "AC_COVERAGE_MIN": "acceptance_criteria_coverage", "CONDITION_COVERAGE_MIN": "test_condition_coverage", "STALE_TESTCASE_MAX": "stale_testcases"}[definition.type], 0)
+            actual = metrics.get({"EXECUTION_PERCENT_MIN": "execution_percent", "PASS_RATE_MIN": "pass_rate", "OPEN_BLOCKER_MAX": "open_blocker", "OPEN_CRITICAL_MAX": "open_critical", "OPEN_CRITICAL_HIGH_MAX": "open_critical_high", "REQUIREMENT_COVERAGE_MIN": "requirement_coverage", "AC_COVERAGE_MIN": "acceptance_criteria_coverage", "CONDITION_COVERAGE_MIN": "test_condition_coverage", "STALE_TESTCASE_MAX": "stale_testcases"}[definition.type], 0)
             threshold = float(definition.threshold)
             denominator_key = {"EXECUTION_PERCENT_MIN": "execution_denominator", "PASS_RATE_MIN": "pass_rate_denominator", "REQUIREMENT_COVERAGE_MIN": "requirement_coverage_denominator", "AC_COVERAGE_MIN": "acceptance_criteria_coverage_denominator", "CONDITION_COVERAGE_MIN": "test_condition_coverage_denominator"}.get(definition.type)
             if denominator_key and not metrics.get(denominator_key, 0):

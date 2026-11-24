@@ -23,6 +23,10 @@ from src.modules.quality.services.defect_search_index_worker import (
     start_defect_search_index_worker,
     stop_defect_search_index_worker,
 )
+from src.modules.quality.services.requirement_impact_worker import (
+    start_requirement_impact_worker,
+    stop_requirement_impact_worker,
+)
 from src.modules.requirements.router import router as requirements_router
 from src.modules.requirements.services.requirement_document_worker import (
     start_requirement_document_parse_worker,
@@ -43,9 +47,12 @@ async def lifespan(app: FastAPI):
     await project_access_repository.ensure_read_only_comment_capabilities()
     await project_access_repository.ensure_private_defect_capability()
     await project_access_repository.ensure_test_review_capabilities()
+    await project_access_repository.ensure_workflow_role_capabilities()
     await start_requirement_document_parse_worker()
     await start_defect_search_index_worker()
+    await start_requirement_impact_worker()
     yield
+    await stop_requirement_impact_worker()
     await stop_defect_search_index_worker()
     await stop_requirement_document_parse_worker()
     await close_database()

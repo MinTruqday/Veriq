@@ -79,13 +79,42 @@ async def update_defect_record(defect_id, payload, project_id, user):
         defect_id,
         user,
         "defect.update",
-        assigned_user_field="assignee",
     )
     if project_id is not None and defect["project_id"] != project_id:
         raise HTTPException(status_code=422, detail={"code": "PROJECT_MISMATCH"})
-    permissions = await require_defect_editor_assignment(defect, user)
-    if "defect.triage" not in permissions and {"assignee", "severity", "priority"}.intersection(payload):
-        raise HTTPException(status_code=403, detail={"code": "DEFECT_TRIAGE_AUTHORITY_REQUIRED"})
+    field_permissions = {
+        "severity": "defect.severity.manage",
+        "priority": "defect.priority.manage",
+    }
+    permissions = await require_defect_editor_assignment(
+        defect,
+        user,
+        [
+            permission
+            for field, permission in field_permissions.items()
+            if field in payload
+        ],
+    )
+    allowed_triage_fields = set()
+    if "defect.triage" in permissions:
+        allowed_triage_fields.update(payload)
+    if "severity" in payload:
+        await get_project(
+            defect["project_id"], user, "defect.severity.manage",
+            assigned_user_id=defect.get("assignee"),
+        )
+        allowed_triage_fields.add("severity")
+    if "priority" in payload:
+        await get_project(
+            defect["project_id"], user, "defect.priority.manage",
+            assigned_user_id=defect.get("assignee"),
+        )
+        allowed_triage_fields.add("priority")
+    if not set(payload).issubset(allowed_triage_fields | {"expected_revision"}):
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "DEFECT_FIELD_AUTHORITY_REQUIRED"},
+        )
     expected_revision = payload.get("expected_revision")
     if not isinstance(expected_revision, int):
         raise HTTPException(status_code=422, detail={"code": "EXPECTED_REVISION_REQUIRED"})
@@ -248,7 +277,11 @@ async def transition_defect_record(defect_id, payload, user):
         permission,
         assigned_user_field="assignee" if permission == "defect.transition.resolve" else None,
     )
-    await require_defect_editor_assignment(defect, user)
+    await require_defect_editor_assignment(
+        defect,
+        user,
+        ["defect.close"] if permission == "defect.close" else (),
+    )
     allowed = defect_transitions().get(defect["status"], set())
     if payload.to_status not in allowed:
         raise HTTPException(

@@ -35,9 +35,6 @@ const RequirementsPage = dynamic(() => import("./workspace/RequirementsPage"), {
   loading: workspaceLoading,
 });
 const ReportsPage = dynamic(() => import("./workspace/ReportsPage"), { loading: workspaceLoading });
-const ReviewQueuePage = dynamic(() => import("./workspace/ReviewQueuePage"), {
-  loading: workspaceLoading,
-});
 const SettingsPage = dynamic(() => import("./workspace/SettingsPage"), {
   loading: workspaceLoading,
 });
@@ -74,14 +71,13 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
     [PROJECT_SECTION_SLUGS.testPlans]: "execution",
     [PROJECT_SECTION_SLUGS.testRuns]: "execution",
     [PROJECT_SECTION_SLUGS.automation]: "execution",
-    [PROJECT_SECTION_SLUGS.aiReview]: "ai-review",
     [PROJECT_SECTION_SLUGS.defects]: "defects",
     [PROJECT_SECTION_SLUGS.reports]: "reports",
     [PROJECT_SECTION_SLUGS.audit]: "settings",
     [PROJECT_SECTION_SLUGS.knowledge]: "knowledge",
     "tim-kiem": "knowledge",
     [PROJECT_SECTION_SLUGS.settings]: "settings",
-    [PROJECT_SECTION_SLUGS.documentReader]: "document-reader",
+    [PROJECT_SECTION_SLUGS.documentReader]: section[1] ? "document-reader" : "documents",
   };
   const legacyRedirectTarget =
     section[0] === PROJECT_SECTION_SLUGS.changes
@@ -93,7 +89,9 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
   const caseSubsectionItem =
     section[0] === PROJECT_SECTION_SLUGS.testCases &&
     section[1] &&
-    testCaseSubsectionItems(projectId).find((item) => item.href.split("/").at(-1) === section[1]);
+    testCaseSubsectionItems(projectId, true).find(
+      (item) => item.href.split("/").at(-1) === section[1],
+    );
   const invalidCaseSubsection = Boolean(
     section[0] === PROJECT_SECTION_SLUGS.testCases &&
       section[1] &&
@@ -111,13 +109,13 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
     requirements: "requirement.read",
     "test-design": "testcase.read",
     traceability: "trace.read",
-    "ai-review": null,
     execution: "testrun.read",
     defects: "defect.read",
     knowledge: "knowledge.read",
     reports: null,
     settings: section[0] === PROJECT_SECTION_SLUGS.audit ? "project.audit.read" : null,
     "document-reader": "requirement_document.read",
+    documents: "requirement_document.read",
   };
   const sectionPermission = {
     [PROJECT_SECTION_SLUGS.testData]: ["testdata.read", "testcase.read"],
@@ -145,8 +143,6 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
         ]
       : area === "changes"
         ? ["changeset.read"]
-        : area === "ai-review"
-          ? ["requirement.read", "proposal.read"]
           : area === "settings" && section[0] !== PROJECT_SECTION_SLUGS.audit
             ? PROJECT_SETTINGS_PERMISSIONS
             : null;
@@ -215,13 +211,17 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
     [PROJECT_SECTION_SLUGS.testSets]: "test-sets",
     [PROJECT_SECTION_SLUGS.testPlans]: "test-plans",
     [PROJECT_SECTION_SLUGS.testRuns]: "test-runs",
+    [PROJECT_SECTION_SLUGS.execution]: "test-runs",
     [PROJECT_SECTION_SLUGS.automation]: "automation",
     [PROJECT_SECTION_SLUGS.audit]: "audit",
   };
   const props = {
     project: state.project,
     section: section.slice(1),
-    workspaceView: workspaceViewBySlug[section[0]] || "",
+    workspaceView:
+      section[0] === PROJECT_SECTION_SLUGS.testCases && section[1] === "bo-kiem-thu"
+        ? "test-sets"
+        : workspaceViewBySlug[section[0]] || "",
     setGlobalError: state.setError,
   };
   const pages = {
@@ -229,9 +229,9 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
     monitoring: <MonitoringPage {...props} />,
     releases: <ReleasesPage {...props} />,
     requirements: <RequirementsPage {...props} />,
+    documents: <RequirementsPage {...props} workspaceView="documents" />,
     "test-design": <TestDesignPage {...props} />,
     traceability: <TraceabilityPage {...props} />,
-    "ai-review": <ReviewQueuePage {...props} />,
     execution: <ExecutionPage {...props} />,
     defects: <DefectsPage {...props} />,
     knowledge: (

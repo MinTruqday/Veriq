@@ -29,6 +29,9 @@ export const designTestingApi = {
       body: JSON.stringify(payload),
     }),
   getRequirement: (id) => testingRequest(`/yeu-cau/${id}`),
+  getRequirementImpact: (id) => testingRequest(`/phien-ban-yeu-cau/${id}/anh-huong-kiem-thu`),
+  retryRequirementImpact: (id) =>
+    testingRequest(`/phien-ban-yeu-cau/${id}/anh-huong-kiem-thu/thu-lai`, { method: "POST" }),
   listRequirementVersions: (id) => testingRequest(`/yeu-cau/${id}/phien-ban`),
   createRequirementVersion: (id, payload) =>
     testingRequest(`/yeu-cau/${id}/phien-ban`, { method: "POST", body: JSON.stringify(payload) }),
@@ -291,11 +294,6 @@ export const designTestingApi = {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
-  startRequirementDocumentAI: (id, payload) =>
-    testingRequest(`/tai-lieu-yeu-cau/${id}/chay-ai`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
   reindexRequirementDocument: (id) =>
     testingRequest(`/tai-lieu-yeu-cau/${id}/lap-chi-muc-lai`, { method: "POST" }),
   reindexKnowledgeSource: (id) =>
@@ -316,18 +314,6 @@ export const designTestingApi = {
     testingRequest(`/tai-lieu-yeu-cau/${id}/thu-lai-phan-tich`, {
       method: "POST",
       body: JSON.stringify({ expected_revision: revision }),
-    }),
-  extractRequirementDocument: (
-    id,
-    idempotencyKey = crypto.randomUUID(),
-    includeBusinessRules = true,
-  ) =>
-    testingRequest(`/tai-lieu-yeu-cau/${id}/trich-xuat`, {
-      method: "POST",
-      body: JSON.stringify({
-        idempotency_key: idempotencyKey,
-        include_business_rules: includeBusinessRules,
-      }),
     }),
   saveRequirement: (projectId, requirementId, payload) =>
     testingRequest(`/du-an/${projectId}/yeu-cau/${requirementId}/luu`, {
@@ -584,16 +570,7 @@ export const designTestingApi = {
     testingRequest(
       `/du-an/${projectId}/dac-ta-giao-dien/khac-biet?from_artifact_id=${encodeURIComponent(fromArtifactId)}&to_artifact_id=${encodeURIComponent(toArtifactId)}`,
     ),
-  analyzeApiArtifactImpact: (projectId, payload) =>
-    testingRequest(`/du-an/${projectId}/dac-ta-giao-dien/phan-tich-anh-huong`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
   listApiOperations: (id) => testingRequest(`/du-an/${id}/dac-ta-giao-dien/thao-tac`),
-  generateApiTests: (id) =>
-    testingRequest(`/dac-ta-giao-dien/thao-tac/${id}/sinh-ca-kiem-thu`, {
-      method: "POST",
-    }),
   traceability: (id) => testingRequest(`/du-an/${id}/truy-vet`),
   exportTraceability: (id) =>
     downloadTestingFile(`/du-an/${id}/truy-vet/xuat`, `traceability-${id}.csv`),

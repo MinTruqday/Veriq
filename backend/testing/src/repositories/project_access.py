@@ -65,6 +65,93 @@ def _canonicalize_legacy_permissions(access):
 
 
 class ProjectAccessRepository:
+    async def ensure_workflow_role_capabilities(self):
+        """Add the approved project workflow permissions to the existing roles.
+
+        This is additive for unrelated capabilities. QC's legacy broad defect
+        triage grant is removed because severity and priority now have distinct
+        owners (QA and the project lead).
+        """
+        from src.core.auth import access_policy
+
+        role_permissions = {
+            "QA": {
+                "testcase.approve",
+                "defect.severity.manage",
+                "defect.update",
+            },
+            "QC": {
+                "testrun.create",
+                "defect.close",
+            },
+            "DEVELOPER": {
+                "defect.transition.resolve",
+            },
+        }
+        while True:
+            document = await database.value.project_access_control.find_one({"_id": "active"})
+            access = ProjectAccessControl.model_validate(document)
+            capabilities = {item.name for item in access.capabilities}
+            missing_capabilities = {
+                "defect.severity.manage",
+                "defect.priority.manage",
+            } - capabilities
+            grants = {grant.role: set(grant.permissions) for grant in access.role_grants}
+            updated_grants = {role: set(values) for role, values in grants.items()}
+            for role, permissions in role_permissions.items():
+                if role in updated_grants:
+                    updated_grants[role].update(permissions)
+            if "QC" in updated_grants:
+                updated_grants["QC"].discard("defect.triage")
+                updated_grants["QC"].discard("defect.update")
+            changed_grants = any(updated_grants[role] != grants[role] for role in grants)
+            if not missing_capabilities and not changed_grants:
+                access_policy.cache_clear()
+                return
+            updated = access.model_copy(update={
+                "revision": access.revision + 1,
+                "capabilities": access.capabilities + [
+                    ProjectCapability(name=name)
+                    for name in sorted(missing_capabilities)
+                ],
+                "role_grants": [
+                    grant.model_copy(update={"permissions": sorted(updated_grants[grant.role])})
+                    for grant in access.role_grants
+                ],
+            })
+            timestamp = datetime.now(timezone.utc)
+            async with await database.client.start_session() as session:
+                async with session.start_transaction():
+                    result = await database.value.project_access_control.replace_one(
+                        {"_id": "active", "revision": access.revision},
+                        {**document, **updated.model_dump(), "updated_at": timestamp},
+                        session=session,
+                    )
+                    if result.modified_count:
+                        await database.value.audit_events.update_one(
+                            {"_id": f"MIG-workflow-role-capabilities-{updated.revision}"},
+                            {"$setOnInsert": {
+                                "actor_id": "SYSTEM_MIGRATION",
+                                "action": "workflow_role_capabilities_updated",
+                                "entity_type": "ProjectAccessControl",
+                                "entity_id": "active",
+                                "project_id": None,
+                                "created_at": timestamp,
+                                "details": {
+                                    "added_capabilities": sorted(missing_capabilities),
+                                    "updated_roles": sorted(
+                                        role for role in updated_grants
+                                        if updated_grants[role] != grants[role]
+                                    ),
+                                    "previous_revision": access.revision,
+                                },
+                            }},
+                            upsert=True,
+                            session=session,
+                        )
+                        access_policy.cache_clear()
+                        return
+
     async def ensure_test_review_capabilities(self):
         from src.core.auth import access_policy
 

@@ -22,15 +22,13 @@ import {
 const fields = [
   { key: "title", label: "Tên ca kiểm thử", kind: "text" },
   { key: "objective_doc", label: "Mục tiêu", kind: "document" },
-  { key: "type", label: "Loại tình huống", kind: "text" },
+  { key: "type", label: "Loại ca kiểm thử", kind: "text" },
   { key: "priority", label: "Mức ưu tiên", kind: "text", maxLength: 100 },
-  { key: "risk", label: "Rủi ro", kind: "text", maxLength: 100 },
   {
     key: "test_level",
     label: "Cấp kiểm thử",
     kind: "text",
   },
-  { key: "test_kind", label: "Loại kiểm thử", kind: "text" },
   { key: "bdd", label: "Kịch bản BDD", kind: "bdd" },
   { key: "preconditions_doc", label: "Điều kiện trước", kind: "document" },
   { key: "test_data", label: "Dữ liệu chung", kind: "data" },

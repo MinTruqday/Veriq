@@ -11,6 +11,7 @@ from src.core.common import idempotency_request_hash as _create_request_hash
 from src.core.common import verify_idempotency_replay as _verify_create_replay
 from src.core.database import database
 from src.core.human_decisions import (
+    can_auto_approve_project_content,
     content_authorship_changes,
     require_ai_publication_authority,
     require_independent_review,
@@ -514,6 +515,9 @@ async def transition_status_report(report_id, payload, user, transition_action):
         report["project_id"],
         {"from": source, "to": target, "note": payload.note},
     )
+    if target == "IN_REVIEW" and await can_auto_approve_project_content(report["project_id"], user):
+        approval_payload = payload.model_copy(update={"expected_revision": updated["revision"]})
+        return await transition_status_report(report_id, approval_payload, user, "approve")
     return updated
 
 async def compare_status_reports(report_id, other_report_id, user):

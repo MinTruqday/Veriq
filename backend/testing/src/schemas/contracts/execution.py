@@ -11,6 +11,7 @@ from src.schemas.contracts.common import (
 )
 from src.schemas.contracts.planning import (
     TestPlanCommunication,
+    TestPlanCarryOver,
     TestPlanEstimation,
     TestPlanRisk,
     TestPlanSchedule,
@@ -41,6 +42,8 @@ class ReleaseReadiness(BaseModel):
 
 
 class TestPlanPatch(BaseModel):
+    phase: str | None = Field(default=None, max_length=120)
+    carry_over_items: list[TestPlanCarryOver] | None = Field(default=None, max_length=5000)
     owner_id: str | None = Field(default=None, max_length=200)
     scenario_ids: list[str] | None = Field(default=None, max_length=1000)
     expected_revision: int = Field(ge=1)
@@ -58,6 +61,7 @@ class TestPlanPatch(BaseModel):
     entry_criteria: list[str] | None = Field(default=None, max_length=200)
     exit_criteria: list[str] | None = Field(default=None, max_length=200)
     test_types: list[str] | None = Field(default=None, max_length=100)
+    test_techniques: list[str] | None = Field(default=None, max_length=100)
     members: list[str] | None = Field(default=None, max_length=500)
     test_level: str | None = Field(default=None, min_length=1, max_length=100)
     test_approach: str | None = Field(default=None, max_length=10000)
@@ -75,8 +79,8 @@ class TestSuiteCreate(BaseModel):
     project_id: str
     name: str = Field(min_length=2, max_length=300)
     suite_type: Literal[
-        "smoke", "regression", "sanity", "feature", "api", "ui", "integration", "custom"
-    ]
+        "", "smoke", "regression", "sanity", "feature", "api", "ui", "integration", "custom"
+    ] = ""
     test_case_version_ids: list[str] = Field(default_factory=list, max_length=5000)
 
 
@@ -84,7 +88,7 @@ class TestSuitePatch(BaseModel):
     expected_revision: int = Field(ge=1)
     name: str | None = Field(default=None, min_length=2, max_length=300)
     suite_type: (
-        Literal["smoke", "regression", "sanity", "feature", "api", "ui", "integration", "custom"]
+        Literal["", "smoke", "regression", "sanity", "feature", "api", "ui", "integration", "custom"]
         | None
     ) = None
     test_case_version_ids: list[str] | None = Field(default=None, max_length=5000)
@@ -96,6 +100,7 @@ class TestRunCreate(BaseModel):
     project_id: str
     idempotency_key: str | None = Field(default=None, min_length=8, max_length=200)
     name: str = Field(min_length=2, max_length=300)
+    phase: str | None = Field(default=None, max_length=120)
     test_plan_id: str | None = None
     expected_test_plan_snapshot_hash: str | None = Field(default=None, min_length=1, max_length=128)
     test_suite_ids: list[str] = Field(default_factory=list, max_length=500)
@@ -110,6 +115,13 @@ class TestRunCreate(BaseModel):
 
 class TestRunRerunInput(BaseModel):
     idempotency_key: str = Field(min_length=8, max_length=200)
+    failed_only: bool = False
+    test_case_version_ids: list[str] | None = Field(default=None, max_length=5000)
+
+
+class TestResultDefectLinkInput(BaseModel):
+    defect_id: str = Field(min_length=1, max_length=200)
+    expected_revision: int = Field(ge=1)
 
 
 class TestRunPatch(BaseModel):

@@ -7,9 +7,18 @@ class ImpactClassificationSuggestionOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     test_case_version_id: str = Field(min_length=1, max_length=128)
-    classification: Literal["STILL_VALID", "POTENTIALLY_AFFECTED", "NEEDS_UPDATE", "OBSOLETE"]
+    classification: Literal[
+        "STILL_VALID",
+        "POTENTIALLY_AFFECTED",
+        "NEEDS_UPDATE",
+        "OBSOLETE",
+        "INSUFFICIENT_EVIDENCE",
+    ]
     confidence: float = Field(ge=0, le=1)
     reason: str = Field(min_length=2, max_length=5000)
+    requirement_before_quote: str | None = Field(default=None, max_length=1000)
+    requirement_after_quote: str | None = Field(default=None, max_length=1000)
+    test_case_quote: str | None = Field(default=None, min_length=2, max_length=1000)
     maintenance_patch: "MaintenanceTestCasePatchOutput | None" = None
 
     @model_validator(mode="after")
@@ -67,6 +76,8 @@ class NewTestCandidateOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     reason: str = Field(min_length=2, max_length=5000)
+    requirement_before_quote: str | None = Field(default=None, max_length=1000)
+    requirement_after_quote: str | None = Field(default=None, max_length=1000)
     confidence: float = Field(ge=0, le=1)
     patch: MaintenanceTestCasePatchOutput
 

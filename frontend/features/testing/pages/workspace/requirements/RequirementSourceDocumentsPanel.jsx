@@ -1,11 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Archive,
-  ArrowRight,
   BookOpen,
-  BrainCircuit,
   Download,
-  Play,
   RefreshCw,
   RotateCcw,
   Shield,
@@ -146,13 +143,9 @@ export default function RequirementSourceDocumentsPanel({
   ask,
   reload,
   onError,
-  onContinueImport,
 }) {
   const canSummarize = can("ai.ask_project");
   const [retryingDocumentId, setRetryingDocumentId] = useState("");
-  const [continuingImportDocumentId, setContinuingImportDocumentId] = useState("");
-  const [activatingAiDocumentId, setActivatingAiDocumentId] = useState("");
-  const [startingAiDocumentId, setStartingAiDocumentId] = useState("");
   const [aiActivationNotice, setAiActivationNotice] = useState("");
   const [expandedReportId, setExpandedReportId] = useState("");
   const [selectedIds, setSelectedIds] = useState([]);
@@ -272,45 +265,6 @@ export default function RequirementSourceDocumentsPanel({
       },
     });
   };
-  const enableAiRead = async (item) => {
-    setActivatingAiDocumentId(item._id);
-    setAiActivationNotice("");
-    try {
-      await testingApi.updateRequirementDocumentAiRead(item._id, {
-        expected_revision: item.revision,
-        ai_enabled: true,
-      });
-      await reload();
-      setAiActivationNotice(
-        `Đã cho phép AI đọc “${item.filename}”. Bạn có thể chủ động bắt đầu sau khi tài liệu sẵn sàng.`,
-      );
-    } catch (reason) {
-      onError(messageOf(reason));
-    } finally {
-      setActivatingAiDocumentId("");
-    }
-  };
-  const startAiProcessing = async (item) => {
-    setStartingAiDocumentId(item._id);
-    setAiActivationNotice("");
-    try {
-      const outputLanguage = preferredSummaryLocale(userLocale, projectLocale);
-      const result = await testingApi.startRequirementDocumentAI(item._id, {
-        expected_revision: item.revision,
-        idempotency_key: `start-${item._id}-r${item.revision}-${outputLanguage.replace(/[^A-Za-z0-9_-]/g, "-")}`,
-        output_language: outputLanguage,
-      });
-      await reload();
-      setAiActivationNotice(
-        `Đã gửi yêu cầu xử lý “${item.filename}”. Theo dõi trạng thái trong Hoạt động AI.`,
-      );
-      return result;
-    } catch (reason) {
-      onError(messageOf(reason));
-    } finally {
-      setStartingAiDocumentId("");
-    }
-  };
   const classify = async (item) => {
     await ask({
       title: "Phân loại tài liệu nguồn",
@@ -365,15 +319,6 @@ export default function RequirementSourceDocumentsPanel({
     }
   };
 
-  const continueImport = async (item) => {
-    if (!item.last_import_job_id || !onContinueImport) return;
-    setContinuingImportDocumentId(item._id);
-    try {
-      await onContinueImport(item);
-    } finally {
-      setContinuingImportDocumentId("");
-    }
-  };
 
   const changeArchiveStatus = async (item, restore) => {
     await ask({
@@ -765,22 +710,6 @@ export default function RequirementSourceDocumentsPanel({
                     <BookOpen size={16} aria-hidden="true" />
                   </button>
                 )}
-                {can("requirement_document.review_extraction") &&
-                  (item.requirement_import_status === "PREVIEW_READY" ||
-                    item.status === "EXTRACTED") &&
-                  item.last_import_job_id && (
-                    <button
-                      aria-label="Tiếp tục nhập yêu cầu"
-                      className="icon-button h-9 w-9"
-                      type="button"
-                      title="Tiếp tục nhập yêu cầu"
-                      disabled={continuingImportDocumentId === item._id}
-                      aria-busy={continuingImportDocumentId === item._id}
-                      onClick={() => continueImport(item)}
-                    >
-                      <ArrowRight size={16} aria-hidden="true" />
-                    </button>
-                  )}
                 {can("knowledge.manage") && item.status !== "ARCHIVED" && (
                   <>
                     <button
@@ -827,45 +756,6 @@ export default function RequirementSourceDocumentsPanel({
                       onClick={() => retryParse(item)}
                     >
                       <RotateCcw size={16} aria-hidden="true" />
-                    </button>
-                  )}
-                {(isPlatformAdmin || item.created_by === currentUserId) &&
-                  (isPlatformAdmin || can("requirement_document.extract")) &&
-                  item.status !== "ARCHIVED" &&
-                  !item.ai_enabled &&
-                  (item.status === "READY" ? (
-                    <button
-                      aria-label="Cho phép AI đọc tài liệu"
-                      className="icon-button h-9 w-9"
-                      type="button"
-                      title="Cho phép AI đọc tài liệu"
-                      disabled={activatingAiDocumentId === item._id}
-                      aria-busy={activatingAiDocumentId === item._id}
-                      onClick={() => enableAiRead(item)}
-                    >
-                      <BrainCircuit size={16} aria-hidden="true" />
-                    </button>
-                  ) : (
-                    <span className="self-center text-xs text-ink-muted">
-                      AI xử lý sau khi phân tích tài liệu xong
-                    </span>
-                  ))}
-                {(isPlatformAdmin || item.created_by === currentUserId) &&
-                  (isPlatformAdmin || can("requirement_document.extract")) &&
-                  item.status !== "ARCHIVED" &&
-                  item.ai_enabled &&
-                  item.status === "READY" &&
-                  ["INDEXED", "DEGRADED"].includes(item.index_status) && (
-                    <button
-                      aria-label="Chạy AI trên tài liệu"
-                      className="apple-button inline-flex size-9 items-center justify-center p-0"
-                      type="button"
-                      title="Chạy AI trên tài liệu"
-                      disabled={startingAiDocumentId === item._id}
-                      aria-busy={startingAiDocumentId === item._id}
-                      onClick={() => startAiProcessing(item)}
-                    >
-                      <Play size={16} aria-hidden="true" />
                     </button>
                   )}
                 {(isPlatformAdmin || item.created_by === currentUserId) &&

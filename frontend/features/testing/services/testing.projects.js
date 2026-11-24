@@ -162,6 +162,8 @@ export const projectTestingApi = {
     const query = listQuery(filters);
     return testingRequest(`/du-an/${projectId}/giam-sat-kiem-thu${query ? `?${query}` : ""}`);
   },
+  getLivePlanProgress: (projectId, planId) =>
+    testingRequest(`/du-an/${projectId}/ke-hoach-kiem-thu/${planId}/tien-do`),
   createMonitoringSnapshot: (projectId, payload) =>
     testingRequest(`/du-an/${projectId}/giam-sat-kiem-thu/anh-chup`, {
       method: "POST",

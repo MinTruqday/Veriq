@@ -1,13 +1,8 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
-
-class TestPlanAIDraftInput(BaseModel):
-    requirement_version_ids: list[str] = Field(min_length=1, max_length=200)
-    instruction: str = Field(default="", max_length=5000)
-    current_test_plan: dict[str, Any] = Field(default_factory=dict)
 
 from src.schemas.contracts.common import TestPlanRiskStatus
 
@@ -89,8 +84,24 @@ class TestPlanCommunication(BaseModel):
     escalation_roles: list[str] = Field(default_factory=list, max_length=100)
 
 
+class TestPlanCarryOver(BaseModel):
+    source_test_run_id: str = Field(min_length=1, max_length=200)
+    test_case_version_id: str = Field(min_length=1, max_length=200)
+    reason: str = Field(min_length=1, max_length=2000)
+
+    @field_validator("reason")
+    @classmethod
+    def require_non_blank_reason(cls, value):
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("CARRY_OVER_REASON_REQUIRED")
+        return cleaned
+
+
 class TestPlanCreate(BaseModel):
     save_as_draft: bool = True
+    phase: str = Field(default="", max_length=120)
+    carry_over_items: list[TestPlanCarryOver] = Field(default_factory=list, max_length=5000)
     owner_id: str | None = Field(default=None, max_length=200)
     scenario_ids: list[str] = Field(default_factory=list, max_length=1000)
     project_id: str
@@ -108,6 +119,7 @@ class TestPlanCreate(BaseModel):
     entry_criteria: list[str] = Field(default_factory=list, max_length=200)
     exit_criteria: list[str] = Field(default_factory=list, max_length=200)
     test_types: list[str] = Field(default_factory=list, max_length=100)
+    test_techniques: list[str] = Field(default_factory=list, max_length=100)
     members: list[str] = Field(default_factory=list, max_length=500)
     test_level: str | None = Field(default=None, min_length=1, max_length=100)
     test_approach: str = Field(default="", max_length=10000)

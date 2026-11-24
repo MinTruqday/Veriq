@@ -5,7 +5,6 @@ import re
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from src.core.ai_capabilities import ai_contract_metadata, request_ai_capability
 from src.core.common import (
     audit,
     get_project,
@@ -18,16 +17,16 @@ from src.core.common import (
 )
 from src.core.database import database
 from src.core.human_decisions import (
+    can_auto_approve_project_content,
     content_authorship_changes,
     require_ai_publication_authority,
     require_independent_review,
 )
-from src.core.source_evidence import split_source_evidence
 from src.modules.design.services.test_case_records import require_current_baselined_version
 from src.modules.execution.services.execution_context import resolve_execution_context
 from src.repositories.project import project_repository
 from src.repositories.test_plan import test_plan_repository
-from src.repositories.test_analysis import test_analysis_repository
+from src.repositories.test_run import test_run_repository
 from src.schemas.contracts.planning import TestPlanCreate, TestPlanSuiteSnapshot
 
 LEGACY_PLAN_SNAPSHOT_FIELDS = (
@@ -60,10 +59,49 @@ PLAN_SNAPSHOT_FIELDS = (
 
 def plan_snapshot(plan):
     snapshot = {field: plan.get(field) for field in PLAN_SNAPSHOT_FIELDS}
-    for field in ("test_data_notes", "environment_notes"):
+    for field in ("test_data_notes", "environment_notes", "test_techniques", "phase"):
         if field in plan:
             snapshot[field] = plan[field]
+    if plan.get("carry_over_items"):
+        snapshot["carry_over_items"] = plan["carry_over_items"]
     return snapshot
+
+
+async def validate_carry_over_items(project_id, items, target_phase=""):
+    carry_items = [item.model_dump() if hasattr(item, "model_dump") else dict(item) for item in items or []]
+    if carry_items and not str(target_phase or "").strip():
+        raise HTTPException(status_code=422, detail={"code": "CARRY_OVER_TARGET_PHASE_REQUIRED"})
+    seen = set()
+    for item in carry_items:
+        version_id = item["test_case_version_id"]
+        if version_id in seen:
+            raise HTTPException(status_code=422, detail={"code": "DUPLICATE_CARRY_OVER_CASE"})
+        seen.add(version_id)
+        source = await test_run_repository.find_run(item["source_test_run_id"], project_id)
+        if not source or version_id not in set(source.get("test_case_version_ids", [])):
+            raise HTTPException(status_code=422, detail={"code": "INVALID_CARRY_OVER_SOURCE_CASE"})
+        source_phase = str(source.get("phase") or "").strip()
+        if not source_phase and source.get("test_plan_id"):
+            source_plan = await test_run_repository.find_plan(
+                source["test_plan_id"], project_id
+            )
+            source_phase = str(
+                (source_plan or {}).get("phase")
+                or ((source_plan or {}).get("approved_snapshot") or {}).get("phase")
+                or ""
+            ).strip()
+        if not source_phase:
+            raise HTTPException(status_code=422, detail={"code": "CARRY_OVER_SOURCE_PHASE_REQUIRED"})
+        if source_phase.casefold() == str(target_phase or "").strip().casefold():
+            raise HTTPException(status_code=422, detail={"code": "CARRY_OVER_PHASE_MUST_DIFFER"})
+        result = await test_run_repository.find_result_for_case(source["_id"], version_id)
+        status = (result or {}).get("status", "NOT_RUN")
+        if status not in {"NOT_RUN", "IN_PROGRESS", "FAIL", "BLOCKED", "SKIPPED"}:
+            raise HTTPException(status_code=422, detail={"code": "CARRY_OVER_CASE_NOT_ELIGIBLE", "status": status})
+        item["source_status"] = status
+        item["source_run_name"] = source.get("name", "")
+        item["source_phase"] = source_phase
+    return carry_items
 
 def plan_snapshot_hash(plan):
     canonical = json.dumps(
@@ -261,11 +299,14 @@ async def create_test_plan_record(payload, project_id, user):
     )
     scenario_ids = await validate_plan_links(payload.project_id, payload.owner_id, payload.scenario_ids)
     await validate_effort_allocation_members(payload.project_id, payload.estimation)
+    carry_over_items = await validate_carry_over_items(
+        payload.project_id, payload.carry_over_items, payload.phase
+    )
     scope = await validate_plan_scope(
         payload.project_id,
         payload.requirement_version_ids,
         payload.test_suite_ids,
-        payload.test_case_version_ids,
+        list(dict.fromkeys([*payload.test_case_version_ids, *(item["test_case_version_id"] for item in carry_over_items)])),
     )
     if not payload.save_as_draft:
         completeness = plan_completeness(payload.model_dump())
@@ -275,6 +316,7 @@ async def create_test_plan_record(payload, project_id, user):
     plan = {
         "_id": new_id('TP'),
         **payload.model_dump(exclude={"save_as_draft"}),
+        "carry_over_items": carry_over_items,
         "scenario_ids": scenario_ids,
         "test_level": payload.test_level,
         "test_types": payload.test_types,
@@ -302,6 +344,11 @@ async def create_test_plan_record(payload, project_id, user):
                 payload.project_id,
                 session=session,
             )
+    if not payload.save_as_draft and await can_auto_approve_project_content(payload.project_id, user):
+        from src.schemas.contracts.requirements import ReviewTransitionInput
+
+        review = ReviewTransitionInput(expected_revision=plan["revision"], review_note="")
+        return await submit_test_plan_record(plan["_id"], review, user)
     return plan
 
 async def list_test_plan_records(
@@ -348,6 +395,12 @@ async def update_test_plan_record(plan_id, payload, user):
         raise HTTPException(status_code=409, detail={"code": 'TEST_PLAN_NOT_DRAFT'})
     changes = payload.model_dump(exclude_unset=True)
     changes.pop("expected_revision", None)
+    if {"carry_over_items", "phase"} & set(changes):
+        changes["carry_over_items"] = await validate_carry_over_items(
+            plan["project_id"],
+            changes.get("carry_over_items", plan.get("carry_over_items", [])),
+            changes.get("phase", plan.get("phase", "")),
+        )
     if "estimation" in changes:
         await validate_effort_allocation_members(
             plan["project_id"], TestPlanCreate.model_validate({**plan, **changes}).estimation
@@ -365,12 +418,16 @@ async def update_test_plan_record(plan_id, payload, user):
                 "environment_id": environment_context["environment_id"],
             }
         )
-    if {"requirement_version_ids", "test_suite_ids", "test_case_version_ids"} & set(changes):
+    if {"requirement_version_ids", "test_suite_ids", "test_case_version_ids", "carry_over_items"} & set(changes):
+        carry_items = changes.get("carry_over_items", plan.get("carry_over_items", [])) or []
         scope = await validate_plan_scope(
             plan["project_id"],
             changes.get("requirement_version_ids", plan.get("requirement_version_ids", [])),
             changes.get("test_suite_ids", plan.get("test_suite_ids", [])),
-            changes.get("test_case_version_ids", plan.get("test_case_version_ids", [])),
+            list(dict.fromkeys([
+                *changes.get("test_case_version_ids", plan.get("test_case_version_ids", [])),
+                *(item["test_case_version_id"] for item in carry_items),
+            ])),
         )
         changes.update(scope)
     if {"owner_id", "scenario_ids"} & changes.keys():
@@ -441,6 +498,9 @@ async def submit_test_plan_record(plan_id, payload, user):
                 plan["project_id"],
                 session=session,
             )
+    if await can_auto_approve_project_content(plan["project_id"], user):
+        approval = payload.model_copy(update={"expected_revision": updated["revision"]})
+        return await approve_test_plan_record(plan_id, approval, user)
     return updated
 
 async def approve_test_plan_record(plan_id, payload, user):
@@ -603,200 +663,3 @@ async def clone_test_plan_record(plan_id, user):
                 session=session,
             )
     return cloned
-
-def validate_test_plan_ai_field_grounding(proposal, source_text):
-    fields = (
-        "objective", "scope_in", "scope_out", "test_approach",
-    )
-    field_evidence = {}
-    unsupported_fields = []
-    for item in proposal.get("field_evidence") or []:
-        field_name = item.get("field")
-        if field_name not in fields:
-            continue
-        if field_name in field_evidence:
-            raise HTTPException(502, detail={"code": "TEST_PLAN_AI_FIELD_EVIDENCE_DUPLICATE"})
-        quotes = item.get("evidence_quotes") or []
-        grounded_quotes = []
-        for quote in quotes:
-            source = source_text.get(quote.get("evidence_ref"))
-            text = str(quote.get("quote") or "").strip()
-            if source and text and text in source:
-                grounded_quotes.append(quote)
-        if grounded_quotes:
-            field_evidence[field_name] = grounded_quotes
-        else:
-            unsupported_fields.append(field_name)
-    for field_name in fields:
-        value = proposal.get(field_name)
-        has_value = (
-            any(str(item or "").strip() for item in value)
-            if isinstance(value, list)
-            else bool(str(value or "").strip())
-        )
-        if has_value and field_name not in field_evidence:
-            proposal[field_name] = [] if isinstance(value, list) else ""
-            unsupported_fields.append(field_name)
-        elif not has_value and field_name in field_evidence:
-            field_evidence.pop(field_name, None)
-    proposal["field_evidence"] = [
-        {"field": field_name, "evidence_quotes": quotes}
-        for field_name, quotes in field_evidence.items()
-    ]
-    # Keep the response schema compatible while returning only the concise
-    # project-plan fields supported by Requirement evidence.
-    for field_name in (
-        "test_level", "test_types", "environment", "entry_criteria",
-        "exit_criteria", "risks", "assumptions", "constraints",
-    ):
-        proposal[field_name] = [] if isinstance(proposal.get(field_name), list) else ""
-    return list(dict.fromkeys(unsupported_fields))
-
-async def generate_test_plan_draft_suggestion(project_id, payload, user):
-    from src.modules.design.services.test_case_records import require_current_design_source
-
-    await get_project(project_id, user, "testplan.create")
-    requirement_ids = list(dict.fromkeys(payload.requirement_version_ids))
-    if len(requirement_ids) != len(payload.requirement_version_ids):
-        raise HTTPException(422, detail={"code": "DUPLICATE_REQUIREMENT_VERSION"})
-    allowed_statuses = ["READY", "BASELINED"]
-    if getattr(user, "_ai_capability_intent", "") == "process_ingested_requirement_document":
-        allowed_statuses.append("DRAFT")
-    versions = await database.value.requirement_versions.find({
-        "project_id": project_id,
-        "_id": {"$in": requirement_ids},
-        "status": {"$in": allowed_statuses},
-    }).to_list(len(requirement_ids))
-    if len(versions) != len(requirement_ids):
-        raise HTTPException(422, detail={"code": "TEST_PLAN_REQUIREMENT_NOT_BASELINED"})
-    for version in versions:
-        await require_current_design_source(version, user)
-    criteria = await database.value.acceptance_criteria.find({
-        "project_id": project_id,
-        "requirement_version_id": {"$in": requirement_ids},
-    }).to_list(1001)
-    if len(criteria) > 1000:
-        raise HTTPException(422, detail={"code": "TEST_PLAN_ACCEPTANCE_CRITERIA_LIMIT_EXCEEDED"})
-    evidence = []
-    source_text = {}
-    for version in versions:
-        content = str(version.get("plain_text_projection") or plain_text(version.get("content_doc", {}))).strip()
-        if not content:
-            raise HTTPException(422, detail={"code": "TEST_PLAN_REQUIREMENT_CONTENT_EMPTY"})
-        evidence.extend(split_source_evidence("requirement_version", version["_id"], content))
-        source_text[version["_id"]] = content
-    for criterion in criteria:
-        content = str(criterion.get("plain_text") or plain_text(criterion.get("content_doc", {}))).strip()
-        if content:
-            evidence.extend(split_source_evidence("acceptance_criterion", criterion["_id"], content))
-            source_text[criterion["_id"]] = content
-    current_plan = payload.current_test_plan
-    if len(json.dumps(current_plan, ensure_ascii=False)) > 12000:
-        raise HTTPException(422, detail={"code": "TEST_PLAN_DRAFT_CONTEXT_LIMIT_EXCEEDED"})
-    draft_text = "\n".join(
-        str(value).strip()
-        for value in current_plan.values()
-        if isinstance(value, (str, int, float)) and str(value).strip()
-    )
-    for field_name, value in current_plan.items():
-        if isinstance(value, (dict, list)):
-            serialized = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
-            if serialized not in draft_text:
-                draft_text = "\n".join(part for part in (draft_text, serialized) if part)
-    if draft_text:
-        evidence.extend(
-            split_source_evidence("user_authored_test_plan_draft", "USER_DRAFT", draft_text)
-        )
-        source_text["USER_DRAFT"] = draft_text
-    if not evidence:
-        raise HTTPException(422, detail={"code": "TEST_PLAN_EVIDENCE_REQUIRED"})
-    if len(evidence) > 100:
-        raise HTTPException(422, detail={"code": "TEST_PLAN_EVIDENCE_LIMIT_EXCEEDED"})
-    ai_instruction = json.dumps({
-        "user_instruction": payload.instruction,
-        "current_test_plan_draft": current_plan,
-        "consistency_rules": [
-            "Suggest only objective, included/excluded scope, and test approach when directly supported by the supplied Requirement evidence.",
-            "Do not propose risk register entries, priority, dates, effort, people, environment, quality targets, or generic planning boilerplate. These are project decisions, not facts inferred from Requirement text.",
-            "Use only the exact requirement versions, acceptance criteria, and current draft supplied in this request.",
-            "Use the current Test Plan draft as context for suggestions. Preserve entered values unless the user explicitly applies a field suggestion.",
-            "If sources disagree and none explicitly establishes which value governs, report the conflict and ask for clarification; do not silently choose a side or assume the Test Plan is wrong.",
-        ],
-    }, ensure_ascii=False)
-    result = await request_ai_capability(
-        "test_plan_draft_generation", project_id, ai_instruction, evidence
-    )
-    if result.get("status") != "SUCCESS" or result.get("degraded_mode"):
-        raise HTTPException(503, detail={"code": "AI_PROVIDER_UNAVAILABLE", "retryable": True})
-    suggestions = result.get("suggestions") or []
-    if len(suggestions) != 1:
-        raise HTTPException(502, detail={"code": "TEST_PLAN_AI_RESPONSE_INVALID"})
-    if set(result.get("evidence_refs") or []) - set(source_text):
-        raise HTTPException(502, detail={"code": "TEST_PLAN_AI_EVIDENCE_REFERENCE_INVALID"})
-    proposal = suggestions[0]
-    unsupported_fields = validate_test_plan_ai_field_grounding(proposal, source_text)
-    valid_evidence_quotes = []
-    for quote in proposal.get("evidence_quotes") or []:
-        source = source_text.get(quote.get("evidence_ref"))
-        quote_text = str(quote.get("quote") or "").strip()
-        if source and quote_text and quote_text in source:
-            valid_evidence_quotes.append(quote)
-    proposal["evidence_quotes"] = valid_evidence_quotes
-    if unsupported_fields:
-        warnings = list(proposal.get("warnings") or [])
-        warnings.append(
-            "Một số trường chưa có trích dẫn khớp nguồn nên đã được để trống: "
-            + ", ".join(unsupported_fields)
-        )
-        proposal["warnings"] = list(dict.fromkeys(warnings))
-    if not any(
-        any(str(item or "").strip() for item in value)
-        if isinstance(value, list)
-        else bool(str(value or "").strip())
-        for field_name, value in proposal.items()
-        if field_name in {
-            "objective", "scope_in", "scope_out", "test_approach",
-        }
-    ):
-        raise HTTPException(502, detail={"code": "TEST_PLAN_AI_NO_GROUNDED_FIELDS"})
-    await get_project(project_id, user, "testplan.create")
-    latest_versions = await database.value.requirement_versions.find({
-        "project_id": project_id,
-        "_id": {"$in": requirement_ids},
-        "status": {"$in": allowed_statuses},
-    }).to_list(len(requirement_ids))
-    if len(latest_versions) != len(requirement_ids):
-        raise HTTPException(409, detail={"code": "TEST_PLAN_SOURCE_CHANGED", "retryable": True})
-    for version in latest_versions:
-        await require_current_design_source(version, user)
-    latest_criteria = await database.value.acceptance_criteria.find({
-        "project_id": project_id,
-        "requirement_version_id": {"$in": requirement_ids},
-    }).to_list(1001)
-    if len(latest_criteria) > 1000:
-        raise HTTPException(409, detail={"code": "TEST_PLAN_SOURCE_CHANGED", "retryable": True})
-    latest_source_text = {}
-    for version in latest_versions:
-        content = str(version.get("plain_text_projection") or plain_text(version.get("content_doc", {}))).strip()
-        if content:
-            latest_source_text[version["_id"]] = content
-    for criterion in latest_criteria:
-        content = str(criterion.get("plain_text") or plain_text(criterion.get("content_doc", {}))).strip()
-        if content:
-            latest_source_text[criterion["_id"]] = content
-    if draft_text:
-        latest_source_text["USER_DRAFT"] = draft_text
-    if latest_source_text != source_text:
-        raise HTTPException(409, detail={"code": "TEST_PLAN_SOURCE_CHANGED", "retryable": True})
-    return {
-        "project_id": project_id,
-        "requirement_version_ids": requirement_ids,
-        "suggestion": proposal,
-        "evidence": [
-            {"artifact_type": item["artifact_type"], "artifact_version_id": item["artifact_version_id"]}
-            for item in evidence
-        ],
-        **ai_contract_metadata(result),
-        "saved": False,
-        "approved": False,
-    }

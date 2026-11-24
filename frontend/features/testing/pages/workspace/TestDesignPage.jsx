@@ -17,7 +17,6 @@ import FilePicker from "../../components/FilePicker";
 import ReviewCommentsPanel from "../../components/ReviewCommentsPanel";
 import TestCaseTemplatesPanel from "../../components/TestCaseTemplatesPanel";
 import AutomationScriptsPanel from "../../components/AutomationScriptsPanel";
-import AIRunPanel from "../../components/AIRunPanel";
 import CollaborationPanel from "../../components/CollaborationPanel";
 import {
   ErrorState,
@@ -25,7 +24,6 @@ import {
   Panel,
   ProjectCrumb,
   WorkspacePage,
-  WorkspaceSectionNav,
   StatusPill,
   useActionDialog,
 } from "../../components/WorkspacePrimitives";
@@ -33,23 +31,22 @@ import { Pagination } from "@/shared/components/ui/Pagination";
 import MultiSelect from "@/shared/components/ui/MultiSelect";
 import SearchField from "@/shared/components/ui/SearchField";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
-import {
-  testCaseSubsectionItems,
-  testDesignSectionItems,
-} from "@/shared/components/layout/navigation";
 import { testingApi } from "../../services/testing.service";
 import { docText, formatDate as formatDateValue, messageOf, valueLabel } from "../../lib/testing";
 import { useDateTimeOptions } from "../../hooks/useDateTimeOptions";
+import { PROJECT_SECTION_SLUGS, projectRoute } from "../../routes";
 import ApiArtifactsPanel from "./test-design/ApiArtifactsPanel";
 import DataSetsPanel from "./test-design/DataSetsPanel";
 import ScenariosPanel from "./test-design/ScenariosPanel";
-import ManualTestGenerationPanel from "../../components/ManualTestGenerationPanel";
 import TestCaseCreateForm from "./test-design/TestCaseCreateForm";
-import CompactDraftEditor from "./test-design/CompactDraftEditor";
 import RequirementCoverageSelector from "./test-design/RequirementCoverageSelector";
 import TestSetEditorModal from "./test-design/TestSetEditorModal";
 import TestCaseCompareWorkspace from "./test-design/TestCaseCompareWorkspace";
-import StructuredValueEditor from "../../components/StructuredValueEditor";
+import {
+  ObjectTestDataEntries,
+  TechniqueSelector,
+  TestTypeSelector,
+} from "./test-design/TestCaseOptions";
 import {
   isGroupApprovalComparisonCurrent,
   recordAiComparison,
@@ -93,12 +90,9 @@ export default function TestDesignPage({ project, workspaceView, section }) {
   const dateTimeOptions = useDateTimeOptions(project);
   const formatDate = (value) => formatDateValue(value, dateTimeOptions);
   const currentUserId = project.current_membership?.user_id;
-  const independentReviewRequired = Boolean(project?.settings?.require_independent_review);
   const canReviewDraft = (item) =>
-    !independentReviewRequired ||
-    (item.created_by !== currentUserId &&
-      item.review_submitted_by !== currentUserId &&
-      !(item.content_author_ids || []).includes(currentUserId));
+    project.can_self_approve ||
+    (item.created_by !== currentUserId && !(item.content_author_ids || []).includes(currentUserId));
   const { ask, dialog } = useActionDialog();
   const pathname = usePathname();
   const router = useRouter();
@@ -136,17 +130,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
     status: "",
     sort: "-updated_at",
   });
-  const [aiRuns, setAIRuns] = useState([]);
-  const [aiRunsError, setAIRunsError] = useState("");
-  const [aiRunsLoading, setAIRunsLoading] = useState(false);
-  const handleAIRunsStateChange = useCallback(
-    ({ runs, error: nextError, loading: nextLoading }) => {
-      setAIRuns(runs);
-      setAIRunsError(nextError);
-      setAIRunsLoading(nextLoading);
-    },
-    [],
-  );
   const [operations, setOperations] = useState([]);
   const [apiArtifacts, setApiArtifacts] = useState([]);
   const [apiCompareFrom, setApiCompareFrom] = useState("");
@@ -158,7 +141,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
     format: "openapi",
     content: "",
   });
-  const [selectedRequirement, setSelectedRequirement] = useState("");
   const [selectedDraftId, setSelectedDraftId] = useState("");
   const [selectedApprovalDraftIds, setSelectedApprovalDraftIds] = useState([]);
   const [comparedApprovalDraftRevisions, setComparedApprovalDraftRevisions] = useState({});
@@ -170,7 +152,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
   const [selectedCaseLoading, setSelectedCaseLoading] = useState(false);
   const [testVersions, setTestVersions] = useState([]);
   const [draftEdit, setDraftEdit] = useState(null);
-  const [draftFull, setDraftFull] = useState(false);
   const [draftDirty, setDraftDirty] = useState(false);
   const [draftSaveState, setDraftSaveState] = useState("saved");
   const draftSequence = useRef(0);
@@ -203,7 +184,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
     ? scenarios
     : assignedScenarios.filter((scenario) => canDraft("testscenario.update", scenario));
   const canCreateCase = canCreateUnassignedCase || availableScenarios.length > 0;
-  const designSectionItems = useMemo(() => testDesignSectionItems(project._id), [project._id]);
   const permissions = useMemo(
     () => project.current_permissions || [],
     [project.current_permissions],
@@ -211,18 +191,17 @@ export default function TestDesignPage({ project, workspaceView, section }) {
   const caseTabFromPath = pathname.split("/ca-kiem-thu/")[1]?.split("/")[0];
   const requestedCaseTab =
     {
-      ai: "agent-runs",
       "kich-ban": "scenarios",
       mau: "templates",
       "tu-dong-hoa": "automation",
       api: "api",
       "nhap-xuat": "import",
+      "bo-kiem-thu": "sets",
     }[caseTabFromPath] || "cases";
   const caseTab = requestedCaseTab;
   const access = testDesignAccess({ workspaceView, caseTab, permissions });
   const isCaseWorkspace = workspaceView === "" || workspaceView === "cases";
   const showCases = access.showCases;
-  const showAIRuns = isCaseWorkspace && caseTab === "agent-runs";
   const showScenarios = isCaseWorkspace && caseTab === "scenarios";
   const showTemplates = isCaseWorkspace && caseTab === "templates";
   const showAutomation = isCaseWorkspace && caseTab === "automation";
@@ -264,7 +243,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
       setApiDifference(null);
       setTestPageInfo(null);
       setSelectedTestIds([]);
-      setSelectedRequirement("");
       setSelectedDraftId("");
       setSelectedApprovalDraftIds([]);
       setComparedApprovalDraftRevisions({});
@@ -294,7 +272,7 @@ export default function TestDesignPage({ project, workspaceView, section }) {
         operationValues,
         memberResult,
       ] = await Promise.all([
-        (showCases || showAIRuns || showScenarios || workspaceView === "test-data") &&
+        (showCases || showScenarios || workspaceView === "test-data") &&
         permissions.includes("requirement.read")
           ? testingApi
               .listRequirements(project._id, {
@@ -371,11 +349,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
           : confirmedArtifacts[0]?._id || "",
       );
       setOperations(operationValues);
-      setSelectedRequirement((current) =>
-        requirementValues.some((item) => item.current_version_id === current)
-          ? current
-          : requirementValues[0]?.current_version_id || "",
-      );
       initialDataLoaded.current = true;
       setInitialLoadFailed(false);
       return true;
@@ -406,7 +379,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
     permissions,
     project._id,
     scenarioFilters,
-    showAIRuns,
     showApi,
     showCases,
     showScenarios,
@@ -447,35 +419,12 @@ export default function TestDesignPage({ project, workspaceView, section }) {
       active = false;
     };
   }, [canReadTestCases, linkedCaseId, project._id, showCases]);
-  const canReadAIRuns =
-    permissions.includes("requirement.read") || permissions.includes("proposal.read");
-  const selectedRequirementRecord = requirements.find(
-    (item) => item.current_version_id === selectedRequirement,
-  );
-  const requirementLabels = Object.fromEntries(
-    requirements
-      .filter((item) => item.current_version_id)
-      .map((item) => [
-        item.current_version_id,
-        `${item.requirement_key} · ${item.current_version?.title || "Yêu cầu"}`,
-      ]),
-  );
-  const requirementAIRun = selectedRequirement
-    ? aiRuns.find(
-        (run) => run.trigger === "MANUAL" && run.target_artifact_ids?.includes(selectedRequirement),
-      ) || null
-    : null;
   const actionableDrafts = drafts.filter((item) => item.status !== "APPROVED");
   const editableDrafts = actionableDrafts.filter((item) => item.status !== "IN_REVIEW");
   const selectedDraft = actionableDrafts.find((item) => item._id === selectedDraftId) || null;
   const draftTestLevelOptions = [
     ...new Set([
       ...draftConditionValues(selectedDraft, testConditions, "test_level", draftEdit?.test_level),
-    ]),
-  ];
-  const draftTestKindOptions = [
-    ...new Set([
-      ...draftConditionValues(selectedDraft, testConditions, "test_type", draftEdit?.test_kind),
     ]),
   ];
   const lintDraftId = selectedDraft?._id;
@@ -489,7 +438,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
     }
     if (loadedDraft.current === selectedDraft._id) return;
     loadedDraft.current = selectedDraft._id;
-    setDraftFull(Boolean(selectedDraft.bdd));
     setTestLint(null);
     setDraftEdit({
       title: selectedDraft.title,
@@ -527,6 +475,7 @@ export default function TestDesignPage({ project, workspaceView, section }) {
       testData: selectedDraft.test_data || {},
       expected: docText(selectedDraft.expected_result_doc),
       postconditions: docText(selectedDraft.postconditions_doc),
+      mainFlow: docText(selectedDraft.main_flow_doc),
       alternateFlows: docText(selectedDraft.alternate_flows_doc),
       exceptionFlows: docText(selectedDraft.exception_flows_doc),
       techniques: (selectedDraft.techniques || []).join(", "),
@@ -621,6 +570,7 @@ export default function TestDesignPage({ project, workspaceView, section }) {
         test_data: testDataEntriesToObject(form.testData),
         expected_result_doc: form.expectedResult,
         postconditions_doc: form.postconditions,
+        main_flow_doc: form.mainFlow,
         alternate_flows_doc: form.alternateFlows,
         exception_flows_doc: form.exceptionFlows,
         tags: form.tags
@@ -673,7 +623,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
         name: dataSetForm.name,
         variables: dataSetForm.variables || {},
         secret_refs: dataSetForm.secretRefs || {},
-        generation_source: dataSetForm.generationSource || "USER",
         source_requirement_version_ids: dataSetForm.sourceRequirementVersionIds || [],
       });
       setDataSetForm(createDataSetForm());
@@ -909,9 +858,19 @@ export default function TestDesignPage({ project, workspaceView, section }) {
   };
   const reviewDraft = async (draft, action) => {
     await ask({
-      title: action === "changes" ? "Yêu cầu chỉnh sửa ca kiểm thử" : "Gửi ca kiểm thử để rà soát",
+      title:
+        action === "changes"
+          ? "Yêu cầu chỉnh sửa ca kiểm thử"
+          : project.can_self_approve
+            ? "Chốt ca kiểm thử"
+            : "Gửi ca kiểm thử để rà soát",
       description: draft.test_case_key,
-      confirmLabel: action === "changes" ? "Yêu cầu chỉnh sửa" : "Gửi rà soát",
+      confirmLabel:
+        action === "changes"
+          ? "Yêu cầu chỉnh sửa"
+          : project.can_self_approve
+            ? "Chốt ca kiểm thử"
+            : "Gửi rà soát",
       fields: [
         ...(action === "changes"
           ? [
@@ -1046,7 +1005,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
     : workspaceView === "" || workspaceView === "cases"
       ? {
           cases: "Ca kiểm thử",
-          "agent-runs": "Hoạt động AI",
           scenarios: "Kịch bản kiểm thử",
           templates: "Mẫu ca kiểm thử",
           automation: "Mã kiểm thử tự động",
@@ -1122,7 +1080,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
             <TestCaseCreateForm
               form={form}
               setForm={setForm}
-              dataSets={dataSets}
               testConditions={testConditions}
               requirements={requirements}
               scenarios={availableScenarios}
@@ -1197,6 +1154,98 @@ export default function TestDesignPage({ project, workspaceView, section }) {
           ) : (
             <ProjectCrumb projectId={project._id} />
           )}
+          {!linkedCaseId && workspaceView === "test-sets" && (
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => router.push(caseListPath)}
+            >
+              Quay lại ca kiểm thử
+            </button>
+          )}
+          {!linkedCaseId && isCaseWorkspace && caseTab !== "cases" && (
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => router.push(caseListPath)}
+            >
+              Quay lại ca kiểm thử
+            </button>
+          )}
+          {!linkedCaseId && showCases && can("testsuite.read") && (
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => router.push(`${caseListPath}/bo-kiem-thu`)}
+            >
+              Bộ kiểm thử
+            </button>
+          )}
+          {!linkedCaseId &&
+            showCases &&
+            (can("testcase.template.read") ||
+              can("testcase.import") ||
+              can("testcase.export") ||
+              (canReadTestData && dataSets.length > 0) ||
+              (can("testscenario.read") && scenarios.length > 0) ||
+              (can("testcondition.read") && testConditions.length > 0)) && (
+              <details className="relative">
+                <summary className="secondary-button cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+                  Tác vụ
+                </summary>
+                <div className="absolute right-0 z-30 mt-1 min-w-52 rounded-control border border-border bg-surface p-1 shadow-panel">
+                  {can("testcase.template.read") && (
+                    <button
+                      type="button"
+                      className="block w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
+                      onClick={() => router.push(`${caseListPath}/mau`)}
+                    >
+                      Mẫu
+                    </button>
+                  )}
+                  {(can("testcase.import") || can("testcase.export")) && (
+                    <button
+                      type="button"
+                      className="block w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
+                      onClick={() => router.push(`${caseListPath}/nhap-xuat`)}
+                    >
+                      Nhập và xuất
+                    </button>
+                  )}
+                  {can("testscenario.read") && scenarios.length > 0 && (
+                    <button
+                      type="button"
+                      className="block w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
+                      onClick={() => router.push(`${caseListPath}/kich-ban`)}
+                    >
+                      Kịch bản đã có
+                    </button>
+                  )}
+                  {canReadTestData && dataSets.length > 0 && (
+                    <button
+                      type="button"
+                      className="block w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
+                      onClick={() =>
+                        router.push(projectRoute(project._id, PROJECT_SECTION_SLUGS.testData))
+                      }
+                    >
+                      Bộ dữ liệu đã có
+                    </button>
+                  )}
+                  {can("testcondition.read") && testConditions.length > 0 && (
+                    <button
+                      type="button"
+                      className="block w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
+                      onClick={() =>
+                        router.push(projectRoute(project._id, PROJECT_SECTION_SLUGS.testAnalysis))
+                      }
+                    >
+                      Điều kiện kiểm thử đã có
+                    </button>
+                  )}
+                </div>
+              </details>
+            )}
           {!linkedCaseId && showCases && canCreateCase && (
             <button
               className="apple-button"
@@ -1211,31 +1260,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
     >
       {error && <ErrorState message={error} />}
       {linkedCaseId && selectedCaseLoading && <LoadingState label="Đang tải ca kiểm thử" />}
-      {!linkedCaseId && (
-        <div className="lg:hidden">
-          <WorkspaceSectionNav
-            current={
-              {
-                cases: "test-cases",
-                "test-data": "test-data",
-                "test-sets": "test-sets",
-              }[workspaceView] || "test-cases"
-            }
-            items={designSectionItems}
-            permissions={permissions}
-          />
-        </div>
-      )}
-      {!linkedCaseId && isCaseWorkspace && (
-        <div className="lg:hidden">
-          <WorkspaceSectionNav
-            current={caseTab === "agent-runs" ? "ai" : caseTab}
-            compact
-            permissions={permissions}
-            items={testCaseSubsectionItems(project._id).filter((item) => item.id !== "cases")}
-          />
-        </div>
-      )}
       {linkedCaseId && selectedTestRecord && (
         <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(18rem,1fr)]">
           <div className="grid min-w-0 content-start gap-5">
@@ -1260,16 +1284,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                   </dd>
                 </div>
                 <div className="min-w-0">
-                  <dt className="text-xs text-ink-muted">Loại luồng</dt>
-                  <dd className="mt-1 text-sm">
-                    {{
-                      MAIN: "Luồng chính",
-                      ALTERNATIVE: "Luồng thay thế",
-                      EXCEPTION: "Luồng ngoại lệ",
-                    }[selectedTestRecord.current_version?.flow_type] || "-"}
-                  </dd>
-                </div>
-                <div className="min-w-0">
                   <dt className="text-xs text-ink-muted">Loại</dt>
                   <dd className="mt-1 text-sm">
                     {valueLabel(
@@ -1282,14 +1296,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                   <dd className="mt-1 text-sm">
                     {valueLabel(
                       selectedTestRecord.current_version?.priority || selectedTestRecord.priority,
-                    )}
-                  </dd>
-                </div>
-                <div className="min-w-0">
-                  <dt className="text-xs text-ink-muted">Rủi ro</dt>
-                  <dd className="mt-1 text-sm">
-                    {valueLabel(
-                      selectedTestRecord.current_version?.risk || selectedTestRecord.risk,
                     )}
                   </dd>
                 </div>
@@ -1332,6 +1338,24 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                   </p>
                 </div>
               )}
+            </Panel>
+            <Panel title="Luồng chính">
+              <p className="whitespace-pre-wrap p-5">
+                {docText(selectedTestRecord.current_version?.main_flow_doc).trim() || "-"}
+              </p>
+            </Panel>
+            <Panel title="Luồng thay thế và ngoại lệ">
+              <dl className="grid gap-4 p-5 md:grid-cols-2">
+                {[
+                  ["Luồng thay thế", selectedTestRecord.current_version?.alternate_flows_doc],
+                  ["Luồng ngoại lệ", selectedTestRecord.current_version?.exception_flows_doc],
+                ].map(([label, content]) => (
+                  <div key={label}>
+                    <dt className="field-label">{label}</dt>
+                    <dd className="mt-2 whitespace-pre-wrap">{docText(content).trim() || "-"}</dd>
+                  </div>
+                ))}
+              </dl>
             </Panel>
             <Panel title="Tiền điều kiện và hậu điều kiện">
               <div className="grid gap-4 p-5 md:grid-cols-2">
@@ -1382,32 +1406,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                 <p className="p-5 text-sm text-ink-muted">Chưa có bước kiểm thử</p>
               )}
             </Panel>
-            {[
-              ["Luồng thay thế", selectedTestRecord.current_version?.alternate_flows_doc],
-              ["Luồng ngoại lệ", selectedTestRecord.current_version?.exception_flows_doc],
-            ].some(([, content]) => content) && (
-              <Panel title="Luồng thay thế và ngoại lệ">
-                <div className="grid gap-4 p-5 md:grid-cols-2">
-                  {[
-                    ["Luồng thay thế", selectedTestRecord.current_version?.alternate_flows_doc],
-                    ["Luồng ngoại lệ", selectedTestRecord.current_version?.exception_flows_doc],
-                  ].map(
-                    ([label, content]) =>
-                      content && (
-                        <section
-                          className="min-w-0 rounded-control border border-border p-4"
-                          key={label}
-                        >
-                          <h3 className="text-sm font-medium">{label}</h3>
-                          <p className="mt-2 whitespace-pre-wrap break-words text-sm text-ink-muted">
-                            {docText(content)}
-                          </p>
-                        </section>
-                      ),
-                  )}
-                </div>
-              </Panel>
-            )}
           </div>
           <Panel title="Thông tin bổ sung và liên kết">
             <dl className="divide-y divide-border px-5">
@@ -1453,91 +1451,10 @@ export default function TestDesignPage({ project, workspaceView, section }) {
           </Panel>
         </div>
       )}
-      {showAIRuns && canReadAIRuns && (
-        <div id="agent-run-details">
-          <AIRunPanel
-            project={project}
-            showPanelHeading={false}
-            onRunsStateChange={handleAIRunsStateChange}
-            targetArtifactIds={selectedRequirement ? [selectedRequirement] : []}
-            targetArtifactLabels={requirementLabels}
-            contextContent={
-              permissions.includes("requirement.read") ? (
-                <section
-                  aria-label="Phạm vi yêu cầu cho hoạt động AI"
-                  className="grid gap-3 rounded-control border border-border bg-surface p-4"
-                >
-                  <label className="grid min-w-0 gap-2 text-sm font-medium text-ink">
-                    Yêu cầu làm phạm vi cho lượt AI mới (tùy chọn)
-                    <select
-                      aria-label="Yêu cầu làm phạm vi cho lượt AI mới"
-                      className="apple-input w-full min-w-0"
-                      value={selectedRequirement}
-                      onChange={(event) => setSelectedRequirement(event.target.value)}
-                    >
-                      <option value="">Chọn yêu cầu</option>
-                      {requirements.map((item) => (
-                        <option key={item._id} value={item.current_version_id}>
-                          {item.requirement_key} · {item.current_version?.title}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {selectedRequirement && (
-                    <div className="grid min-w-0 gap-3 rounded-control border border-border bg-surface-raised/40 p-4 text-sm">
-                      <div>
-                        <p className="text-xs font-medium text-ink-muted">
-                          Phạm vi cho lượt AI mới
-                        </p>
-                        <p className="mt-1 break-words font-semibold text-ink">
-                          {selectedRequirementRecord?.requirement_key} ·{" "}
-                          {selectedRequirementRecord?.current_version?.title || "Yêu cầu"}
-                        </p>
-                      </div>
-                      {aiRunsLoading ? (
-                        <p className="border-t border-border pt-3 text-ink-muted">
-                          Đang tải hoạt động liên quan…
-                        </p>
-                      ) : aiRunsError ? (
-                        <p className="border-t border-border pt-3 text-danger" role="status">
-                          {aiRunsError}
-                        </p>
-                      ) : requirementAIRun ? (
-                        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
-                          <span className="text-ink-muted">
-                            Lượt do người dùng bắt đầu gần nhất ·{" "}
-                            {formatDate(requirementAIRun.created_at)}
-                          </span>
-                          <StatusPill value={requirementAIRun.status} />
-                        </div>
-                      ) : (
-                        <p className="border-t border-border pt-3 text-ink-muted">
-                          Khi bấm “Bắt đầu xử lý bằng AI”, lượt mới sẽ dùng phiên bản yêu cầu này
-                          làm phạm vi tham chiếu.
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </section>
-              ) : null
-            }
-          />
-        </div>
-      )}
       {showTemplates && can("testcase.template.read") && (
         <TestCaseTemplatesPanel project={project} />
       )}
       {showAutomation && <AutomationScriptsPanel project={project} />}
-      {((showScenarios && can("ai.generate_scenario") && can("testscenario.create")) ||
-        (showCases && !linkedCaseId && can("ai.generate_testcase") && can("testcase.create"))) && (
-        <ManualTestGenerationPanel
-          key={`${project._id}:${showScenarios ? "scenarios" : "cases"}`}
-          projectId={project._id}
-          requirements={requirements}
-          mode={showScenarios ? "scenarios" : "cases"}
-          onSaved={load}
-        />
-      )}
       {showCases && !linkedCaseId && (
         <div className="flex flex-col gap-5">
           {actionableDrafts.length > 0 && (
@@ -1720,7 +1637,9 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                                           void reviewDraft(item, "submit");
                                         }}
                                       >
-                                        Gửi rà soát
+                                        {project.can_self_approve
+                                          ? "Chốt ca kiểm thử"
+                                          : "Gửi rà soát"}
                                       </button>
                                     )}
                                   {["DRAFT", "READY"].includes(item.status) &&
@@ -1755,18 +1674,20 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                                         Xóa bản nháp
                                       </button>
                                     )}
-                                  {item.status === "IN_REVIEW" && can("testcase.review") && (
-                                    <button
-                                      className="w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
-                                      type="button"
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        void reviewDraft(item, "changes");
-                                      }}
-                                    >
-                                      Yêu cầu sửa
-                                    </button>
-                                  )}
+                                  {item.status === "IN_REVIEW" &&
+                                    canReviewDraft(item) &&
+                                    can("testcase.review") && (
+                                      <button
+                                        className="w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
+                                        type="button"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          void reviewDraft(item, "changes");
+                                        }}
+                                      >
+                                        Yêu cầu sửa
+                                      </button>
+                                    )}
                                   {item.status === "IN_REVIEW" &&
                                     canReviewDraft(item) &&
                                     can("testcase.approve") && (
@@ -2488,46 +2409,169 @@ export default function TestDesignPage({ project, workspaceView, section }) {
             {canDraft("testcase.update", selectedDraft) &&
             ["DRAFT", "READY"].includes(selectedDraft.status) ? (
               <>
-                <div
-                  className="flex flex-wrap gap-2 px-5 pt-5"
-                  role="group"
-                  aria-label="Chế độ nhập"
-                >
-                  <button
-                    type="button"
-                    className={draftFull ? "secondary-button" : "apple-button"}
-                    aria-pressed={!draftFull}
-                    disabled={Boolean(draftEdit.bdd)}
-                    onClick={() => setDraftFull(false)}
-                  >
-                    Rút gọn
-                  </button>
-                  <button
-                    type="button"
-                    className={draftFull ? "apple-button" : "secondary-button"}
-                    aria-pressed={draftFull}
-                    onClick={() => setDraftFull(true)}
-                  >
-                    Đầy đủ
-                  </button>
+                <div className="test-design-form grid gap-4 p-5 lg:grid-cols-2">
+                  <label className="field-label lg:col-span-2">
+                    Tên ca kiểm thử
+                    <input
+                      className="apple-input mt-2"
+                      value={draftEdit.title}
+                      onChange={(event) => changeDraftEdit({ title: event.target.value })}
+                    />
+                  </label>
+                  <label className="field-label lg:col-span-2">
+                    Ước lượng (phút)
+                    <input
+                      aria-label="Ước lượng thời gian thực hiện bản nháp (phút)"
+                      className="apple-input mt-2"
+                      type="number"
+                      min="1"
+                      max="10080"
+                      step="1"
+                      value={draftEdit.durationMinutes}
+                      onChange={(event) => changeDraftEdit({ durationMinutes: event.target.value })}
+                    />
+                  </label>
+                  <div className="space-y-4 lg:col-span-2">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="field-label">Các bước kiểm thử</p>
+                      {["DRAFT", "READY"].includes(selectedDraft.status) &&
+                        canDraft("testcase.update", selectedDraft) && (
+                          <button
+                            className="secondary-button"
+                            type="button"
+                            onClick={() =>
+                              changeDraftEdit({
+                                steps: [
+                                  ...draftEdit.steps,
+                                  { id: crypto.randomUUID(), action: "", data: {}, expected: "" },
+                                ],
+                              })
+                            }
+                          >
+                            Thêm bước
+                          </button>
+                        )}
+                    </div>
+                    {draftEdit.steps.map((step, index) => (
+                      <fieldset
+                        className="grid gap-3 rounded-xl border border-border p-4 lg:grid-cols-2"
+                        key={step.id}
+                      >
+                        <legend className="px-2 text-[12px] font-semibold">Bước {index + 1}</legend>
+                        <label className="field-label">
+                          Thao tác
+                          <textarea
+                            className="apple-input mt-2 min-h-24"
+                            value={step.action}
+                            onChange={(event) => {
+                              const steps = [...draftEdit.steps];
+                              steps[index] = { ...step, action: event.target.value };
+                              changeDraftEdit({ steps });
+                            }}
+                          />
+                        </label>
+                        <label className="field-label">
+                          Kết quả mong đợi
+                          <textarea
+                            className="apple-input mt-2 min-h-24"
+                            value={step.expected}
+                            onChange={(event) => {
+                              const steps = [...draftEdit.steps];
+                              steps[index] = { ...step, expected: event.target.value };
+                              changeDraftEdit({ steps });
+                            }}
+                          />
+                        </label>
+                        <div className="min-w-0 space-y-2 lg:col-span-2">
+                          <p className="field-label">Dữ liệu của bước</p>
+                          <ObjectTestDataEntries
+                            key={step.id}
+                            label={`Dữ liệu bước ${index + 1}`}
+                            value={step.data || {}}
+                            onChange={(data) => {
+                              const steps = [...draftEdit.steps];
+                              steps[index] = { ...step, data };
+                              changeDraftEdit({ steps });
+                            }}
+                          />
+                        </div>
+                        {["DRAFT", "READY"].includes(selectedDraft.status) &&
+                          canDraft("testcase.update", selectedDraft) &&
+                          draftEdit.steps.length > 1 && (
+                            <button
+                              className="secondary-button w-fit"
+                              type="button"
+                              onClick={() =>
+                                changeDraftEdit({
+                                  steps: draftEdit.steps.filter(
+                                    (_, stepIndex) => stepIndex !== index,
+                                  ),
+                                })
+                              }
+                            >
+                              Xóa bước
+                            </button>
+                          )}
+                      </fieldset>
+                    ))}
+                  </div>
                 </div>
-                {!draftFull ? (
-                  <CompactDraftEditor
-                    draft={draftEdit}
-                    onChange={changeDraftEdit}
-                    onSave={saveDraft}
-                    saveState={draftSaveState}
-                  />
-                ) : (
-                  <div className="test-design-form grid gap-4 p-5 lg:grid-cols-2">
-                    <label className="field-label lg:col-span-2">
-                      Tên ca kiểm thử
+                {draftEdit.bdd && (
+                  <section
+                    className="space-y-3 rounded-control border border-border p-4 lg:col-span-2"
+                    aria-label="Kịch bản BDD"
+                  >
+                    <h3 className="font-semibold">Kịch bản BDD</h3>
+                    <label className="field-label">
+                      Tính năng
                       <input
                         className="apple-input mt-2"
-                        value={draftEdit.title}
-                        onChange={(event) => changeDraftEdit({ title: event.target.value })}
+                        value={draftEdit.bdd.feature}
+                        onChange={(event) =>
+                          changeDraftEdit({
+                            bdd: { ...draftEdit.bdd, feature: event.target.value },
+                          })
+                        }
                       />
                     </label>
+                    <label className="field-label">
+                      Kịch bản
+                      <input
+                        className="apple-input mt-2"
+                        value={draftEdit.bdd.scenario}
+                        onChange={(event) =>
+                          changeDraftEdit({
+                            bdd: { ...draftEdit.bdd, scenario: event.target.value },
+                          })
+                        }
+                      />
+                    </label>
+                    {draftEdit.bdd.steps.map((step, index) => (
+                      <label className="field-label" key={step.id || index}>
+                        {valueLabel(step.keyword)}
+                        <textarea
+                          className="apple-input mt-2 min-h-16"
+                          value={step.text}
+                          onChange={(event) =>
+                            changeDraftEdit({
+                              bdd: {
+                                ...draftEdit.bdd,
+                                steps: draftEdit.bdd.steps.map((item, stepIndex) =>
+                                  stepIndex === index
+                                    ? { ...item, text: event.target.value }
+                                    : item,
+                                ),
+                              },
+                            })
+                          }
+                        />
+                      </label>
+                    ))}
+                  </section>
+                )}
+                <details className="mx-5 mb-5 rounded-control border border-border">
+                  <summary className="cursor-pointer p-4 font-medium">Tùy chọn</summary>
+                  <div className="test-design-form grid gap-4 p-5 lg:grid-cols-2">
                     <label className="field-label">
                       Module / Tính năng
                       <input
@@ -2537,31 +2581,13 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                         onChange={(event) => changeDraftEdit({ module_name: event.target.value })}
                       />
                     </label>
-                    <label className="field-label">
-                      Loại luồng
-                      <select
-                        className="apple-input mt-2"
-                        value={draftEdit.flow_type}
-                        onChange={(event) => changeDraftEdit({ flow_type: event.target.value })}
-                      >
-                        <option value="">-</option>
-                        <option value="MAIN">Luồng chính</option>
-                        <option value="ALTERNATIVE">Luồng thay thế</option>
-                        <option value="EXCEPTION">Luồng ngoại lệ</option>
-                      </select>
-                    </label>
-                    <div className="grid gap-3 lg:col-span-2 sm:grid-cols-3">
-                      <label className="field-label">
-                        Loại ca kiểm thử
-                        <input
-                          aria-label="Loại bản nháp ca kiểm thử"
-                          className="apple-input mt-2"
-                          maxLength={100}
-                          value={draftEdit.type ? valueLabel(draftEdit.type) : ""}
-                          onChange={(event) => changeDraftEdit({ type: event.target.value })}
-                          placeholder="Ví dụ: Chức năng, hồi quy"
+                    <div className="grid gap-3 lg:col-span-2 sm:grid-cols-2">
+                      <div className="sm:col-span-2">
+                        <TestTypeSelector
+                          value={draftEdit.type || draftEdit.test_kind}
+                          onChange={(type) => changeDraftEdit({ type, test_kind: "" })}
                         />
-                      </label>
+                      </div>
                       <label className="field-label">
                         Mức ưu tiên
                         <input
@@ -2574,76 +2600,20 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                         />
                       </label>
                       <label className="field-label">
-                        Mức rủi ro
-                        <input
-                          aria-label="Rủi ro bản nháp ca kiểm thử"
-                          className="apple-input mt-2"
-                          maxLength={100}
-                          placeholder="Theo quy ước dự án"
-                          value={draftEdit.risk ? valueLabel(draftEdit.risk) : ""}
-                          onChange={(event) => changeDraftEdit({ risk: event.target.value })}
-                        />
-                      </label>
-                      <label className="field-label">
-                        Ước lượng (phút)
-                        <input
-                          aria-label="Ước lượng thời gian thực hiện bản nháp (phút)"
-                          className="apple-input mt-2"
-                          type="number"
-                          min="1"
-                          max="10080"
-                          step="1"
-                          value={draftEdit.durationMinutes}
-                          onChange={(event) =>
-                            changeDraftEdit({ durationMinutes: event.target.value })
-                          }
-                        />
-                      </label>
-                    </div>
-                    <div className="grid gap-3 lg:col-span-2 sm:grid-cols-3">
-                      <label className="field-label">
                         Cấp kiểm thử
                         <select
                           aria-label="Cấp kiểm thử bản nháp"
                           className="apple-input mt-2"
                           value={draftEdit.test_level}
                           onChange={(event) => changeDraftEdit({ test_level: event.target.value })}
-                          disabled={!draftTestLevelOptions.length}
                         >
-                          <option value="">Chọn cấp kiểm thử</option>
+                          <option value="">-</option>
                           {draftTestLevelOptions.map((value) => (
                             <option key={value} value={value}>
                               {valueLabel(value)}
                             </option>
                           ))}
                         </select>
-                        {!draftTestLevelOptions.length && (
-                          <span className="mt-1 block font-normal">
-                            Chưa có giá trị từ điều kiện kiểm thử đã duyệt liên quan.
-                          </span>
-                        )}
-                      </label>
-                      <label className="field-label">
-                        Loại kiểm thử
-                        <select
-                          aria-label="Loại kiểm thử bản nháp"
-                          className="apple-input mt-2"
-                          value={draftEdit.test_kind}
-                          onChange={(event) => changeDraftEdit({ test_kind: event.target.value })}
-                          disabled={!draftTestKindOptions.length}
-                        >
-                          <option value="">Chọn loại kiểm thử</option>
-                          {draftTestKindOptions.map((value) => (
-                            <option key={value} value={value}>
-                              {valueLabel(value)}
-                            </option>
-                          ))}
-                        </select>
-                        {!draftTestKindOptions.length && (
-                          <span className="mt-1 block font-normal">
-                            Chưa có giá trị từ điều kiện kiểm thử đã duyệt liên quan.
-                          </span>
-                        )}
                       </label>
                     </div>
                     <div className="grid gap-4 lg:col-span-2">
@@ -2655,7 +2625,7 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                           value={draftEdit.scenarioId}
                           onChange={(event) => changeDraftEdit({ scenarioId: event.target.value })}
                         >
-                          <option value="">Chưa liên kết kịch bản</option>
+                          <option value="">-</option>
                           {scenarios.map((scenario) => (
                             <option key={scenario._id} value={scenario._id}>
                               {scenario.scenario_key || scenario._id} ·{" "}
@@ -2669,6 +2639,7 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                         </select>
                       </label>
                       <MultiSelect
+                        showSearch={false}
                         label="Phiên bản yêu cầu liên quan"
                         searchPlaceholder="Tìm yêu cầu"
                         options={[
@@ -2708,6 +2679,7 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                         }}
                       />
                       <MultiSelect
+                        showSearch={false}
                         label="Tiêu chí chấp nhận liên kết"
                         searchPlaceholder="Tìm tiêu chí chấp nhận"
                         options={[
@@ -2753,59 +2725,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                         onChange={(coverageItemIds) => changeDraftEdit({ coverageItemIds })}
                       />
                     </div>
-                    {draftEdit.bdd && (
-                      <section
-                        className="space-y-3 rounded-control border border-border p-4 lg:col-span-2"
-                        aria-label="Kịch bản BDD"
-                      >
-                        <h3 className="font-semibold">Kịch bản BDD</h3>
-                        <label className="field-label">
-                          Tính năng
-                          <input
-                            className="apple-input mt-2"
-                            value={draftEdit.bdd.feature}
-                            onChange={(event) =>
-                              changeDraftEdit({
-                                bdd: { ...draftEdit.bdd, feature: event.target.value },
-                              })
-                            }
-                          />
-                        </label>
-                        <label className="field-label">
-                          Kịch bản
-                          <input
-                            className="apple-input mt-2"
-                            value={draftEdit.bdd.scenario}
-                            onChange={(event) =>
-                              changeDraftEdit({
-                                bdd: { ...draftEdit.bdd, scenario: event.target.value },
-                              })
-                            }
-                          />
-                        </label>
-                        {draftEdit.bdd.steps.map((step, index) => (
-                          <label className="field-label" key={step.id || index}>
-                            {valueLabel(step.keyword)}
-                            <textarea
-                              className="apple-input mt-2 min-h-16"
-                              value={step.text}
-                              onChange={(event) =>
-                                changeDraftEdit({
-                                  bdd: {
-                                    ...draftEdit.bdd,
-                                    steps: draftEdit.bdd.steps.map((item, stepIndex) =>
-                                      stepIndex === index
-                                        ? { ...item, text: event.target.value }
-                                        : item,
-                                    ),
-                                  },
-                                })
-                              }
-                            />
-                          </label>
-                        ))}
-                      </section>
-                    )}
                     <label className="field-label lg:col-span-2">
                       Mục tiêu kiểm thử
                       <textarea
@@ -2815,138 +2734,61 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                       />
                     </label>
                     <label className="field-label">
-                      Điều kiện trước
+                      Tiền điều kiện
                       <textarea
                         className="apple-input mt-2 min-h-24"
                         value={draftEdit.preconditions}
                         onChange={(event) => changeDraftEdit({ preconditions: event.target.value })}
                       />
                     </label>
-                    <div className="space-y-4 lg:col-span-2">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <p className="field-label">Các bước kiểm thử</p>
-                        {["DRAFT", "READY"].includes(selectedDraft.status) &&
-                          canDraft("testcase.update", selectedDraft) && (
-                            <button
-                              className="secondary-button"
-                              type="button"
-                              onClick={() =>
-                                changeDraftEdit({
-                                  steps: [
-                                    ...draftEdit.steps,
-                                    { id: crypto.randomUUID(), action: "", data: {}, expected: "" },
-                                  ],
-                                })
-                              }
-                            >
-                              Thêm bước
-                            </button>
-                          )}
-                      </div>
-                      {draftEdit.steps.map((step, index) => (
-                        <fieldset
-                          className="grid gap-3 rounded-xl border border-border p-4 lg:grid-cols-2"
-                          key={step.id}
-                        >
-                          <legend className="px-2 text-[12px] font-semibold">
-                            Bước {index + 1}
-                          </legend>
-                          <label className="field-label">
-                            Thao tác
-                            <textarea
-                              className="apple-input mt-2 min-h-24"
-                              value={step.action}
-                              onChange={(event) => {
-                                const steps = [...draftEdit.steps];
-                                steps[index] = { ...step, action: event.target.value };
-                                changeDraftEdit({ steps });
-                              }}
-                            />
-                          </label>
-                          <label className="field-label">
-                            Kết quả mong đợi
-                            <textarea
-                              className="apple-input mt-2 min-h-24"
-                              value={step.expected}
-                              onChange={(event) => {
-                                const steps = [...draftEdit.steps];
-                                steps[index] = { ...step, expected: event.target.value };
-                                changeDraftEdit({ steps });
-                              }}
-                            />
-                          </label>
-                          <div className="min-w-0 space-y-2 lg:col-span-2">
-                            <p className="field-label">Dữ liệu của bước</p>
-                            <StructuredValueEditor
-                              label={`Dữ liệu bước ${index + 1}`}
-                              value={step.data || {}}
-                              fixedType="object"
-                              onChange={(data) => {
-                                const steps = [...draftEdit.steps];
-                                steps[index] = { ...step, data };
-                                changeDraftEdit({ steps });
-                              }}
-                            />
-                          </div>
-                          {["DRAFT", "READY"].includes(selectedDraft.status) &&
-                            canDraft("testcase.update", selectedDraft) &&
-                            draftEdit.steps.length > 1 && (
-                              <button
-                                className="secondary-button w-fit"
-                                type="button"
-                                onClick={() =>
-                                  changeDraftEdit({
-                                    steps: draftEdit.steps.filter(
-                                      (_, stepIndex) => stepIndex !== index,
-                                    ),
-                                  })
-                                }
-                              >
-                                Xóa bước
-                              </button>
-                            )}
-                        </fieldset>
-                      ))}
-                    </div>
-                    <div className="min-w-0 space-y-2">
-                      <p className="field-label">Dữ liệu dùng chung</p>
-                      <StructuredValueEditor
-                        label="Dữ liệu dùng chung"
-                        value={draftEdit.testData || {}}
-                        fixedType="object"
+                    {Object.keys(selectedDraft.test_data || {}).length > 0 && (
+                      <ObjectTestDataEntries
+                        key={selectedDraft._id}
+                        label="Dữ liệu chung đã lưu"
+                        value={draftEdit.testData}
                         onChange={(testData) => changeDraftEdit({ testData })}
                       />
-                    </div>
+                    )}
+                    {draftEdit.dataSetVersionIds.length > 0 && (
+                      <MultiSelect
+                        label="Phiên bản bộ dữ liệu tham số"
+                        options={dataSets.map((item) => ({
+                          value: item.current_version_id,
+                          label: `${item.name} v${item.current_version?.version}`,
+                        }))}
+                        searchPlaceholder="Tìm bộ dữ liệu"
+                        value={draftEdit.dataSetVersionIds}
+                        onChange={(dataSetVersionIds) => changeDraftEdit({ dataSetVersionIds })}
+                      />
+                    )}
                     <MultiSelect
-                      label="Phiên bản bộ dữ liệu tham số"
-                      options={dataSets.map((item) => ({
-                        value: item.current_version_id,
-                        label: `${item.name} v${item.current_version?.version}`,
-                      }))}
-                      searchPlaceholder="Tìm bộ dữ liệu"
-                      value={draftEdit.dataSetVersionIds}
-                      onChange={(dataSetVersionIds) => changeDraftEdit({ dataSetVersionIds })}
-                    />
-                    <MultiSelect
+                      showSearch={false}
                       label="Điều kiện kiểm thử đã phê duyệt"
-                      options={testConditions.map((item) => ({
-                        value: item._id,
-                        label: `${item.condition_key} ${item.title}`,
-                      }))}
+                      options={[
+                        ...testConditions.map((item) => ({
+                          value: item._id,
+                          label: `${item.condition_key} ${item.title}`,
+                        })),
+                        ...draftEdit.testConditionIds
+                          .filter((id) => !testConditions.some((item) => item._id === id))
+                          .map((id) => ({ value: id, label: `Điều kiện đã liên kết (${id})` })),
+                      ]}
                       searchPlaceholder="Tìm điều kiện kiểm thử"
                       value={draftEdit.testConditionIds}
                       onChange={(testConditionIds) => changeDraftEdit({ testConditionIds })}
                     />
-                    <label className="field-label">
-                      Kết quả mong đợi tổng thể
-                      <textarea
-                        className="apple-input mt-2 min-h-28"
-                        value={draftEdit.expected}
-                        onChange={(event) => changeDraftEdit({ expected: event.target.value })}
-                      />
-                    </label>
+                    {docText(selectedDraft.expected_result_doc).trim() && (
+                      <label className="field-label">
+                        Kết quả mong đợi chung đã lưu
+                        <textarea
+                          className="apple-input mt-2 min-h-28"
+                          value={draftEdit.expected}
+                          onChange={(event) => changeDraftEdit({ expected: event.target.value })}
+                        />
+                      </label>
+                    )}
                     <label className="field-label lg:col-span-2">
-                      Điều kiện sau
+                      Hậu điều kiện
                       <textarea
                         className="apple-input mt-2 min-h-24"
                         value={draftEdit.postconditions}
@@ -2955,27 +2797,38 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                         }
                       />
                     </label>
-                    {[
-                      ["alternateFlows", "Luồng thay thế"],
-                      ["exceptionFlows", "Luồng ngoại lệ"],
-                    ].map(([field, label]) => (
-                      <label className="field-label" key={field}>
-                        {label}
-                        <textarea
-                          className="apple-input mt-2 min-h-24"
-                          value={draftEdit[field]}
-                          onChange={(event) => changeDraftEdit({ [field]: event.target.value })}
-                        />
-                      </label>
-                    ))}
-                    <label className="field-label">
-                      Kỹ thuật kiểm thử phân tách bằng dấu phẩy
-                      <input
-                        className="apple-input mt-2"
-                        value={draftEdit.techniques}
-                        onChange={(event) => changeDraftEdit({ techniques: event.target.value })}
+                    <TechniqueSelector
+                      value={draftEdit.techniques}
+                      onChange={(techniques) => changeDraftEdit({ techniques })}
+                    />
+                    <label className="field-label lg:col-span-2">
+                      Luồng chính
+                      <textarea
+                        className="apple-input mt-2 min-h-24"
+                        value={draftEdit.mainFlow}
+                        onChange={(event) => changeDraftEdit({ mainFlow: event.target.value })}
                       />
                     </label>
+                    <fieldset className="space-y-3 rounded-control border border-border p-4 lg:col-span-2">
+                      <legend className="px-1 font-medium">
+                        Luồng thay thế và ngoại lệ (tùy chọn)
+                      </legend>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        {[
+                          ["alternateFlows", "Luồng thay thế"],
+                          ["exceptionFlows", "Luồng ngoại lệ"],
+                        ].map(([field, label]) => (
+                          <label className="field-label" key={field}>
+                            {label}
+                            <textarea
+                              className="apple-input mt-2 min-h-24"
+                              value={draftEdit[field]}
+                              onChange={(event) => changeDraftEdit({ [field]: event.target.value })}
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
                     <label className="field-label">
                       Nhãn phân tách bằng dấu phẩy
                       <input
@@ -3012,7 +2865,7 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                               disabled={projectMembersUnavailable}
                               onChange={(event) => changeDraftEdit({ ownerId: event.target.value })}
                             >
-                              <option value="">Chưa phân công</option>
+                              <option value="">-</option>
                               {draftEdit.ownerId &&
                                 !projectMembers.some(
                                   (member) => member.user_id === draftEdit.ownerId,
@@ -3043,15 +2896,9 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                             )}
                           </>
                         ) : (
-                          <p className="mt-2 text-sm text-ink-muted">
-                            {draftEdit.ownerId || "Chưa phân công"}
-                          </p>
+                          <p className="mt-2 text-sm text-ink-muted">{draftEdit.ownerId || "-"}</p>
                         )}
                       </label>
-                      <p className="mt-2 text-sm text-ink-muted">
-                        Người phụ trách gắn với bản Test Case; người thực chạy được phân công riêng
-                        theo từng Test Run.
-                      </p>
                     </div>
                     <div className="min-w-0">
                       <FilePicker
@@ -3101,27 +2948,19 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                         </div>
                       )}
                   </div>
-                )}
+                </details>
               </>
             ) : (
               <dl className="grid gap-4 p-5 sm:grid-cols-2">
                 {[
                   ["Module / Tính năng", draftEdit.module_name],
-                  [
-                    "Loại luồng",
-                    {
-                      MAIN: "Luồng chính",
-                      ALTERNATIVE: "Luồng thay thế",
-                      EXCEPTION: "Luồng ngoại lệ",
-                    }[draftEdit.flow_type],
-                  ],
                   ["Loại ca", valueLabel(draftEdit.type)],
                   ["Mức ưu tiên", valueLabel(draftEdit.priority)],
-                  ["Rủi ro", valueLabel(draftEdit.risk)],
                   ["Mục tiêu", draftEdit.objective],
-                  ["Điều kiện trước", draftEdit.preconditions],
+                  ["Tiền điều kiện", draftEdit.preconditions],
                   ["Kết quả mong đợi", draftEdit.expected],
-                  ["Điều kiện sau", draftEdit.postconditions],
+                  ["Hậu điều kiện", draftEdit.postconditions],
+                  ["Luồng chính", draftEdit.mainFlow],
                   ["Luồng thay thế", draftEdit.alternateFlows],
                   ["Luồng ngoại lệ", draftEdit.exceptionFlows],
                   ["Kỹ thuật kiểm thử", draftEdit.techniques],
@@ -3308,11 +3147,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
             empty={suites.length ? "Không tìm thấy bộ kiểm thử phù hợp" : "Chưa có bộ kiểm thử"}
             columns={[
               { key: "name", label: "Tên" },
-              {
-                key: "suite_type",
-                label: "Loại",
-                render: (item) => valueLabel(item.suite_type),
-              },
               {
                 key: "test_case_version_ids",
                 label: "Số ca",

@@ -1,7 +1,16 @@
 from fastapi import HTTPException
-
 from src.core.database import database
 
+
+async def can_auto_approve_project_content(project_id, user):
+    if getattr(user, "is_system_admin", False):
+        return True
+    if not project_id:
+        return False
+    project = await database.value.projects.find_one(
+        {"_id": project_id}, {"project_owner_user_id": 1}
+    )
+    return bool(project and project.get("project_owner_user_id") == user.id)
 
 def require_ai_publication_authority(user, permission=None):
     if getattr(user, "_ai_capability_run_id", None):
@@ -41,15 +50,9 @@ def content_authorship_changes(record, user, changes):
 
 
 async def require_independent_review(record, user, code="SELF_REVIEW_FORBIDDEN"):
-    project_id = record.get("project_id")
-    project = (
-        await database.value.projects.find_one(
-            {"_id": project_id}, {"settings.require_independent_review": 1}
-        )
-        if project_id
-        else None
-    )
-    if not (project or {}).get("settings", {}).get("require_independent_review", False):
+    # Project owners and platform admins have the explicitly requested
+    # authority to finalize their own work. Other authors need an independent reviewer.
+    if await can_auto_approve_project_content(record.get("project_id"), user):
         return
     reject_self_approval(record, user, code)
 

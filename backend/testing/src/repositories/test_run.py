@@ -47,6 +47,16 @@ class TestRunRepository:
             sort_field, direction
         ).skip(skip).limit(limit).to_list(limit)
 
+    async def count_recorded_results_by_run(self, project_id, run_ids):
+        if not run_ids:
+            return {}
+        rows = await database.value.test_results.aggregate([
+            {"$match": {"project_id": project_id, "test_run_id": {"$in": run_ids},
+                        "status": {"$in": ["PASS", "FAIL", "BLOCKED", "SKIPPED", "NOT_APPLICABLE"]}}},
+            {"$group": {"_id": "$test_run_id", "count": {"$sum": 1}}},
+        ]).to_list(len(run_ids))
+        return {row["_id"]: row["count"] for row in rows}
+
     async def list_results(self, query, limit, sort_field=None, direction=-1, session=None):
         cursor = database.value.test_results.find(
             query, **({"session": session} if session is not None else {})
@@ -73,9 +83,12 @@ class TestRunRepository:
             {"_id": {"$in": version_ids}}, session=session
         ).to_list(limit)
 
-    async def list_defects_for_results(self, project_id, result_ids, limit):
+    async def list_defects_for_results(self, project_id, result_ids, limit, linked_defect_ids=None):
         return await database.value.defects.find(
-            {"project_id": project_id, "linked_test_result_id": {"$in": result_ids}}
+            {"project_id": project_id, "$or": [
+                {"linked_test_result_id": {"$in": result_ids}},
+                {"_id": {"$in": linked_defect_ids or []}},
+            ]}
         ).to_list(limit)
 
     async def find_environment(self, environment_id, project_id):

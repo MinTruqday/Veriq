@@ -23,7 +23,6 @@ import {
 } from "../../components/WorkspacePrimitives";
 import { formatDate as formatDateValue, messageOf, valueLabel } from "../../lib/testing";
 import { testingApi } from "../../services/testing.service";
-import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import { PROJECT_SECTION_SLUGS, projectRoute } from "../../routes";
 
 function lines(value, category) {
@@ -52,14 +51,13 @@ export default function CompletionPage({ project }) {
   const [members, setMembers] = useState([]);
   const [selected, setSelected] = useState(null);
   const [editing, setEditing] = useState(false);
-  const [narrativeDraft, setNarrativeDraft] = useState(null);
-  const [lessonClusters, setLessonClusters] = useState(null);
   const [error, setError] = useState("");
-  const [aiLoading, setAiLoading] = useState(false);
-  const aiInFlight = useRef(false);
-  const aiOperation = useRef(null);
-  const selectedReport = useRef(selected);
-  selectedReport.current = selected;
+  const canReviewSelected = Boolean(
+    selected &&
+      (project.can_self_approve ||
+        (selected.created_by !== project.current_membership?.user_id &&
+          !(selected.content_author_ids || []).includes(project.current_membership?.user_id))),
+  );
   const [initialLoading, setInitialLoading] = useState(true);
   const [initialLoadFailed, setInitialLoadFailed] = useState(false);
   const initialDataLoaded = useRef(false);
@@ -101,65 +99,6 @@ export default function CompletionPage({ project }) {
   useEffect(() => {
     void load();
   }, [load]);
-
-  useEffect(() => {
-    setNarrativeDraft(null);
-    setLessonClusters(null);
-    if (!selected?._id) return undefined;
-    let active = true;
-    Promise.all([
-      testingApi.getTestCompletionNarrative(selected._id),
-      selected.lessons_learned?.length
-        ? testingApi.getTestCompletionLessonClusters(selected._id)
-        : Promise.resolve(null),
-    ])
-      .then(([narrative, lessons]) => {
-        if (active) {
-          setNarrativeDraft(narrative);
-          setLessonClusters(lessons);
-        }
-      })
-      .catch((reason) => {
-        if (active) setError(messageOf(reason));
-      });
-    return () => {
-      active = false;
-    };
-  }, [selected?._id, selected?.revision, selected?.lessons_learned]);
-
-  const generateAi = async (lessons = false) => {
-    if (aiInFlight.current || !selected) return;
-    aiInFlight.current = true;
-    setAiLoading(true);
-    setError("");
-    const report = selected;
-    const key = `${report._id}:${report.revision}:${lessons}`;
-    if (aiOperation.current?.key !== key)
-      aiOperation.current = {
-        key,
-        payload: { idempotency_key: crypto.randomUUID(), source_event_revision: report.revision },
-      };
-    try {
-      const result = lessons
-        ? await testingApi.generateTestCompletionLessonClusters(
-            report._id,
-            aiOperation.current.payload,
-          )
-        : await testingApi.generateTestCompletionNarrative(report._id, aiOperation.current.payload);
-      if (
-        selectedReport.current?._id === report._id &&
-        selectedReport.current?.revision === report.revision
-      ) {
-        if (lessons) setLessonClusters(result);
-        else setNarrativeDraft(result);
-      }
-    } catch (reason) {
-      setError(messageOf(reason));
-    } finally {
-      aiInFlight.current = false;
-      setAiLoading(false);
-    }
-  };
 
   const run = async (operation) => {
     try {
@@ -422,12 +361,7 @@ export default function CompletionPage({ project }) {
             </p>
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
               {!snapshots.length && can("testmonitor.snapshot.create") && (
-                <Link
-                  className="font-medium text-brand underline underline-offset-2"
-                  href={projectRoute(project._id, PROJECT_SECTION_SLUGS.monitoring)}
-                >
-                  Mở Giám sát kiểm thử để lưu mốc giám sát
-                </Link>
+                <span>Chọn “Lưu mốc báo cáo” ở đầu trang.</span>
               )}
               {!builds.length && can("build.create") && (
                 <Link
@@ -512,52 +446,65 @@ export default function CompletionPage({ project }) {
                     <button
                       className="secondary-button"
                       type="button"
-                      onClick={() => transition("submitTestCompletionReport", "Gửi rà soát")}
-                    >
-                      Gửi rà soát
-                    </button>
-                  )}
-                  {selected.status === "IN_REVIEW" && can("testcompletion.review") && (
-                    <button
-                      className="secondary-button"
-                      type="button"
                       onClick={() =>
-                        transition("signOffTestCompletion", "Gửi nhận xét rà soát", [
-                          {
-                            name: "decision",
-                            label: "Ý kiến rà soát",
-                            required: true,
-                            options: [
-                              { value: "APPROVE", label: "Đề nghị phê duyệt" },
-                              { value: "REJECT", label: "Đề nghị chỉnh sửa" },
-                            ],
-                          },
-                        ])
+                        transition(
+                          "submitTestCompletionReport",
+                          project.can_self_approve ? "Chốt báo cáo" : "Gửi rà soát",
+                        )
                       }
                     >
-                      Gửi nhận xét rà soát
+                      {project.can_self_approve ? "Chốt báo cáo" : "Gửi rà soát"}
                     </button>
                   )}
-                  {selected.status === "IN_REVIEW" && can("testcompletion.review") && (
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      onClick={() =>
-                        transition("requestTestCompletionChanges", "Yêu cầu chỉnh sửa")
-                      }
-                    >
-                      Yêu cầu chỉnh sửa
-                    </button>
-                  )}
-                  {selected.status === "IN_REVIEW" && can("testcompletion.approve") && (
-                    <button
-                      className="apple-button"
-                      type="button"
-                      onClick={() => transition("approveTestCompletionReport", "Phê duyệt báo cáo")}
-                    >
-                      Phê duyệt
-                    </button>
-                  )}
+                  {selected.status === "IN_REVIEW" &&
+                    canReviewSelected &&
+                    can("testcompletion.review") && (
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() =>
+                          transition("signOffTestCompletion", "Gửi nhận xét rà soát", [
+                            {
+                              name: "decision",
+                              label: "Ý kiến rà soát",
+                              required: true,
+                              options: [
+                                { value: "APPROVE", label: "Đề nghị phê duyệt" },
+                                { value: "REJECT", label: "Đề nghị chỉnh sửa" },
+                              ],
+                            },
+                          ])
+                        }
+                      >
+                        Gửi nhận xét rà soát
+                      </button>
+                    )}
+                  {selected.status === "IN_REVIEW" &&
+                    canReviewSelected &&
+                    can("testcompletion.review") && (
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() =>
+                          transition("requestTestCompletionChanges", "Yêu cầu chỉnh sửa")
+                        }
+                      >
+                        Yêu cầu chỉnh sửa
+                      </button>
+                    )}
+                  {selected.status === "IN_REVIEW" &&
+                    canReviewSelected &&
+                    can("testcompletion.approve") && (
+                      <button
+                        className="apple-button"
+                        type="button"
+                        onClick={() =>
+                          transition("approveTestCompletionReport", "Phê duyệt báo cáo")
+                        }
+                      >
+                        Phê duyệt
+                      </button>
+                    )}
                   {selected.status === "APPROVED" && can("testcompletion.close") && (
                     <button
                       className="apple-button"
@@ -593,86 +540,6 @@ export default function CompletionPage({ project }) {
                     </>
                   )}
                 </div>
-                {selected.status === "DRAFT" && can("testcompletion.update") && (
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      className="secondary-button border-violet-300 text-violet-800"
-                      disabled={aiLoading}
-                      onClick={() => generateAi(false)}
-                    >
-                      {aiLoading ? "Đang xử lý" : "AI đề xuất diễn giải báo cáo"}
-                    </button>
-                    {selected.lessons_learned?.length > 0 && (
-                      <button
-                        type="button"
-                        className="secondary-button border-violet-300 text-violet-800"
-                        disabled={aiLoading}
-                        onClick={() => generateAi(true)}
-                      >
-                        AI tổng hợp bài học
-                      </button>
-                    )}
-                  </div>
-                )}
-                {narrativeDraft?.suggestions?.[0] && (
-                  <Panel title="Diễn giải AI cho báo cáo hoàn tất">
-                    <div className="space-y-4 text-sm">
-                      <div className="rounded-control border border-violet-300 bg-violet-50/60 p-3">
-                        <ContentOriginBadge origin="ai_generated" />
-                        <p className="mt-2 text-violet-950">
-                          Đây là nội dung AI đề xuất; số liệu và quyết định trong báo cáo gốc được
-                          giữ riêng.
-                        </p>
-                      </div>
-                      {[
-                        ["Tóm tắt điều hành", "executive_summary"],
-                        ["Tổng kết đóng kiểm thử", "closure_summary"],
-                        ["Rủi ro còn lại", "residual_risk_summary"],
-                        ["Cơ sở khuyến nghị", "recommendation_rationale"],
-                      ].map(([label, key]) => (
-                        <div key={key}>
-                          <p className="field-label">{label}</p>
-                          <p className="mt-1 whitespace-pre-wrap">
-                            {narrativeDraft.suggestions[0][key]}
-                          </p>
-                        </div>
-                      ))}
-                      <p className="text-xs text-ink-muted">
-                        Nội dung AI được lưu riêng, không sửa số liệu, quyết định hoặc báo cáo
-                        nguồn. Kết quả của phiên bản cũ sẽ được đánh dấu khi báo cáo thay đổi.
-                      </p>
-                    </div>
-                  </Panel>
-                )}
-                {narrativeDraft?.stale && (
-                  <p className="text-sm text-amber-700" role="status">
-                    Diễn giải thuộc phiên bản báo cáo trước; không dùng như nội dung hiện hành.
-                  </p>
-                )}
-                {lessonClusters?.suggestions?.length > 0 && (
-                  <Panel title="Nhóm bài học do AI đề xuất">
-                    <div className="space-y-3">
-                      <ContentOriginBadge origin="ai_generated" />
-                      {lessonClusters.suggestions.map((item, index) => (
-                        <article
-                          className="rounded-xl border border-violet-200 bg-violet-50/30 p-3 text-sm"
-                          key={`${item.theme}-${index}`}
-                        >
-                          <p className="font-semibold">{item.theme}</p>
-                          <p className="mt-1">{item.summary}</p>
-                          <p className="mt-2 text-xs text-ink-muted">
-                            Nguồn {item.source_indices.map((value) => value + 1).join(", ")}
-                          </p>
-                        </article>
-                      ))}
-                      <p className="text-xs text-ink-muted">
-                        Kết quả gom nhóm không thay thế các bài học nguồn và không tự tạo hành động
-                        cải tiến
-                      </p>
-                    </div>
-                  </Panel>
-                )}
                 <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                   <Metric
                     label="Tiến độ thực thi"

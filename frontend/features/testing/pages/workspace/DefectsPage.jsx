@@ -1,7 +1,6 @@
 "use client";
 import { useDateTimeOptions } from "../../hooks/useDateTimeOptions";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Eye } from "lucide-react";
 import { uploadAssetAPI } from "@/features/cloud/services/upload.service";
 import DataTable from "../../components/DataTable";
 import FilePicker from "../../components/FilePicker";
@@ -25,7 +24,6 @@ import {
 } from "../../lib/testing";
 import { shouldReloadAfterAmbiguousMutation } from "../../lib/executionRecovery.logic.mjs";
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
-import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import { eligibleRetestResults } from "./defectRetest.logic.mjs";
 import { defectActionAccess } from "./defectAccess.logic.mjs";
 import SearchField from "@/shared/components/ui/SearchField";
@@ -42,14 +40,6 @@ const nextStates = {
   DUPLICATE: ["REOPENED"],
 };
 
-const traceReasonLabels = {
-  CURRENT_LINK: "Đang được liên kết với lỗi",
-  SHARED_REQUIREMENT_TRACE: "Có chung yêu cầu được truy vết",
-  SIMILAR_BEHAVIOR_TEXT: "Nội dung hành vi tương đồng",
-  CURRENT_REQUIREMENT_LINK: "Yêu cầu đang được liên kết với lỗi",
-  LINKED_TEST_CASE_TRACE: "Liên quan qua ca kiểm thử đã liên kết",
-  SIMILAR_REQUIREMENT_TEXT: "Nội dung yêu cầu tương đồng",
-};
 
 function memberDisplayName(member) {
   return (
@@ -94,11 +84,6 @@ export default function DefectsPage({ project }) {
   });
   const [results, setResults] = useState([]);
   const [duplicates, setDuplicates] = useState([]);
-  const [traceSuggestions, setTraceSuggestions] = useState({});
-  const [traceReview, setTraceReview] = useState(null);
-  const [traceGeneratingId, setTraceGeneratingId] = useState("");
-  const traceGenerationInFlight = useRef(false);
-  const traceRequestKeys = useRef(new Map());
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [initialLoading, setInitialLoading] = useState(true);
@@ -156,9 +141,6 @@ export default function DefectsPage({ project }) {
       setBuilds([]);
       setEnvironments([]);
       setMembers([]);
-      setTraceSuggestions({});
-      setTraceReview(null);
-      traceRequestKeys.current.clear();
       setPageInfo(null);
     }
     if (!initialDataLoaded.current) {
@@ -197,12 +179,6 @@ export default function DefectsPage({ project }) {
           ? testingApi.getDefectClassificationOptions(project._id)
           : Promise.resolve({}),
       ]);
-      const traceSuggestionValues = projectPermissions.has("ai.suggest_bug_trace")
-        ? await testingApi.listAutomatedDefectTraceSuggestions(
-            project._id,
-            defectValues.items.map((item) => item._id),
-          )
-        : [];
       if (requestGeneration !== loadGeneration.current) return;
       const configuredSeverities = (classificationPolicy.severity || [])
         .map((item) => String(item || "").trim())
@@ -233,9 +209,6 @@ export default function DefectsPage({ project }) {
         severity: current.severity || severityOptions[0] || "",
         priority: current.priority || priorityOptions[0] || "",
       }));
-      setTraceSuggestions(
-        Object.fromEntries(traceSuggestionValues.map((item) => [item.subject_id, item])),
-      );
       setPageInfo(defectValues);
       setResults([
         ...resultValues,
@@ -394,75 +367,6 @@ export default function DefectsPage({ project }) {
         }
       },
     });
-  };
-  const suggestTrace = async (item) => {
-    if (!can("ai.suggest_bug_trace") || traceGenerationInFlight.current) return;
-    traceGenerationInFlight.current = true;
-    setTraceGeneratingId(item._id);
-    const requestProjectId = project._id;
-    const requestKey = `${project._id}:${item._id}:${item.revision}`;
-    if (!traceRequestKeys.current.has(requestKey)) {
-      traceRequestKeys.current.set(requestKey, crypto.randomUUID());
-    }
-    try {
-      const result = await testingApi.suggestDefectTrace(project._id, item._id, {
-        expected_revision: item.revision,
-        idempotency_key: traceRequestKeys.current.get(requestKey),
-      });
-      if (requestProjectId !== currentProjectId.current) return;
-      setTraceSuggestions((values) => ({ ...values, [item._id]: result }));
-      setTraceReview({ defect: item, result });
-    } catch (reason) {
-      if (requestProjectId !== currentProjectId.current) return;
-      setError(messageOf(reason));
-    } finally {
-      traceGenerationInFlight.current = false;
-      setTraceGeneratingId("");
-    }
-  };
-  const confirmTraceCandidate = async (candidate) => {
-    const currentReview = traceReview;
-    if (!currentReview) return;
-    setTraceReview(null);
-    const answer = await ask({
-      title: "Xác nhận liên kết truy vết",
-      description: `${currentReview.defect.defect_key} với ${candidate.requirement_key || candidate.test_case_key}`,
-      confirmLabel: "Xác nhận liên kết",
-      fields: [
-        {
-          name: "reason",
-          label: "Lý do xác nhận",
-          required: true,
-          multiline: true,
-          autoFocus: true,
-        },
-      ],
-      onConfirm: async (answer) => {
-        const payload = {
-          expected_revision: currentReview.defect.revision,
-          reason: answer.reason,
-          ai_result_id: currentReview.result._id,
-          accepted_candidate_ids: [candidate.candidate_id],
-        };
-        if (candidate.artifact_type === "requirement_version") {
-          payload.linked_requirement_version_ids = [
-            ...new Set([
-              ...(currentReview.defect.linked_requirement_version_ids || []),
-              candidate.artifact_id,
-            ]),
-          ];
-        } else {
-          payload.linked_test_case_version_id = candidate.artifact_id;
-        }
-        try {
-          await testingApi.updateDefectTrace(project._id, currentReview.defect._id, payload);
-          await load();
-        } catch (reason) {
-          throw new Error(messageOf(reason));
-        }
-      },
-    });
-    if (!answer) setTraceReview(currentReview);
   };
   const renderTransition = (item) => {
     if (item.status === "READY_FOR_RETEST") {
@@ -853,99 +757,6 @@ export default function DefectsPage({ project }) {
           />
         </Panel>
       )}
-      {traceReview && (
-        <Modal
-          isOpen={Boolean(traceReview)}
-          onClose={() => setTraceReview(null)}
-          ariaLabel={`Gợi ý liên kết cho ${traceReview.defect.defect_key}`}
-          className="max-w-6xl"
-        >
-          <ModalHeader>
-            <ModalTitle>Gợi ý liên kết cho {traceReview.defect.defect_key}</ModalTitle>
-            <p className="mt-2 text-sm text-ink-muted">
-              Gợi ý chưa thay đổi lỗi. Chỉ liên kết sau khi người có quyền xác nhận.
-            </p>
-          </ModalHeader>
-          <div className="flex flex-wrap items-center gap-2 border-b border-border px-5 py-3 text-sm font-semibold text-ink">
-            Yêu cầu được đề xuất
-            <ContentOriginBadge origin="ai_suggested" />
-          </div>
-          <DataTable
-            items={traceReview.result.requirement_candidates}
-            empty="Không tìm thấy yêu cầu liên quan trong dự án"
-            columns={[
-              { key: "requirement_key", label: "Yêu cầu" },
-              { key: "title", label: "Tên" },
-              {
-                key: "confidence_band",
-                label: "Mức độ liên quan",
-                render: (item) => valueLabel(item.confidence_band),
-              },
-              {
-                key: "reason_codes",
-                label: "Bằng chứng",
-                render: (item) =>
-                  item.reason_codes
-                    .map((code) => traceReasonLabels[code] || "Có thông tin liên quan")
-                    .join(", "),
-              },
-              {
-                key: "action",
-                label: "Quyết định",
-                render: (candidate) =>
-                  canManageTrace(traceReview.defect) ? (
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      onClick={() => void confirmTraceCandidate(candidate)}
-                    >
-                      Xác nhận yêu cầu
-                    </button>
-                  ) : null,
-              },
-            ]}
-          />
-          <div className="flex flex-wrap items-center gap-2 border-y border-border px-5 py-3 text-sm font-semibold text-ink">
-            Ca kiểm thử được đề xuất
-            <ContentOriginBadge origin="ai_suggested" />
-          </div>
-          <DataTable
-            items={traceReview.result.test_case_candidates}
-            empty="Không tìm thấy ca kiểm thử liên quan trong dự án"
-            columns={[
-              { key: "test_case_key", label: "Ca kiểm thử" },
-              { key: "title", label: "Tên" },
-              {
-                key: "confidence_band",
-                label: "Mức độ liên quan",
-                render: (item) => valueLabel(item.confidence_band),
-              },
-              {
-                key: "reason_codes",
-                label: "Bằng chứng",
-                render: (item) =>
-                  item.reason_codes
-                    .map((code) => traceReasonLabels[code] || "Có thông tin liên quan")
-                    .join(", "),
-              },
-              {
-                key: "action",
-                label: "Quyết định",
-                render: (candidate) =>
-                  canManageTrace(traceReview.defect) ? (
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      onClick={() => void confirmTraceCandidate(candidate)}
-                    >
-                      Xác nhận ca kiểm thử
-                    </button>
-                  ) : null,
-              },
-            ]}
-          />
-        </Modal>
-      )}
       <Panel title="Danh sách lỗi">
         <details className="border-b border-border p-4" open>
           <summary className="cursor-pointer text-sm font-medium">Tìm và lọc lỗi</summary>
@@ -1025,8 +836,6 @@ export default function DefectsPage({ project }) {
           <ul aria-label="Danh sách lỗi" className="divide-y divide-border">
             {items.map((item) => {
               const assignee = members.find((member) => member.user_id === item.assignee);
-              const currentTrace =
-                traceSuggestions[item._id]?.source_event_revision === item.revision;
               const reproductionSteps = (item.steps_to_reproduce || [])
                 .map((step) => ({
                   action: docText(step.action_doc || step.action || step.description),
@@ -1154,31 +963,6 @@ export default function DefectsPage({ project }) {
                   )}
                   <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2">
                     {renderTransition(item)}
-                    {can("ai.suggest_bug_trace") &&
-                      (currentTrace ? (
-                        <button
-                          aria-label={`Xem gợi ý AI cho ${item.defect_key}`}
-                          className="icon-button h-9 w-9"
-                          title="Xem gợi ý AI"
-                          type="button"
-                          onClick={() =>
-                            setTraceReview({ defect: item, result: traceSuggestions[item._id] })
-                          }
-                        >
-                          <Eye aria-hidden="true" size={16} />
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          className="secondary-button text-violet-800"
-                          disabled={Boolean(traceGeneratingId)}
-                          onClick={() => void suggestTrace(item)}
-                        >
-                          {traceGeneratingId === item._id
-                            ? "Đang tìm liên kết…"
-                            : "Đề xuất liên kết"}
-                        </button>
-                      ))}
                     {item.linked_test_case_version_id && canManageTrace(item) && (
                       <button
                         className="secondary-button"

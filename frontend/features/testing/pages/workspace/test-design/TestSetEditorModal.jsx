@@ -39,7 +39,7 @@ export default function TestSetEditorModal({ projectId, mode, suite, onClose, on
   const editing = mode === "edit";
   const initialVersionIds = suite?.test_case_version_ids || [];
   const [name, setName] = useState(suite?.name || "");
-  const [suiteType, setSuiteType] = useState(suite?.suite_type || SUITE_TYPES[0]);
+  const [suiteType, setSuiteType] = useState(suite?.suite_type || "");
   const [query, setQuery] = useState("");
   const [appliedQuery, setAppliedQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -203,20 +203,24 @@ export default function TestSetEditorModal({ projectId, mode, suite, onClose, on
             onChange={(event) => setName(event.target.value)}
           />
         </label>
-        <label className="field-label">
-          Loại bộ kiểm thử
-          <select
-            className="apple-input mt-2 w-full"
-            value={suiteType}
-            onChange={(event) => setSuiteType(event.target.value)}
-          >
-            {SUITE_TYPES.map((value) => (
-              <option key={value} value={value}>
-                {valueLabel(value)}
-              </option>
-            ))}
-          </select>
-        </label>
+        <details className="rounded-control border border-border p-3">
+          <summary className="cursor-pointer font-medium">Tùy chọn</summary>
+          <label className="field-label mt-3">
+            Loại bộ kiểm thử
+            <select
+              className="apple-input mt-2 w-full"
+              value={suiteType}
+              onChange={(event) => setSuiteType(event.target.value)}
+            >
+              <option value="">-</option>
+              {SUITE_TYPES.map((value) => (
+                <option key={value} value={value}>
+                  {valueLabel(value)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </details>
         <section
           className="space-y-3 rounded-control border border-border p-4"
           aria-label="Chọn ca kiểm thử"

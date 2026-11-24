@@ -2,8 +2,11 @@ import hashlib
 
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
-from src.core.human_decisions import require_ai_publication_authority
-from src.core.human_decisions import require_independent_review
+from src.core.human_decisions import (
+    can_auto_approve_project_content,
+    require_ai_publication_authority,
+    require_independent_review,
+)
 from src.modules.design.services.design_authorization import require_assigned_design_draft
 
 from src.core.common import audit, get_project_entity, new_id, now
@@ -16,6 +19,7 @@ from src.modules.design.services.test_case_records import (
     project_test_text,
 )
 from src.core.project_settings import resolve_testcase_duplicate_threshold
+from src.schemas.contracts.design import TestCaseFreezeInput
 
 def trace_is_missing_for_approval(draft, project_settings):
     trace_sources = (
@@ -134,6 +138,15 @@ async def submit_test_case_review_record(project_id, draft_id, payload, user):
         project_id,
         {"review_note": payload.review_note},
     )
+    if await can_auto_approve_project_content(project_id, user):
+        return await approve_test_case_draft_record(
+            draft_id,
+            TestCaseFreezeInput(
+                expected_revision=draft["revision"],
+                review_note=payload.review_note,
+            ),
+            user,
+        )
     return draft
 
 async def request_test_case_changes_record(project_id, draft_id, payload, user):
@@ -503,6 +516,7 @@ def build_test_case_version(draft, test_case_id, version_number, parent_version_
         "test_data": draft["test_data"],
         "expected_result_doc": draft["expected_result_doc"],
         "postconditions_doc": draft["postconditions_doc"],
+        "main_flow_doc": draft.get("main_flow_doc") or {"type": "doc", "content": []},
         "alternate_flows_doc": draft.get("alternate_flows_doc") or {"type": "doc", "content": []},
         "exception_flows_doc": draft.get("exception_flows_doc") or {"type": "doc", "content": []},
         "tags": draft["tags"],

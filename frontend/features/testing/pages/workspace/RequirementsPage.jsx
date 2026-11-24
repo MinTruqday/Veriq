@@ -1,6 +1,8 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import TraceabilityPage from "./TraceabilityPage";
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
 import ReviewCommentsPanel from "../../components/ReviewCommentsPanel";
 import CollaborationPanel from "../../components/CollaborationPanel";
@@ -16,8 +18,8 @@ import RequirementCurrentVersionPanel from "./requirements/RequirementCurrentVer
 import RequirementCreateModal from "./requirements/RequirementCreateModal";
 import RequirementDuplicatePanel from "./requirements/RequirementDuplicatePanel";
 import RequirementHistoryPanel from "./requirements/RequirementHistoryPanel";
+import RequirementImpactPanel from "./requirements/RequirementImpactPanel";
 import RequirementImportModal from "./requirements/RequirementImportModal";
-import RequirementQualityPanel from "./requirements/RequirementQualityPanel";
 import RequirementSourceDocumentsPanel from "./requirements/RequirementSourceDocumentsPanel";
 import RequirementTracePanel from "./requirements/RequirementTracePanel";
 import RequirementsListPanel from "./requirements/RequirementsListPanel";
@@ -32,8 +34,10 @@ import {
 
 export default function RequirementsPage({ project, section, workspaceView }) {
   const { user } = useAuth();
+  const searchParams = useSearchParams();
   const { ask, dialog } = useActionDialog();
-  const sectionKey = section[0] || "";
+  const documentsView = workspaceView === "documents";
+  const sectionKey = documentsView ? "" : section[0] || "";
   const requirementId = sectionKey && !["new", "import"].includes(sectionKey) ? sectionKey : "";
   const [items, setItems] = useState([]);
   const [loadedProjectId, setLoadedProjectId] = useState("");
@@ -57,28 +61,11 @@ export default function RequirementsPage({ project, section, workspaceView }) {
     sort: "-updated_at",
   });
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [pageInfo, setPageInfo] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [lint, setLint] = useState(null);
-  const [lintLoading, setLintLoading] = useState(false);
-  const [checkingWithAi, setCheckingWithAi] = useState(false);
   const [focusAcceptanceCriterionId, setFocusAcceptanceCriterionId] = useState("");
-  const [importValue, setImportValue] = useState({
-    filename: "requirements.md",
-    format: "md",
-    content: textDoc(""),
-    visibility: "private",
-    shared_with: [],
-    ai_enabled: false,
-    source_type: "SRS",
-    supersedes_document_id: null,
-  });
-  const [preview, setPreview] = useState(null);
-  const [selectedIndexes, setSelectedIndexes] = useState([]);
-  const [importComparison, setImportComparison] = useState(null);
-  const [separateIndexes, setSeparateIndexes] = useState([]);
-  const [separateReasons, setSeparateReasons] = useState({});
   const [upload, setUpload] = useState([]);
   const [uploadAccess, setUploadAccess] = useState({
     visibility: "private",
@@ -94,17 +81,9 @@ export default function RequirementsPage({ project, section, workspaceView }) {
   const [pendingExtractionProjectId, setPendingExtractionProjectId] = useState(project._id);
   const [uploadingSource, setUploadingSource] = useState(false);
   const [retryingSource, setRetryingSource] = useState(false);
-  const [extractingSource, setExtractingSource] = useState(false);
   const loadSequence = useRef(0);
   const activeProjectId = useRef(project._id);
   activeProjectId.current = project._id;
-  const clearImportPreview = () => {
-    setPreview(null);
-    setSelectedIndexes([]);
-    setImportComparison(null);
-    setSeparateIndexes([]);
-    setSeparateReasons({});
-  };
   const handleDocumentDuplicateMatches = async (
     filename,
     matches,
@@ -192,29 +171,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
     const params = new URLSearchParams(window.location.search);
     setFocusAcceptanceCriterionId(params.get("acceptanceCriterionId") || "");
   }, [requirementId]);
-  useEffect(() => {
-    if (!preview?._id || preview.status !== "PREVIEW_READY") {
-      setImportComparison(null);
-      setSeparateIndexes([]);
-      setSeparateReasons({});
-      return;
-    }
-    let active = true;
-    setImportComparison(null);
-    setSeparateIndexes([]);
-    setSeparateReasons({});
-    testingApi.compareRequirementImport(preview._id).then(
-      (value) => {
-        if (active) setImportComparison(value);
-      },
-      (reason) => {
-        if (active) setError(messageOf(reason));
-      },
-    );
-    return () => {
-      active = false;
-    };
-  }, [preview?._id, preview?.revision, preview?.status]);
   const rememberSourceDocument = (document) => {
     setSourceDocument(document);
     setSourceDocuments((items) => [document, ...items.filter((item) => item._id !== document._id)]);
@@ -314,16 +270,20 @@ export default function RequirementsPage({ project, section, workspaceView }) {
     const requestedProjectId = project._id;
     setLoading(true);
     try {
-      const values = await testingApi.listRequirementPage(requestedProjectId, {
-        q: query,
-        ...filters,
-        page,
-        page_size: 50,
-      });
+      const values = documentsView
+        ? { items: [] }
+        : await testingApi.listRequirementPage(requestedProjectId, {
+            q: query,
+            ...filters,
+            page,
+            page_size: pageSize,
+          });
       if (sequence !== loadSequence.current) return;
       setItems(values.items);
       setPageInfo(values);
-      const fields = await testingApi.listRequirementFields(requestedProjectId);
+      const fields = documentsView
+        ? []
+        : await testingApi.listRequirementFields(requestedProjectId);
       if (sequence !== loadSequence.current) return;
       setCustomFields(fields);
       if (project.current_permissions?.includes("project.members.read")) {
@@ -362,7 +322,16 @@ export default function RequirementsPage({ project, section, workspaceView }) {
     } finally {
       if (sequence === loadSequence.current) setLoading(false);
     }
-  }, [filters, page, project._id, project.current_permissions, query, requirementId]);
+  }, [
+    documentsView,
+    filters,
+    page,
+    pageSize,
+    project._id,
+    project.current_permissions,
+    query,
+    requirementId,
+  ]);
   const can = useCallback(
     (permission) => project.current_permissions?.includes(permission),
     [project.current_permissions],
@@ -388,11 +357,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
     setDuplicateScan(null);
     setImporting(false);
     setForm(createInitialRequirementForm());
-    setPreview(null);
-    setSelectedIndexes([]);
-    setImportComparison(null);
-    setSeparateIndexes([]);
-    setSeparateReasons({});
     setUpload([]);
     setUploadAccess({
       visibility: "private",
@@ -400,16 +364,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
       ai_enabled: false,
       source_type: "SRS",
       ocr_language: "",
-      supersedes_document_id: null,
-    });
-    setImportValue({
-      filename: "requirements.md",
-      format: "md",
-      content: textDoc(""),
-      visibility: "private",
-      shared_with: [],
-      ai_enabled: false,
-      source_type: "SRS",
       supersedes_document_id: null,
     });
     setSourceDocument(null);
@@ -631,23 +585,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
     if (!draftDirty && saveState === "saved") return selected;
     return (await persistDraft(draft, draftSequence.current)) || selected;
   };
-  const checkRequirementWithAI = async () => {
-    if (!can("ai.run_lint") || checkingWithAi || !current?._id) return;
-    setCheckingWithAi(true);
-    setError("");
-    try {
-      const saved = await saveDraft();
-      const savedVersion = saved?.current_version || current;
-      const result = await testingApi.lintRequirement(savedVersion._id, {
-        idempotency_key: crypto.randomUUID(),
-      });
-      setLint(result || null);
-    } catch (reason) {
-      setError(messageOf(reason));
-    } finally {
-      setCheckingWithAi(false);
-    }
-  };
   const createVersion = async () => {
     await ask({
       title: "Mở bản nháp để chỉnh sửa yêu cầu",
@@ -700,149 +637,10 @@ export default function RequirementsPage({ project, section, workspaceView }) {
       },
     });
   };
-  const importPreview = async (event) => {
-    event.preventDefault();
-    if (
-      !(
-        typeof importValue.content === "string" ? importValue.content : docText(importValue.content)
-      ).trim()
-    ) {
-      setError("Nhập nội dung tài liệu trước khi tạo bản xem trước");
-      return;
-    }
-    clearImportPreview();
-    const requestedProjectId = project._id;
-    try {
-      const duplicateCheck = await testingApi.compareRequirementDocumentContent(
-        requestedProjectId,
-        importValue,
-      );
-      const duplicateAction = await handleDocumentDuplicateMatches(
-        importValue.filename,
-        duplicateCheck.matches,
-      );
-      if (duplicateAction !== "continue") return;
-      const document = await testingApi.createRequirementDocument(requestedProjectId, {
-        ...importValue,
-        duplicate_confirmed: duplicateAction === "continue" && duplicateCheck.matches?.length > 0,
-        duplicate_confirmed_document_ids: (duplicateCheck.matches || []).map(
-          (match) => match.document_id,
-        ),
-      });
-      if (activeProjectId.current !== requestedProjectId) return;
-      rememberSourceDocument(document);
-      const result = await testingApi.extractRequirementDocument(
-        document._id,
-        `source-${document.content_hash}`,
-      );
-      if (activeProjectId.current !== requestedProjectId) return;
-      setPreview(result);
-      setSelectedIndexes(result.preview.map((_, index) => index));
-      const refreshedDocument = await testingApi.getRequirementDocument(document._id);
-      if (activeProjectId.current === requestedProjectId) rememberSourceDocument(refreshedDocument);
-    } catch (reason) {
-      if (activeProjectId.current === requestedProjectId) setError(messageOf(reason));
-    }
-  };
-  const confirmImport = async () => {
-    const requestedProjectId = project._id;
-    try {
-      if (!importComparison || importComparison.revision !== preview.revision) {
-        setError("Cần đối chiếu với yêu cầu hiện có trước khi xác nhận nhập");
-        return;
-      }
-      const activeSeparateIndexes = separateIndexes.filter(
-        (index) =>
-          selectedIndexes.includes(index) &&
-          importComparison.comparisons?.some(
-            (entry) =>
-              entry.candidate_index === index &&
-              entry.matches.some(
-                (match) =>
-                  !["IN_IMPORT", "SAME_KEY_IN_IMPORT"].includes(match.match_type) ||
-                  selectedIndexes.includes(match.candidate_index),
-              ),
-          ),
-      );
-      await testingApi.confirmRequirementImport(
-        preview._id,
-        selectedIndexes,
-        preview.revision,
-        activeSeparateIndexes,
-        Object.fromEntries(
-          Object.entries(separateReasons).filter(([index]) =>
-            activeSeparateIndexes.includes(Number(index)),
-          ),
-        ),
-      );
-      if (activeProjectId.current !== requestedProjectId) return;
-      setPreview(null);
-      setSelectedIndexes([]);
-      setImporting(false);
-      await load();
-    } catch (reason) {
-      if (activeProjectId.current !== requestedProjectId) return;
-      setError(
-        reason?.code === "IMPORT_REQUIREMENT_KEY_CONFLICT"
-          ? "Mã yêu cầu đã tồn tại trong dự án hoặc trùng với mục đang nhập. Hãy sửa mã trong bản xem trước hoặc bỏ chọn mục trùng."
-          : messageOf(reason),
-      );
-    }
-  };
-  const resolveImportMatch = async (candidateIndex, match, action) => {
-    const candidate = preview?.preview?.[candidateIndex];
-    if (!candidate || !match.requirement_id) return;
-    await ask({
-      title:
-        action === "link_source" ? "Gắn nguồn vào yêu cầu hiện có" : "Tạo phiên bản yêu cầu mới",
-      description:
-        action === "link_source"
-          ? `Gắn nguồn của ${candidate.title} vào ${match.requirement_key || match.title} mà không đổi nội dung`
-          : `Tạo bản nháp mới cho ${match.requirement_key || match.title} từ đúng nội dung ứng viên ${candidate.title}  Trường không có trong ứng viên sẽ để trống  Phiên bản cũ vẫn được lưu`,
-      confirmLabel: action === "link_source" ? "Gắn nguồn" : "Tạo phiên bản nháp",
-      fields: [
-        {
-          name: "reason",
-          label: "Lý do đối chiếu",
-          required: true,
-          multiline: true,
-          autoFocus: true,
-        },
-      ],
-      onConfirm: async (answer) => {
-        try {
-          const selectedCandidateIds = new Set(
-            selectedIndexes.map((index) => preview.preview[index]?.candidate_id).filter(Boolean),
-          );
-          const updated = await testingApi.resolveRequirementImportCandidate(
-            preview._id,
-            candidate.candidate_id,
-            {
-              expected_revision: preview.revision,
-              target_requirement_id: match.requirement_id,
-              expected_target_version_id: match.version_id,
-              action,
-              reason: answer.reason,
-            },
-          );
-          setPreview(updated);
-          setSelectedIndexes(
-            updated.preview.flatMap((item, index) =>
-              selectedCandidateIds.has(item.candidate_id) ? [index] : [],
-            ),
-          );
-          await load();
-        } catch (reason) {
-          throw new Error(messageOf(reason));
-        }
-      },
-    });
-  };
   const uploadPreview = async (event) => {
     event.preventDefault();
     const uploads = Array.isArray(upload) ? upload : upload ? [upload] : [];
     if (!uploads.length || uploadingSource || pendingExtractionDocumentId) return;
-    clearImportPreview();
     setUploadingSource(true);
     const requestedProjectId = project._id;
     const formats = uploads.map((file) => {
@@ -1029,12 +827,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
       if (createdDocuments.length > 1) await load();
       const document = createdDocuments[0];
       rememberSourceDocument(document);
-      if (document.last_import_job_id) {
-        await continueRequirementImport(document);
-        return;
-      }
       if (document.status === "PARSE_FAILED") {
-        setPreview(null);
         setError(
           document.parse_error_type === "TimeoutError"
             ? "Đã hết thời gian phân tích tài liệu; tệp gốc vẫn được lưu để bạn thử lại."
@@ -1043,7 +836,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
         return;
       }
       if (document.status !== "READY") {
-        setPreview(null);
         setError("");
         rememberPendingExtraction(document._id);
         return;
@@ -1058,7 +850,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
   };
   const retrySourceDocument = async () => {
     if (!sourceDocument || retryingSource) return;
-    clearImportPreview();
     setRetryingSource(true);
     const requestedProjectId = project._id;
     try {
@@ -1079,269 +870,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
     } finally {
       if (activeProjectId.current === requestedProjectId) setRetryingSource(false);
     }
-  };
-  const runSourceExtraction = async (document, requestedProjectId, includeBusinessRules = true) => {
-    const result = await testingApi.extractRequirementDocument(
-      document._id,
-      `source-${document.content_hash}`,
-      includeBusinessRules,
-    );
-    if (activeProjectId.current !== requestedProjectId) return;
-    if (
-      !Array.isArray(result?.preview) ||
-      !["PREVIEW_READY", "CONFIRMED"].includes(result.status)
-    ) {
-      throw new Error(
-        "Chưa thể mở bản xem trước yêu cầu. Tài liệu vẫn được lưu; hãy thử lại hoặc mở lượt nhập trong danh sách tài liệu nguồn.",
-      );
-    }
-    setPreview(result);
-    setSelectedIndexes(result.preview.map((_, index) => index));
-    if (result.status === "PREVIEW_READY" && result.preview.length === 0) {
-      setError(
-        "Không tìm thấy yêu cầu có thể trích xuất từ nội dung đã đọc. Tài liệu vẫn được lưu; hãy kiểm tra nội dung hoặc tạo yêu cầu thủ công.",
-      );
-    }
-    const refreshedDocument = await testingApi.getRequirementDocument(document._id);
-    if (activeProjectId.current === requestedProjectId) rememberSourceDocument(refreshedDocument);
-  };
-  const extractSourceRequirements = async (includeBusinessRules = true) => {
-    if (
-      !sourceDocument ||
-      sourceDocument.status !== "READY" ||
-      extractingSource ||
-      uploadingSource ||
-      retryingSource
-    ) {
-      return;
-    }
-    setExtractingSource(true);
-    setError("");
-    const requestedProjectId = project._id;
-    try {
-      await runSourceExtraction(sourceDocument, requestedProjectId, includeBusinessRules);
-    } catch (reason) {
-      if (activeProjectId.current === requestedProjectId) setError(messageOf(reason));
-    } finally {
-      if (activeProjectId.current === requestedProjectId) setExtractingSource(false);
-    }
-  };
-  const enableSourceAiRead = async (includeBusinessRules = true) => {
-    if (!sourceDocument || sourceDocument.status !== "READY" || sourceDocument.ai_enabled) return;
-    setRetryingSource(true);
-    setError("");
-    const requestedProjectId = project._id;
-    try {
-      const updated = await testingApi.updateRequirementDocumentAiRead(sourceDocument._id, {
-        expected_revision: sourceDocument.revision,
-        ai_enabled: true,
-      });
-      if (activeProjectId.current !== requestedProjectId) return;
-      rememberSourceDocument(updated);
-      setExtractingSource(true);
-      await runSourceExtraction(updated, requestedProjectId, includeBusinessRules);
-    } catch (reason) {
-      if (activeProjectId.current === requestedProjectId) setError(messageOf(reason));
-    } finally {
-      if (activeProjectId.current === requestedProjectId) {
-        setRetryingSource(false);
-        setExtractingSource(false);
-      }
-    }
-  };
-  const continueRequirementImport = async (document) => {
-    const requestedProjectId = project._id;
-    if (!document?.last_import_job_id) return;
-    try {
-      const job = await testingApi.getRequirementImport(document.last_import_job_id);
-      if (activeProjectId.current !== requestedProjectId) return;
-      if (job.project_id !== requestedProjectId || job.source_document_id !== document._id) {
-        throw new Error("Lượt nhập không khớp với tài liệu nguồn của dự án này.");
-      }
-      if (!["PREVIEW_READY", "CONFIRMED"].includes(job.status) || !Array.isArray(job.preview)) {
-        throw new Error(
-          "Bản xem trước này không còn chờ nhập. Hãy kiểm tra trạng thái yêu cầu trong dự án.",
-        );
-      }
-      setSourceDocument(document);
-      setPreview(job);
-      setSelectedIndexes(
-        Array.isArray(job.selected_indexes)
-          ? job.selected_indexes.filter(
-              (index) => Number.isInteger(index) && index >= 0 && index < job.preview.length,
-            )
-          : job.preview.map((_, index) => index),
-      );
-      setImporting(true);
-      setError("");
-    } catch (reason) {
-      if (activeProjectId.current === requestedProjectId) setError(messageOf(reason));
-    }
-  };
-  const editCandidate = (index, patch) => {
-    setImportComparison(null);
-    setSeparateIndexes([]);
-    setSeparateReasons({});
-    setPreview((value) => ({
-      ...value,
-      preview: value.preview.map((candidate, candidateIndex) => {
-        if (candidateIndex !== index) return candidate;
-        const updated = { ...candidate, ...patch };
-        if (Object.hasOwn(patch, "acceptance_criteria")) {
-          const sectionStates = { ...(candidate.section_states || {}) };
-          const hasCriteria = patch.acceptance_criteria.some((item) =>
-            docText(item.content_doc).trim(),
-          );
-          if (hasCriteria) {
-            sectionStates.acceptance_criteria = "provided";
-          } else if (sectionStates.acceptance_criteria === "provided") {
-            sectionStates.acceptance_criteria = "missing";
-          }
-          updated.section_states = sectionStates;
-        }
-        if (Object.hasOwn(patch, "business_rules")) {
-          const sectionStates = { ...(updated.section_states || {}) };
-          sectionStates.business_rules = patch.business_rules.length ? "provided" : "missing";
-          updated.section_states = sectionStates;
-        }
-        return updated;
-      }),
-    }));
-  };
-  const saveImportReview = async (nextPreview, reviewNote, nextSelection = selectedIndexes) => {
-    const requestedProjectId = project._id;
-    try {
-      const result = await testingApi.updateRequirementImport(preview._id, {
-        expected_revision: preview.revision,
-        preview: nextPreview,
-        review_note: reviewNote,
-      });
-      if (activeProjectId.current !== requestedProjectId) return;
-      setPreview(result);
-      setSelectedIndexes(nextSelection.filter((index) => index < result.preview.length));
-    } catch (reason) {
-      if (activeProjectId.current === requestedProjectId) setError(messageOf(reason));
-    }
-  };
-  const mergeCandidates = async () => {
-    const indexes = [...selectedIndexes].sort((left, right) => left - right);
-    if (indexes.length < 2) {
-      setError("Cần chọn ít nhất hai ứng viên để gộp");
-      return;
-    }
-    const candidates = indexes.map((index) => preview.preview[index]);
-    const firstIndex = indexes[0];
-    const merged = {
-      ...candidates[0],
-      title: candidates
-        .map((candidate) => candidate.title)
-        .join(" và ")
-        .slice(0, 300),
-      content_doc: textDoc(
-        candidates.map((candidate) => docText(candidate.content_doc)).join("\n\n"),
-      ),
-      acceptance_criteria: candidates.flatMap((candidate) => candidate.acceptance_criteria || []),
-      business_rules: [
-        ...new Set(candidates.flatMap((candidate) => candidate.business_rules || [])),
-      ],
-      dependencies: [...new Set(candidates.flatMap((candidate) => candidate.dependencies || []))],
-      source_refs: candidates.flatMap((candidate) => candidate.source_refs || []),
-      candidate_relation: "merged",
-    };
-    const requestedProjectId = project._id;
-    try {
-      const result = await testingApi.mergeRequirementCandidates(preview._id, {
-        expected_revision: preview.revision,
-        candidate_ids: candidates.map((candidate) => candidate.candidate_id),
-        merged,
-        reason: "Gộp các ứng viên yêu cầu",
-      });
-      if (activeProjectId.current !== requestedProjectId) return;
-      setPreview(result);
-      setSelectedIndexes([firstIndex]);
-    } catch (reason) {
-      if (activeProjectId.current === requestedProjectId) setError(messageOf(reason));
-    }
-  };
-  const splitCandidate = async () => {
-    if (selectedIndexes.length !== 1) {
-      setError("Cần chọn đúng một ứng viên để tách");
-      return;
-    }
-    const index = selectedIndexes[0];
-    const candidate = preview.preview[index];
-    const sourceText = docText(candidate.content_doc).trim();
-    let parts = sourceText
-      .split(/\n+/)
-      .map((part) => part.trim())
-      .filter(Boolean);
-    if (parts.length < 2) {
-      parts = (sourceText.match(/[^.!?;]+[.!?;]?/g) || [])
-        .map((part) => part.trim())
-        .filter(Boolean);
-    }
-    if (parts.length < 2) {
-      setError("Nội dung cần ít nhất hai dòng hoặc hai câu để tách");
-      return;
-    }
-    const split = parts.map((part) => ({
-      ...candidate,
-      title: part.slice(0, 300),
-      content_doc: textDoc(part),
-    }));
-    const requestedProjectId = project._id;
-    try {
-      const result = await testingApi.splitRequirementCandidate(
-        preview._id,
-        candidate.candidate_id,
-        {
-          expected_revision: preview.revision,
-          drafts: split,
-          reason: "Tách ứng viên yêu cầu",
-        },
-      );
-      if (activeProjectId.current !== requestedProjectId) return;
-      setPreview(result);
-      setSelectedIndexes(split.map((_, offset) => index + offset));
-    } catch (reason) {
-      if (activeProjectId.current === requestedProjectId) setError(messageOf(reason));
-    }
-  };
-  const rejectCandidate = async () => {
-    if (selectedIndexes.length !== 1) {
-      setError("Cần chọn đúng một ứng viên để từ chối");
-      return;
-    }
-    const index = selectedIndexes[0];
-    const candidate = preview.preview[index];
-    await ask({
-      title: "Từ chối ứng viên yêu cầu",
-      description: candidate.title,
-      confirmLabel: "Từ chối ứng viên",
-      danger: true,
-      fields: [
-        {
-          name: "reason",
-          label: "Lý do",
-          initialValue: "Không thuộc phạm vi hoặc không tạo thành yêu cầu độc lập",
-          multiline: true,
-          autoFocus: true,
-        },
-      ],
-      onConfirm: async (answer) => {
-        try {
-          const result = await testingApi.rejectRequirementCandidate(
-            preview._id,
-            candidate.candidate_id,
-            { expected_revision: preview.revision, reason: answer.reason },
-          );
-          setPreview(result);
-          setSelectedIndexes([]);
-        } catch (reason) {
-          throw new Error(messageOf(reason));
-        }
-      },
-    });
   };
   const splitBaseline = async () => {
     const sourceText = docText(current.content_doc).trim();
@@ -1638,6 +1166,9 @@ export default function RequirementsPage({ project, section, workspaceView }) {
   const activeDetailTab = detailTabs.some((item) => item.id === detailTab)
     ? detailTab
     : detailTabs[0].id;
+  if (!documentsView && !sectionKey && searchParams.get("view") === "links" && can("trace.read")) {
+    return <TraceabilityPage project={project} embedded />;
+  }
   if (creating) {
     return (
       <WorkspacePage
@@ -1696,7 +1227,13 @@ export default function RequirementsPage({ project, section, workspaceView }) {
   }
   return (
     <WorkspacePage
-      title={routeSelected ? current?.title || selected.requirement_key : "Yêu cầu"}
+      title={
+        documentsView
+          ? "Tài liệu dự án"
+          : routeSelected
+            ? current?.title || selected.requirement_key
+            : "Yêu cầu"
+      }
       description={
         routeSelected
           ? `${selected.requirement_key}${current?.version ? ` · Phiên bản ${current.version}` : ""}`
@@ -1707,7 +1244,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
           <ProjectCrumb projectId={project._id} />
           {!routeSelected &&
             projectDataReady &&
-            !workspaceView &&
+            documentsView &&
             can("requirement_document.upload") && (
               <button
                 type="button"
@@ -1720,6 +1257,19 @@ export default function RequirementsPage({ project, section, workspaceView }) {
                 Nhập tài liệu
               </button>
             )}
+          {!routeSelected && projectDataReady && !workspaceView && can("trace.read") && (
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => {
+                window.location.assign(
+                  `${projectRoute(project._id, PROJECT_SECTION_SLUGS.requirements)}?view=links`,
+                );
+              }}
+            >
+              Liên kết kiểm thử
+            </button>
+          )}
           {!routeSelected && projectDataReady && !workspaceView && can("requirement.create") && (
             <button
               type="button"
@@ -1772,6 +1322,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
               projectId={project._id}
               current={current}
               currentUserId={user?._id || user?.id || project.current_membership?.user_id}
+              canSelfApprove={project.can_self_approve}
               selected={routeSelected}
               focusAcceptanceCriterionId={focusAcceptanceCriterionId}
               draft={draft}
@@ -1779,8 +1330,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
               customFields={customFields}
               saveState={saveState}
               can={can}
-              checkingWithAi={checkingWithAi}
-              onCheckWithAI={checkRequirementWithAI}
               saveDraft={saveDraft}
               onCreateVersion={createVersion}
               onSplit={splitBaseline}
@@ -1789,6 +1338,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
               onDraftChange={changeDraft}
               onError={setError}
             />
+            {can("testcase.read") && <RequirementImpactPanel version={current} project={project} />}
             <RequirementHistoryPanel
               projectId={project._id}
               selected={routeSelected}
@@ -1806,13 +1356,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
             {can("requirement_document.read") && (
               <RequirementTracePanel current={current} sourceDocuments={visibleSourceDocuments} />
             )}
-            <RequirementQualityPanel
-              lint={lint}
-              loading={lintLoading}
-              draftDirty={draftDirty}
-              recheckingAI={checkingWithAi}
-              onRecheckAI={can("ai.run_lint") ? checkRequirementWithAI : null}
-            />
           </div>
           <div className="space-y-6" hidden={activeDetailTab !== "history"}>
             <RequirementHistoryPanel
@@ -1844,33 +1387,40 @@ export default function RequirementsPage({ project, section, workspaceView }) {
         </>
       ) : (
         <>
-          <RequirementsListPanel
-            projectId={project._id}
-            loading={loading}
-            items={visibleItems}
-            query={query}
-            setQuery={setQuery}
-            filters={filters}
-            setFilters={setFilters}
-            setPage={setPage}
-            members={visibleMembers}
-            selectedIds={selectedIds}
-            setSelectedIds={setSelectedIds}
-            pageInfo={projectDataReady ? pageInfo : null}
-            can={workspaceView ? () => false : can}
-            onBulkTags={bulkUpdateTags}
-            onScanDuplicates={scanDuplicates}
-            onMerge={mergeBaselines}
-            onBulkArchive={bulkArchiveRequirements}
-            onSelect={(item) => {
-              window.location.assign(
-                projectRoute(project._id, PROJECT_SECTION_SLUGS.requirements, item._id),
-              );
-            }}
-            title="Danh sách yêu cầu"
-          />
+          {!documentsView && (
+            <RequirementsListPanel
+              projectId={project._id}
+              loading={loading}
+              items={visibleItems}
+              query={query}
+              setQuery={setQuery}
+              filters={filters}
+              setFilters={setFilters}
+              setPage={setPage}
+              members={visibleMembers}
+              selectedIds={selectedIds}
+              setSelectedIds={setSelectedIds}
+              pageInfo={projectDataReady ? pageInfo : null}
+              pageSize={pageSize}
+              onPageSizeChange={(size) => {
+                setPageSize(size);
+                setPage(1);
+              }}
+              can={workspaceView ? () => false : can}
+              onBulkTags={bulkUpdateTags}
+              onScanDuplicates={scanDuplicates}
+              onMerge={mergeBaselines}
+              onBulkArchive={bulkArchiveRequirements}
+              onSelect={(item) => {
+                window.location.assign(
+                  projectRoute(project._id, PROJECT_SECTION_SLUGS.requirements, item._id),
+                );
+              }}
+              title="Danh sách yêu cầu"
+            />
+          )}
           {!workspaceView && <RequirementDuplicatePanel result={duplicateScan} />}
-          {!workspaceView && can("requirement_document.read") && (
+          {documentsView && can("requirement_document.read") && (
             <RequirementSourceDocumentsPanel
               projectId={project._id}
               projectLocale={project.locale}
@@ -1883,7 +1433,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
               ask={ask}
               reload={load}
               onError={setError}
-              onContinueImport={continueRequirementImport}
             />
           )}
           <div className="grid gap-5 xl:grid-cols-2">
@@ -1901,38 +1450,10 @@ export default function RequirementsPage({ project, section, workspaceView }) {
                 sourceProcessing={
                   uploadingSource || retryingSource || Boolean(pendingExtractionDocumentId)
                 }
-                extractingSource={extractingSource}
-                importValue={importValue}
-                setImportValue={setImportValue}
-                onImportPreview={importPreview}
-                preview={preview}
-                selectedIndexes={selectedIndexes}
-                setSelectedIndexes={setSelectedIndexes}
-                importComparison={importComparison}
-                separateIndexes={separateIndexes}
-                setSeparateIndexes={setSeparateIndexes}
-                separateReasons={separateReasons}
-                setSeparateReasons={setSeparateReasons}
-                onSaveReview={() =>
-                  saveImportReview(preview.preview, "Chỉnh sửa nội dung ứng viên yêu cầu")
-                }
-                onSplit={splitCandidate}
-                onMerge={mergeCandidates}
-                onReject={rejectCandidate}
-                onEditCandidate={editCandidate}
-                onConfirm={confirmImport}
-                onResolveMatch={resolveImportMatch}
                 sourceDocument={sourceDocument}
                 onRetrySource={retrySourceDocument}
-                onExtractSource={extractSourceRequirements}
-                onEnableSourceAiRead={enableSourceAiRead}
-                canExtractSource={can("requirement_document.extract")}
                 project={project}
                 sourceDocuments={visibleSourceDocuments}
-                onTemplatePreview={(job) => {
-                  setPreview(job);
-                  setSelectedIndexes(job.preview.map((_, index) => index));
-                }}
                 onError={setError}
               />
             )}

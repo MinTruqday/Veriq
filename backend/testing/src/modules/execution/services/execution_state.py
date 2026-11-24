@@ -9,7 +9,7 @@ def defect_transitions():
 
 
 def execution_transitions():
-    return {"NOT_RUN": {"IN_PROGRESS", "SKIPPED"}, "IN_PROGRESS": {"BLOCKED", "FAIL", "NOT_APPLICABLE", "PASS", "SKIPPED"}, "PASS": set(), "FAIL": set(), "BLOCKED": set(), "SKIPPED": set(), "NOT_APPLICABLE": set()}
+    return {"NOT_RUN": {"IN_PROGRESS", "PASS", "FAIL", "BLOCKED", "SKIPPED", "NOT_APPLICABLE"}, "IN_PROGRESS": {"BLOCKED", "FAIL", "NOT_APPLICABLE", "PASS", "SKIPPED"}, "PASS": set(), "FAIL": set(), "BLOCKED": set(), "SKIPPED": set(), "NOT_APPLICABLE": set()}
 
 
 def frozen_run_scope(run):

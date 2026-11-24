@@ -26,7 +26,7 @@ from src.repositories.requirement import requirement_repository
 from src.modules.design.services.linters import duplicate_score
 from src.modules.design.services.test_evidence import requirement_test_evidence_text
 from src.schemas.contracts.design import TestCaseDraftCreate
-from src.core.human_decisions import content_authorship_changes
+from src.core.human_decisions import can_auto_approve_project_content, content_authorship_changes
 from src.modules.design.services.design_authorization import require_assigned_design_draft, require_test_case_creation_scope
 
 
@@ -122,6 +122,7 @@ def project_test_text(value):
             bdd_text,
             plain_text(value.get("expected_result_doc", {})),
             plain_text(value.get("postconditions_doc", {})),
+            plain_text(value.get("main_flow_doc", {})),
             plain_text(value.get("alternate_flows_doc", {})),
             plain_text(value.get("exception_flows_doc", {})),
         ]
@@ -633,6 +634,21 @@ async def create_test_case_draft_record(
         async with await database.client.start_session() as active_session:
             async with active_session.start_transaction():
                 await persist(active_session)
+    if (
+        session is None
+        and not payload.save_as_draft
+        and payload.origin == "manual"
+        and await can_auto_approve_project_content(project_id, user)
+    ):
+        from src.modules.design.services.test_case_lifecycle import submit_test_case_review_record
+        from src.schemas.contracts.requirements import ReviewTransitionInput
+
+        return await submit_test_case_review_record(
+            project_id,
+            draft["_id"],
+            ReviewTransitionInput(expected_revision=draft["revision"]),
+            user,
+        )
     return draft
 
 async def create_generated_test_case_draft_batch(
@@ -843,7 +859,7 @@ async def update_test_case_draft_record(draft_id, payload, user, project_id=None
         for field in (
             "title", "type", "module_name", "flow_type", "objective_doc", "preconditions_doc", "steps", "test_data",
             "expected_result_doc", "postconditions_doc",
-            "alternate_flows_doc", "exception_flows_doc", "techniques",
+            "main_flow_doc", "alternate_flows_doc", "exception_flows_doc", "techniques",
             "requirement_version_ids", "acceptance_criterion_ids",
             "coverage_item_ids", "data_set_version_ids", "test_condition_ids",
         )

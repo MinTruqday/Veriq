@@ -4,7 +4,7 @@ from fastapi import HTTPException
 
 from src.core.auth import CurrentUser
 from src.core.human_decisions import require_ai_publication_authority
-from src.core.human_decisions import reject_self_approval
+from src.core.human_decisions import can_auto_approve_project_content, reject_self_approval
 from src.core.common import audit, get_project_entity, now
 from src.core.database import database
 from src.repositories.requirement import requirement_repository
@@ -153,6 +153,10 @@ async def submit_requirement_for_review(
                 session=session,
             )
     version = await requirement_repository.find_version(version["_id"], project_id)
+    if await can_auto_approve_project_content(project_id, user):
+        return await baseline_requirement(
+            version["_id"], version["revision"], review_note, user
+        )
     return version
 
 async def return_requirement_for_changes(
@@ -188,7 +192,8 @@ async def return_requirement_for_changes(
             status_code=409,
             detail={"code": 'INVALID_STATE_TRANSITION'},
         )
-    reject_self_approval(version, user, "REQUIREMENT_SELF_REVIEW_FORBIDDEN")
+    if not await can_auto_approve_project_content(version["project_id"], user):
+        reject_self_approval(version, user, "REQUIREMENT_SELF_REVIEW_FORBIDDEN")
     if version["revision"] != expected_revision:
         raise HTTPException(
             status_code=409,
@@ -331,7 +336,8 @@ async def technical_review_requirement(
     )
     if version.get("status") != "IN_REVIEW":
         raise HTTPException(409, detail={"code": "INVALID_STATE_TRANSITION"})
-    reject_self_approval(version, user, "REQUIREMENT_SELF_REVIEW_FORBIDDEN")
+    if not await can_auto_approve_project_content(version["project_id"], user):
+        reject_self_approval(version, user, "REQUIREMENT_SELF_REVIEW_FORBIDDEN")
     if version.get("revision") != expected_revision:
         if (
             version.get("revision") == expected_revision + 1
@@ -388,7 +394,8 @@ async def baseline_requirement(
             status_code=409,
             detail={"code": 'INVALID_STATE_TRANSITION'},
         )
-    reject_self_approval(version, user, "REQUIREMENT_SELF_REVIEW_FORBIDDEN")
+    if not await can_auto_approve_project_content(version["project_id"], user):
+        reject_self_approval(version, user, "REQUIREMENT_SELF_REVIEW_FORBIDDEN")
     if version["revision"] != expected_revision:
         raise HTTPException(
             status_code=409,
@@ -456,6 +463,27 @@ async def baseline_requirement(
                     user.id,
                     session=session,
                 )
+                parent_id = version.get("parent_version_id")
+                if parent_id:
+                    parent = await database.value.requirement_versions.find_one(
+                        {"_id": parent_id, "project_id": version["project_id"], "status": "BASELINED"},
+                        {"_id": 1}, session=session,
+                    )
+                    if parent:
+                        await database.value.requirement_impact_jobs.update_one(
+                            {"_id": version_id},
+                            {"$setOnInsert": {
+                                "project_id": version["project_id"],
+                                "requirement_id": version["requirement_id"],
+                                "from_version_id": parent_id,
+                                "to_version_id": version_id,
+                                "requested_by": user.id,
+                                "status": "PENDING",
+                                "created_at": timestamp,
+                                "updated_at": timestamp,
+                            }},
+                            upsert=True, session=session,
+                        )
                 await audit(
                     user.id,
                     'requirement_version_baselined',

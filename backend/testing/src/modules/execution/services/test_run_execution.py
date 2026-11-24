@@ -13,6 +13,7 @@ from src.core.common import (
 )
 from src.core.database import database
 from src.repositories.test_run import test_run_repository
+from src.repositories.defect import defect_repository
 from src.repositories.execution_context import execution_context_repository
 from src.modules.execution.services.execution_state import (
     execution_transitions,
@@ -81,6 +82,38 @@ def _verify_resume_replay(existing, payload, actor_id):
             status_code=409,
             detail={"code": "IDEMPOTENCY_KEY_REUSED", "entity": "TEST_RUN_RESUME"},
         )
+
+
+async def link_existing_defect_to_result(project_id, result_id, payload, user):
+    result = await get_project_entity("test_results", result_id, user, "testrun.execute")
+    defect = await get_project_entity("defects", payload.defect_id, user, "defect.read")
+    if result.get("project_id") != project_id or defect.get("project_id") != project_id:
+        raise HTTPException(status_code=422, detail={"code": "PROJECT_MISMATCH"})
+    run = await test_run_repository.find_run(result.get("test_run_id"), project_id)
+    if not run or result.get("test_case_version_id") not in run.get("test_case_version_ids", []):
+        raise HTTPException(status_code=409, detail={"code": "TEST_NOT_IN_RUN_SNAPSHOT"})
+    await require_case_execution_assignment(run, result["test_case_version_id"], user)
+    if result.get("status") != "FAIL":
+        raise HTTPException(status_code=409, detail={"code": "DEFECT_REQUIRES_FAILED_RESULT"})
+    if payload.defect_id in result.get("linked_defect_ids", []):
+        return result
+    async with await database.client.start_session() as session:
+        async with session.start_transaction():
+            current_defect = await database.value.defects.find_one(
+                {"_id": payload.defect_id, "project_id": project_id}, session=session
+            )
+            if not current_defect:
+                raise HTTPException(status_code=404, detail={"code": "ENTITY_NOT_FOUND"})
+            updated = await defect_repository.link_failed_result_to_defect(
+                result_id, project_id, payload.expected_revision, run["_id"],
+                result["test_case_version_id"], payload.defect_id, now(), session,
+            )
+            if not updated:
+                raise HTTPException(status_code=409, detail={"code": "DEFECT_TEST_RESULT_CONTEXT_CHANGED"})
+            await test_run_repository.touch_run(run["_id"], project_id, now(), session=session)
+            await audit(user.id, "test_result_defect_linked", "TestResult", result_id, project_id,
+                        {"defect_id": payload.defect_id}, session=session)
+    return updated
 
 async def start_test_run_record(run_id, user):
     
@@ -265,6 +298,8 @@ async def record_test_result_entry(run_id, test_case_version_id, payload, user):
                 detail={"code": "IDEMPOTENCY_KEY_REUSED", "entity": "TEST_RESULT"},
             )
         return existing
+    if payload.status == "FAIL" and not plain_text(payload.actual_result_doc).strip():
+        raise HTTPException(status_code=422, detail={"code": "FAIL_ACTUAL_RESULT_REQUIRED", "message": "Nhập kết quả thực tế khi ca kiểm thử thất bại."})
     await enforce_not_applicable_policy(run["project_id"], payload.status, payload.step_results)
     if existing:
         if existing.get("status") != 'NOT_RUN':
@@ -395,6 +430,8 @@ async def update_test_execution_record(project_id, execution_id, payload, user):
             "execution": await test_run_repository.find_result(execution_id),
             "update": existing_event,
         }
+    if payload.status == "FAIL" and not plain_text(payload.actual_result_doc).strip():
+        raise HTTPException(status_code=422, detail={"code": "FAIL_ACTUAL_RESULT_REQUIRED", "message": "Nhập kết quả thực tế khi ca kiểm thử thất bại."})
     await enforce_not_applicable_policy(project_id, payload.status, payload.step_results)
     run = await test_run_repository.find_run(result["test_run_id"], project_id)
     if not run or run.get("status") != 'IN_PROGRESS':

@@ -346,7 +346,29 @@ export default function AppShell({ children, requireAuth }) {
     !projectId || (permissionsProjectId === projectId && Array.isArray(currentProjectPermissions));
   const projectRouteItem = projectId
     ? navigationItemForPath(navigationGroupsFor(pathname), pathname, [
-        ...testCaseSubsectionItems(projectId),
+        ...testCaseSubsectionItems(projectId, true),
+        {
+          id: "legacy-test-sets",
+          href: projectRoute(projectId, PROJECT_SECTION_SLUGS.testSets),
+          permission: "testsuite.read",
+          permissions: ["testcase.read"],
+        },
+        {
+          id: "legacy-test-data",
+          href: projectRoute(projectId, PROJECT_SECTION_SLUGS.testData),
+          permission: "testdata.read",
+          permissions: ["testcase.read"],
+        },
+        {
+          id: "legacy-test-analysis",
+          href: projectRoute(projectId, PROJECT_SECTION_SLUGS.testAnalysis),
+          anyPermission: ["testcondition.read", "testanalysis.read"],
+        },
+        {
+          id: "legacy-automation",
+          href: projectRoute(projectId, PROJECT_SECTION_SLUGS.automation),
+          permission: "automation.read",
+        },
         projectSearchRouteItem(projectId),
         {
           id: "project-document-reader",
@@ -388,7 +410,7 @@ export default function AppShell({ children, requireAuth }) {
       );
     }
     const searchItem = projectSearchRouteItem(projectId);
-    const resourcesGroup = nextGroups.find((group) => group.label === "Tài liệu và cài đặt");
+    const resourcesGroup = nextGroups.find((group) => group.label === "Tài liệu");
     if (resourcesGroup && hasNavigationPermission(searchItem, currentProjectPermissions)) {
       nextGroups = nextGroups.map((group) =>
         group === resourcesGroup
@@ -416,8 +438,7 @@ export default function AppShell({ children, requireAuth }) {
       activeNavigationGroup(projectNavigationGroups, pathname) ||
       (isTestRunExecution &&
         projectNavigationGroups.find((item) => item.label === "Thực thi kiểm thử")) ||
-      (isDocumentReader &&
-        projectNavigationGroups.find((item) => item.label === "Tài liệu và cài đặt")) ||
+      (isDocumentReader && projectNavigationGroups.find((item) => item.label === "Tài liệu")) ||
       (isDocumentReader &&
         projectNavigationGroups.find((item) => item.label === "Bảo đảm yêu cầu")) ||
       projectNavigationGroups[0];

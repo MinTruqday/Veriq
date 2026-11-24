@@ -42,17 +42,23 @@ export const PROJECT_SETTINGS_PERMISSIONS = [
   "notification.watch.manage",
   "notification.preferences.manage",
   "notification.project_rule.manage",
+  "environment.read",
+  "environment.create",
+  "environment.update",
+  "environment.archive",
 ];
 
-export function testCaseSubsectionItems(projectId) {
+export function testCaseSubsectionItems(projectId, includeLegacy = false) {
   const root = projectRoute(projectId, PROJECT_SECTION_SLUGS.testCases);
+  const items = [{ id: "cases", label: "Ca kiểm thử", href: root, permission: "testcase.read" }];
+  if (!includeLegacy) return items;
   return [
-    { id: "cases", label: "Ca kiểm thử", href: root, permission: "testcase.read" },
+    ...items,
     {
-      id: "ai",
-      label: "Hoạt động AI",
-      href: `${root}/ai`,
-      anyPermission: ["proposal.read", "requirement.read"],
+      id: "sets",
+      label: "Bộ kiểm thử",
+      href: `${root}/bo-kiem-thu`,
+      permission: "testsuite.read",
       permissions: ["testcase.read"],
     },
     {
@@ -236,15 +242,15 @@ export function navigationGroupsFor(pathname) {
             icon: History,
             permission: "project.audit.read",
           },
-          {
-            id: "ai-review",
-            label: "Hoạt động AI",
-            href: `${root}/${PROJECT_SECTION_SLUGS.aiReview}`,
-            icon: BrainCircuit,
-            anyPermission: ["requirement.read", "proposal.read"],
-          },
         ],
         resources: [
+          {
+            id: "project-documents",
+            label: "Tài liệu dự án",
+            href: `${root}/${PROJECT_SECTION_SLUGS.documentReader}`,
+            icon: FileCheck2,
+            permission: "requirement_document.read",
+          },
           {
             id: "knowledge",
             label: "Tài liệu tham chiếu",
@@ -290,36 +296,34 @@ export function navigationGroupsFor(pathname) {
       ],
     },
     { label: "Dự án", items: projectItems.project },
-    { label: "Bảo đảm yêu cầu", items: projectItems.requirements },
+    {
+      label: "Bảo đảm yêu cầu",
+      items: projectItems.requirements,
+    },
     {
       label: "Kế hoạch kiểm thử",
       items: projectItems.execution.filter((item) => item.id === "test-plans"),
     },
     {
       label: "Thiết kế kiểm thử",
-      items: [
-        ...projectItems.design.filter((item) => item.id === "test-analysis"),
-        ...(projectId
-          ? [
-              {
-                id: "test-scenarios",
-                label: "Kịch bản kiểm thử",
-                href: `${root}/${PROJECT_SECTION_SLUGS.testCases}/kich-ban`,
-                icon: TestTube2,
-                permission: "testscenario.read",
-                permissions: ["testcase.read"],
-              },
-            ]
-          : []),
-        ...projectItems.design.filter((item) => item.id !== "test-analysis"),
-      ],
+      items: projectItems.design.filter((item) => item.id === "test-cases"),
     },
     {
       label: "Thực thi kiểm thử",
-      items: projectItems.execution.filter((item) => item.id !== "test-plans"),
+      items: [
+        ...projectItems.execution.filter(
+          (item) =>
+            item.id !== "test-plans" &&
+            item.id !== "automation" &&
+            item.id !== "execution-overview",
+        ),
+      ],
     },
-    { label: "Theo dõi", items: projectItems.quality },
-    { label: "Tài liệu và cài đặt", items: projectItems.resources },
+    {
+      label: "Báo cáo",
+      items: projectItems.quality.filter((item) => item.id === "reports"),
+    },
+    { label: "Tài liệu", items: projectItems.resources },
     {
       label: "Tài khoản",
       items: [

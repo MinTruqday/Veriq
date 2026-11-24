@@ -1,7 +1,6 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Pencil, RefreshCw } from "lucide-react";
-import { useAuth } from "@/features/authentication/contexts/AuthContext";
 import DataTable from "./DataTable";
 import QualityGateBadge from "./QualityGateBadge";
 import ReportSelectionList from "./ReportSelectionList";
@@ -9,8 +8,6 @@ import { ErrorState, Metric, Panel, StatusPill, useActionDialog } from "./Worksp
 import { formatDate, messageOf, valueLabel } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
 import { StructuredValueView } from "./StructuredValueEditor";
-import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
-import { preferredSummaryLocale } from "../lib/summaryLanguage";
 import { useDateTimeOptions } from "../hooks/useDateTimeOptions";
 
 function lines(value) {
@@ -37,7 +34,6 @@ function forecastText(value, dateTimeOptions) {
 }
 
 export default function TestStatusReportPanel({ project }) {
-  const { user } = useAuth();
   const dateTimeOptions = useDateTimeOptions(project);
   const { ask, dialog } = useActionDialog();
   const [reports, setReports] = useState([]);
@@ -45,13 +41,13 @@ export default function TestStatusReportPanel({ project }) {
   const [builds, setBuilds] = useState([]);
   const [selected, setSelected] = useState(null);
   const [comparison, setComparison] = useState(null);
-  const [narrativeResult, setNarrativeResult] = useState(null);
   const [error, setError] = useState("");
-  const [narrativeLoading, setNarrativeLoading] = useState(false);
-  const aiInFlight = useRef(false);
-  const aiOperation = useRef(null);
-  const selectedReport = useRef(selected);
-  selectedReport.current = selected;
+  const canReviewSelected = Boolean(
+    selected &&
+      (project.can_self_approve ||
+        (selected.created_by !== project.current_membership?.user_id &&
+          !(selected.content_author_ids || []).includes(project.current_membership?.user_id))),
+  );
   const can = (permission) => project.current_permissions?.includes(permission);
   const canCreateReport =
     can("teststatusreport.create") && can("testmonitor.read") && can("build.read");
@@ -81,63 +77,10 @@ export default function TestStatusReportPanel({ project }) {
     void load();
   }, [load]);
 
-  useEffect(() => {
-    setNarrativeResult(null);
-    if (!selected?._id) return undefined;
-    let active = true;
-    testingApi
-      .getTestStatusReportNarrative(selected._id)
-      .then((value) => {
-        if (active) setNarrativeResult(value);
-      })
-      .catch((reason) => {
-        if (active) setError(messageOf(reason));
-      });
-    return () => {
-      active = false;
-    };
-  }, [selected?._id, selected?.revision]);
-
-  const generateNarrative = async () => {
-    if (aiInFlight.current || !selected) return;
-    const report = selected;
-    const outputLanguage = preferredSummaryLocale(user?.locale, project.locale);
-    const key = `${report._id}:${report.revision}:${outputLanguage}`;
-    if (aiOperation.current?.key !== key)
-      aiOperation.current = {
-        key,
-        payload: {
-          idempotency_key: crypto.randomUUID(),
-          source_event_revision: report.revision,
-          output_language: outputLanguage,
-        },
-      };
-    aiInFlight.current = true;
-    setNarrativeLoading(true);
-    setError("");
-    try {
-      const result = await testingApi.generateTestStatusReportNarrative(
-        report._id,
-        aiOperation.current.payload,
-      );
-      if (
-        selectedReport.current?._id === report._id &&
-        selectedReport.current?.revision === report.revision
-      )
-        setNarrativeResult(result);
-    } catch (reason) {
-      setError(messageOf(reason));
-    } finally {
-      aiInFlight.current = false;
-      setNarrativeLoading(false);
-    }
-  };
-
   const run = async (operation, { retainDialog = false } = {}) => {
     try {
       const value = await operation();
       setComparison(null);
-      setNarrativeResult(null);
       await load();
       if (value?._id) setSelected(value);
     } catch (reason) {
@@ -490,31 +433,40 @@ export default function TestStatusReportPanel({ project }) {
                     <button
                       className="secondary-button"
                       type="button"
-                      onClick={() => transition("submitTestStatusReport", "Gửi rà soát")}
-                    >
-                      Gửi rà soát
-                    </button>
-                  )}
-                  {selected.status === "IN_REVIEW" && can("teststatusreport.review") && (
-                    <button
-                      className="secondary-button"
-                      type="button"
                       onClick={() =>
-                        transition("requestTestStatusReportChanges", "Yêu cầu chỉnh sửa")
+                        transition(
+                          "submitTestStatusReport",
+                          project.can_self_approve ? "Chốt báo cáo" : "Gửi rà soát",
+                        )
                       }
                     >
-                      Yêu cầu chỉnh sửa
+                      {project.can_self_approve ? "Chốt báo cáo" : "Gửi rà soát"}
                     </button>
                   )}
-                  {selected.status === "IN_REVIEW" && can("teststatusreport.approve") && (
-                    <button
-                      className="apple-button"
-                      type="button"
-                      onClick={() => transition("approveTestStatusReport", "Phê duyệt")}
-                    >
-                      Phê duyệt
-                    </button>
-                  )}
+                  {selected.status === "IN_REVIEW" &&
+                    canReviewSelected &&
+                    can("teststatusreport.review") && (
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() =>
+                          transition("requestTestStatusReportChanges", "Yêu cầu chỉnh sửa")
+                        }
+                      >
+                        Yêu cầu chỉnh sửa
+                      </button>
+                    )}
+                  {selected.status === "IN_REVIEW" &&
+                    canReviewSelected &&
+                    can("teststatusreport.approve") && (
+                      <button
+                        className="apple-button"
+                        type="button"
+                        onClick={() => transition("approveTestStatusReport", "Phê duyệt")}
+                      >
+                        Phê duyệt
+                      </button>
+                    )}
                   {selected.status === "APPROVED" && can("teststatusreport.publish") && (
                     <button
                       className="apple-button"
@@ -558,61 +510,6 @@ export default function TestStatusReportPanel({ project }) {
                       </button>
                     ))}
                 </div>
-                {selected.status === "DRAFT" && can("teststatusreport.update") && (
-                  <button
-                    type="button"
-                    className="secondary-button border-violet-300 text-violet-800"
-                    disabled={narrativeLoading}
-                    onClick={generateNarrative}
-                  >
-                    {narrativeLoading ? "Đang xử lý" : "AI đề xuất diễn giải báo cáo"}
-                  </button>
-                )}
-                {narrativeResult?.suggestions?.[0] && (
-                  <Panel title="Diễn giải AI đề xuất">
-                    <div className="space-y-4 text-sm">
-                      <div className="rounded-control border border-violet-300 bg-violet-50/60 p-3">
-                        <ContentOriginBadge origin="ai_generated" />
-                        <p className="mt-2 text-violet-950">
-                          Phần này do AI đề xuất riêng; không thay đổi số liệu hoặc nội dung người
-                          dùng đã nhập.
-                        </p>
-                      </div>
-                      {narrativeResult.stale && (
-                        <p className="text-amber-700" role="status">
-                          Báo cáo đã đổi sau khi AI tạo phần diễn giải; kết quả này thuộc phiên bản
-                          trước và không được dùng làm nội dung hiện hành.
-                        </p>
-                      )}
-                      {[
-                        ["Tóm tắt điều hành", narrativeResult.suggestions[0].executive_summary],
-                        ["Diễn giải rủi ro", narrativeResult.suggestions[0].risk_explanation],
-                        [
-                          "Dự báo",
-                          forecastText(narrativeResult.suggestions[0].forecast, dateTimeOptions),
-                        ],
-                        [
-                          "Diễn giải khuyến nghị",
-                          narrativeResult.suggestions[0].recommendation_narrative,
-                        ],
-                      ].map(([label, value]) => (
-                        <div key={label}>
-                          <p className="field-label">{label}</p>
-                          <p className="mt-1 whitespace-pre-wrap">{value || "Chưa có nội dung"}</p>
-                        </div>
-                      ))}
-                      <p className="text-xs text-ink-muted">
-                        Kết quả được tạo từ sự kiện tạo báo cáo; không thay đổi số liệu hoặc nội
-                        dung báo cáo gốc.
-                      </p>
-                    </div>
-                  </Panel>
-                )}
-                {narrativeResult && !narrativeResult.suggestions?.[0] && (
-                  <p className="text-sm text-ink-muted" role="status">
-                    AI chưa tạo được phần diễn giải: {valueLabel(narrativeResult.status)}
-                  </p>
-                )}
                 <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                   <Metric
                     label="Thực thi"

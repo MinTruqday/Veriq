@@ -1,31 +1,7 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import MultiSelect from "@/shared/components/ui/MultiSelect";
-import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import { testingApi } from "../services/testing.service";
 import { messageOf } from "../lib/testing";
-
-const aiPlanFields = [
-  ["objective", "Mục tiêu", true],
-  ["scope_in", "Trong phạm vi", true],
-  ["scope_out", "Ngoài phạm vi", true],
-  ["test_approach", "Cách tiếp cận", true],
-];
-
-function hasSuggestedValue(value) {
-  return Array.isArray(value)
-    ? value.some((item) => String(item || "").trim())
-    : Boolean(String(value || "").trim());
-}
-
-function planFieldValue(plan, field) {
-  if (field === "risks") return (plan.risk_register || []).map((item) => item.title);
-  return plan[field];
-}
-
-function displayPlanFieldValue(value) {
-  if (Array.isArray(value)) return value.filter(Boolean).join("\n");
-  return String(value || "").trim();
-}
 
 const scopeFields = [
   ["scope_in", "Trong phạm vi"],
@@ -37,8 +13,36 @@ const conditionFields = [
   ["exit_criteria", "Tiêu chí hoàn thành"],
 ];
 
+const testTechniqueGroups = [
+  [
+    "Hộp đen",
+    [
+      ["equivalence_partitioning", "Phân vùng tương đương"],
+      ["boundary_value_analysis", "Phân tích giá trị biên"],
+      ["decision_table_testing", "Bảng quyết định"],
+      ["state_transition_testing", "Chuyển đổi trạng thái"],
+    ],
+  ],
+  [
+    "Hộp trắng",
+    [
+      ["statement_testing", "Kiểm thử câu lệnh"],
+      ["branch_testing", "Kiểm thử nhánh"],
+    ],
+  ],
+  [
+    "Dựa trên kinh nghiệm",
+    [
+      ["error_guessing", "Đoán lỗi"],
+      ["exploratory_testing", "Kiểm thử thăm dò"],
+      ["checklist_based_testing", "Kiểm thử dựa trên danh sách kiểm tra"],
+    ],
+  ],
+];
+
 const defaults = {
   name: "",
+  phase: "",
   owner_id: "",
   scenario_ids: [],
   objective: "",
@@ -53,9 +57,11 @@ const defaults = {
   requirement_version_ids: [],
   test_suite_ids: [],
   test_case_version_ids: [],
+  carry_over_items: [],
   entry_criteria: [],
   exit_criteria: [],
   test_types: [],
+  test_techniques: [],
   members: [],
   assumptions: [],
   constraints: [],
@@ -80,6 +86,7 @@ export default function TestPlanEditor({
   tests,
   members = [],
   environments = [],
+  runs = [],
   readOnly = false,
   initialRequirementVersionIds = [],
   onSave,
@@ -113,13 +120,12 @@ export default function TestPlanEditor({
   });
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  const [aiBusy, setAiBusy] = useState(false);
-  const [aiInstruction, setAiInstruction] = useState("");
-  const [aiSuggestion, setAiSuggestion] = useState(null);
-  const [selectedAiFields, setSelectedAiFields] = useState(() => new Set());
-  const [appliedAiFields, setAppliedAiFields] = useState(() => new Set());
-  const [aiError, setAiError] = useState("");
   const [customTestType, setCustomTestType] = useState("");
+  const [carrySourceRunId, setCarrySourceRunId] = useState(
+    () => initialValue?.carry_over_items?.[0]?.source_test_run_id || "",
+  );
+  const [carrySourceRun, setCarrySourceRun] = useState(null);
+  const [carrySourceLoading, setCarrySourceLoading] = useState(false);
   const selectedTestTypes = value.test_types || [];
   const riskRows = value.risk_register?.length
     ? value.risk_register
@@ -127,81 +133,43 @@ export default function TestPlanEditor({
   const testTypeOptions = [
     ["functional", "Chức năng"],
     ["non_functional", "Phi chức năng"],
-    ["black_box", "Hộp đen"],
-    ["white_box", "Hộp trắng"],
     ["confirmation", "Xác nhận"],
     ["regression", "Hồi quy"],
     ...selectedTestTypes
       .filter(
-        (item) =>
-          ![
-            "functional",
-            "non_functional",
-            "black_box",
-            "white_box",
-            "confirmation",
-            "regression",
-          ].includes(item),
+        (item) => !["functional", "non_functional", "confirmation", "regression"].includes(item),
       )
-      .map((item) => [item, { ui_ux: "Giao diện", api: "API" }[item] || item]),
+      .map((item) => [
+        item,
+        { ui_ux: "Giao diện", api: "API", black_box: "Hộp đen", white_box: "Hộp trắng" }[item] ||
+          item,
+      ]),
   ];
   const savingRef = useRef(false);
   const setField = (key, next) => setValue((current) => ({ ...current, [key]: next }));
-  const requestAiPlanDraft = async () => {
-    if (aiBusy || !value.requirement_version_ids.length) return;
-    setAiBusy(true);
-    setAiError("");
-    setAiSuggestion(null);
-    try {
-      const result = await testingApi.suggestTestPlanDraft(projectId, {
-        requirement_version_ids: value.requirement_version_ids,
-        instruction: aiInstruction,
-        current_test_plan: {
-          objective: value.objective,
-          scope_in: value.scope_in,
-          scope_out: value.scope_out,
-          test_approach: value.test_approach,
-        },
-      });
-      setAiSuggestion(result);
-      const suggestion = result?.suggestion || {};
-      const selectableFields = aiPlanFields
-        .filter(([field, , applicable]) => applicable && hasSuggestedValue(suggestion[field]))
-        .map(([field]) => field);
-      setSelectedAiFields(
-        new Set(
-          selectableFields.filter((field) => !hasSuggestedValue(planFieldValue(value, field))),
-        ),
-      );
-      setAppliedAiFields(new Set());
-    } catch (reason) {
-      setAiError(messageOf(reason) || "Không thể tạo gợi ý kế hoạch");
-    } finally {
-      setAiBusy(false);
+
+  useEffect(() => {
+    if (!carrySourceRunId) {
+      setCarrySourceRun(null);
+      return;
     }
-  };
-  const applyAiPlanDraft = () => {
-    const suggestion = aiSuggestion?.suggestion;
-    if (!suggestion || !selectedAiFields.size) return;
-    const selected = new Set(selectedAiFields);
-    setValue((current) => {
-      const next = { ...current };
-      for (const field of selected) {
-        if (field === "risks") {
-          next.risk_register = suggestion.risks.map((risk) => ({
-            risk_id: crypto.randomUUID(),
-            title: String(risk).slice(0, 500),
-            description: String(risk),
-          }));
-        } else {
-          next[field] = suggestion[field];
-        }
-      }
-      return next;
-    });
-    setAppliedAiFields((current) => new Set([...current, ...selected]));
-    setSelectedAiFields(new Set());
-  };
+    let active = true;
+    setCarrySourceLoading(true);
+    testingApi
+      .getRun(carrySourceRunId)
+      .then((run) => {
+        if (active) setCarrySourceRun(run);
+      })
+      .catch((reason) => {
+        if (active) setError(messageOf(reason) || "Không tải được lần chạy nguồn");
+      })
+      .finally(() => {
+        if (active) setCarrySourceLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [carrySourceRunId]);
   return (
     <form
       id="test-plan-editor"
@@ -219,11 +187,16 @@ export default function TestPlanEditor({
           setError("Nhập nội dung rủi ro cho cách ứng phó đã điền.");
           return;
         }
+        if ((value.carry_over_items || []).some((item) => !String(item.reason || "").trim())) {
+          setError("Nhập lý do cho từng ca kiểm thử được chuyển tiếp.");
+          return;
+        }
         try {
           const payload = {
             ...Object.fromEntries(
               [
                 "name",
+                "phase",
                 "objective",
                 "test_approach",
                 "environment",
@@ -233,12 +206,17 @@ export default function TestPlanEditor({
                 "requirement_version_ids",
                 "test_suite_ids",
                 "test_case_version_ids",
+                "carry_over_items",
                 "test_types",
                 "owner_id",
                 "schedule",
                 "risk_register",
+                "quality_targets",
               ].map((key) => [key, value[key]]),
             ),
+            ...(initialValue && Object.hasOwn(initialValue, "test_techniques")
+              ? { test_techniques: value.test_techniques || [] }
+              : {}),
             ...Object.fromEntries(
               [...scopeFields, ...conditionFields].map(([key]) => [
                 key,
@@ -250,6 +228,12 @@ export default function TestPlanEditor({
             risk_register: (value.risk_register || []).filter((risk) =>
               String(risk.title || "").trim(),
             ),
+            test_case_version_ids: [
+              ...new Set([
+                ...(value.test_case_version_ids || []),
+                ...(value.carry_over_items || []).map((item) => item.test_case_version_id),
+              ]),
+            ],
           };
           if (!initialValue) {
             payload.project_id = projectId;
@@ -267,7 +251,7 @@ export default function TestPlanEditor({
       }}
     >
       {error && <p className="text-sm text-danger">{error}</p>}
-      <fieldset disabled={readOnly || saving || aiBusy} className="flex min-w-0 flex-col gap-5">
+      <fieldset disabled={readOnly || saving} className="flex min-w-0 flex-col gap-5">
         <section
           className="order-1 min-w-0 space-y-4 rounded-control border border-border bg-surface p-4"
           aria-labelledby="test-plan-info-heading"
@@ -285,6 +269,15 @@ export default function TestPlanEditor({
                 value={value.name}
                 onChange={(event) => setField("name", event.target.value)}
                 required
+              />
+            </label>
+            <label className="field-label md:col-span-2">
+              Giai đoạn (Sprint/Phase)
+              <input
+                className="apple-input mt-2"
+                value={value.phase || ""}
+                onChange={(event) => setField("phase", event.target.value)}
+                maxLength={120}
               />
             </label>
             <label className="field-label md:col-span-2">
@@ -369,6 +362,36 @@ export default function TestPlanEditor({
               )}
             </div>
           </fieldset>
+          {!!initialValue?.test_techniques?.length && (
+            <fieldset className="space-y-2">
+              <legend className="field-label">Kỹ thuật đã lưu</legend>
+              <div className="flex flex-wrap gap-x-5 gap-y-2">
+                {initialValue.test_techniques.map((technique) => {
+                  const label =
+                    testTechniqueGroups
+                      .flatMap(([, items]) => items)
+                      .find(([id]) => id === technique)?.[1] || technique;
+                  return (
+                    <label className="flex items-center gap-2 text-sm" key={technique}>
+                      <input
+                        type="checkbox"
+                        checked={(value.test_techniques || []).includes(technique)}
+                        onChange={(event) =>
+                          setField(
+                            "test_techniques",
+                            event.target.checked
+                              ? [...(value.test_techniques || []), technique]
+                              : (value.test_techniques || []).filter((item) => item !== technique),
+                          )
+                        }
+                      />
+                      {label}
+                    </label>
+                  );
+                })}
+              </div>
+            </fieldset>
+          )}
           <label className="field-label block">
             Cách tiếp cận kiểm thử
             <textarea
@@ -427,6 +450,35 @@ export default function TestPlanEditor({
               </label>
             ))}
           </div>
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={(value.quality_targets || []).some(
+                (item) => item.type === "OPEN_CRITICAL_HIGH_MAX",
+              )}
+              onChange={(event) => {
+                const remaining = (value.quality_targets || []).filter(
+                  (item) => item.type !== "OPEN_CRITICAL_HIGH_MAX",
+                );
+                setField(
+                  "quality_targets",
+                  event.target.checked
+                    ? [
+                        ...remaining,
+                        {
+                          criterion_id: "OPEN-CRITICAL-HIGH",
+                          criterion:
+                            "Không còn lỗi nghiêm trọng hoặc cao đang mở trong các lần chạy của kế hoạch",
+                          type: "OPEN_CRITICAL_HIGH_MAX",
+                          threshold: 0,
+                        },
+                      ]
+                    : remaining,
+                );
+              }}
+            />
+            Không còn lỗi nghiêm trọng hoặc cao đang mở trong các lần chạy của kế hoạch
+          </label>
         </section>
         <details className="order-5 rounded-control border border-border bg-surface p-4">
           <summary className="cursor-pointer font-medium">Liên kết (tùy chọn)</summary>
@@ -474,17 +526,220 @@ export default function TestPlanEditor({
               }}
               disabled={readOnly}
             />
+            <div className="md:col-span-2 rounded-control border border-border p-4">
+              <h4 className="font-medium text-ink">Ca chuyển tiếp từ giai đoạn trước (tùy chọn)</h4>
+              <label className="field-label mt-3 block">
+                Lần chạy nguồn
+                <select
+                  className="apple-input mt-2"
+                  value={carrySourceRunId}
+                  onChange={(event) => setCarrySourceRunId(event.target.value)}
+                  disabled={readOnly}
+                >
+                  <option value="">-</option>
+                  {runs.map((run) => (
+                    <option
+                      key={run._id}
+                      value={run._id}
+                      disabled={
+                        !run.phase ||
+                        run.phase.trim().toLocaleLowerCase() ===
+                          String(value.phase || "")
+                            .trim()
+                            .toLocaleLowerCase()
+                      }
+                    >
+                      {[run.phase, run.name].filter(Boolean).join(" · ")}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {carrySourceLoading && (
+                <p className="mt-3 text-sm text-muted">Đang tải ca kiểm thử...</p>
+              )}
+              {carrySourceRun &&
+                (() => {
+                  const results = new Map(
+                    (carrySourceRun.results || []).map((result) => [
+                      result.test_case_version_id,
+                      result,
+                    ]),
+                  );
+                  const versions = new Map(
+                    (carrySourceRun.test_case_versions || []).map((version) => [
+                      version._id,
+                      version,
+                    ]),
+                  );
+                  const eligible = (carrySourceRun.test_case_version_ids || []).filter((id) => {
+                    const status = results.get(id)?.status || "NOT_RUN";
+                    return ["NOT_RUN", "IN_PROGRESS", "FAIL", "BLOCKED", "SKIPPED"].includes(
+                      status,
+                    );
+                  });
+                  return (
+                    <div className="mt-3 space-y-3">
+                      {!eligible.length && (
+                        <p className="text-sm text-muted">
+                          Không có ca chưa chạy hoặc chưa đạt trong lần chạy này.
+                        </p>
+                      )}
+                      {eligible.map((id) => {
+                        const status = results.get(id)?.status || "NOT_RUN";
+                        const version = versions.get(id);
+                        const chosen = (value.carry_over_items || []).some(
+                          (item) =>
+                            item.source_test_run_id === carrySourceRun._id &&
+                            item.test_case_version_id === id,
+                        );
+                        return (
+                          <div
+                            key={id}
+                            className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] rounded-control bg-subtle p-3"
+                          >
+                            <label className="flex items-start gap-2 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={chosen}
+                                disabled={readOnly}
+                                onChange={(event) =>
+                                  setValue((current) => ({
+                                    ...current,
+                                    test_case_version_ids: event.target.checked
+                                      ? [...new Set([...(current.test_case_version_ids || []), id])]
+                                      : (current.test_case_version_ids || []).filter(
+                                          (versionId) => versionId !== id,
+                                        ),
+                                    carry_over_items: event.target.checked
+                                      ? [
+                                          ...(current.carry_over_items || []).filter(
+                                            (item) => item.test_case_version_id !== id,
+                                          ),
+                                          {
+                                            source_test_run_id: carrySourceRun._id,
+                                            test_case_version_id: id,
+                                            reason: "",
+                                          },
+                                        ]
+                                      : (current.carry_over_items || []).filter(
+                                          (item) => item.test_case_version_id !== id,
+                                        ),
+                                  }))
+                                }
+                              />
+                              <span>
+                                {version?.test_case_key || version?.test_case_id || id} ·{" "}
+                                {version?.title || "Ca kiểm thử"} ({status})
+                              </span>
+                            </label>
+                            {chosen && (
+                              <input
+                                className="apple-input"
+                                aria-label="Lý do chuyển tiếp"
+                                placeholder="Lý do chuyển tiếp"
+                                value={
+                                  value.carry_over_items.find(
+                                    (item) => item.test_case_version_id === id,
+                                  )?.reason || ""
+                                }
+                                onChange={(event) =>
+                                  setValue((current) => ({
+                                    ...current,
+                                    carry_over_items: (current.carry_over_items || []).map(
+                                      (item) =>
+                                        item.test_case_version_id === id
+                                          ? { ...item, reason: event.target.value }
+                                          : item,
+                                    ),
+                                  }))
+                                }
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              {(value.carry_over_items || []).length > 0 && (
+                <div className="mt-4 border-t border-border pt-3">
+                  <p className="text-sm font-medium text-ink">
+                    Đã chọn {value.carry_over_items.length} ca chuyển tiếp
+                  </p>
+                  <ul className="mt-2 space-y-2">
+                    {value.carry_over_items.map((item) => {
+                      const runName =
+                        item.source_run_name ||
+                        runs.find((run) => run._id === item.source_test_run_id)?.name ||
+                        item.source_test_run_id;
+                      const testCase = tests.find(
+                        (test) => test.current_version_id === item.test_case_version_id,
+                      );
+                      return (
+                        <li
+                          key={`${item.source_test_run_id}:${item.test_case_version_id}`}
+                          className="flex items-start justify-between gap-3 text-sm"
+                        >
+                          <span>
+                            {testCase?.test_case_key || item.test_case_version_id} · {runName}
+                            {item.source_status ? ` · ${item.source_status}` : ""}
+                            {item.reason ? ` · ${item.reason}` : ""}
+                          </span>
+                          {!readOnly && (
+                            <button
+                              type="button"
+                              className="text-danger"
+                              onClick={() =>
+                                setValue((current) => ({
+                                  ...current,
+                                  carry_over_items: current.carry_over_items.filter(
+                                    (candidate) =>
+                                      candidate.test_case_version_id !== item.test_case_version_id,
+                                  ),
+                                  test_case_version_ids: (
+                                    current.test_case_version_ids || []
+                                  ).filter((versionId) => versionId !== item.test_case_version_id),
+                                }))
+                              }
+                            >
+                              Bỏ
+                            </button>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+            </div>
             <MultiSelect
               className="md:col-span-2"
               label="Phiên bản ca kiểm thử trong phạm vi"
               showSearch={false}
-              options={tests.map((item) => ({
-                value: item.current_version_id,
-                label: `${item.test_case_key} ${item.current_version?.title || item.title || ""}`,
-              }))}
+              options={[
+                ...tests.map((item) => ({
+                  value: item.current_version_id,
+                  label: `${item.test_case_key} ${item.current_version?.title || item.title || ""}`,
+                })),
+                ...(carrySourceRun?.test_case_versions || [])
+                  .filter(
+                    (version) => !tests.some((test) => test.current_version_id === version._id),
+                  )
+                  .map((version) => ({
+                    value: version._id,
+                    label: `${version.test_case_key || version.test_case_id || "Ca kiểm thử"} ${version.title || ""}`,
+                  })),
+              ]}
               searchPlaceholder="Tìm ca kiểm thử"
               value={value.test_case_version_ids}
-              onChange={(selected) => setField("test_case_version_ids", selected)}
+              onChange={(selected) =>
+                setField("test_case_version_ids", [
+                  ...new Set([
+                    ...selected,
+                    ...(value.carry_over_items || []).map((item) => item.test_case_version_id),
+                  ]),
+                ])
+              }
               disabled={readOnly}
             />
             <MultiSelect
@@ -640,170 +895,6 @@ export default function TestPlanEditor({
           </div>
         </details>
       </fieldset>
-      {!readOnly && (
-        <details className="rounded-control border border-border bg-surface p-4">
-          <summary className="cursor-pointer font-medium">Gợi ý kế hoạch từ AI</summary>
-          <div className="mt-4 space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-sm text-ink-muted">
-                Chỉ gợi ý mục tiêu, phạm vi và cách tiếp cận có căn cứ từ yêu cầu đã chọn.
-              </p>
-              <button
-                className="secondary-button border-violet-300 text-violet-800"
-                type="button"
-                disabled={aiBusy || !value.requirement_version_ids.length}
-                onClick={requestAiPlanDraft}
-              >
-                {aiBusy ? "Đang tạo gợi ý" : "Tạo gợi ý"}
-              </button>
-            </div>
-            <label className="field-label block">
-              Hướng dẫn bổ sung
-              <textarea
-                className="apple-input mt-2 min-h-16"
-                value={aiInstruction}
-                disabled={aiBusy}
-                onChange={(event) => setAiInstruction(event.target.value)}
-              />
-            </label>
-            {aiError && (
-              <p role="alert" className="text-sm text-danger">
-                {aiError}
-              </p>
-            )}
-            {aiSuggestion?.suggestion && (
-              <div className="space-y-3 rounded-control border border-violet-200 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-medium text-violet-800">
-                    So sánh đề xuất với nội dung đang có
-                  </p>
-                  <ContentOriginBadge origin="ai_generated" />
-                </div>
-                <p className="text-sm text-ink-muted">
-                  Chỉ các trường đang để trống được chọn sẵn. Bỏ chọn trường muốn giữ nguyên; đề
-                  xuất không được lưu hoặc duyệt cho đến khi bạn lưu kế hoạch.
-                </p>
-                <div className="grid gap-3 md:grid-cols-2">
-                  {aiPlanFields
-                    .filter(([field]) => hasSuggestedValue(aiSuggestion.suggestion[field]))
-                    .map(([field, label, applicable]) => {
-                      const selected = selectedAiFields.has(field);
-                      const applied = appliedAiFields.has(field);
-                      const currentValue = displayPlanFieldValue(planFieldValue(value, field));
-                      const proposedValue = displayPlanFieldValue(aiSuggestion.suggestion[field]);
-                      const fieldEvidence = (aiSuggestion.suggestion.field_evidence || []).find(
-                        (item) => item.field === field,
-                      );
-                      return (
-                        <article
-                          className="min-w-0 rounded-control border border-border p-3"
-                          key={field}
-                        >
-                          <div className="flex items-start gap-2 text-sm font-medium">
-                            {applicable && (
-                              <input
-                                className="mt-1"
-                                type="checkbox"
-                                checked={selected}
-                                onChange={(event) =>
-                                  setSelectedAiFields((current) => {
-                                    const next = new Set(current);
-                                    if (event.target.checked) next.add(field);
-                                    else next.delete(field);
-                                    return next;
-                                  })
-                                }
-                              />
-                            )}
-                            <span>
-                              {label}
-                              {!applicable ? " · chỉ tham khảo" : ""}
-                            </span>
-                          </div>
-                          <div className="mt-3 space-y-2 text-sm">
-                            <div>
-                              <p className="text-xs font-medium text-ink-muted">Đang có</p>
-                              <p className="mt-1 whitespace-pre-wrap break-words">
-                                {currentValue || "Chưa có nội dung"}
-                              </p>
-                            </div>
-                            <div className="border-t border-border pt-2">
-                              <p className="text-xs font-medium text-violet-800">AI đề xuất</p>
-                              <p className="mt-1 whitespace-pre-wrap break-words">
-                                {proposedValue}
-                              </p>
-                            </div>
-                            {fieldEvidence?.evidence_quotes?.length > 0 && (
-                              <details className="border-t border-border pt-2">
-                                <summary className="cursor-pointer text-xs font-medium text-violet-800">
-                                  Căn cứ cho trường này
-                                </summary>
-                                <ul className="mt-2 space-y-2 text-xs font-normal">
-                                  {fieldEvidence.evidence_quotes.map((item, index) => (
-                                    <li key={`${item.evidence_ref}-${index}`}>
-                                      <span className="text-ink-muted">{item.evidence_ref}: </span>
-                                      {item.quote}
-                                    </li>
-                                  ))}
-                                </ul>
-                              </details>
-                            )}
-                            {applied && (
-                              <p className="text-xs font-medium text-violet-800">
-                                Đã áp dụng vào biểu mẫu; cần lưu kế hoạch để ghi nhận.
-                              </p>
-                            )}
-                          </div>
-                        </article>
-                      );
-                    })}
-                </div>
-                {!aiPlanFields.some(([field]) =>
-                  hasSuggestedValue(aiSuggestion.suggestion[field]),
-                ) && (
-                  <p className="text-sm text-ink-muted">
-                    Chưa có trường nào đủ căn cứ để đề xuất. Xem các thông tin còn thiếu bên dưới.
-                  </p>
-                )}
-                {!!aiSuggestion.suggestion.evidence_quotes?.length && (
-                  <details className="text-sm">
-                    <summary className="cursor-pointer">Căn cứ từ yêu cầu nguồn</summary>
-                    <ul className="mt-2 space-y-2">
-                      {aiSuggestion.suggestion.evidence_quotes.map((item, index) => (
-                        <li
-                          className="border-l-2 border-violet-300 pl-3"
-                          key={`${item.evidence_ref}-${index}`}
-                        >
-                          <span className="text-ink-muted">{item.evidence_ref}: </span>
-                          {item.quote}
-                        </li>
-                      ))}
-                    </ul>
-                  </details>
-                )}
-                {!!aiSuggestion.warnings?.length && (
-                  <ul className="list-disc pl-5 text-sm text-ink-muted">
-                    {aiSuggestion.warnings.map((item, index) => (
-                      <li key={`${item}-${index}`}>{item}</li>
-                    ))}
-                  </ul>
-                )}
-                <button
-                  className="apple-button"
-                  type="button"
-                  disabled={!selectedAiFields.size}
-                  onClick={applyAiPlanDraft}
-                >
-                  Áp dụng{" "}
-                  {selectedAiFields.size
-                    ? `${selectedAiFields.size} trường đã chọn`
-                    : "trường đã chọn"}
-                </button>
-              </div>
-            )}
-          </div>
-        </details>
-      )}
       {readOnly && (
         <div className="action-dialog-footer flex items-center justify-end">
           <button className="secondary-button" type="button" onClick={onCancel}>

@@ -63,7 +63,7 @@ function linkOriginLabel(origin) {
   );
 }
 
-export default function TraceabilityPage({ project }) {
+export default function TraceabilityPage({ project, embedded = false }) {
   const dateTimeOptions = useDateTimeOptions(project);
   const formatDate = (value) => formatDateValue(value, dateTimeOptions);
   const { ask, dialog } = useActionDialog();
@@ -277,9 +277,20 @@ export default function TraceabilityPage({ project }) {
 
   return (
     <WorkspacePage
-      title="Truy vết"
+      title={embedded ? "Liên kết kiểm thử" : "Truy vết"}
       actions={
         <div className="flex flex-wrap items-center gap-2">
+          {embedded && (
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => {
+                window.location.assign(`/du-an/${encodeURIComponent(project._id)}/yeu-cau`);
+              }}
+            >
+              Danh sách yêu cầu
+            </button>
+          )}
           {can("report.export") && (
             <button
               className="secondary-button"

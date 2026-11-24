@@ -25,9 +25,10 @@ OWNER_PERMISSIONS = frozenset({
     "requirement_document.confirm_extraction", "testmonitor.exit_criteria.override",
 })
 
-
 def requires_project_owner(permission):
-    return permission in OWNER_PERMISSIONS or requires_project_approval(permission)
+    # Approval is a project capability and can be granted to the appropriate
+    # project role. Only platform/project administration actions stay owner-only.
+    return permission in OWNER_PERMISSIONS
 
 
 def requires_project_approval(permission):
@@ -146,7 +147,7 @@ def permissions_for_role(role: str, settings_value: dict | None = None):
     denied_overrides = {canonical_permission(item) for item in overrides.get("deny", [])}
     permissions.update(item for item in allowed_overrides if item in known_permissions)
     permissions.difference_update(denied | denied_overrides)
-    return {permission for permission in permissions if not requires_project_approval(permission)}
+    return permissions
 
 
 def sign_off_has_permission(sign_off: dict, permission: str) -> bool:
@@ -216,11 +217,7 @@ def project_membership_permissions(project, membership, user_is_admin=False):
     if not membership or membership.get("status") != "ACTIVE":
         return set()
     if user_is_admin:
-        permissions = {
-            permission
-            for permission in project_permissions()
-            if not requires_project_approval(permission)
-        }
+        permissions = project_permissions()
     else:
         permissions = permissions_for_membership(membership, project.get("settings"))
     if membership.get("user_id") == project.get("project_owner_user_id"):

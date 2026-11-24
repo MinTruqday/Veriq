@@ -69,6 +69,7 @@ class ExitCriterionDefinition(BaseModel):
         "PASS_RATE_MIN",
         "OPEN_BLOCKER_MAX",
         "OPEN_CRITICAL_MAX",
+        "OPEN_CRITICAL_HIGH_MAX",
         "REQUIREMENT_COVERAGE_MIN",
         "AC_COVERAGE_MIN",
         "CONDITION_COVERAGE_MIN",

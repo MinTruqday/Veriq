@@ -82,6 +82,7 @@ export default function RequirementCoverageSelector({
   return (
     <div className="space-y-1">
       <MultiSelect
+        showSearch={false}
         label="Quy tắc nghiệp vụ cần bao phủ"
         searchPlaceholder="Tìm quy tắc nghiệp vụ"
         options={[...options, ...missing]}

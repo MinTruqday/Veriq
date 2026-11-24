@@ -115,6 +115,10 @@ def project_access(project, membership, grant, user, owner_support_available=Fal
         ],
         "current_membership": public_membership,
         "current_permissions": sorted(role_permissions | grant_permissions),
+        "can_self_approve": bool(
+            user.is_system_admin
+            or membership.get("user_id") == project.get("project_owner_user_id")
+        ),
         "access_context": (
             {
                 "mode": 'BREAK_GLASS',
