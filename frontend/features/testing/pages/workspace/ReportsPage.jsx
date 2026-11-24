@@ -203,6 +203,7 @@ export default function ReportsPage({ project }) {
   const canReadAnalytics = can("analytics.read");
   const canReadCoverage = can("coverage.read");
   const canReadReports = can("report.read");
+  const canReadAiAnalytics = can("analytics.ai.read");
   const canCreateSnapshot = canReadCoverage && can("coverage.snapshot.create");
   const canFilterScope = can("release.read") || can("build.read") || can("environment.read");
   const scopeFilterCount = ["environment.read", "release.read", "build.read"].filter(can).length;
@@ -267,6 +268,7 @@ export default function ReportsPage({ project }) {
         "maintenance",
         canReadAnalytics ? testingApi.maintenanceAnalytics(project._id) : Promise.resolve(null),
       ],
+      ["ai", canReadAiAnalytics ? testingApi.aiAnalytics(project._id) : Promise.resolve(null)],
       [
         "execution",
         canReadReports ? testingApi.executionReport(project._id, scope) : Promise.resolve(null),
@@ -297,6 +299,7 @@ export default function ReportsPage({ project }) {
       coverage: null,
       snapshots: null,
       maintenance: null,
+      ai: null,
       execution: null,
       defects: null,
       activity: null,
@@ -305,7 +308,7 @@ export default function ReportsPage({ project }) {
     }));
     setError([...new Set(errors)].join(" · "));
     setLoading(false);
-  }, [canReadAnalytics, canReadCoverage, canReadReports, project._id, scope]);
+  }, [canReadAiAnalytics, canReadAnalytics, canReadCoverage, canReadReports, project._id, scope]);
   useEffect(() => {
     const requestGeneration = ++optionsGeneration.current;
     setReleases([]);
@@ -727,6 +730,35 @@ export default function ReportsPage({ project }) {
                         value={formatMetricCount(value.maintenance.impact_analysis_count)}
                       />
                     )}
+                    {value.ai && (
+                      <>
+                        {(() => {
+                          const requests = value.ai.ai_request_metrics || {};
+                          const requestCount = Number(requests.request_count || 0);
+                          const degradedCount = Number(requests.degraded_count || 0);
+                          const degradedRate = requestCount ? degradedCount / requestCount : null;
+                          return (
+                            <ReportMetric
+                              label="Yêu cầu AI cần xem lại hoặc gặp lỗi"
+                              value={
+                                requestCount ? formatMetricCount(degradedCount) : "Chưa đủ dữ liệu"
+                              }
+                              detail={
+                                degradedRate === null
+                                  ? "Chưa ghi nhận lượt yêu cầu AI"
+                                  : `${formatMetricRate(degradedRate)} trên ${formatMetricCount(requestCount)} lượt yêu cầu`
+                              }
+                            />
+                          );
+                        })()}
+                        <ReportMetric
+                          label="Thời gian phản hồi AI trung bình"
+                          value={formatMetricDuration(
+                            value.ai.ai_request_metrics?.average_latency_ms,
+                          )}
+                        />
+                      </>
+                    )}
                   </dl>
                 </section>
               )}
@@ -797,6 +829,245 @@ export default function ReportsPage({ project }) {
                           ]}
                         />
                       </Panel>
+                    )}
+                    {value.ai && (
+                      <details className="self-start border-y border-border py-3">
+                        <summary className="cursor-pointer font-semibold text-ink">
+                          Kết quả AI và phản hồi duyệt
+                        </summary>
+                        <div className="mt-4 space-y-5">
+                          <section>
+                            <h3 className="mb-2 text-sm font-medium">Yêu cầu AI theo chức năng</h3>
+                            <DataTable
+                              items={countRows(
+                                value.ai.ai_request_metrics?.by_capability,
+                                "request",
+                              )}
+                              empty="Chưa ghi nhận yêu cầu AI"
+                              columns={[
+                                { key: "label", label: "Chức năng" },
+                                { key: "count", label: "Số lượt" },
+                              ]}
+                            />
+                            <p className="mt-2 text-xs text-ink-muted">
+                              Thành công:{" "}
+                              {formatMetricCount(
+                                value.ai.ai_request_metrics?.by_status?.SUCCESS || 0,
+                              )}{" "}
+                              · Cần xem lại:{" "}
+                              {formatMetricCount(value.ai.ai_request_metrics?.degraded_count || 0)}
+                              {value.ai.ai_request_metrics?.sample_truncated
+                                ? " · Số liệu không bao gồm toàn bộ lịch sử"
+                                : ""}
+                            </p>
+                          </section>
+                          <section>
+                            <h3 className="mb-2 text-sm font-medium">Kết quả AI đã lưu</h3>
+                            <DataTable
+                              items={countRows(value.ai.ai_result_metrics?.by_capability, "result")}
+                              empty="Chưa có kết quả AI được lưu"
+                              columns={[
+                                { key: "label", label: "Chức năng" },
+                                { key: "count", label: "Số kết quả" },
+                              ]}
+                            />
+                            <p className="mt-2 text-xs text-ink-muted">
+                              Có dẫn chứng nguồn:{" "}
+                              {formatMetricCount(
+                                value.ai.ai_result_metrics?.grounded_record_count || 0,
+                              )}{" "}
+                              · Chưa có tham chiếu nguồn:{" "}
+                              {formatMetricCount(
+                                value.ai.ai_result_metrics?.without_evidence_ref_count || 0,
+                              )}
+                              {value.ai.ai_result_metrics?.sample_truncated
+                                ? " · Số liệu không bao gồm toàn bộ lịch sử"
+                                : ""}
+                            </p>
+                          </section>
+                          <section>
+                            <h3 className="mb-2 text-sm font-medium">Quyết định duyệt đề xuất</h3>
+                            <DataTable
+                              items={
+                                Array.isArray(value.ai.proposal_status)
+                                  ? value.ai.proposal_status.map((item) => ({
+                                      _id: item._id || item.status,
+                                      status: item._id || item.status,
+                                      count: item.count,
+                                    }))
+                                  : Object.entries(value.ai.proposal_status || {}).map(
+                                      ([status, count]) => ({ _id: status, status, count }),
+                                    )
+                              }
+                              empty="Chưa có đề xuất được duyệt hoặc từ chối"
+                              columns={[
+                                {
+                                  key: "status",
+                                  label: "Quyết định",
+                                  render: (item) => valueLabel(item.status),
+                                },
+                                { key: "count", label: "Số lượng" },
+                              ]}
+                            />
+                            <p className="mt-2 text-xs text-ink-muted">
+                              Tỷ lệ được chấp nhận:{" "}
+                              {value.ai.proposal_acceptance_rate == null
+                                ? "Chưa đủ dữ liệu"
+                                : formatMetricRate(value.ai.proposal_acceptance_rate)}{" "}
+                              · Đề xuất bị từ chối có ghi lý do:{" "}
+                              {formatMetricCount(
+                                value.ai.rejection_review_note_recorded_count || 0,
+                              )}{" "}
+                              · Chưa ghi lý do:{" "}
+                              {formatMetricCount(value.ai.rejection_review_note_missing_count || 0)}
+                            </p>
+                            <p className="mt-2 text-xs text-ink-muted">
+                              Báo cáo chỉ tổng hợp dữ liệu đã lưu. Những quyết định cũ chưa có mã lý
+                              do hoặc danh sách trường thay đổi sẽ được giữ là chưa ghi nhận.
+                            </p>
+                            <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                              <div>
+                                <h4 className="mb-2 text-sm font-medium">Lý do đã chọn</h4>
+                                <DataTable
+                                  items={Object.entries(
+                                    value.ai.decision_feedback?.reason_code_counts || {},
+                                  ).map(([reason, count]) => ({
+                                    _id: reason,
+                                    reason,
+                                    count,
+                                    label: aiDecisionReasonLabels[reason] || valueLabel(reason),
+                                  }))}
+                                  empty="Chưa có mã lý do được ghi nhận"
+                                  columns={[
+                                    { key: "label", label: "Lý do" },
+                                    { key: "count", label: "Số lần" },
+                                  ]}
+                                />
+                              </div>
+                              <div>
+                                <h4 className="mb-2 text-sm font-medium">
+                                  Nội dung thường được chỉnh
+                                </h4>
+                                <DataTable
+                                  items={Object.entries(
+                                    value.ai.decision_feedback?.changed_field_counts || {},
+                                  ).map(([field, count]) => ({
+                                    _id: field,
+                                    field,
+                                    count,
+                                    label: aiChangedFieldLabels[field] || valueLabel(field),
+                                  }))}
+                                  empty="Chưa ghi nhận trường được chỉnh"
+                                  columns={[
+                                    { key: "label", label: "Nội dung" },
+                                    { key: "count", label: "Số lần" },
+                                  ]}
+                                />
+                              </div>
+                            </div>
+                            <p className="mt-2 text-xs text-ink-muted">
+                              Đã từ chối nhưng chưa chọn lý do:{" "}
+                              {formatMetricCount(
+                                value.ai.decision_feedback?.decisions_without_reason_code || 0,
+                              )}
+                              {value.ai.decision_feedback?.sample_truncated
+                                ? " · Số liệu không bao gồm toàn bộ lịch sử"
+                                : ""}
+                            </p>
+                          </section>
+                          <section>
+                            <h3 className="mb-2 text-sm font-medium">
+                              Phản hồi về ca kiểm thử do AI đề xuất
+                            </h3>
+                            <p className="mb-3 text-xs text-ink-muted">
+                              Chỉ tính ca có nguồn gốc AI. Bản đã duyệt được so với đề xuất ban đầu;
+                              nội dung ghi chú và người duyệt không xuất hiện trong báo cáo này.
+                            </p>
+                            <div className="grid gap-4 xl:grid-cols-3">
+                              <div>
+                                <h4 className="mb-2 text-sm font-medium">Quyết định đã duyệt</h4>
+                                <DataTable
+                                  items={Object.entries(
+                                    value.ai.ai_test_case_feedback?.approved_decision_counts || {},
+                                  ).map(([decision, count]) => ({
+                                    _id: decision,
+                                    decision,
+                                    count,
+                                    label: valueLabel(decision),
+                                  }))}
+                                  empty="Chưa có ca kiểm thử do AI đề xuất được duyệt"
+                                  columns={[
+                                    { key: "label", label: "Kết quả" },
+                                    { key: "count", label: "Số lượng" },
+                                  ]}
+                                />
+                              </div>
+                              <div>
+                                <h4 className="mb-2 text-sm font-medium">
+                                  Lý do yêu cầu chỉnh sửa
+                                </h4>
+                                <DataTable
+                                  items={Object.entries(
+                                    value.ai.ai_test_case_feedback
+                                      ?.changes_requested_reason_counts || {},
+                                  ).map(([reason, count]) => ({
+                                    _id: reason,
+                                    reason,
+                                    count,
+                                    label: aiDecisionReasonLabels[reason] || valueLabel(reason),
+                                  }))}
+                                  empty="Chưa có lý do được ghi nhận"
+                                  columns={[
+                                    { key: "label", label: "Lý do" },
+                                    { key: "count", label: "Số lần" },
+                                  ]}
+                                />
+                              </div>
+                              <div>
+                                <h4 className="mb-2 text-sm font-medium">
+                                  Trường thường được chỉnh
+                                </h4>
+                                <DataTable
+                                  items={Object.entries(
+                                    value.ai.ai_test_case_feedback?.changed_field_counts || {},
+                                  ).map(([field, count]) => ({
+                                    _id: field,
+                                    field,
+                                    count,
+                                    label: aiChangedFieldLabels[field] || valueLabel(field),
+                                  }))}
+                                  empty="Chưa ghi nhận trường được chỉnh"
+                                  columns={[
+                                    { key: "label", label: "Nội dung" },
+                                    { key: "count", label: "Số lần" },
+                                  ]}
+                                />
+                              </div>
+                            </div>
+                            <p className="mt-3 text-xs text-ink-muted">
+                              Đề xuất đã tạo:{" "}
+                              {formatMetricCount(
+                                value.ai.ai_test_case_feedback?.generated_draft_count || 0,
+                              )}{" "}
+                              · Yêu cầu chỉnh sửa:{" "}
+                              {formatMetricCount(
+                                value.ai.ai_test_case_feedback?.changes_requested_count || 0,
+                              )}{" "}
+                              · Ca kiểm thử AI đã duyệt trong báo cáo:{" "}
+                              {formatMetricCount(
+                                Object.values(
+                                  value.ai.ai_test_case_feedback?.approved_decision_counts || {},
+                                ).reduce((total, count) => total + Number(count || 0), 0),
+                              )}
+                              {value.ai.ai_test_case_feedback?.generated_draft_sample_truncated ||
+                              value.ai.ai_test_case_feedback?.changes_requested_sample_truncated ||
+                              value.ai.ai_test_case_feedback?.approved_version_sample_truncated
+                                ? " · Số liệu không bao gồm toàn bộ lịch sử"
+                                : ""}
+                            </p>
+                          </section>
+                        </div>
+                      </details>
                     )}
                   </div>
                   {value.coverage && Array.isArray(value.snapshots) && (

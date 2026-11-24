@@ -55,6 +55,13 @@ export function testCaseSubsectionItems(projectId, includeLegacy = false) {
   return [
     ...items,
     {
+      id: "ai",
+      label: "Hoạt động AI",
+      href: `${root}/ai`,
+      anyPermission: ["requirement.read", "proposal.read"],
+      permissions: ["testcase.read"],
+    },
+    {
       id: "sets",
       label: "Bộ kiểm thử",
       href: `${root}/bo-kiem-thu`,
@@ -288,7 +295,7 @@ export function navigationGroupsFor(pathname) {
         },
         {
           id: "operations",
-          label: "Vận hành nền tảng",
+          label: "Quản lý tài khoản",
           href: OPERATIONS_ROUTE,
           icon: Activity,
           requireAdmin: true,

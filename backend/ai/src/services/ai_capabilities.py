@@ -25,9 +25,6 @@ from src.schemas.inference_test_design import GeneratedCasesGroundingReview
 from src.services.source_provenance import source_quote_spans
 from src.services.inference import model_metadata, structured
 
-
-SUPPORTED_TESTING_CAPABILITIES = frozenset({"impact_analysis"})
-
 EXECUTION_ASSISTANCE_SENSITIVE_TERMS = (
     "password",
     "passphrase",
@@ -225,11 +222,6 @@ def grounded_requirement_recommendations(recommendations, evidence):
 
 
 async def generate_ai_capability(req: TestingCapabilityRequest):
-    if req.capability not in SUPPORTED_TESTING_CAPABILITIES:
-        raise HTTPException(
-            status_code=410,
-            detail={"code": "AI_CAPABILITY_REMOVED", "capability": req.capability},
-        )
     return await _generate_ai_capability(req)
 
 

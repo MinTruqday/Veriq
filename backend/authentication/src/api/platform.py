@@ -146,34 +146,6 @@ async def force_password_reset(
     )
 
 
-@router.get("/quan-tri/tai-khoan/{user_id}/phien", response_model=APIResponse[Any])
-async def list_user_sessions(user_id: str, current_user: CurrentUser = Depends(get_current_user)):
-    return APIResponse(
-        data=await PlatformAccountService.sessions(user_id, current_user),
-        message="Tải danh sách phiên đăng nhập hoàn tất",
-    )
-
-
-@router.delete("/quan-tri/tai-khoan/{user_id}/phien/{session_id}", response_model=APIResponse[Any])
-async def revoke_user_session(
-    user_id: str, session_id: str, current_user: CurrentUser = Depends(get_current_user)
-):
-    return APIResponse(
-        data=await PlatformAccountService.revoke_session(user_id, session_id, current_user),
-        message="Thu hồi phiên hoàn tất",
-    )
-
-
-@router.delete("/quan-tri/tai-khoan/{user_id}/phien", response_model=APIResponse[Any])
-async def revoke_all_user_sessions(
-    user_id: str, current_user: CurrentUser = Depends(get_current_user)
-):
-    return APIResponse(
-        data=await PlatformAccountService.revoke_all_sessions(user_id, current_user),
-        message="Thu hồi toàn bộ phiên hoàn tất",
-    )
-
-
 @router.patch("/quan-tri/tai-khoan/{user_id}/vai-tro-he-thong", response_model=APIResponse[Any])
 async def update_system_role(
     user_id: str, payload: SystemRoleUpdate, current_user: CurrentUser = Depends(get_current_user)
@@ -191,18 +163,6 @@ async def list_user_memberships(
     return APIResponse(
         data=await PlatformAccountService.memberships(user_id, current_user),
         message="Tải siêu dữ liệu thành viên dự án hoàn tất",
-    )
-
-
-@router.get("/quan-tri/tai-khoan/{user_id}/nhat-ky", response_model=APIResponse[Any])
-async def list_user_audit(
-    user_id: str,
-    limit: int = Query(default=200, ge=1, le=1000),
-    current_user: CurrentUser = Depends(get_current_user),
-):
-    return APIResponse(
-        data=await PlatformAccountService.audit(user_id, limit),
-        message="Tải nhật ký bảo mật tài khoản hoàn tất",
     )
 
 

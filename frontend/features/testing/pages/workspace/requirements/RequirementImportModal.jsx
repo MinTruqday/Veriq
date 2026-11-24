@@ -9,18 +9,24 @@ function DocumentAccessControl({ access, members, onChange, disabled = false }) 
     <fieldset className="space-y-3">
       <legend className="field-label">Quyền xem tài liệu</legend>
       <div className="flex flex-wrap gap-4">
-        {[{ value: "private", label: "Riêng tư" }, { value: "project", label: "Dự án" }, { value: "shared", label: "Chia sẻ" }].map((option) => (
+        {[
+          { value: "private", label: "Riêng tư" },
+          { value: "project", label: "Dự án" },
+          { value: "shared", label: "Chia sẻ" },
+        ].map((option) => (
           <label className="flex items-center gap-2 text-sm" key={option.value}>
             <input
               type="radio"
               name="document-visibility"
               checked={access.visibility === option.value}
               disabled={disabled}
-              onChange={() => onChange({
-                ...access,
-                visibility: option.value,
-                shared_with: option.value === "shared" ? access.shared_with : [],
-              })}
+              onChange={() =>
+                onChange({
+                  ...access,
+                  visibility: option.value,
+                  shared_with: option.value === "shared" ? access.shared_with : [],
+                })
+              }
             />
             {option.label}
           </label>
@@ -37,14 +43,19 @@ function DocumentAccessControl({ access, members, onChange, disabled = false }) 
                   type="checkbox"
                   checked={checked}
                   disabled={disabled}
-                  onChange={() => onChange({
-                    ...access,
-                    shared_with: checked
-                      ? access.shared_with.filter((value) => value !== id)
-                      : [...(access.shared_with || []), id],
-                  })}
+                  onChange={() =>
+                    onChange({
+                      ...access,
+                      shared_with: checked
+                        ? access.shared_with.filter((value) => value !== id)
+                        : [...(access.shared_with || []), id],
+                    })
+                  }
                 />
-                {member.user_label || member.user?.full_name || member.user?.email || "Thành viên dự án"}
+                {member.user_label ||
+                  member.user?.full_name ||
+                  member.user?.email ||
+                  "Thành viên dự án"}
               </label>
             );
           })}
@@ -77,17 +88,19 @@ function SourceVersionParent({ access, documents, project, onChange, disabled })
         disabled={disabled}
         onChange={(event) => {
           const parent = parents.find((item) => item._id === event.target.value);
-          onChange(parent
-            ? {
-                ...access,
-                supersedes_document_id: parent._id,
-                visibility: parent.visibility || "private",
-                shared_with: parent.shared_with || [],
-                ai_enabled: Boolean(parent.ai_enabled),
-                source_type: parent.source_type || "REFERENCE",
-                ocr_language: parent.ocr_language || "",
-              }
-            : { ...access, supersedes_document_id: null });
+          onChange(
+            parent
+              ? {
+                  ...access,
+                  supersedes_document_id: parent._id,
+                  visibility: parent.visibility || "private",
+                  shared_with: parent.shared_with || [],
+                  ai_enabled: Boolean(parent.ai_enabled),
+                  source_type: parent.source_type || "REFERENCE",
+                  ocr_language: parent.ocr_language || "",
+                }
+              : { ...access, supersedes_document_id: null },
+          );
         }}
       >
         <option value="">Tài liệu mới, không nối phiên bản trước</option>
@@ -118,7 +131,11 @@ export default function RequirementImportModal({
   const files = Array.isArray(upload) ? upload : upload ? [upload] : [];
   const firstFile = files[0];
   return (
-    <Modal isOpen={isOpen} onClose={sourceProcessing ? () => {} : onClose} ariaLabel="Thêm tài liệu">
+    <Modal
+      isOpen={isOpen}
+      onClose={sourceProcessing ? () => {} : onClose}
+      ariaLabel="Thêm tài liệu"
+    >
       <ModalHeader>
         <ModalTitle>Thêm tài liệu</ModalTitle>
       </ModalHeader>
@@ -147,10 +164,14 @@ export default function RequirementImportModal({
             className="apple-input mt-2"
             value={uploadAccess.source_type || "REFERENCE"}
             disabled={sourceProcessing}
-            onChange={(event) => setUploadAccess((value) => ({ ...value, source_type: event.target.value }))}
+            onChange={(event) =>
+              setUploadAccess((value) => ({ ...value, source_type: event.target.value }))
+            }
           >
             {REQUIREMENT_SOURCE_TYPE_OPTIONS.map((item) => (
-              <option key={item.value} value={item.value}>{item.label}</option>
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
             ))}
           </select>
         </label>
@@ -161,11 +182,23 @@ export default function RequirementImportModal({
           disabled={sourceProcessing}
         />
         <p className="text-sm text-ink-muted">
-          Tài liệu sẽ được lưu làm nguồn tham khảo. Tạo Requirement riêng bằng biểu mẫu; nội dung tệp không tự chuyển thành yêu cầu.
+          Tài liệu sẽ được lưu làm nguồn tham khảo. Tạo Requirement riêng bằng biểu mẫu; nội dung
+          tệp không tự chuyển thành yêu cầu.
         </p>
         <div className="flex justify-end gap-3 border-t border-border pt-4">
-          <button className="secondary-button" type="button" disabled={sourceProcessing} onClick={onClose}>Hủy</button>
-          <button className="apple-button inline-flex items-center gap-2" type="submit" disabled={sourceProcessing || files.length === 0}>
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={sourceProcessing}
+            onClick={onClose}
+          >
+            Hủy
+          </button>
+          <button
+            className="apple-button inline-flex items-center gap-2"
+            type="submit"
+            disabled={sourceProcessing || files.length === 0}
+          >
             <FileText size={16} aria-hidden="true" />
             {sourceProcessing ? "Đang lưu tài liệu…" : "Lưu tài liệu"}
           </button>

@@ -7,6 +7,7 @@ from src.schemas.test_analysis import (
     AnalysisFindingCreate,
     AnalysisFindingTransition,
     FindingResolutionInput,
+    TestAnalysisAIInput,
     TestAnalysisInput,
     TestConditionBulkPriorityInput,
     TestConditionCreate,
@@ -21,10 +22,12 @@ from src.modules.design.services.test_analysis import (
     create_condition,
     get_condition_for_user,
     list_analysis_findings,
+    list_ai_analysis_results,
     list_conditions,
     list_test_basis,
     resolve_finding,
     review_condition,
+    run_ai_analysis,
     run_deterministic_analysis,
     transition_analysis_finding,
     transition_condition,
@@ -123,6 +126,25 @@ async def resolve_test_analysis_finding(
 ):
     value = await resolve_finding(condition_id, finding_id, payload, user)
     return envelope(value, revision=value["revision"])
+
+
+@router.get("/du-an/{project_id}/phan-tich-kiem-thu/ai")
+async def list_test_analysis_ai_results(
+    project_id: str,
+    limit: int = Query(default=100, ge=1, le=200),
+    idempotency_key: str | None = Query(default=None, min_length=8, max_length=200),
+    user: CurrentUser = Depends(get_current_user),
+):
+    return envelope(
+        await list_ai_analysis_results(project_id, user, limit, idempotency_key)
+    )
+
+
+@router.post("/du-an/{project_id}/phan-tich-kiem-thu/ai", status_code=201)
+async def run_test_analysis_ai(
+    project_id: str, payload: TestAnalysisAIInput, user: CurrentUser = Depends(get_current_user)
+):
+    return envelope(await run_ai_analysis(project_id, payload, user))
 
 
 @router.get("/du-an/{project_id}/phan-tich-kiem-thu/truy-vet")

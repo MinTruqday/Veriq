@@ -35,6 +35,9 @@ const RequirementsPage = dynamic(() => import("./workspace/RequirementsPage"), {
   loading: workspaceLoading,
 });
 const ReportsPage = dynamic(() => import("./workspace/ReportsPage"), { loading: workspaceLoading });
+const ReviewQueuePage = dynamic(() => import("./workspace/ReviewQueuePage"), {
+  loading: workspaceLoading,
+});
 const SettingsPage = dynamic(() => import("./workspace/SettingsPage"), {
   loading: workspaceLoading,
 });
@@ -71,6 +74,7 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
     [PROJECT_SECTION_SLUGS.testPlans]: "execution",
     [PROJECT_SECTION_SLUGS.testRuns]: "execution",
     [PROJECT_SECTION_SLUGS.automation]: "execution",
+    [PROJECT_SECTION_SLUGS.aiReview]: "ai-review",
     [PROJECT_SECTION_SLUGS.defects]: "defects",
     [PROJECT_SECTION_SLUGS.reports]: "reports",
     [PROJECT_SECTION_SLUGS.audit]: "settings",
@@ -108,6 +112,7 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
     dashboard: "project.read",
     requirements: "requirement.read",
     "test-design": "testcase.read",
+    "ai-review": null,
     traceability: "trace.read",
     execution: "testrun.read",
     defects: "defect.read",
@@ -143,6 +148,8 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
         ]
       : area === "changes"
         ? ["changeset.read"]
+        : area === "ai-review"
+          ? ["requirement.read", "proposal.read"]
           : area === "settings" && section[0] !== PROJECT_SECTION_SLUGS.audit
             ? PROJECT_SETTINGS_PERMISSIONS
             : null;
@@ -231,6 +238,7 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
     requirements: <RequirementsPage {...props} />,
     documents: <RequirementsPage {...props} workspaceView="documents" />,
     "test-design": <TestDesignPage {...props} />,
+    "ai-review": <ReviewQueuePage {...props} />,
     traceability: <TraceabilityPage {...props} />,
     execution: <ExecutionPage {...props} />,
     defects: <DefectsPage {...props} />,

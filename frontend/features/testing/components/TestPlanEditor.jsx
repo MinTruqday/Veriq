@@ -1,7 +1,31 @@
+import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import { useEffect, useRef, useState } from "react";
 import MultiSelect from "@/shared/components/ui/MultiSelect";
 import { testingApi } from "../services/testing.service";
 import { messageOf } from "../lib/testing";
+
+const aiPlanFields = [
+  ["objective", "Mục tiêu", true],
+  ["scope_in", "Trong phạm vi", true],
+  ["scope_out", "Ngoài phạm vi", true],
+  ["test_approach", "Cách tiếp cận", true],
+];
+
+function hasSuggestedValue(value) {
+  return Array.isArray(value)
+    ? value.some((item) => String(item || "").trim())
+    : Boolean(String(value || "").trim());
+}
+
+function planFieldValue(plan, field) {
+  if (field === "risks") return (plan.risk_register || []).map((item) => item.title);
+  return plan[field];
+}
+
+function displayPlanFieldValue(value) {
+  if (Array.isArray(value)) return value.filter(Boolean).join("\n");
+  return String(value || "").trim();
+}
 
 const scopeFields = [
   ["scope_in", "Trong phạm vi"],
@@ -120,6 +144,13 @@ export default function TestPlanEditor({
   });
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiInstruction, setAiInstruction] = useState("");
+  const [aiSuggestion, setAiSuggestion] = useState(null);
+  const [selectedAiFields, setSelectedAiFields] = useState(() => new Set());
+  const [appliedAiFields, setAppliedAiFields] = useState(() => new Set());
+  const [aiError, setAiError] = useState("");
+
   const [customTestType, setCustomTestType] = useState("");
   const [carrySourceRunId, setCarrySourceRunId] = useState(
     () => initialValue?.carry_over_items?.[0]?.source_test_run_id || "",
@@ -147,6 +178,61 @@ export default function TestPlanEditor({
   ];
   const savingRef = useRef(false);
   const setField = (key, next) => setValue((current) => ({ ...current, [key]: next }));
+  const requestAiPlanDraft = async () => {
+    if (aiBusy || !value.requirement_version_ids.length) return;
+    setAiBusy(true);
+    setAiError("");
+    setAiSuggestion(null);
+    try {
+      const result = await testingApi.suggestTestPlanDraft(projectId, {
+        requirement_version_ids: value.requirement_version_ids,
+        instruction: aiInstruction,
+        current_test_plan: {
+          objective: value.objective,
+          scope_in: value.scope_in,
+          scope_out: value.scope_out,
+          test_approach: value.test_approach,
+        },
+      });
+      setAiSuggestion(result);
+      const suggestion = result?.suggestion || {};
+      const selectableFields = aiPlanFields
+        .filter(([field, , applicable]) => applicable && hasSuggestedValue(suggestion[field]))
+        .map(([field]) => field);
+      setSelectedAiFields(
+        new Set(
+          selectableFields.filter((field) => !hasSuggestedValue(planFieldValue(value, field))),
+        ),
+      );
+      setAppliedAiFields(new Set());
+    } catch (reason) {
+      setAiError(messageOf(reason) || "Không thể tạo gợi ý kế hoạch");
+    } finally {
+      setAiBusy(false);
+    }
+  };
+  const applyAiPlanDraft = () => {
+    const suggestion = aiSuggestion?.suggestion;
+    if (!suggestion || !selectedAiFields.size) return;
+    const selected = new Set(selectedAiFields);
+    setValue((current) => {
+      const next = { ...current };
+      for (const field of selected) {
+        if (field === "risks") {
+          next.risk_register = suggestion.risks.map((risk) => ({
+            risk_id: crypto.randomUUID(),
+            title: String(risk).slice(0, 500),
+            description: String(risk),
+          }));
+        } else {
+          next[field] = suggestion[field];
+        }
+      }
+      return next;
+    });
+    setAppliedAiFields((current) => new Set([...current, ...selected]));
+    setSelectedAiFields(new Set());
+  };
 
   useEffect(() => {
     if (!carrySourceRunId) {
@@ -895,6 +981,170 @@ export default function TestPlanEditor({
           </div>
         </details>
       </fieldset>
+      {!readOnly && (
+        <details className="rounded-control border border-border bg-surface p-4">
+          <summary className="cursor-pointer font-medium">Gợi ý kế hoạch từ AI</summary>
+          <div className="mt-4 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-ink-muted">
+                Chỉ gợi ý mục tiêu, phạm vi và cách tiếp cận có căn cứ từ yêu cầu đã chọn.
+              </p>
+              <button
+                className="secondary-button border-violet-300 text-violet-800"
+                type="button"
+                disabled={aiBusy || !value.requirement_version_ids.length}
+                onClick={requestAiPlanDraft}
+              >
+                {aiBusy ? "Đang tạo gợi ý" : "Tạo gợi ý"}
+              </button>
+            </div>
+            <label className="field-label block">
+              Hướng dẫn bổ sung
+              <textarea
+                className="apple-input mt-2 min-h-16"
+                value={aiInstruction}
+                disabled={aiBusy}
+                onChange={(event) => setAiInstruction(event.target.value)}
+              />
+            </label>
+            {aiError && (
+              <p role="alert" className="text-sm text-danger">
+                {aiError}
+              </p>
+            )}
+            {aiSuggestion?.suggestion && (
+              <div className="space-y-3 rounded-control border border-violet-200 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-medium text-violet-800">
+                    So sánh đề xuất với nội dung đang có
+                  </p>
+                  <ContentOriginBadge origin="ai_generated" />
+                </div>
+                <p className="text-sm text-ink-muted">
+                  Chỉ các trường đang để trống được chọn sẵn. Bỏ chọn trường muốn giữ nguyên; đề
+                  xuất không được lưu hoặc duyệt cho đến khi bạn lưu kế hoạch.
+                </p>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {aiPlanFields
+                    .filter(([field]) => hasSuggestedValue(aiSuggestion.suggestion[field]))
+                    .map(([field, label, applicable]) => {
+                      const selected = selectedAiFields.has(field);
+                      const applied = appliedAiFields.has(field);
+                      const currentValue = displayPlanFieldValue(planFieldValue(value, field));
+                      const proposedValue = displayPlanFieldValue(aiSuggestion.suggestion[field]);
+                      const fieldEvidence = (aiSuggestion.suggestion.field_evidence || []).find(
+                        (item) => item.field === field,
+                      );
+                      return (
+                        <article
+                          className="min-w-0 rounded-control border border-border p-3"
+                          key={field}
+                        >
+                          <div className="flex items-start gap-2 text-sm font-medium">
+                            {applicable && (
+                              <input
+                                className="mt-1"
+                                type="checkbox"
+                                checked={selected}
+                                onChange={(event) =>
+                                  setSelectedAiFields((current) => {
+                                    const next = new Set(current);
+                                    if (event.target.checked) next.add(field);
+                                    else next.delete(field);
+                                    return next;
+                                  })
+                                }
+                              />
+                            )}
+                            <span>
+                              {label}
+                              {!applicable ? " · chỉ tham khảo" : ""}
+                            </span>
+                          </div>
+                          <div className="mt-3 space-y-2 text-sm">
+                            <div>
+                              <p className="text-xs font-medium text-ink-muted">Đang có</p>
+                              <p className="mt-1 whitespace-pre-wrap break-words">
+                                {currentValue || "Chưa có nội dung"}
+                              </p>
+                            </div>
+                            <div className="border-t border-border pt-2">
+                              <p className="text-xs font-medium text-violet-800">AI đề xuất</p>
+                              <p className="mt-1 whitespace-pre-wrap break-words">
+                                {proposedValue}
+                              </p>
+                            </div>
+                            {fieldEvidence?.evidence_quotes?.length > 0 && (
+                              <details className="border-t border-border pt-2">
+                                <summary className="cursor-pointer text-xs font-medium text-violet-800">
+                                  Căn cứ cho trường này
+                                </summary>
+                                <ul className="mt-2 space-y-2 text-xs font-normal">
+                                  {fieldEvidence.evidence_quotes.map((item, index) => (
+                                    <li key={`${item.evidence_ref}-${index}`}>
+                                      <span className="text-ink-muted">{item.evidence_ref}: </span>
+                                      {item.quote}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </details>
+                            )}
+                            {applied && (
+                              <p className="text-xs font-medium text-violet-800">
+                                Đã áp dụng vào biểu mẫu; cần lưu kế hoạch để ghi nhận.
+                              </p>
+                            )}
+                          </div>
+                        </article>
+                      );
+                    })}
+                </div>
+                {!aiPlanFields.some(([field]) =>
+                  hasSuggestedValue(aiSuggestion.suggestion[field]),
+                ) && (
+                  <p className="text-sm text-ink-muted">
+                    Chưa có trường nào đủ căn cứ để đề xuất. Xem các thông tin còn thiếu bên dưới.
+                  </p>
+                )}
+                {!!aiSuggestion.suggestion.evidence_quotes?.length && (
+                  <details className="text-sm">
+                    <summary className="cursor-pointer">Căn cứ từ yêu cầu nguồn</summary>
+                    <ul className="mt-2 space-y-2">
+                      {aiSuggestion.suggestion.evidence_quotes.map((item, index) => (
+                        <li
+                          className="border-l-2 border-violet-300 pl-3"
+                          key={`${item.evidence_ref}-${index}`}
+                        >
+                          <span className="text-ink-muted">{item.evidence_ref}: </span>
+                          {item.quote}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+                {!!aiSuggestion.warnings?.length && (
+                  <ul className="list-disc pl-5 text-sm text-ink-muted">
+                    {aiSuggestion.warnings.map((item, index) => (
+                      <li key={`${item}-${index}`}>{item}</li>
+                    ))}
+                  </ul>
+                )}
+                <button
+                  className="apple-button"
+                  type="button"
+                  disabled={!selectedAiFields.size}
+                  onClick={applyAiPlanDraft}
+                >
+                  Áp dụng{" "}
+                  {selectedAiFields.size
+                    ? `${selectedAiFields.size} trường đã chọn`
+                    : "trường đã chọn"}
+                </button>
+              </div>
+            )}
+          </div>
+        </details>
+      )}
       {readOnly && (
         <div className="action-dialog-footer flex items-center justify-end">
           <button className="secondary-button" type="button" onClick={onCancel}>

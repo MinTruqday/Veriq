@@ -17,6 +17,12 @@ import FilePicker from "../../components/FilePicker";
 import ReviewCommentsPanel from "../../components/ReviewCommentsPanel";
 import TestCaseTemplatesPanel from "../../components/TestCaseTemplatesPanel";
 import AutomationScriptsPanel from "../../components/AutomationScriptsPanel";
+import ManualTestGenerationPanel from "../../components/ManualTestGenerationPanel";
+import {
+  testDesignSectionItems,
+  testCaseSubsectionItems,
+} from "@/shared/components/layout/navigation";
+import AIRunPanel from "../../components/AIRunPanel";
 import CollaborationPanel from "../../components/CollaborationPanel";
 import {
   ErrorState,
@@ -24,6 +30,7 @@ import {
   Panel,
   ProjectCrumb,
   WorkspacePage,
+  WorkspaceSectionNav,
   StatusPill,
   useActionDialog,
 } from "../../components/WorkspacePrimitives";
@@ -130,6 +137,17 @@ export default function TestDesignPage({ project, workspaceView, section }) {
     status: "",
     sort: "-updated_at",
   });
+  const [aiRuns, setAIRuns] = useState([]);
+  const [aiRunsError, setAIRunsError] = useState("");
+  const [aiRunsLoading, setAIRunsLoading] = useState(false);
+  const handleAIRunsStateChange = useCallback(
+    ({ runs, error: nextError, loading: nextLoading }) => {
+      setAIRuns(runs);
+      setAIRunsError(nextError);
+      setAIRunsLoading(nextLoading);
+    },
+    [],
+  );
   const [operations, setOperations] = useState([]);
   const [apiArtifacts, setApiArtifacts] = useState([]);
   const [apiCompareFrom, setApiCompareFrom] = useState("");
@@ -141,6 +159,7 @@ export default function TestDesignPage({ project, workspaceView, section }) {
     format: "openapi",
     content: "",
   });
+  const [selectedRequirement, setSelectedRequirement] = useState("");
   const [selectedDraftId, setSelectedDraftId] = useState("");
   const [selectedApprovalDraftIds, setSelectedApprovalDraftIds] = useState([]);
   const [comparedApprovalDraftRevisions, setComparedApprovalDraftRevisions] = useState({});
@@ -198,10 +217,12 @@ export default function TestDesignPage({ project, workspaceView, section }) {
       "nhap-xuat": "import",
       "bo-kiem-thu": "sets",
     }[caseTabFromPath] || "cases";
-  const caseTab = requestedCaseTab;
+  const caseTab = caseTabFromPath === "ai" ? "agent-runs" : requestedCaseTab;
   const access = testDesignAccess({ workspaceView, caseTab, permissions });
   const isCaseWorkspace = workspaceView === "" || workspaceView === "cases";
   const showCases = access.showCases;
+  const showAIRuns = isCaseWorkspace && caseTab === "agent-runs";
+  const designSectionItems = useMemo(() => testDesignSectionItems(project._id), [project._id]);
   const showScenarios = isCaseWorkspace && caseTab === "scenarios";
   const showTemplates = isCaseWorkspace && caseTab === "templates";
   const showAutomation = isCaseWorkspace && caseTab === "automation";
@@ -272,7 +293,7 @@ export default function TestDesignPage({ project, workspaceView, section }) {
         operationValues,
         memberResult,
       ] = await Promise.all([
-        (showCases || showScenarios || workspaceView === "test-data") &&
+        (showCases || showAIRuns || showScenarios || workspaceView === "test-data") &&
         permissions.includes("requirement.read")
           ? testingApi
               .listRequirements(project._id, {
@@ -379,6 +400,7 @@ export default function TestDesignPage({ project, workspaceView, section }) {
     permissions,
     project._id,
     scenarioFilters,
+    showAIRuns,
     showApi,
     showCases,
     showScenarios,
@@ -419,6 +441,24 @@ export default function TestDesignPage({ project, workspaceView, section }) {
       active = false;
     };
   }, [canReadTestCases, linkedCaseId, project._id, showCases]);
+  const canReadAIRuns =
+    permissions.includes("requirement.read") || permissions.includes("proposal.read");
+  const selectedRequirementRecord = requirements.find(
+    (item) => item.current_version_id === selectedRequirement,
+  );
+  const requirementLabels = Object.fromEntries(
+    requirements
+      .filter((item) => item.current_version_id)
+      .map((item) => [
+        item.current_version_id,
+        `${item.requirement_key} · ${item.current_version?.title || "Yêu cầu"}`,
+      ]),
+  );
+  const requirementAIRun = selectedRequirement
+    ? aiRuns.find(
+        (run) => run.trigger === "MANUAL" && run.target_artifact_ids?.includes(selectedRequirement),
+      ) || null
+    : null;
   const actionableDrafts = drafts.filter((item) => item.status !== "APPROVED");
   const editableDrafts = actionableDrafts.filter((item) => item.status !== "IN_REVIEW");
   const selectedDraft = actionableDrafts.find((item) => item._id === selectedDraftId) || null;
@@ -1005,6 +1045,7 @@ export default function TestDesignPage({ project, workspaceView, section }) {
     : workspaceView === "" || workspaceView === "cases"
       ? {
           cases: "Ca kiểm thử",
+          "agent-runs": "Hoạt động AI",
           scenarios: "Kịch bản kiểm thử",
           templates: "Mẫu ca kiểm thử",
           automation: "Mã kiểm thử tự động",
@@ -1260,6 +1301,31 @@ export default function TestDesignPage({ project, workspaceView, section }) {
     >
       {error && <ErrorState message={error} />}
       {linkedCaseId && selectedCaseLoading && <LoadingState label="Đang tải ca kiểm thử" />}
+      {!linkedCaseId && (
+        <div className="lg:hidden">
+          <WorkspaceSectionNav
+            current={
+              {
+                cases: "test-cases",
+                "test-data": "test-data",
+                "test-sets": "test-sets",
+              }[workspaceView] || "test-cases"
+            }
+            items={designSectionItems}
+            permissions={permissions}
+          />
+        </div>
+      )}
+      {!linkedCaseId && isCaseWorkspace && (
+        <div className="lg:hidden">
+          <WorkspaceSectionNav
+            current={caseTab === "agent-runs" ? "ai" : caseTab}
+            compact
+            permissions={permissions}
+            items={testCaseSubsectionItems(project._id).filter((item) => item.id !== "cases")}
+          />
+        </div>
+      )}
       {linkedCaseId && selectedTestRecord && (
         <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(18rem,1fr)]">
           <div className="grid min-w-0 content-start gap-5">
@@ -1281,6 +1347,16 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                   <dt className="text-xs text-ink-muted">Module / Tính năng</dt>
                   <dd className="mt-1 text-sm">
                     {selectedTestRecord.current_version?.module_name || "-"}
+                  </dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-xs text-ink-muted">Loại luồng</dt>
+                  <dd className="mt-1 text-sm">
+                    {{
+                      MAIN: "Luồng chính",
+                      ALTERNATIVE: "Luồng thay thế",
+                      EXCEPTION: "Luồng ngoại lệ",
+                    }[selectedTestRecord.current_version?.flow_type] || "-"}
                   </dd>
                 </div>
                 <div className="min-w-0">
@@ -1451,10 +1527,91 @@ export default function TestDesignPage({ project, workspaceView, section }) {
           </Panel>
         </div>
       )}
+      {showAIRuns && canReadAIRuns && (
+        <div id="agent-run-details">
+          <AIRunPanel
+            project={project}
+            showPanelHeading={false}
+            onRunsStateChange={handleAIRunsStateChange}
+            targetArtifactIds={selectedRequirement ? [selectedRequirement] : []}
+            targetArtifactLabels={requirementLabels}
+            contextContent={
+              permissions.includes("requirement.read") ? (
+                <section
+                  aria-label="Phạm vi yêu cầu cho hoạt động AI"
+                  className="grid gap-3 rounded-control border border-border bg-surface p-4"
+                >
+                  <label className="grid min-w-0 gap-2 text-sm font-medium text-ink">
+                    Yêu cầu làm phạm vi cho lượt AI mới (tùy chọn)
+                    <select
+                      aria-label="Yêu cầu làm phạm vi cho lượt AI mới"
+                      className="apple-input w-full min-w-0"
+                      value={selectedRequirement}
+                      onChange={(event) => setSelectedRequirement(event.target.value)}
+                    >
+                      <option value="">Chọn yêu cầu</option>
+                      {requirements.map((item) => (
+                        <option key={item._id} value={item.current_version_id}>
+                          {item.requirement_key} · {item.current_version?.title}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {selectedRequirement && (
+                    <div className="grid min-w-0 gap-3 rounded-control border border-border bg-surface-raised/40 p-4 text-sm">
+                      <div>
+                        <p className="text-xs font-medium text-ink-muted">
+                          Phạm vi cho lượt AI mới
+                        </p>
+                        <p className="mt-1 break-words font-semibold text-ink">
+                          {selectedRequirementRecord?.requirement_key} ·{" "}
+                          {selectedRequirementRecord?.current_version?.title || "Yêu cầu"}
+                        </p>
+                      </div>
+                      {aiRunsLoading ? (
+                        <p className="border-t border-border pt-3 text-ink-muted">
+                          Đang tải hoạt động liên quan…
+                        </p>
+                      ) : aiRunsError ? (
+                        <p className="border-t border-border pt-3 text-danger" role="status">
+                          {aiRunsError}
+                        </p>
+                      ) : requirementAIRun ? (
+                        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+                          <span className="text-ink-muted">
+                            Lượt do người dùng bắt đầu gần nhất ·{" "}
+                            {formatDate(requirementAIRun.created_at)}
+                          </span>
+                          <StatusPill value={requirementAIRun.status} />
+                        </div>
+                      ) : (
+                        <p className="border-t border-border pt-3 text-ink-muted">
+                          Khi bấm “Bắt đầu xử lý bằng AI”, lượt mới sẽ dùng phiên bản yêu cầu này
+                          làm phạm vi tham chiếu.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </section>
+              ) : null
+            }
+          />
+        </div>
+      )}
       {showTemplates && can("testcase.template.read") && (
         <TestCaseTemplatesPanel project={project} />
       )}
       {showAutomation && <AutomationScriptsPanel project={project} />}
+      {((showScenarios && can("ai.generate_scenario") && can("testscenario.create")) ||
+        (showCases && !linkedCaseId && can("ai.generate_testcase") && can("testcase.create"))) && (
+        <ManualTestGenerationPanel
+          key={`${project._id}:${showScenarios ? "scenarios" : "cases"}`}
+          projectId={project._id}
+          requirements={requirements}
+          mode={showScenarios ? "scenarios" : "cases"}
+          onSaved={load}
+        />
+      )}
       {showCases && !linkedCaseId && (
         <div className="flex flex-col gap-5">
           {actionableDrafts.length > 0 && (

@@ -222,6 +222,11 @@ class RequirementTemplateConsent(BaseModel):
     approved: bool
 
 
+class RequirementAIAnalysisInput(BaseModel):
+    idempotency_key: str = Field(min_length=8, max_length=200)
+    instruction: str = Field(default="", max_length=5000)
+
+
 class RequirementVersionCreate(RequirementCreate):
     change_reason: str = Field(default="", max_length=2000)
     expected_current_version_id: str

@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BadgeCheck, Check, Pencil, UserRoundPlus } from "lucide-react";
+import { BadgeCheck, Check, FilePlus2, Pencil, RefreshCw, UserRoundPlus } from "lucide-react";
 import DataTable from "../../components/DataTable";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import TestConditionEditor from "../../components/TestConditionEditor";
@@ -63,6 +63,13 @@ export default function TestAnalysisPage({ project }) {
   const [selected, setSelected] = useState(null);
   const [activeTab, setActiveTab] = useState("conditions");
   const [editing, setEditing] = useState(false);
+  const [aiResults, setAiResults] = useState([]);
+  const [refreshingAiResults, setRefreshingAiResults] = useState(false);
+  const refreshAiResultsPending = useRef(false);
+  const [selectedRequirementVersions, setSelectedRequirementVersions] = useState([]);
+  const [aiInstruction, setAiInstruction] = useState("");
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiGenerationError, setAiGenerationError] = useState("");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
@@ -75,10 +82,6 @@ export default function TestAnalysisPage({ project }) {
     [project.current_permissions],
   );
   const can = useCallback((permission) => permissions.includes(permission), [permissions]);
-  const canReviewDraft = (item) =>
-    project.can_self_approve ||
-    (item.created_by !== project.current_membership?.user_id &&
-      !(item.content_author_ids || []).includes(project.current_membership?.user_id));
   const load = useCallback(async () => {
     if (loadedProjectId.current !== project._id) {
       loadedProjectId.current = project._id;
@@ -92,6 +95,7 @@ export default function TestAnalysisPage({ project }) {
         requirementValues,
         coverageValue,
         findingValues,
+        aiResultValues,
         memberValues,
       ] = await Promise.all([
         can("testcondition.read")
@@ -106,6 +110,9 @@ export default function TestAnalysisPage({ project }) {
         can("testanalysis.read")
           ? testingApi.listTestAnalysisFindings(project._id)
           : Promise.resolve({ items: [] }),
+        can("testanalysis.read")
+          ? testingApi.listTestAnalysisAiResults(project._id)
+          : Promise.resolve([]),
         can("testanalysis.finding.assign") && can("project.members.read")
           ? testingApi.listMembers(project._id).catch((reason) => {
               memberLoadError = `Không tải được danh sách thành viên để phân công: ${messageOf(reason)}`;
@@ -118,6 +125,7 @@ export default function TestAnalysisPage({ project }) {
       setRequirements(requirementValues);
       setCoverage(coverageValue);
       setFindings(findingValues.items || []);
+      setAiResults(aiResultValues || []);
       setMembers(memberValues || []);
       setError(memberLoadError);
       setSelected(
@@ -138,10 +146,66 @@ export default function TestAnalysisPage({ project }) {
   }, [load]);
   const tabs = [
     ...(can("testcondition.read") ? [{ id: "conditions", label: "Điều kiện kiểm thử" }] : []),
+    ...(can("testanalysis.read") ? [{ id: "ai", label: "Đề xuất AI" }] : []),
     ...(can("testanalysis.read") ? [{ id: "findings", label: "Phát hiện" }] : []),
     ...(can("testcondition.read") ? [{ id: "traceability", label: "Truy vết" }] : []),
   ];
   const visibleTab = tabs.some((tab) => tab.id === activeTab) ? activeTab : tabs[0]?.id;
+  const aiCandidateItems = aiResults.flatMap((result) =>
+    (result.candidates || []).map((candidate) => ({
+      ...candidate,
+      ai_result_id: result._id,
+      source_event_id: result.source_event_id,
+      requirement_version_id:
+        result.requirement_version_id ||
+        candidate.basis_refs?.find((item) => item.artifact_type === "REQUIREMENT_VERSION")
+          ?.artifact_version_id ||
+        candidate.basis_refs?.find((item) => item.artifact_type === "REQUIREMENT_VERSION")
+          ?.artifact_id,
+      created_at: result.created_at,
+    })),
+  );
+  const generateAiConditions = async () => {
+    const selectedRequirements = requirements.filter(
+      (item) =>
+        item.current_version_id && selectedRequirementVersions.includes(item.current_version_id),
+    );
+    if (!selectedRequirements.length || aiGenerating) return;
+    setAiGenerating(true);
+    setAiGenerationError("");
+    try {
+      const result = await testingApi.runTestAnalysisAI(project._id, {
+        basis_refs: selectedRequirements.map((item) => ({
+          artifact_type: "REQUIREMENT_VERSION",
+          artifact_id: item._id,
+          artifact_version_id: item.current_version_id,
+          relationship: "DERIVED_FROM",
+        })),
+        instruction: aiInstruction.trim(),
+        idempotency_key: `manual-test-condition:${crypto.randomUUID()}`,
+      });
+      setAiResults((current) => [result, ...current.filter((item) => item._id !== result._id)]);
+    } catch (reason) {
+      setAiGenerationError(messageOf(reason));
+    } finally {
+      setAiGenerating(false);
+    }
+  };
+  const refreshAiResults = async () => {
+    if (refreshAiResultsPending.current) return;
+    refreshAiResultsPending.current = true;
+    setRefreshingAiResults(true);
+    try {
+      const values = await testingApi.listTestAnalysisAiResults(project._id);
+      setAiResults(values || []);
+      setError("");
+    } catch (reason) {
+      setError(messageOf(reason));
+    } finally {
+      refreshAiResultsPending.current = false;
+      setRefreshingAiResults(false);
+    }
+  };
   if (initialLoading || initialLoadFailed)
     return (
       <InitialLoadState
@@ -247,7 +311,8 @@ export default function TestAnalysisPage({ project }) {
                     Bắt đầu từ Requirement đã duyệt
                   </h3>
                   <p className="mt-1 text-sm text-ink-muted">
-                    Tạo và rà soát điều kiện kiểm thử thủ công dựa trên yêu cầu đã chốt.
+                    Tạo điều kiện kiểm thử thủ công hoặc mở tab Đề xuất AI để tạo bản nháp có dẫn
+                    chứng.
                   </p>
                 </div>
                 {can("requirement.read") && (
@@ -300,40 +365,36 @@ export default function TestAnalysisPage({ project }) {
                         Gửi rà soát
                       </button>
                     )}
-                    {can("testcondition.review") &&
-                      selected.status === "IN_REVIEW" &&
-                      canReviewDraft(selected) && (
-                        <button
-                          className="secondary-button"
-                          type="button"
-                          onClick={() =>
-                            transition(
-                              "Ghi nhận rà soát điều kiện kiểm thử",
-                              "Ghi nhận",
-                              testingApi.reviewTestCondition,
-                            )
-                          }
-                        >
-                          Ghi nhận rà soát
-                        </button>
-                      )}
-                    {can("testcondition.approve") &&
-                      selected.status === "IN_REVIEW" &&
-                      canReviewDraft(selected) && (
-                        <button
-                          className="apple-button"
-                          type="button"
-                          onClick={() =>
-                            transition(
-                              "Phê duyệt điều kiện kiểm thử",
-                              "Phê duyệt",
-                              testingApi.approveTestCondition,
-                            )
-                          }
-                        >
-                          Phê duyệt
-                        </button>
-                      )}
+                    {can("testcondition.review") && selected.status === "IN_REVIEW" && (
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() =>
+                          transition(
+                            "Ghi nhận rà soát điều kiện kiểm thử",
+                            "Ghi nhận",
+                            testingApi.reviewTestCondition,
+                          )
+                        }
+                      >
+                        Ghi nhận rà soát
+                      </button>
+                    )}
+                    {can("testcondition.approve") && selected.status === "IN_REVIEW" && (
+                      <button
+                        className="apple-button"
+                        type="button"
+                        onClick={() =>
+                          transition(
+                            "Phê duyệt điều kiện kiểm thử",
+                            "Phê duyệt",
+                            testingApi.approveTestCondition,
+                          )
+                        }
+                      >
+                        Phê duyệt
+                      </button>
+                    )}
                     {can("testcondition.archive") &&
                       ["DRAFT", "APPROVED"].includes(selected.status) && (
                         <button
@@ -516,6 +577,241 @@ export default function TestAnalysisPage({ project }) {
               </p>
             </Panel>
           ) : null}
+        </div>
+      )}
+      {can("testanalysis.read") && (
+        <div className="space-y-5" hidden={visibleTab !== "ai"}>
+          <Panel
+            title="Điều kiện do AI đề xuất"
+            actions={
+              <button
+                aria-label="Tải lại đề xuất AI"
+                className="icon-button h-9 w-9 shrink-0"
+                disabled={refreshingAiResults}
+                onClick={() => void refreshAiResults()}
+                title="Tải lại đề xuất AI"
+                type="button"
+              >
+                <RefreshCw
+                  aria-hidden="true"
+                  className={refreshingAiResults ? "animate-spin" : ""}
+                  size={16}
+                />
+              </button>
+            }
+          >
+            <div className="space-y-4 p-5">
+              <ContentOriginBadge origin="ai_generated" />
+              <p className="text-sm text-ink-muted">
+                Chọn yêu cầu đã duyệt làm căn cứ rồi bấm tạo đề xuất. Kết quả chỉ là bản xem trước;
+                mỗi đề xuất có dẫn chứng để bạn kiểm tra trước khi dùng làm bản nháp.
+              </p>
+              {can("testanalysis.run_ai") && (
+                <div className="space-y-3 border-t border-border pt-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="text-sm font-medium">Yêu cầu nguồn</h3>
+                    <div className="flex gap-2">
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() =>
+                          setSelectedRequirementVersions(
+                            requirements.map((item) => item.current_version_id).filter(Boolean),
+                          )
+                        }
+                      >
+                        Chọn tất cả
+                      </button>
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() => setSelectedRequirementVersions([])}
+                      >
+                        Bỏ chọn
+                      </button>
+                    </div>
+                  </div>
+                  {requirements.length ? (
+                    <div className="grid gap-2 md:grid-cols-2">
+                      {requirements
+                        .filter((item) => item.current_version_id)
+                        .map((item) => {
+                          const checked = selectedRequirementVersions.includes(
+                            item.current_version_id,
+                          );
+                          return (
+                            <label
+                              className="flex min-w-0 cursor-pointer items-start gap-2 border-b border-border py-2"
+                              key={item.current_version_id}
+                            >
+                              <input
+                                checked={checked}
+                                className="mt-1"
+                                onChange={(event) =>
+                                  setSelectedRequirementVersions((current) =>
+                                    event.target.checked
+                                      ? [...new Set([...current, item.current_version_id])]
+                                      : current.filter((id) => id !== item.current_version_id),
+                                  )
+                                }
+                                type="checkbox"
+                              />
+                              <span className="min-w-0 text-sm">
+                                <span className="block font-medium">{item.requirement_key}</span>
+                                <span className="block break-words text-ink-muted">
+                                  {item.current_version?.title || "Yêu cầu đã duyệt"}
+                                </span>
+                              </span>
+                            </label>
+                          );
+                        })}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-ink-muted">
+                      Chưa có yêu cầu đã duyệt để làm căn cứ.
+                    </p>
+                  )}
+                  <label className="block space-y-1 text-sm">
+                    <span>Hướng dẫn thêm (không bắt buộc)</span>
+                    <textarea
+                      className="apple-input min-h-20 w-full"
+                      maxLength={5000}
+                      onChange={(event) => setAiInstruction(event.target.value)}
+                      value={aiInstruction}
+                    />
+                  </label>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      className="apple-button"
+                      disabled={aiGenerating || selectedRequirementVersions.length === 0}
+                      onClick={() => void generateAiConditions()}
+                      type="button"
+                    >
+                      {aiGenerating ? "Đang tạo đề xuất…" : "Tạo đề xuất AI"}
+                    </button>
+                    <span className="text-sm text-ink-muted">
+                      Đã chọn {selectedRequirementVersions.length} yêu cầu
+                    </span>
+                  </div>
+                  {aiGenerationError && <ErrorState message={aiGenerationError} />}
+                </div>
+              )}
+              <DataTable
+                items={aiCandidateItems}
+                empty="Chưa có ứng viên từ các yêu cầu đã được đặt làm phiên bản chuẩn"
+                columns={[
+                  {
+                    key: "candidate",
+                    label: "Ứng viên",
+                    minWidth: 180,
+                    render: (item) => (
+                      <div className="min-w-0">
+                        <p className="font-medium">{item.title}</p>
+                        <p className="mt-1 text-xs text-ink-muted">{valueLabel(item.category)}</p>
+                      </div>
+                    ),
+                  },
+                  {
+                    key: "coverage_item",
+                    label: "Điểm cần kiểm thử",
+                    minWidth: 170,
+                  },
+                  {
+                    key: "source",
+                    label: "Nguồn và căn cứ",
+                    minWidth: 260,
+                    render: (item) => {
+                      const requirement = requirements.find(
+                        (value) => value.current_version_id === item.requirement_version_id,
+                      );
+                      const citations = item.evidence_quotes || [];
+                      const [firstCitation, ...additionalCitations] = citations;
+                      return (
+                        <div className="min-w-0 space-y-2 whitespace-normal text-xs">
+                          {requirement ? (
+                            <p className="min-w-0">
+                              <strong className="font-semibold">
+                                {requirement.requirement_key} · v
+                                {requirement.current_version?.version}
+                              </strong>
+                              <span
+                                className="mt-0.5 line-clamp-2 text-ink-muted"
+                                title={requirement.current_version?.title || undefined}
+                              >
+                                {requirement.current_version?.title || "Yêu cầu nguồn"}
+                              </span>
+                            </p>
+                          ) : (
+                            <p className="text-ink-muted">
+                              Yêu cầu phiên bản hiện không có trong danh sách
+                            </p>
+                          )}
+                          {firstCitation && (
+                            <p className="line-clamp-3 break-words border-l-2 border-violet-300 pl-2">
+                              <span className="font-medium">{firstCitation.evidence_ref}:</span> “
+                              {firstCitation.quote}”
+                            </p>
+                          )}
+                          {additionalCitations.length > 0 && (
+                            <details>
+                              <summary className="w-fit cursor-pointer font-medium text-ink-muted">
+                                Xem thêm {additionalCitations.length} dẫn chứng
+                              </summary>
+                              <div className="mt-2 space-y-2">
+                                {additionalCitations.map((citation, index) => (
+                                  <p
+                                    className="break-words border-l-2 border-violet-300 pl-2"
+                                    key={`${citation.evidence_ref}-${index + 1}`}
+                                  >
+                                    <span className="font-medium">{citation.evidence_ref}:</span> “
+                                    {citation.quote}”
+                                  </p>
+                                ))}
+                              </div>
+                            </details>
+                          )}
+                        </div>
+                      );
+                    },
+                  },
+                  {
+                    key: "risk",
+                    label: "Rủi ro",
+                    minWidth: 112,
+                    render: (item) => <StatusPill value={severityLabel(item.risk)} />,
+                  },
+                  ...(can("testcondition.create")
+                    ? [
+                        {
+                          key: "actions",
+                          label: "Thao tác",
+                          minWidth: 72,
+                          hideWhenEmpty: true,
+                          render: (item) => (
+                            <button
+                              aria-label={`Dùng ${item.title || item.condition_key || item.coverage_item || "đề xuất"} làm bản nháp điều kiện kiểm thử`}
+                              title="Dùng làm bản nháp"
+                              className="icon-button h-9 w-9"
+                              type="button"
+                              onClick={() => {
+                                setSelected({
+                                  ...item,
+                                  basis_refs: item.basis_refs || [],
+                                  origin: "AI_CANDIDATE_CONFIRMED",
+                                });
+                                setEditing(true);
+                              }}
+                            >
+                              <FilePlus2 aria-hidden="true" size={16} />
+                            </button>
+                          ),
+                        },
+                      ]
+                    : []),
+                ]}
+              />
+            </div>
+          </Panel>
         </div>
       )}
       {can("testanalysis.read") && (

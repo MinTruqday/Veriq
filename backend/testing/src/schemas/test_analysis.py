@@ -214,6 +214,14 @@ class FindingResolutionInput(BaseModel):
     note: str = Field(min_length=2, max_length=5000)
 
 
+class TestAnalysisAIInput(BaseModel):
+    basis_refs: list[TestBasisRef] = Field(min_length=1, max_length=100)
+    instruction: str = Field(default="", max_length=5000)
+    idempotency_key: str = Field(min_length=8, max_length=200)
+    source_event_id: str | None = Field(default=None, min_length=1, max_length=200)
+    source_event_revision: int | None = Field(default=None, ge=1)
+
+
 class TestAnalysisInput(BaseModel):
     basis_refs: list[TestBasisRef] = Field(min_length=1, max_length=100)
 

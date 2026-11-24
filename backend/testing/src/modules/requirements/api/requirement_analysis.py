@@ -1,12 +1,18 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from src.core.auth import CurrentUser, get_current_user
 from src.core.common import envelope, get_project
+from src.core.internal import require_internal_token
 from src.schemas.contracts.requirements import (
+    RequirementAIAnalysisInput,
     RequirementCompareInput,
     RequirementDuplicateCheckInput,
     RequirementMergeInput,
     RequirementSplitInput,
+)
+from src.modules.requirements.services.requirement_ai import (
+    analyze_requirement_quality,
+    get_latest_requirement_quality_analysis,
 )
 from src.modules.requirements.services.requirement_analysis import (
     compare_requirement_versions,
@@ -21,6 +27,35 @@ from src.modules.requirements.services.requirement_transformations import (
 )
 
 router = APIRouter(prefix="/kiem-thu", tags=["Yêu cầu kiểm thử"])
+
+@router.get("/phien-ban-yeu-cau/{version_id}/ai/ket-qua-moi-nhat")
+async def latest_requirement_quality_analysis(
+    version_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    return envelope(await get_latest_requirement_quality_analysis(version_id, user))
+
+
+@router.post("/phien-ban-yeu-cau/{version_id}/ai/kiem-tra")
+async def analyze_requirement_quality_for_event_run(
+    version_id: str,
+    payload: RequirementAIAnalysisInput,
+    _: None = Depends(require_internal_token),
+    user: CurrentUser = Depends(get_current_user),
+):
+    if not payload.idempotency_key.startswith("requirement-quality-event:"):
+        raise HTTPException(status_code=404, detail={"code": "AI_EVENT_ANALYSIS_ONLY"})
+    return envelope(await analyze_requirement_quality(version_id, payload, user))
+
+
+@router.post("/phien-ban-yeu-cau/{version_id}/ai/kiem-tra-thu-cong")
+async def analyze_requirement_quality_on_request(
+    version_id: str,
+    payload: RequirementAIAnalysisInput,
+    user: CurrentUser = Depends(get_current_user),
+):
+    return envelope(await analyze_requirement_quality(version_id, payload, user))
+
 
 @router.post("/yeu-cau/{requirement_id}/so-sanh")
 async def compare_requirement(

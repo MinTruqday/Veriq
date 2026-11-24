@@ -1,7 +1,18 @@
 "use client";
-import { useDateTimeOptions } from "../hooks/useDateTimeOptions";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Eye, Pencil, X } from "lucide-react";
+import {
+  Eye,
+  KeyRound,
+  LockKeyhole,
+  MailCheck,
+  Pencil,
+  Shield,
+  ShieldOff,
+  Trash2,
+  UnlockKeyhole,
+  UserCheck,
+  UserRoundX,
+} from "lucide-react";
 import { platformApi } from "@/features/authentication/services/platform.service";
 import DataTable from "./DataTable";
 import {
@@ -12,22 +23,17 @@ import {
   useActionDialog,
 } from "./WorkspacePrimitives";
 import { Pagination } from "@/shared/components/ui/Pagination";
-import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
-import { formatDate as formatDateValue, messageOf, valueLabel } from "../lib/testing";
+import { messageOf, valueLabel } from "../lib/testing";
 import SearchField from "@/shared/components/ui/SearchField";
+import { Modal, ModalContent, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 
 export default function PlatformUsersPanel() {
-  const dateTimeOptions = useDateTimeOptions();
-  const formatDate = (value) => formatDateValue(value, dateTimeOptions);
   const { ask, dialog } = useActionDialog();
   const [users, setUsers] = useState([]);
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState("");
-  const [detailSection, setDetailSection] = useState("sessions");
   const [detail, setDetail] = useState(null);
-  const [sessions, setSessions] = useState([]);
   const [memberships, setMemberships] = useState([]);
-  const [audit, setAudit] = useState([]);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState("");
@@ -57,30 +63,22 @@ export default function PlatformUsersPanel() {
     const requestId = ++detailRequestId.current;
     if (!id) {
       setDetail(null);
-      setSessions([]);
       setMemberships([]);
-      setAudit([]);
       setDetailLoading(false);
       return;
     }
     setDetail(null);
-    setSessions([]);
     setMemberships([]);
-    setAudit([]);
     setDetailLoading(true);
     setError("");
     try {
-      const [user, activeSessions, projectMemberships, events] = await Promise.all([
+      const [user, projectMemberships] = await Promise.all([
         platformApi.getUser(id),
-        platformApi.listSessions(id),
         platformApi.listMemberships(id),
-        platformApi.listUserAudit(id),
       ]);
       if (requestId !== detailRequestId.current) return;
       setDetail(user);
-      setSessions(Array.isArray(activeSessions) ? activeSessions : []);
       setMemberships(Array.isArray(projectMemberships) ? projectMemberships : []);
-      setAudit(Array.isArray(events) ? events : []);
     } catch (reason) {
       if (requestId === detailRequestId.current) setError(messageOf(reason));
     } finally {
@@ -141,7 +139,7 @@ export default function PlatformUsersPanel() {
 
   return (
     <div className="space-y-5">
-      {error && <ErrorState message={error} />}
+      {error && !selectedId && <ErrorState message={error} />}
       <Panel
         title="Tài khoản hệ thống"
         actions={
@@ -193,7 +191,6 @@ export default function PlatformUsersPanel() {
                         options: [
                           { value: "DISABLE", label: "Vô hiệu hóa" },
                           { value: "INVITE", label: "Gửi lại lời mời" },
-                          { value: "REVOKE_SESSIONS", label: "Thu hồi phiên" },
                         ],
                       },
                       { name: "user_ids", label: "Mã tài khoản", required: true, multiline: true },
@@ -281,7 +278,6 @@ export default function PlatformUsersPanel() {
                     title="Xem chi tiết tài khoản"
                     type="button"
                     onClick={() => {
-                      setDetailSection("sessions");
                       setSelectedId(item._id);
                     }}
                   >
@@ -297,35 +293,34 @@ export default function PlatformUsersPanel() {
         )}
       </Panel>
 
-      {detailLoading && (
-        <Panel title="Đang tải chi tiết tài khoản">
-          <div className="p-5">
+      <Modal
+        isOpen={Boolean(selectedId)}
+        onClose={() => setSelectedId("")}
+        ariaLabel="Chi tiết tài khoản"
+        className="max-w-5xl"
+      >
+        <ModalHeader>
+          <ModalTitle>{detail ? `Chi tiết ${detail.email}` : "Đang tải tài khoản"}</ModalTitle>
+        </ModalHeader>
+        {detailLoading ? (
+          <ModalContent>
             <LoadingState />
-          </div>
-        </Panel>
-      )}
-      {detail && (
-        <>
-          <Panel
-            title={
-              <span className="flex min-w-0 items-center justify-between gap-3">
-                <span className="min-w-0 break-words">Chi tiết {detail.email}</span>
-                <button
-                  aria-label={`Đóng chi tiết tài khoản ${detail.email}`}
-                  title="Đóng chi tiết"
-                  className="icon-button h-9 w-9 shrink-0"
-                  type="button"
-                  onClick={() => setSelectedId("")}
-                >
-                  <X aria-hidden="true" size={16} />
-                </button>
-              </span>
-            }
-          >
-            <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-4">
+          </ModalContent>
+        ) : error && !detail ? (
+          <ModalContent>
+            <ErrorState message={error} />
+          </ModalContent>
+        ) : detail ? (
+          <ModalContent>
+            {error && <ErrorState message={error} />}
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <div>
-                <p className="field-label">Tên</p>
-                <p>{detail.full_name}</p>
+                <p className="field-label">Email</p>
+                <p className="break-all">{detail.email}</p>
+              </div>
+              <div>
+                <p className="field-label">Họ tên</p>
+                <p>{detail.full_name || "-"}</p>
               </div>
               <div>
                 <p className="field-label">Vai trò hệ thống</p>
@@ -335,274 +330,218 @@ export default function PlatformUsersPanel() {
                 <p className="field-label">Trạng thái</p>
                 <p>{valueLabel(detail.account_status)}</p>
               </div>
-              <div>
-                <p className="field-label">Phiên đang hoạt động</p>
-                <p>{detail.active_session_count}</p>
-              </div>
             </div>
-            <details className="border-t border-border">
-              <summary className="cursor-pointer px-5 py-4 text-[13px] font-semibold text-ink">
-                Thao tác tài khoản
-              </summary>
-              <div className="grid gap-2 border-t border-border p-5 sm:grid-cols-2 xl:grid-cols-3">
-                <button
-                  className="icon-button h-9 w-9"
-                  type="button"
-                  aria-label={`Sửa hồ sơ ${detail.email}`}
-                  title="Sửa hồ sơ"
-                  disabled={accountActionInFlight}
-                  onClick={() =>
-                    void runAccountAction(async () => {
-                      const answer = await ask({
-                        title: "Cập nhật hồ sơ tài khoản",
-                        confirmLabel: "Lưu",
-                        fields: [
-                          {
-                            name: "full_name",
-                            label: "Họ tên",
-                            required: true,
-                            initialValue: detail.full_name,
-                          },
-                          {
-                            name: "slug",
-                            label: "Tên đăng nhập",
-                            required: true,
-                            initialValue: detail.slug,
-                          },
-                          { name: "reason", label: "Lý do", required: true, multiline: true },
-                        ],
-                      });
-                      if (!answer) return;
-                      try {
-                        await platformApi.updateProfile(detail._id, answer);
-                        await Promise.all([loadUsers(query), loadDetail(detail._id)]);
-                      } catch (reason) {
-                        setError(messageOf(reason));
-                      }
-                    })
-                  }
-                >
-                  <Pencil aria-hidden="true" size={16} />
-                </button>
-                {detail.account_status === "ACTIVE" ? (
-                  <>
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      disabled={accountActionInFlight}
-                      onClick={() =>
-                        mutate(
-                          "Khóa tài khoản",
-                          "Tài khoản sẽ mất quyền truy cập ngay lập tức",
-                          "Khóa",
-                          (reason) => platformApi.lockUser(detail._id, reason),
-                        )
-                      }
-                    >
-                      Khóa
-                    </button>
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      disabled={accountActionInFlight}
-                      onClick={() =>
-                        mutate(
-                          "Vô hiệu hóa tài khoản",
-                          "Toàn bộ phiên đăng nhập sẽ bị thu hồi",
-                          "Vô hiệu hóa",
-                          (reason) => platformApi.disableUser(detail._id, reason),
-                        )
-                      }
-                    >
-                      Vô hiệu hóa
-                    </button>
-                  </>
-                ) : (
+
+            <div
+              className="flex flex-wrap items-center gap-2 border-y border-border py-4"
+              aria-label="Thao tác tài khoản"
+            >
+              <button
+                className="icon-button h-9 w-9"
+                type="button"
+                aria-label="Sửa hồ sơ"
+                title="Sửa hồ sơ"
+                disabled={accountActionInFlight}
+                onClick={() =>
+                  void runAccountAction(async () => {
+                    const answer = await ask({
+                      title: "Cập nhật hồ sơ tài khoản",
+                      confirmLabel: "Lưu",
+                      fields: [
+                        {
+                          name: "full_name",
+                          label: "Họ tên",
+                          required: true,
+                          initialValue: detail.full_name,
+                        },
+                        {
+                          name: "slug",
+                          label: "Tên đăng nhập",
+                          required: true,
+                          initialValue: detail.slug,
+                        },
+                        { name: "reason", label: "Lý do", required: true, multiline: true },
+                      ],
+                    });
+                    if (!answer) return;
+                    try {
+                      await platformApi.updateProfile(detail._id, answer);
+                      await Promise.all([loadUsers(query), loadDetail(detail._id)]);
+                    } catch (reason) {
+                      setError(messageOf(reason));
+                    }
+                  })
+                }
+              >
+                <Pencil aria-hidden="true" size={16} />
+              </button>
+
+              {detail.account_status === "ACTIVE" ? (
+                <>
                   <button
-                    className="secondary-button"
+                    className="icon-button h-9 w-9"
                     type="button"
+                    aria-label="Khóa tài khoản"
+                    title="Khóa tài khoản"
                     disabled={accountActionInFlight}
                     onClick={() =>
                       mutate(
-                        detail.account_status === "LOCKED"
-                          ? "Mở khóa tài khoản"
-                          : "Kích hoạt tài khoản",
-                        "Tài khoản sẽ được phép đăng nhập trở lại",
-                        detail.account_status === "LOCKED" ? "Mở khóa" : "Kích hoạt",
-                        (reason) =>
-                          detail.account_status === "LOCKED"
-                            ? platformApi.unlockUser(detail._id, reason)
-                            : platformApi.enableUser(detail._id, reason),
+                        "Khóa tài khoản",
+                        "Tài khoản sẽ mất quyền truy cập ngay lập tức",
+                        "Khóa",
+                        (reason) => platformApi.lockUser(detail._id, reason),
                       )
                     }
                   >
-                    {detail.account_status === "LOCKED" ? "Mở khóa" : "Kích hoạt"}
+                    <LockKeyhole aria-hidden="true" size={16} />
                   </button>
-                )}
+                  <button
+                    className="icon-button h-9 w-9"
+                    type="button"
+                    aria-label="Vô hiệu hóa tài khoản"
+                    title="Vô hiệu hóa tài khoản"
+                    disabled={accountActionInFlight}
+                    onClick={() =>
+                      mutate(
+                        "Vô hiệu hóa tài khoản",
+                        "Tài khoản sẽ không thể đăng nhập",
+                        "Vô hiệu hóa",
+                        (reason) => platformApi.disableUser(detail._id, reason),
+                      )
+                    }
+                  >
+                    <UserRoundX aria-hidden="true" size={16} />
+                  </button>
+                </>
+              ) : (
                 <button
-                  className="secondary-button"
+                  className="icon-button h-9 w-9"
                   type="button"
+                  aria-label={
+                    detail.account_status === "LOCKED" ? "Mở khóa tài khoản" : "Kích hoạt tài khoản"
+                  }
+                  title={
+                    detail.account_status === "LOCKED" ? "Mở khóa tài khoản" : "Kích hoạt tài khoản"
+                  }
                   disabled={accountActionInFlight}
                   onClick={() =>
                     mutate(
-                      "Buộc đặt lại mật khẩu",
-                      "Toàn bộ phiên cũ sẽ bị thu hồi và quy trình khôi phục sẽ được gửi",
-                      "Khởi tạo",
-                      (reason) => platformApi.forcePasswordReset(detail._id, reason),
-                    )
-                  }
-                >
-                  Buộc đặt lại mật khẩu
-                </button>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  disabled={accountActionInFlight}
-                  onClick={() =>
-                    mutate(
-                      "Gửi lại quy trình kích hoạt",
-                      "Hệ thống sẽ gửi lại hướng dẫn kích hoạt và đặt mật khẩu",
-                      "Gửi",
-                      (reason) => platformApi.resendVerification(detail._id, reason),
-                    )
-                  }
-                >
-                  Gửi lại kích hoạt
-                </button>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={() =>
-                    mutate(
-                      detail.system_role === "ADMIN" ? "Hạ quyền quản trị" : "Cấp quyền quản trị",
-                      "Thay đổi có hiệu lực sau khi toàn bộ phiên hiện tại bị thu hồi",
-                      "Xác nhận",
+                      detail.account_status === "LOCKED"
+                        ? "Mở khóa tài khoản"
+                        : "Kích hoạt tài khoản",
+                      "Tài khoản sẽ được phép đăng nhập trở lại",
+                      detail.account_status === "LOCKED" ? "Mở khóa" : "Kích hoạt",
                       (reason) =>
-                        platformApi.updateSystemRole(
-                          detail._id,
-                          detail.system_role === "ADMIN" ? "USER" : "ADMIN",
-                          reason,
-                        ),
+                        detail.account_status === "LOCKED"
+                          ? platformApi.unlockUser(detail._id, reason)
+                          : platformApi.enableUser(detail._id, reason),
                     )
                   }
                 >
-                  {detail.system_role === "ADMIN" ? "Hạ xuống người dùng" : "Cấp quyền quản trị"}
+                  {detail.account_status === "LOCKED" ? (
+                    <UnlockKeyhole aria-hidden="true" size={16} />
+                  ) : (
+                    <UserCheck aria-hidden="true" size={16} />
+                  )}
                 </button>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  disabled={accountActionInFlight}
-                  onClick={() =>
-                    void runAccountAction(async () => {
-                      const reason = await reasonFor(
-                        "Thu hồi toàn bộ phiên",
-                        "Tài khoản sẽ phải đăng nhập lại trên mọi thiết bị",
-                        "Thu hồi",
-                      );
-                      if (!reason) return;
-                      try {
-                        await platformApi.revokeAllSessions(detail._id);
-                        await loadDetail(detail._id);
-                      } catch (value) {
-                        setError(messageOf(value));
-                      }
-                    })
-                  }
-                >
-                  Thu hồi mọi phiên
-                </button>
-                <button
-                  className="danger-button"
-                  type="button"
-                  disabled={accountActionInFlight}
-                  onClick={() =>
-                    void runAccountAction(async () => {
-                      const answer = await ask({
-                        title: "Ẩn danh và xóa tài khoản",
-                        description: `Nhập chính xác ${detail.email} để xác nhận`,
-                        confirmLabel: "Xóa tài khoản",
-                        danger: true,
-                        fields: [
-                          { name: "confirmation", label: "Email xác nhận", required: true },
-                          { name: "reason", label: "Lý do", required: true, multiline: true },
-                        ],
-                      });
-                      if (!answer) return;
-                      try {
-                        await platformApi.deleteUser(
-                          detail._id,
-                          answer.confirmation,
-                          answer.reason,
-                        );
-                        setSelectedId("");
-                        setDetail(null);
-                        await loadUsers(query);
-                      } catch (reason) {
-                        setError(messageOf(reason));
-                      }
-                    })
-                  }
-                >
-                  Xóa và ẩn danh
-                </button>
-              </div>
-            </details>
-          </Panel>
+              )}
 
-          <SegmentedTabs
-            label="Thông tin tài khoản"
-            value={detailSection}
-            onChange={setDetailSection}
-            tabs={[
-              { id: "sessions", label: "Phiên đăng nhập" },
-              { id: "memberships", label: "Thành viên dự án" },
-              { id: "audit", label: "Nhật ký bảo mật" },
-            ]}
-          />
+              <button
+                className="icon-button h-9 w-9"
+                type="button"
+                aria-label="Buộc đặt lại mật khẩu"
+                title="Buộc đặt lại mật khẩu"
+                disabled={accountActionInFlight}
+                onClick={() =>
+                  mutate(
+                    "Buộc đặt lại mật khẩu",
+                    "Quy trình khôi phục mật khẩu sẽ được gửi",
+                    "Khởi tạo",
+                    (reason) => platformApi.forcePasswordReset(detail._id, reason),
+                  )
+                }
+              >
+                <KeyRound aria-hidden="true" size={16} />
+              </button>
+              <button
+                className="icon-button h-9 w-9"
+                type="button"
+                aria-label="Gửi lại quy trình kích hoạt"
+                title="Gửi lại quy trình kích hoạt"
+                disabled={accountActionInFlight}
+                onClick={() =>
+                  mutate(
+                    "Gửi lại quy trình kích hoạt",
+                    "Hệ thống sẽ gửi lại hướng dẫn kích hoạt",
+                    "Gửi",
+                    (reason) => platformApi.resendVerification(detail._id, reason),
+                  )
+                }
+              >
+                <MailCheck aria-hidden="true" size={16} />
+              </button>
+              <button
+                className="icon-button h-9 w-9"
+                type="button"
+                aria-label={
+                  detail.system_role === "ADMIN" ? "Hạ quyền quản trị" : "Cấp quyền quản trị"
+                }
+                title={detail.system_role === "ADMIN" ? "Hạ quyền quản trị" : "Cấp quyền quản trị"}
+                disabled={accountActionInFlight}
+                onClick={() =>
+                  mutate(
+                    detail.system_role === "ADMIN" ? "Hạ quyền quản trị" : "Cấp quyền quản trị",
+                    "Thay đổi vai trò hệ thống của tài khoản",
+                    "Xác nhận",
+                    (reason) =>
+                      platformApi.updateSystemRole(
+                        detail._id,
+                        detail.system_role === "ADMIN" ? "USER" : "ADMIN",
+                        reason,
+                      ),
+                  )
+                }
+              >
+                {detail.system_role === "ADMIN" ? (
+                  <ShieldOff aria-hidden="true" size={16} />
+                ) : (
+                  <Shield aria-hidden="true" size={16} />
+                )}
+              </button>
+              <button
+                className="icon-button h-9 w-9 text-danger"
+                type="button"
+                aria-label="Xóa và ẩn danh tài khoản"
+                title="Xóa và ẩn danh tài khoản"
+                disabled={accountActionInFlight}
+                onClick={() =>
+                  void runAccountAction(async () => {
+                    const answer = await ask({
+                      title: "Ẩn danh và xóa tài khoản",
+                      description: `Nhập chính xác ${detail.email} để xác nhận`,
+                      confirmLabel: "Xóa tài khoản",
+                      danger: true,
+                      fields: [
+                        { name: "confirmation", label: "Email xác nhận", required: true },
+                        { name: "reason", label: "Lý do", required: true, multiline: true },
+                      ],
+                    });
+                    if (!answer) return;
+                    try {
+                      await platformApi.deleteUser(detail._id, answer.confirmation, answer.reason);
+                      setSelectedId("");
+                      setDetail(null);
+                      await loadUsers(query);
+                    } catch (reason) {
+                      setError(messageOf(reason));
+                    }
+                  })
+                }
+              >
+                <Trash2 aria-hidden="true" size={16} />
+              </button>
+            </div>
 
-          {detailSection === "sessions" && (
-            <Panel title="Phiên đăng nhập">
-              <DataTable
-                items={sessions}
-                empty="Không có phiên đăng nhập"
-                columns={[
-                  { key: "_id", label: "Mã phiên" },
-                  { key: "ip", label: "Địa chỉ IP" },
-                  {
-                    key: "created_at",
-                    label: "Thời điểm tạo",
-                    render: (item) => formatDate(item.created_at),
-                  },
-                  {
-                    key: "revoke",
-                    label: "Thao tác",
-                    render: (item) => (
-                      <button
-                        className="secondary-button"
-                        type="button"
-                        disabled={Boolean(item.revoked_at) || accountActionInFlight}
-                        onClick={() =>
-                          void runAccountAction(async () => {
-                            setError("");
-                            try {
-                              await platformApi.revokeSession(detail._id, item._id);
-                              await loadDetail(detail._id);
-                            } catch (reason) {
-                              setError(messageOf(reason));
-                            }
-                          })
-                        }
-                      >
-                        {item.revoked_at ? "Đã thu hồi" : "Thu hồi"}
-                      </button>
-                    ),
-                  },
-                ]}
-              />
-            </Panel>
-          )}
-
-          {detailSection === "memberships" && (
             <Panel title="Thành viên dự án">
               <DataTable
                 items={memberships}
@@ -614,37 +553,13 @@ export default function PlatformUsersPanel() {
                     label: "Vai trò",
                     render: (item) => valueLabel(item.project_role),
                   },
-                  {
-                    key: "status",
-                    label: "Trạng thái",
-                    render: (item) => valueLabel(item.status),
-                  },
+                  { key: "status", label: "Trạng thái", render: (item) => valueLabel(item.status) },
                 ]}
               />
             </Panel>
-          )}
-          {detailSection === "audit" && (
-            <Panel title="Nhật ký bảo mật">
-              <DataTable
-                items={audit}
-                empty="Không có sự kiện"
-                columns={[
-                  {
-                    key: "action",
-                    label: "Sự kiện",
-                    render: (item) => valueLabel(item.action),
-                  },
-                  {
-                    key: "timestamp",
-                    label: "Thời điểm",
-                    render: (item) => formatDate(item.timestamp),
-                  },
-                ]}
-              />
-            </Panel>
-          )}
-        </>
-      )}
+          </ModalContent>
+        ) : null}
+      </Modal>
       {dialog}
     </div>
   );

@@ -278,16 +278,6 @@ class IdentityRepository:
         )
 
     @staticmethod
-    async def count_sessions(query: dict):
-        return await mongo.count_documents("sessions", query)
-
-    @staticmethod
-    async def list_sessions(query: dict, projection: dict | None = None):
-        return await mongo.find("sessions", query, projection).sort(
-            "created_at", -1
-        ).to_list(length=None)
-
-    @staticmethod
     async def retain_session_cache(user_id: str, session_id: str):
         cache_key = f"user_sessions:{user_id}"
         await redis.delete(cache_key)

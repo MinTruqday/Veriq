@@ -3,12 +3,14 @@ from fastapi.responses import StreamingResponse
 
 from src.core.auth import CurrentUser, get_current_user
 from src.core.common import envelope, get_project
+from src.modules.execution.services.execution_assistance import generate_execution_assistance, latest_execution_assistance
 from src.modules.execution.services.test_run_execution import link_existing_defect_to_result
 from src.modules.execution.services.test_plan import (
     approve_test_plan_record,
     archive_test_plan_record,
     clone_test_plan_record,
     create_test_plan_record,
+    generate_test_plan_draft_suggestion,
     get_test_plan_record,
     list_test_plan_records,
     request_test_plan_revision,
@@ -56,9 +58,11 @@ from src.modules.quality.services.defect_records import (
     list_defect_records,
 )
 from src.modules.quality.services.defect_trace import (
+    list_defect_trace_candidates, list_defect_trace_suggestions, suggest_defect_trace_record,
     update_defect_trace_record,
 )
 from src.schemas.contracts.defects import (
+    BugTraceSuggestionInput,
     DefectCreate,
     DefectPatch,
     DefectRetestInput,
@@ -79,11 +83,20 @@ from src.schemas.contracts.execution import (
     TestSuiteCreate,
     TestSuitePatch,
 )
-from src.schemas.contracts.planning import TestPlanCreate
+from src.schemas.contracts.planning import TestPlanAIDraftInput, TestPlanCreate
 from src.schemas.contracts.project import ProjectArchiveInput
 from src.schemas.contracts.requirements import ReviewTransitionInput
 
 router = APIRouter(prefix="/kiem-thu", tags=["Thực thi kiểm thử"])
+
+
+@router.post("/du-an/{project_id}/ke-hoach-kiem-thu/ai/de-xuat")
+async def suggest_test_plan_draft(
+    project_id: str,
+    payload: TestPlanAIDraftInput,
+    user: CurrentUser = Depends(get_current_user),
+):
+    return envelope(await generate_test_plan_draft_suggestion(project_id, payload, user))
 
 
 @router.post("/ke-hoach-kiem-thu", status_code=201)
@@ -337,6 +350,30 @@ async def link_test_result_defect(
     return envelope(updated, revision=updated["revision"])
 
 
+@router.get(
+    "/du-an/{project_id}/lan-chay-kiem-thu/{run_id}/ket-qua/{result_id}/ai/phan-tich"
+)
+async def get_execution_assistance(
+    project_id: str,
+    run_id: str,
+    result_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    return envelope(await latest_execution_assistance(project_id, run_id, result_id, user))
+
+
+@router.post(
+    "/du-an/{project_id}/lan-chay-kiem-thu/{run_id}/ket-qua/{result_id}/ai/phan-tich"
+)
+async def create_execution_assistance(
+    project_id: str,
+    run_id: str,
+    result_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    return envelope(await generate_execution_assistance(project_id, run_id, result_id, user))
+
+
 @router.get("/lan-chay-kiem-thu/{run_id}")
 async def get_test_run(run_id: str, user: CurrentUser = Depends(get_current_user)):
     return envelope(await get_test_run_record(run_id, user))
@@ -504,6 +541,32 @@ async def defect_detail(
 ):
     defect = await get_defect_record(defect_id, project_id, user)
     return envelope(defect, revision=defect.get("revision", 1))
+
+
+@router.post("/du-an/{project_id}/ai/loi/{defect_id}/goi-y-truy-vet", status_code=201)
+async def suggest_defect_trace(
+    project_id: str,
+    defect_id: str,
+    payload: BugTraceSuggestionInput,
+    user: CurrentUser = Depends(get_current_user),
+):
+    return envelope(await suggest_defect_trace_record(project_id, defect_id, payload, user))
+
+
+@router.get("/du-an/{project_id}/ai/goi-y-truy-vet")
+async def list_automated_defect_trace_suggestions(
+    project_id: str,
+    defect_ids: list[str] = Query(default=[], max_length=500),
+    user: CurrentUser = Depends(get_current_user),
+):
+    return envelope(await list_defect_trace_suggestions(project_id, defect_ids, user))
+
+
+@router.get("/loi/{defect_id}/ung-vien-truy-vet", deprecated=True)
+async def find_defect_trace_candidates(
+    defect_id: str, user: CurrentUser = Depends(get_current_user)
+):
+    return envelope(await list_defect_trace_candidates(defect_id, user))
 
 
 @router.patch("/du-an/{project_id}/loi/{defect_id}/truy-vet")

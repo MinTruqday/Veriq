@@ -4,6 +4,7 @@ from src.core.auth import CurrentUser, get_current_user
 from src.core.common import envelope
 from src.schemas.contracts.design import (
     DataSetArchive,
+    DataSetAISuggestionInput,
     DataSetBind,
     DataSetCreate,
     DataSetPreview,
@@ -28,6 +29,11 @@ async def list_data_sets(
     user: CurrentUser = Depends(get_current_user),
 ):
     return envelope(await DataSetService.list(project_id, q, limit, user))
+
+
+@router.post("/du-an/{project_id}/du-lieu-kiem-thu/ai/de-xuat")
+async def suggest_data_set(project_id: str, payload: DataSetAISuggestionInput, user: CurrentUser = Depends(get_current_user)):
+    return envelope(await DataSetService.suggest(project_id, payload, user))
 
 
 @router.get("/du-lieu-kiem-thu/{data_set_id}", openapi_extra={"x-function-ids": ["DATA-01"]})

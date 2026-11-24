@@ -17,6 +17,87 @@ def serialized_content(content):
     return json.dumps(content, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
+def acceptance_criterion_text(item):
+    return str(item.get("plain_text") or plain_text(item.get("content_doc", {})) or "").strip()
+
+
+def normalized_business_rule_lines(values):
+    normalized = []
+    for index, value in enumerate(values or [], 1):
+        text = str(value).strip()
+        if not text:
+            continue
+        prefix, separator, remainder = text.partition(":")
+        identity = prefix.upper()
+        prefix_length = len('BR-')
+        if (
+            separator
+            and identity.startswith('BR-')
+            and identity[prefix_length:].isdigit()
+        ):
+            normalized.append(f"{identity}: {remainder.strip()}")
+        else:
+            normalized.append(f"{'BR-'}{index:02d}: {text}")
+    return normalized
+
+
+def prepare_requirement_ai_suggestion(candidate, acceptance_criteria):
+    suggestion = dict(candidate)
+    patch = {}
+
+    for source, target in {
+        "revised_business_rules": "business_rules",
+        "revised_dependencies": "dependencies",
+    }.items():
+        if suggestion.get(source) is not None:
+            patch[target] = (
+                normalized_business_rule_lines(suggestion[source])
+                if source == "revised_business_rules"
+                else suggestion[source]
+            )
+    if suggestion.get("revised_acceptance_criteria") is not None:
+        existing = {item.get("key"): item for item in acceptance_criteria}
+        patch["acceptance_criteria"] = [
+            {
+                "key": item["key"],
+                "content_doc": text_doc(item["content"]),
+                "status": existing.get(item["key"], {}).get(
+                    "status", 'draft'
+                ),
+                "source_span": existing.get(item["key"], {}).get("source_span"),
+            }
+            for item in suggestion["revised_acceptance_criteria"]
+        ]
+    suggestion["patch"] = patch
+    return suggestion
+
+
+def requirement_suggestion_changes(version, suggestion, acceptance_criteria=None):
+    current_title = str(version.get("title") or "").strip()
+    current_content = str(
+        version.get("plain_text_projection") or plain_text(version.get("content_doc", {})) or ""
+    ).strip()
+    revised_title = str(suggestion.get("revised_title") or "").strip()
+    revised_content = str(suggestion.get("revised_content") or "").strip()
+    patch = suggestion.get("patch") if isinstance(suggestion.get("patch"), dict) else {}
+    current_criteria = [acceptance_criterion_text(item) for item in (acceptance_criteria or [])]
+    proposed_criteria = [
+        acceptance_criterion_text(item) for item in patch.get("acceptance_criteria", [])
+    ]
+    return bool(
+        revised_title
+        and revised_title != current_title
+        or revised_content
+        and revised_content != current_content
+        or "business_rules" in patch
+        and patch["business_rules"] != version.get("business_rules", [])
+        or "dependencies" in patch
+        and patch["dependencies"] != version.get("dependencies", [])
+        or "acceptance_criteria" in patch
+        and proposed_criteria != current_criteria
+    )
+
+
 def prepare_requirement_candidates(job_id, candidates):
     prepared = []
     for index, value in enumerate(candidates):

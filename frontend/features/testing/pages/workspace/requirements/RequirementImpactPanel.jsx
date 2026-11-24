@@ -234,12 +234,18 @@ export default function RequirementImpactPanel({ version, project }) {
                     <p className="font-medium">{plan.name}</p>
                     <p className="mt-1">{labels[plan.classification] || "Chưa có đánh giá"}</p>
                     {plan.reason && <p className="mt-1 whitespace-pre-wrap">{plan.reason}</p>}
-                    {plan.suggestion && <p className="mt-1 whitespace-pre-wrap">Đề xuất: {plan.suggestion}</p>}
+                    {plan.suggestion && (
+                      <p className="mt-1 whitespace-pre-wrap">Đề xuất: {plan.suggestion}</p>
+                    )}
                     {plan.evidence?.plan_quote && (
                       <details className="mt-2">
                         <summary className="cursor-pointer">Căn cứ</summary>
-                        <p className="mt-2">Yêu cầu trước: {plan.evidence.requirement_before_quote || "-"}</p>
-                        <p className="mt-2">Yêu cầu sau: {plan.evidence.requirement_after_quote || "-"}</p>
+                        <p className="mt-2">
+                          Yêu cầu trước: {plan.evidence.requirement_before_quote || "-"}
+                        </p>
+                        <p className="mt-2">
+                          Yêu cầu sau: {plan.evidence.requirement_after_quote || "-"}
+                        </p>
                         <p className="mt-2">Kế hoạch: {plan.evidence.plan_quote}</p>
                       </details>
                     )}

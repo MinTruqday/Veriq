@@ -36,6 +36,7 @@ from src.modules.requirements.services.requirement_documents import (
     require_document_access,
     restore_requirement_document_record,
     retry_requirement_document_parse_record,
+    start_requirement_document_ai_processing,
     update_requirement_document_access,
     update_requirement_document_ai_read,
     update_requirement_document_record,
@@ -46,6 +47,9 @@ from src.modules.requirements.services.requirement_import import (
     safe_requirement_filename,
     source_document_text,
     supported_requirement_formats,
+)
+from src.modules.requirements.services.requirement_import_workflow import (
+    extract_requirement_candidates,
 )
 from src.modules.requirements.services.requirement_sources import (
     archive_requirement_source,
@@ -62,8 +66,10 @@ from src.schemas.contracts.requirements import (
     KnowledgeSourceCreate,
     RequirementDocumentAccessPatch,
     RequirementDocumentAIReadPatch,
+    RequirementDocumentAIStart,
     RequirementDocumentPatch,
     RequirementDocumentSummaryRequest,
+    RequirementExtractionInput,
     RequirementParseRetry,
 )
 
@@ -551,6 +557,16 @@ async def update_requirement_document_ai_read_access(
     return envelope(result.data, revision=result.data["revision"])
 
 
+@router.post("/tai-lieu-yeu-cau/{document_id}/chay-ai", status_code=202)
+async def start_requirement_document_ai(
+    document_id: str,
+    payload: RequirementDocumentAIStart,
+    user: CurrentUser = Depends(get_current_user),
+):
+    result = await start_requirement_document_ai_processing(document_id, payload, user)
+    return envelope(result, status=result["status"])
+
+
 @router.post("/tai-lieu-yeu-cau/{document_id}/lap-chi-muc-lai", status_code=202)
 async def reindex_requirement_document(
     document_id: str, user: CurrentUser = Depends(get_current_user)
@@ -626,3 +642,13 @@ async def retry_requirement_document_parse(
         status=result.status,
         degraded_mode=result.degraded_mode,
     )
+
+
+@router.post("/tai-lieu-yeu-cau/{document_id}/trich-xuat", status_code=201)
+async def extract_requirement_document(
+    document_id: str,
+    payload: RequirementExtractionInput,
+    user: CurrentUser = Depends(get_current_user),
+):
+    job = await extract_requirement_candidates(document_id, payload, user)
+    return envelope(job, revision=job.get("revision", 1))

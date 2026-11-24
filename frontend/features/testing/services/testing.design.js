@@ -294,6 +294,11 @@ export const designTestingApi = {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
+  startRequirementDocumentAI: (id, payload) =>
+    testingRequest(`/tai-lieu-yeu-cau/${id}/chay-ai`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   reindexRequirementDocument: (id) =>
     testingRequest(`/tai-lieu-yeu-cau/${id}/lap-chi-muc-lai`, { method: "POST" }),
   reindexKnowledgeSource: (id) =>
@@ -314,6 +319,18 @@ export const designTestingApi = {
     testingRequest(`/tai-lieu-yeu-cau/${id}/thu-lai-phan-tich`, {
       method: "POST",
       body: JSON.stringify({ expected_revision: revision }),
+    }),
+  extractRequirementDocument: (
+    id,
+    idempotencyKey = crypto.randomUUID(),
+    includeBusinessRules = true,
+  ) =>
+    testingRequest(`/tai-lieu-yeu-cau/${id}/trich-xuat`, {
+      method: "POST",
+      body: JSON.stringify({
+        idempotency_key: idempotencyKey,
+        include_business_rules: includeBusinessRules,
+      }),
     }),
   saveRequirement: (projectId, requirementId, payload) =>
     testingRequest(`/du-an/${projectId}/yeu-cau/${requirementId}/luu`, {

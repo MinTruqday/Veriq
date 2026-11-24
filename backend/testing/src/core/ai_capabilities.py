@@ -18,8 +18,6 @@ stream_sink: ContextVar[Callable[[dict], Awaitable[None]] | None] = ContextVar(
 )
 logger = logging.getLogger(__name__)
 
-SUPPORTED_AI_CAPABILITIES = frozenset({"impact_analysis"})
-
 
 async def _record_ai_request(capability, project_id, result, evidence_count, request_id=None):
     if database.client is None:
@@ -147,11 +145,6 @@ async def request_ai_capability(
     request_id=None,
     output_language=None,
 ):
-    if capability not in SUPPORTED_AI_CAPABILITIES:
-        raise HTTPException(
-            status_code=410,
-            detail={"code": "AI_CAPABILITY_REMOVED", "capability": capability},
-        )
     started_at = time.perf_counter()
     try:
         resolved_output_language = output_language

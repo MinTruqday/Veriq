@@ -3,20 +3,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { testingApi } from "../services/testing.service";
 import { messageOf } from "../lib/testing";
 
-const RETAINED_AI_PERMISSIONS = new Set(["ai.ask_project", "ai.run_impact"]);
-
-function withCurrentAIPermissions(project) {
-  if (!project) return project;
-  return {
-    ...project,
-    current_permissions: (project.current_permissions || []).filter((permission) => {
-      if (permission === "analytics.ai.read") return false;
-      if (!permission.startsWith("ai.")) return true;
-      return RETAINED_AI_PERMISSIONS.has(permission);
-    }),
-  };
-}
-
 export function useProject(projectId) {
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -34,7 +20,7 @@ export function useProject(projectId) {
     setError("");
     setForbidden(false);
     try {
-      const value = withCurrentAIPermissions(await testingApi.getProject(projectId));
+      const value = await testingApi.getProject(projectId);
       projectRef.current = value;
       setProject(value);
       return true;

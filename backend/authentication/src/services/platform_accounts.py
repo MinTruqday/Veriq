@@ -8,7 +8,6 @@ from fastapi import HTTPException
 from src.clients.service_gateway import internal_request
 from src.core.dependency import CurrentUser
 from src.repositories.identity import IdentityRepository
-from src.repositories.platform import PlatformRepository
 from src.schemas.identity import SystemRole, UserCreate
 from src.schemas.platform import (
     AccountUpdate,
@@ -109,9 +108,6 @@ class PlatformAccountService:
     @staticmethod
     async def detail(user_id: str):
         account = await account_or_404(user_id)
-        session_count = await IdentityRepository.count_sessions(
-            {"user_id": user_id, "revoked_at": None}
-        )
         return {
             **account_view(account),
             "account_status": account.get(
@@ -120,7 +116,6 @@ class PlatformAccountService:
                 if account.get("is_active", True)
                 else "DISABLED",
             ),
-            "active_session_count": session_count,
             "is_verified": account.get("is_verified", False),
             "last_password_change": account.get("last_password_change"),
         }
@@ -212,39 +207,6 @@ class PlatformAccountService:
         return result
 
     @staticmethod
-    async def sessions(user_id: str, current_user: CurrentUser):
-        await account_or_404(user_id)
-        sessions = await IdentityRepository.list_sessions(
-            {"user_id": user_id}, {"refresh_token_hash": 0}
-        )
-        await record_audit(
-            current_user, "ADMIN_USER_SESSIONS_VIEWED", user_id, "security review"
-        )
-        return sessions
-
-    @staticmethod
-    async def revoke_session(user_id: str, session_id: str, current_user: CurrentUser):
-        await account_or_404(user_id)
-        await IdentityRepository.revoke_session(user_id, session_id)
-        await record_audit(
-            current_user,
-            "ADMIN_USER_SESSION_REVOKED",
-            user_id,
-            "security action",
-            {"session_id": session_id},
-        )
-        return {"revoked": True, "session_id": session_id}
-
-    @staticmethod
-    async def revoke_all_sessions(user_id: str, current_user: CurrentUser):
-        await account_or_404(user_id)
-        await IdentityRepository.revoke_all_sessions(user_id)
-        await record_audit(
-            current_user, "ADMIN_USER_SESSIONS_REVOKED", user_id, "security action"
-        )
-        return {"revoked": True}
-
-    @staticmethod
     async def update_system_role(
         user_id: str, payload: SystemRoleUpdate, current_user: CurrentUser
     ):
@@ -282,12 +244,3 @@ class PlatformAccountService:
             current_user, "ADMIN_USER_MEMBERSHIPS_VIEWED", user_id, "support metadata"
         )
         return response.json()
-
-    @staticmethod
-    async def audit(user_id: str, limit: int):
-        account = await account_or_404(user_id)
-        events = await PlatformRepository.list_audit_logs(
-            {"$or": [{"target_user_id": user_id}, {"actor_email": account.get("email")}]},
-            limit,
-        )
-        return [{**event, "_id": str(event["_id"])} for event in events]

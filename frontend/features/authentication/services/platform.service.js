@@ -67,10 +67,6 @@ export const platformApi = {
       method: "PATCH",
       body: JSON.stringify({ system_role: systemRole, reason }),
     }),
-  listSessions: (id) => platformRequest(`/tai-khoan/${id}/phien`),
-  revokeSession: (id, sessionId) =>
-    platformRequest(`/tai-khoan/${id}/phien/${sessionId}`, { method: "DELETE" }),
-  revokeAllSessions: (id) => platformRequest(`/tai-khoan/${id}/phien`, { method: "DELETE" }),
   resendVerification: (id, reason) =>
     platformRequest(`/tai-khoan/${id}/gui-lai-xac-minh`, {
       method: "POST",
@@ -92,7 +88,6 @@ export const platformApi = {
       body: JSON.stringify({ confirmation: "CONFIRM" }),
     }),
   listMemberships: (id) => platformRequest(`/tai-khoan/${id}/vai-tro-du-an`),
-  listUserAudit: (id) => platformRequest(`/tai-khoan/${id}/nhat-ky`),
   listProjects: (search = "") =>
     platformRequest(`/du-an${search ? `?search=${encodeURIComponent(search)}` : ""}`),
   getProject: (id) => platformRequest(`/du-an/${id}`),

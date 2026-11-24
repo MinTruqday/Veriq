@@ -1,6 +1,9 @@
 import { aiRunRequest, downloadTestingFile, listQuery, testingRequest } from "./testing.transport";
 
 export const projectTestingApi = {
+  getProjectRolePermissions: () => testingRequest("/quan-tri/vai-tro-du-an"),
+  updateProjectRolePermissions: (payload) =>
+    testingRequest("/quan-tri/vai-tro-du-an", { method: "PUT", body: JSON.stringify(payload) }),
   getProjectCapabilities: () => testingRequest("/du-an/kha-nang"),
   listEffectiveAccess: (projectId) =>
     testingRequest(`/du-an/${encodeURIComponent(projectId)}/quyen-hieu-luc`),

@@ -1,6 +1,8 @@
 # Framework Veriq
 
-Luồng nghiệp vụ hiện hành được mô tả trong [Luồng nghiệp vụ kiểm thử](LUONG_NGHIEP_VU_KIEM_THU.md). AI Agent bắt đầu từ thao tác do người dùng khởi tạo; queue/worker chỉ thực hiện công việc đã được yêu cầu và không tự khởi chạy nghiệp vụ khi dữ liệu dự án thay đổi. Các ghi chép cũ bên dưới đã được cập nhật theo quy tắc này.
+Định hướng sản phẩm, quyết định giữ/gộp/tùy chọn/bỏ và các mâu thuẫn tài liệu được ghi trong [Phân tích sản phẩm Veriq](PHAN_TICH_SAN_PHAM_VERIQ.md). Đọc tài liệu đó trước khi thay đổi luồng hoặc thêm chức năng; tài liệu này tập trung vào kiến trúc và hành vi code đã đối chiếu.
+
+Luồng nghiệp vụ đề xuất được ghi trong [Luồng nghiệp vụ kiểm thử](LUONG_NGHIEP_VU_KIEM_THU.md), nhưng cần đối chiếu với các quyết định đã chốt và danh sách mâu thuẫn trong tài liệu phân tích sản phẩm trước khi dùng làm đặc tả. AI Agent bắt đầu từ thao tác do người dùng khởi tạo; queue/worker chỉ thực hiện công việc đã được yêu cầu và không tự khởi chạy nghiệp vụ khi dữ liệu dự án thay đổi.
 
 ## Mục đích và căn cứ
 

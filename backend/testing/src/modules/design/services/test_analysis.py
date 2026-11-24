@@ -1,3 +1,5 @@
+import hashlib
+import json
 import re
 
 from fastapi import HTTPException
@@ -20,6 +22,7 @@ from src.core.common import (
     page_payload,
 )
 from src.core.database import database
+from src.core.ai_capabilities import ai_contract_metadata, request_ai_capability
 from src.core.human_decisions import require_independent_review
 from src.modules.design.services.test_analysis_basis import (
     deterministic_testability_findings,
@@ -35,8 +38,54 @@ from src.schemas.test_analysis import TestConditionCreate, condition_hash, condi
 __all__ = ["list_test_basis"]
 
 
+def _analysis_request_hash(payload, user, basis_snapshots):
+    request = payload.model_dump(mode="json", exclude={"idempotency_key"})
+    request["actor_id"] = user.id
+    request["basis_sources"] = [
+        {"resolved_id": item.get("resolved_id"), "source_hash": item.get("source_hash")}
+        for item in basis_snapshots
+    ]
+    canonical = json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _verify_analysis_replay(existing, payload, user, basis_snapshots):
+    if not existing.get("created_by"):
+        raise HTTPException(409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if existing["created_by"] != user.id:
+        raise HTTPException(403, detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH"})
+    request_hash = existing.get("idempotency_request_hash")
+    if not request_hash:
+        raise HTTPException(409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if request_hash != _analysis_request_hash(payload, user, basis_snapshots):
+        raise HTTPException(409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
+
+
+async def list_ai_analysis_results(project_id, user, limit=100, idempotency_key=None):
+    if idempotency_key:
+        await get_project(project_id, user, "testanalysis.run_ai")
+        if (
+            not getattr(user, "_ai_capability_run_id", "")
+            or getattr(user, "_ai_capability_trigger", "") != "REQUIREMENT_CHANGED"
+        ):
+            raise HTTPException(403, detail={"code": "VERIFIED_REQUIREMENT_EVENT_REQUIRED"})
+        result = await test_analysis_repository.find_ai_result(project_id, idempotency_key)
+        if result and (
+            result.get("created_by") != user.id
+            or not result.get("source_event_id")
+            or result.get("source_event_revision") is None
+        ):
+            raise HTTPException(404, detail={"code": "ENTITY_NOT_FOUND"})
+        if result:
+            result.pop("basis_snapshots", None)
+            result.pop("created_by", None)
+        return result
+    await get_project(project_id, user, "testanalysis.read")
+    return await test_analysis_repository.list_ai_results(project_id, limit)
+
+
 async def get_condition_for_user(condition_id, user, permission=None):
-    
+
     condition = await test_condition_repository.get(condition_id)
     if not condition:
         raise HTTPException(
@@ -74,7 +123,7 @@ async def list_conditions(project_id, user, q, status, risk, testability_status,
 
 
 async def create_condition(project_id, payload, user):
-    
+
     await get_project(project_id, user, 'testcondition.create')
     basis_snapshots = await resolve_basis(project_id, payload.basis_refs, user)
     timestamp = now()
@@ -114,7 +163,7 @@ async def create_condition(project_id, payload, user):
 
 
 async def update_condition(condition_id, payload, user):
-    
+
     condition = await get_condition_for_user(
         condition_id, user, 'testcondition.update'
     )
@@ -154,7 +203,7 @@ async def update_condition(condition_id, payload, user):
 
 
 async def transition_condition(condition_id, payload, user, action):
-    
+
     transition = {'submit': {'sources': ['DRAFT'],
             'target': 'IN_REVIEW',
             'permission': 'testcondition.review',
@@ -238,7 +287,7 @@ async def transition_condition(condition_id, payload, user, action):
 
 
 async def resolve_finding(condition_id, finding_id, payload, user):
-    
+
     condition = await get_condition_for_user(
         condition_id, user, 'testanalysis.resolve_finding'
     )
@@ -300,6 +349,229 @@ async def resolve_finding(condition_id, finding_id, payload, user):
         },
     )
     return updated
+
+
+async def run_ai_analysis(project_id, payload, user):
+
+    await get_project(project_id, user, 'testanalysis.run_ai')
+    event_scoped = bool(payload.source_event_id or payload.source_event_revision)
+    event_trigger = str(getattr(user, "_ai_capability_trigger", "") or "")
+    source_version_id = None
+    if event_scoped and (
+        not payload.source_event_id
+        or payload.source_event_revision is None
+        or not getattr(user, "_ai_capability_run_id", "")
+        or event_trigger != "REQUIREMENT_CHANGED"
+        or len(payload.basis_refs) != 1
+        or payload.basis_refs[0].artifact_type != "REQUIREMENT_VERSION"
+    ):
+        raise HTTPException(403, detail={"code": "VERIFIED_REQUIREMENT_EVENT_REQUIRED"})
+    if event_scoped:
+        source_version_id = str(
+            payload.basis_refs[0].artifact_version_id or payload.basis_refs[0].artifact_id
+        )
+        expected_event_id = (
+            f"requirement-version:{source_version_id}:"
+            f"{payload.source_event_revision}:BASELINED"
+        )
+        if payload.source_event_id != expected_event_id:
+            raise HTTPException(409, detail={"code": "REQUIREMENT_EVENT_SOURCE_CHANGED"})
+        expected_key = "test-condition-baseline:" + hashlib.sha256(
+            f"{payload.source_event_id}:{source_version_id}".encode("utf-8")
+        ).hexdigest()
+        if payload.idempotency_key != expected_key:
+            raise HTTPException(422, detail={"code": "TEST_CONDITION_EVENT_KEY_INVALID"})
+    basis_snapshots = await resolve_basis(project_id, payload.basis_refs, user)
+    if not event_scoped and any(
+        item.get("artifact_type") == "REQUIREMENT_VERSION"
+        and item.get("status") not in {"READY", "BASELINED"}
+        for item in basis_snapshots
+    ):
+        raise HTTPException(409, detail={"code": "TEST_BASIS_NOT_BASELINED"})
+    if event_scoped:
+        version = await requirement_analysis_repository.find_version(
+            source_version_id, project_id
+        )
+        requirement = (
+            await requirement_analysis_repository.find_requirement(
+                str(version.get("requirement_id") or ""), project_id
+            )
+            if version
+            else None
+        )
+        if (
+            not version
+            or version.get("status") != "BASELINED"
+            or version.get("revision") != payload.source_event_revision
+            or not requirement
+            or requirement.get("current_version_id") != source_version_id
+        ):
+            raise HTTPException(409, detail={"code": "REQUIREMENT_EVENT_SOURCE_CHANGED"})
+        initial_source_hash = basis_snapshots[0].get("source_hash")
+    existing = await test_analysis_repository.find_ai_result(
+        project_id, payload.idempotency_key
+    )
+    if existing:
+        if existing.get("result_type") != 'TEST_CONDITION_CANDIDATES':
+            raise HTTPException(status_code=409, detail={"code": 'IDEMPOTENCY_KEY_REUSED'})
+        if event_scoped and (
+            existing.get("source_event_id") != payload.source_event_id
+            or existing.get("source_event_revision") != payload.source_event_revision
+            or existing.get("requirement_version_id") != source_version_id
+        ):
+            raise HTTPException(409, detail={"code": "TEST_CONDITION_EVENT_KEY_CONFLICT"})
+        _verify_analysis_replay(existing, payload, user, basis_snapshots)
+        return existing
+    evidence = [
+        {
+            "artifact_type": item["artifact_type"],
+            "artifact_id": item["artifact_id"],
+            "artifact_version_id": item.get("artifact_version_id") or item["resolved_id"],
+            "authority": 'PROJECT_BASELINE',
+            "text": item["text"],
+        }
+        for item in basis_snapshots
+    ]
+    instruction = json.dumps({"user_instruction": payload.instruction}, ensure_ascii=False)
+    ai_result = await request_ai_capability(
+        "test_condition_generation", project_id, instruction, evidence
+    )
+    if ai_result.get("status") != "SUCCESS" or ai_result.get("degraded_mode"):
+        raise HTTPException(
+            503,
+            detail={"code": "AI_PROVIDER_UNAVAILABLE", "retryable": True},
+        )
+    if event_scoped:
+        current_version = await requirement_analysis_repository.find_version(
+            source_version_id, project_id
+        )
+        current_requirement = (
+            await requirement_analysis_repository.find_requirement(
+                str(current_version.get("requirement_id") or ""), project_id
+            )
+            if current_version
+            else None
+        )
+        current_basis = await resolve_basis(project_id, payload.basis_refs, user)
+        if (
+            not current_version
+            or current_version.get("status") != "BASELINED"
+            or current_version.get("revision") != payload.source_event_revision
+            or not current_requirement
+            or current_requirement.get("current_version_id") != source_version_id
+            or current_basis[0].get("source_hash") != initial_source_hash
+        ):
+            raise HTTPException(409, detail={"code": "REQUIREMENT_EVENT_SOURCE_CHANGED"})
+        basis_snapshots = current_basis
+    else:
+        current_basis = await resolve_basis(project_id, payload.basis_refs, user)
+        if len(current_basis) != len(basis_snapshots) or any(
+            current.get("resolved_id") != initial.get("resolved_id")
+            or current.get("source_hash") != initial.get("source_hash")
+            or current.get("text") != initial.get("text")
+            for initial, current in zip(basis_snapshots, current_basis)
+        ):
+            raise HTTPException(409, detail={"code": "TEST_BASIS_SOURCE_CHANGED"})
+        basis_snapshots = current_basis
+    suggestions = ai_result.get("suggestions", [])
+    if not isinstance(suggestions, list) or any(not isinstance(item, dict) for item in suggestions):
+        raise HTTPException(502, detail={"code": "AI_GENERATION_INVALID"})
+    raw_candidates = [
+        item
+        for item in suggestions
+        if isinstance(item, dict) and str(item.get("title") or "").strip()
+    ]
+    if len(raw_candidates) != len(suggestions) or len(raw_candidates) > 100:
+        raise HTTPException(502, detail={"code": "AI_GENERATION_INVALID"})
+    basis_by_ref = {}
+    for snapshot in basis_snapshots:
+        for reference in (
+            str(snapshot.get("artifact_id") or ""),
+            str(snapshot.get("artifact_version_id") or snapshot.get("resolved_id") or ""),
+        ):
+            if reference:
+                basis_by_ref[reference] = snapshot
+    for candidate in raw_candidates:
+        citations = candidate.get("evidence_quotes")
+        if not isinstance(citations, list) or not citations:
+            raise HTTPException(502, detail={"code": "AI_GENERATION_INVALID"})
+        for citation in citations:
+            if not isinstance(citation, dict):
+                raise HTTPException(502, detail={"code": "AI_GENERATION_INVALID"})
+            source_ref = str(citation.get("evidence_ref") or "")
+            quote = str(citation.get("quote") or "").strip()
+            source_snapshot = basis_by_ref.get(source_ref)
+            if not source_snapshot or len(quote) < 2 or quote not in str(source_snapshot.get("text") or ""):
+                raise HTTPException(502, detail={"code": "AI_GENERATION_INVALID"})
+    candidates = [
+        {
+            **item,
+            "candidate_id": f"{'TCON-CAND-'}{index}",
+            "status": 'CANDIDATE',
+            "candidate_only": True,
+            "basis_refs": [
+                ref.model_dump()
+                for ref in payload.basis_refs
+                if any(
+                    str(citation.get("evidence_ref") or "")
+                    in {
+                        str(ref.artifact_id),
+                        str(ref.artifact_version_id or ""),
+                    }
+                    for citation in item.get("evidence_quotes", [])
+                    if isinstance(citation, dict)
+                )
+            ],
+        }
+        for index, item in enumerate(raw_candidates, 1)
+    ]
+    value = {
+        "_id": new_id('AIR'),
+        "project_id": project_id,
+        "result_type": 'TEST_CONDITION_CANDIDATES',
+        "candidates": candidates,
+        "basis_snapshots": basis_snapshots,
+        "requirement_version_id": source_version_id if event_scoped else None,
+        "source_event_id": payload.source_event_id,
+        "source_event_revision": payload.source_event_revision,
+        "generation_status": ai_result.get("status", "DEGRADED"),
+        "candidate_only": True,
+        "human_confirmation_required": True,
+        **ai_contract_metadata(ai_result),
+        "idempotency_key": payload.idempotency_key,
+        "idempotency_request_hash": _analysis_request_hash(
+            payload, user, basis_snapshots
+        ),
+        "created_by": user.id,
+        "created_at": now(),
+    }
+    try:
+        async with await database.client.start_session() as session:
+            async with session.start_transaction():
+                await test_analysis_repository.insert_ai_result(value, session=session)
+                await audit(
+                    user.id,
+                    'test_analysis_ai_candidates_generated',
+                    'AIResult',
+                    value["_id"],
+                    project_id,
+                    {
+                        "candidate_count": len(candidates),
+                        "status": value["status"],
+                                    },
+                    session=session,
+                )
+    except DuplicateKeyError:
+        existing = await test_analysis_repository.find_ai_result(
+            project_id, payload.idempotency_key
+        )
+        if not existing:
+            raise
+        if existing.get("result_type") != 'TEST_CONDITION_CANDIDATES':
+            raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
+        _verify_analysis_replay(existing, payload, user, basis_snapshots)
+        return existing
+    return value
 
 
 async def condition_coverage(project_id, user):
@@ -428,7 +700,7 @@ async def condition_coverage(project_id, user):
 
 
 async def run_deterministic_analysis(project_id, payload, user):
-    
+
     await get_project(project_id, user, 'testanalysis.execute')
     snapshots = await resolve_basis(project_id, payload.basis_refs, user)
     findings = deterministic_testability_findings(snapshots)
@@ -464,7 +736,7 @@ async def list_analysis_findings(project_id, user, status="", limit=500):
 
 
 async def create_analysis_finding(project_id, payload, user):
-    
+
     await get_project(project_id, user, 'testanalysis.finding.create')
     ref_type = payload.artifact_type.upper()
     collection_name = "requirement_versions" if ref_type == "REQUIREMENT_VERSION" else "acceptance_criteria" if ref_type == "ACCEPTANCE_CRITERION" else "api_operations" if ref_type == "API_OPERATION" else "requirement_documents" if ref_type in {"KNOWLEDGE_SOURCE", "REGULATION"} else "business_rules" if ref_type == "BUSINESS_RULE" else "defects" if ref_type == "DEFECT" else None
@@ -508,7 +780,7 @@ async def create_analysis_finding(project_id, payload, user):
 
 
 async def assign_analysis_finding(finding_id, payload, user):
-    
+
     finding = await test_analysis_repository.find_finding(finding_id)
     if not finding:
         raise HTTPException(
@@ -552,7 +824,7 @@ async def assign_analysis_finding(finding_id, payload, user):
 
 
 async def transition_analysis_finding(finding_id, payload, user, verify=False):
-    
+
     finding = await test_analysis_repository.find_finding(finding_id)
     if not finding:
         raise HTTPException(
@@ -612,11 +884,10 @@ async def transition_analysis_finding(finding_id, payload, user, verify=False):
 
 
 async def review_condition(condition_id, payload, user):
-    
+
     condition = await get_condition_for_user(
         condition_id, user, 'testcondition.review'
     )
-    await require_independent_review(condition, user, "TEST_CONDITION_SELF_REVIEW_FORBIDDEN")
     updated = await test_condition_repository.update(
         condition_id,
         condition["project_id"],
@@ -644,7 +915,7 @@ async def review_condition(condition_id, payload, user):
 
 
 async def bulk_prioritize_conditions(project_id, payload, user):
-    
+
     await get_project(project_id, user, 'testcondition.bulk.update')
     results = []
     for item in payload.items:
