@@ -94,22 +94,17 @@ async def validate_requirement_custom_values(project_id, requirement):
 
 async def create_requirement_record(project_id, payload, user, origin="manual", session=None):
     await get_project(project_id, user, "requirement.create")
-    if origin == "manual" and not payload.save_as_draft:
-        missing = []
-        if not any(plain_text(item.content_doc).strip() for item in payload.acceptance_criteria):
-            missing.append("acceptance_criteria")
-        if not any(str(item).strip() for item in payload.business_rules):
-            missing.append("business_rules")
-        if not str(payload.details.get("design_reference") or "").strip():
-            missing.append("design_reference")
-        if missing:
-            raise HTTPException(status_code=422, detail={"code": "REQUIREMENT_FIELDS_REQUIRED", "fields": missing, "message": "Vui lòng nhập tiêu chí chấp nhận, quy tắc nghiệp vụ và liên kết thiết kế hoặc tài liệu."})
+    content_doc = validate_doc(payload.content_doc)
+    if not plain_text(content_doc).strip():
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "REQUIREMENT_CONTENT_REQUIRED", "message": "Nội dung yêu cầu không được để trống."},
+        )
     await validate_requirement_custom_values(project_id, payload)
     await validate_requirement_sources(project_id, payload.source_refs, user)
     await validate_requirement_api_operations(
         project_id, payload.details, payload.source_refs, user
     )
-    validate_doc(payload.content_doc)
     requirement_key = payload.requirement_key or await next_key(project_id, "requirement", "REQ")
     timestamp = now()
     requirement_id = new_id("REQ")
@@ -123,9 +118,8 @@ async def create_requirement_record(project_id, payload, user, origin="manual", 
         "title": payload.title,
         "type": payload.type,
         "priority": payload.priority,
-        "risk": payload.risk,
-        "content_doc": payload.content_doc,
-        "plain_text_projection": plain_text(payload.content_doc),
+        "content_doc": content_doc,
+        "plain_text_projection": plain_text(content_doc),
         "business_rules": payload.business_rules,
         "dependencies": payload.dependencies,
         "source_refs": payload.source_refs,
@@ -385,6 +379,11 @@ async def update_requirement_draft_record(project_id, requirement_id, payload, u
     content_doc = changes.get("content_doc")
     if content_doc is not None:
         validate_doc(content_doc)
+        if not plain_text(content_doc).strip():
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "REQUIREMENT_CONTENT_REQUIRED", "message": "Nội dung yêu cầu không được để trống."},
+            )
         changes["plain_text_projection"] = plain_text(content_doc)
     if "requirement_key" in changes and changes["requirement_key"] != requirement.get(
         "requirement_key"
@@ -473,6 +472,12 @@ async def create_requirement_version_record(requirement_id, payload, user, sessi
         requirement["project_id"], payload.details, payload.source_refs, user
     )
     await validate_requirement_custom_values(requirement["project_id"], payload)
+    content_doc = validate_doc(payload.content_doc)
+    if not plain_text(content_doc).strip():
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "REQUIREMENT_CONTENT_REQUIRED", "message": "Nội dung yêu cầu không được để trống."},
+        )
     parent = await requirement_repository.find_version(requirement["current_version_id"])
     latest = await requirement_repository.find_latest_version(requirement_id)
     timestamp = now()
@@ -485,9 +490,8 @@ async def create_requirement_version_record(requirement_id, payload, user, sessi
         "title": payload.title,
         "type": payload.type,
         "priority": payload.priority,
-        "risk": payload.risk,
-        "content_doc": validate_doc(payload.content_doc),
-        "plain_text_projection": plain_text(payload.content_doc),
+        "content_doc": content_doc,
+        "plain_text_projection": plain_text(content_doc),
         "business_rules": payload.business_rules,
         "dependencies": payload.dependencies,
         "source_refs": payload.source_refs,

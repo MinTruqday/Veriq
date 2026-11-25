@@ -57,8 +57,7 @@ def tool_access(value) -> ToolAccess | None:
 
 def requires_human_decision(permission: str) -> bool:
     return permission.endswith((".approve", ".submit_review", ".publish", ".confirm", ".decide")) or permission in {
-        "proposal.bulk.approve", "release.close", "qualitygate.decide",
-        "qualitygate.accept_risk", "qualitygate.override",
+        "proposal.bulk.approve", "release.close",
     }
 
 

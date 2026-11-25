@@ -7,6 +7,21 @@ import {
 } from "./testing.transport";
 
 export const executionTestingApi = {
+  listTestPeriods: (projectId) => testingRequest(`/du-an/${projectId}/chu-ky-kiem-thu`),
+  getTestPeriod: (periodId) => testingRequest(`/chu-ky-kiem-thu/${periodId}`),
+  getTestPeriodSummary: (periodId) => testingRequest(`/chu-ky-kiem-thu/${periodId}/tong-ket`),
+  closeTestPeriod: (periodId, payload) =>
+    testingRequest(`/chu-ky-kiem-thu/${periodId}/dong`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  createTestPeriod: (payload) =>
+    testingRequest("/chu-ky-kiem-thu", { method: "POST", body: JSON.stringify(payload) }),
+  updateTestPeriod: (periodId, payload) =>
+    testingRequest(`/chu-ky-kiem-thu/${periodId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
   listJUnitResultImports: (projectId) =>
     testingRequest(`/du-an/${projectId}/ket-qua-tu-dong/junit`),
   importJUnitResult: (projectId, testRunId, file) => {
@@ -26,11 +41,6 @@ export const executionTestingApi = {
   },
   createPlan: (payload) =>
     testingRequest("/ke-hoach-kiem-thu", { method: "POST", body: JSON.stringify(payload) }),
-  suggestTestPlanDraft: (projectId, payload) =>
-    testingRequest(`/du-an/${projectId}/ke-hoach-kiem-thu/ai/de-xuat`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
   analyzeExecutionResult: (projectId, runId, resultId) =>
     testingRequest(
       `/du-an/${projectId}/lan-chay-kiem-thu/${runId}/ket-qua/${resultId}/ai/phan-tich`,
@@ -116,11 +126,6 @@ export const executionTestingApi = {
     }),
   updateEnvironment: (environmentId, payload) =>
     testingRequest(`/moi-truong/${environmentId}`, {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-    }),
-  updateEnvironmentSecretRefs: (environmentId, payload) =>
-    testingRequest(`/moi-truong/${environmentId}/bi-mat`, {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),

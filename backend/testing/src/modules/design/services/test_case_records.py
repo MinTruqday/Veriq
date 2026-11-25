@@ -106,7 +106,16 @@ def project_test_text(value):
             *(part for step in bdd.get("steps", []) for part in (step.get("keyword"), step.get("text"))),
         )
     )
-    data_fields = " ".join(str(key) for key in (value.get("test_data") or {}))
+    step_data = [step.get("test_data") or {} for step in value.get("steps", [])]
+    data_fields = " ".join(
+        str(part)
+        for data in [value.get("test_data") or {}, *step_data]
+        for pair in data.items()
+        for part in pair
+    )
+    step_expected = " ".join(
+        plain_text(step.get("expected_doc") or {}) for step in value.get("steps", [])
+    )
     return " ".join(
         [
             value.get("title", ""),
@@ -120,6 +129,7 @@ def project_test_text(value):
             steps,
             data_fields,
             bdd_text,
+            step_expected,
             plain_text(value.get("expected_result_doc", {})),
             plain_text(value.get("postconditions_doc", {})),
             plain_text(value.get("main_flow_doc", {})),
@@ -128,6 +138,31 @@ def project_test_text(value):
         ]
     ).strip()
 
+
+def canonical_case_steps(value, steps=None):
+    """Fold case-level legacy data and expected result into the first step."""
+    steps = [dict(step) for step in (steps if steps is not None else value.get("steps", []))]
+    legacy_data = value.get("test_data") or {}
+    legacy_expected = value.get("expected_result_doc") or {}
+    has_step_data = any(step.get("test_data") for step in steps)
+    has_step_expected = any(
+        plain_text(step.get("expected_doc") or {}).strip() for step in steps
+    )
+    if not steps and (legacy_data or plain_text(legacy_expected).strip()):
+        steps = [{
+            "id": new_id("STEP"),
+            "order": 1,
+            "action_doc": {"type": "doc", "content": []},
+            "test_data": {},
+            "expected_doc": {"type": "doc", "content": []},
+        }]
+    if steps:
+        if legacy_data and not has_step_data:
+            steps[0]["test_data"] = legacy_data
+        if plain_text(legacy_expected).strip() and not has_step_expected:
+            steps[0]["expected_doc"] = legacy_expected
+    return steps
+
 def project_test_index_metadata(value):
     return {
         "test_case_key": value.get("test_case_key"),
@@ -135,7 +170,6 @@ def project_test_index_metadata(value):
         "test_level": value.get("test_level"),
         "test_kind": value.get("test_kind"),
         "priority": value.get("priority"),
-        "risk": value.get("risk"),
         "techniques": value.get("techniques", []),
         "tags": value.get("tags", []),
         "automation_status": value.get("automation_status"),
@@ -459,6 +493,7 @@ async def create_test_case_draft_record(
     owner_id = await validate_test_case_owner(project_id, payload.owner_id)
     if owner_id != payload.owner_id:
         payload = payload.model_copy(update={"owner_id": owner_id})
+    canonical_steps = canonical_case_steps(payload.model_dump())
     if payload.target_version_id:
         if payload.origin != "ai_generated" or parent_version_id or len((payload.version_reason or "").strip()) < 2:
             raise HTTPException(status_code=422, detail={"code": "TEST_CASE_VERSION_RESOLUTION_INVALID"})
@@ -592,12 +627,15 @@ async def create_test_case_draft_record(
         "_id": draft_id or new_id('TCD'),
         "project_id": project_id,
         **payload.model_dump(exclude={
+            "test_data",
+            "expected_result_doc",
             "suite_signature",
             "target_version_id",
             "version_reason",
             "acceptance_criteria_snapshot_ids",
             "save_as_draft",
         }),
+        "steps": canonical_steps,
         "source_evidence": source_evidence,
         "test_case_key": payload.test_case_key
         or await next_key(project_id, 'test_case', 'TC'),
@@ -852,12 +890,18 @@ async def update_test_case_draft_record(draft_id, payload, user, project_id=None
     )
     changes = payload.model_dump(exclude_unset=True)
     changes.pop("expected_revision", None)
+    if draft.get("test_data") or plain_text(draft.get("expected_result_doc") or {}).strip():
+        changes["steps"] = canonical_case_steps(
+            draft, changes.get("steps", draft.get("steps", []))
+        )
+        changes["test_data"] = {}
+        changes["expected_result_doc"] = {"type": "doc", "content": []}
     if draft["status"] == 'READY' and changes:
         changes["status"] = 'DRAFT'
     if draft.get("evidence_refs") and any(
         changes.get(field) is not None and changes[field] != draft.get(field)
         for field in (
-            "title", "type", "module_name", "flow_type", "objective_doc", "preconditions_doc", "steps", "test_data",
+            "title", "type", "module_name", "objective_doc", "preconditions_doc", "steps", "test_data",
             "expected_result_doc", "postconditions_doc",
             "main_flow_doc", "alternate_flows_doc", "exception_flows_doc", "techniques",
             "requirement_version_ids", "acceptance_criterion_ids",

@@ -20,9 +20,7 @@ _access_policy_context = ContextVar("project_access_policy", default=None)
 OWNER_PERMISSIONS = frozenset({
     "project.archive", "project.restore", "project.audit.read", "project.update",
     "project.settings.manage", "project.members.manage", "notification.project_rule.manage",
-    "release.close", "qualitygate.accept_risk",
-    "qualitygate.override", "testcompletion.close",
-    "requirement_document.confirm_extraction", "testmonitor.exit_criteria.override",
+    "release.close", "requirement_document.confirm_extraction",
 })
 
 def requires_project_owner(permission):
@@ -33,9 +31,7 @@ def requires_project_owner(permission):
 
 def requires_project_approval(permission):
     return permission.endswith((".approve", ".decide", ".publish")) or permission in {
-        "release.close", "qualitygate.accept_risk", "qualitygate.override",
-        "testcompletion.close", "requirement_document.confirm_extraction",
-        "testmonitor.exit_criteria.override",
+        "release.close", "requirement_document.confirm_extraction",
     }
 
 
@@ -105,7 +101,7 @@ ASSIGNED_DRAFT_PERMISSIONS = frozenset({
 })
 ASSIGNED_OWNER_PERMISSIONS = ASSIGNED_DRAFT_PERMISSIONS | frozenset({
     "attachment.manage", "defect.update", "defect.trace.manage",
-    "defect.transition.resolve", "testmonitor.control.update",
+    "defect.transition.resolve",
 })
 
 
@@ -381,7 +377,6 @@ async def get_current_user(
                 "proposal.approve",
                 "testplan.approve",
                 "release.close",
-                "testmonitor.snapshot.create",
                 "testcompletion.create",
             }
             if publication_project_id and isinstance(publication_permissions, list):

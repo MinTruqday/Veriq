@@ -10,7 +10,6 @@ from src.modules.execution.services.test_plan import (
     archive_test_plan_record,
     clone_test_plan_record,
     create_test_plan_record,
-    generate_test_plan_draft_suggestion,
     get_test_plan_record,
     list_test_plan_records,
     request_test_plan_revision,
@@ -83,20 +82,11 @@ from src.schemas.contracts.execution import (
     TestSuiteCreate,
     TestSuitePatch,
 )
-from src.schemas.contracts.planning import TestPlanAIDraftInput, TestPlanCreate
+from src.schemas.contracts.planning import TestPlanCreate
 from src.schemas.contracts.project import ProjectArchiveInput
 from src.schemas.contracts.requirements import ReviewTransitionInput
 
 router = APIRouter(prefix="/kiem-thu", tags=["Thực thi kiểm thử"])
-
-
-@router.post("/du-an/{project_id}/ke-hoach-kiem-thu/ai/de-xuat")
-async def suggest_test_plan_draft(
-    project_id: str,
-    payload: TestPlanAIDraftInput,
-    user: CurrentUser = Depends(get_current_user),
-):
-    return envelope(await generate_test_plan_draft_suggestion(project_id, payload, user))
 
 
 @router.post("/ke-hoach-kiem-thu", status_code=201)
@@ -115,6 +105,7 @@ async def list_test_plans(
     project_id: str,
     q: str = Query(default="", max_length=300),
     environment_id: str = Query(default="", max_length=200),
+    test_period_id: str = Query(default="", max_length=200),
     status: str = Query(default="", max_length=30),
     sort: str = Query(default="-updated_at", max_length=80),
     user: CurrentUser = Depends(get_current_user),
@@ -125,6 +116,7 @@ async def list_test_plans(
             user,
             q=q,
             environment_id=environment_id,
+            test_period_id=test_period_id,
             status=status,
             sort=sort,
         )
@@ -298,6 +290,8 @@ async def list_test_runs(
     build_id: str = Query(default="", max_length=200),
     environment: str = Query(default="", max_length=200),
     environment_id: str = Query(default="", max_length=200),
+    test_plan_id: str = Query(default="", max_length=200),
+    test_period_id: str = Query(default="", max_length=200),
     status: str = Query(default="", max_length=30),
     created_by: str = Query(default="", max_length=200),
     page: int = Query(default=1, ge=1),
@@ -316,6 +310,8 @@ async def list_test_runs(
             build_id=build_id,
             environment=environment,
             environment_id=environment_id,
+            test_plan_id=test_plan_id,
+            test_period_id=test_period_id,
             status=status,
             created_by=created_by,
             page=page,

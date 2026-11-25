@@ -8,11 +8,8 @@ import { messageOf } from "../lib/testing";
 
 const blankEnvironment = {
   name: "",
-  environment_type: "",
   base_url: "",
   availability: "AVAILABLE",
-  capabilitiesText: "{}",
-  secretRefsText: "{}",
 };
 
 const availabilityLabels = {
@@ -20,19 +17,6 @@ const availabilityLabels = {
   UNAVAILABLE: "Không khả dụng",
   MAINTENANCE: "Đang bảo trì",
 };
-
-function parseObject(value, label) {
-  let parsed;
-  try {
-    parsed = JSON.parse(value || "{}");
-  } catch {
-    throw new Error(`${label} phải là JSON hợp lệ.`);
-  }
-  if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
-    throw new Error(`${label} phải là một đối tượng JSON.`);
-  }
-  return parsed;
-}
 
 export default function EnvironmentManagementPanel({ project }) {
   const permissions = new Set(project.current_permissions || []);
@@ -73,11 +57,8 @@ export default function EnvironmentManagementPanel({ project }) {
     setEditing(item);
     setValue({
       name: item.name || "",
-      environment_type: item.environment_type || "",
       base_url: item.base_url || "",
       availability: item.availability || "AVAILABLE",
-      capabilitiesText: JSON.stringify(item.capabilities || {}, null, 2),
-      secretRefsText: "{}",
     });
     setError("");
     setShowEditor(true);
@@ -90,10 +71,8 @@ export default function EnvironmentManagementPanel({ project }) {
     try {
       const payload = {
         name: value.name.trim(),
-        environment_type: value.environment_type.trim(),
         base_url: value.base_url.trim() || null,
         availability: value.availability,
-        capabilities: parseObject(value.capabilitiesText, "Thuộc tính môi trường"),
       };
       let saved;
       if (editing) {
@@ -101,19 +80,7 @@ export default function EnvironmentManagementPanel({ project }) {
           ...payload,
           expected_revision: editing.revision,
         });
-        const secretRefs = can("environment.secret_ref.manage")
-          ? parseObject(value.secretRefsText, "Tham chiếu bí mật")
-          : {};
-        if (Object.keys(secretRefs).length) {
-          saved = await testingApi.updateEnvironmentSecretRefs(editing._id, {
-            expected_revision: saved.revision,
-            secret_refs: secretRefs,
-          });
-        }
       } else {
-        payload.secret_refs = can("environment.secret_ref.manage")
-          ? parseObject(value.secretRefsText, "Tham chiếu bí mật")
-          : {};
         saved = await testingApi.createEnvironment(project._id, payload);
       }
       setItems((current) => {
@@ -170,8 +137,7 @@ export default function EnvironmentManagementPanel({ project }) {
       >
         <div className="space-y-4 p-5">
           <p className="text-sm text-ink-muted">
-            Khai báo môi trường để chọn trong kế hoạch và lần chạy. Chỉ nhập địa chỉ tham chiếu bí
-            mật dạng <code>secret://…</code>; không nhập giá trị mật khẩu hoặc token.
+            Tạo môi trường để chọn trong kế hoạch và lần chạy.
           </p>
           {error && <ErrorState message={error} />}
           {loading ? (
@@ -183,20 +149,12 @@ export default function EnvironmentManagementPanel({ project }) {
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
                       <h3 className="break-words font-semibold text-ink">{item.name}</h3>
-                      <p className="mt-1 text-sm text-ink-muted">
-                        {item.environment_type}
-                        {item.base_url ? ` · ${item.base_url}` : ""}
-                      </p>
+                      <p className="mt-1 text-sm text-ink-muted">{item.base_url || "-"}</p>
                     </div>
                     <span className="status-badge">
                       {availabilityLabels[item.availability] || item.availability}
                     </span>
                   </div>
-                  {item.secret_ref_names?.length > 0 && (
-                    <p className="mt-3 text-xs text-ink-muted">
-                      Tham chiếu bí mật: {item.secret_ref_names.join(", ")}
-                    </p>
-                  )}
                   <div className="mt-4 flex flex-wrap gap-2 border-t border-border pt-3">
                     {can("environment.update") && (
                       <button
@@ -258,17 +216,6 @@ export default function EnvironmentManagementPanel({ project }) {
                     }
                   />
                 </label>
-                <label className="field-label">
-                  Loại môi trường
-                  <input
-                    className="apple-input mt-2 w-full"
-                    required
-                    value={value.environment_type}
-                    onChange={(event) =>
-                      setValue((current) => ({ ...current, environment_type: event.target.value }))
-                    }
-                  />
-                </label>
                 <label className="field-label md:col-span-2">
                   Địa chỉ cơ sở
                   <input
@@ -296,33 +243,6 @@ export default function EnvironmentManagementPanel({ project }) {
                     ))}
                   </select>
                 </label>
-                <label className="field-label md:col-span-2">
-                  Thuộc tính môi trường dạng JSON
-                  <textarea
-                    className="apple-input mt-2 min-h-24 w-full font-mono text-sm"
-                    value={value.capabilitiesText}
-                    onChange={(event) =>
-                      setValue((current) => ({ ...current, capabilitiesText: event.target.value }))
-                    }
-                  />
-                </label>
-                {can("environment.secret_ref.manage") && (
-                  <label className="field-label md:col-span-2">
-                    Tham chiếu bí mật dạng JSON
-                    {editing && (
-                      <span className="ml-2 text-xs font-normal text-ink-muted">
-                        Để {} để giữ nguyên tham chiếu hiện có.
-                      </span>
-                    )}
-                    <textarea
-                      className="apple-input mt-2 min-h-20 w-full font-mono text-sm"
-                      value={value.secretRefsText}
-                      onChange={(event) =>
-                        setValue((current) => ({ ...current, secretRefsText: event.target.value }))
-                      }
-                    />
-                  </label>
-                )}
               </div>
               {error && <p className="text-sm text-danger">{error}</p>}
               <div className="flex justify-end gap-2">

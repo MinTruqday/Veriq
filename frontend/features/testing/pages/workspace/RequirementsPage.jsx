@@ -380,32 +380,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
   }, [load]);
   const current = routeSelected?.current_version;
   useEffect(() => {
-    if (!current?._id || !project.current_permissions?.includes("requirement.read")) {
-      setLint(null);
-      setLintLoading(false);
-      return undefined;
-    }
-    let active = true;
-    setLint(null);
-    setLintLoading(true);
-    const loadLatestAnalysis = async () => {
-      try {
-        const result = await testingApi.getLatestRequirementQualityAnalysis(current._id);
-        if (!active) return;
-        setLint(result || null);
-        setLintLoading(false);
-      } catch (reason) {
-        if (!active) return;
-        if (reason?.status !== 404) setError(messageOf(reason));
-        setLintLoading(false);
-      }
-    };
-    void loadLatestAnalysis();
-    return () => {
-      active = false;
-    };
-  }, [current?._id, current?.revision, current?.status, project.current_permissions]);
-  useEffect(() => {
     if (!current) return;
     const previousVersionId = loadedVersion.current.split(":", 1)[0];
     const versionKey = `${current._id}:${current.revision || 0}`;
@@ -416,7 +390,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
       title: current.title,
       type: current.type,
       priority: current.priority,
-      risk: current.risk,
       content_doc: current.content_doc,
       acceptance: (current.acceptance_criteria || [])
         .map((item) => docText(item.content_doc))
@@ -462,7 +435,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
                 title: snapshot.title,
                 type: snapshot.type,
                 priority: snapshot.priority,
-                risk: snapshot.risk,
                 content_doc: snapshot.content_doc,
                 acceptance_criteria: snapshot.acceptance
                   .split("\n")
@@ -541,6 +513,10 @@ export default function RequirementsPage({ project, section, workspaceView }) {
   const create = async (event) => {
     event.preventDefault();
     if (saving) return;
+    if (!docText(form.content_doc).trim()) {
+      setError("Nhập nội dung yêu cầu trước khi lưu.");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
@@ -549,7 +525,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
         title: form.title,
         type: form.type,
         priority: form.priority,
-        risk: form.risk,
         content_doc: form.content_doc,
         acceptance_criteria: criteria,
         business_rules: form.businessRules
@@ -612,7 +587,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
             title: answer.title,
             type: current.type,
             priority: current.priority,
-            risk: current.risk,
             content_doc: current.content_doc,
             acceptance_criteria: (current.acceptance_criteria || []).map((item) => ({
               key: item.key,
@@ -948,7 +922,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
               title: titles[index],
               type: current.type,
               priority: current.priority,
-              risk: current.risk,
               content_doc: textDoc(content),
               acceptance_criteria: parseAcceptanceCriteria(criteriaBlocks[index]),
               business_rules: current.business_rules || [],
@@ -1052,7 +1025,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
               title: answer.title,
               type: answer.type,
               priority: sources[0].current_version.priority,
-              risk: sources[0].current_version.risk,
               content_doc: textDoc(answer.content),
               acceptance_criteria: parseAcceptanceCriteria(answer.acceptance),
               business_rules: [

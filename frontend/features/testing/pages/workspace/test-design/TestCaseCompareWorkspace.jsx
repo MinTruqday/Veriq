@@ -8,6 +8,7 @@ import { docText, emptyDoc, messageOf, valueLabel } from "../../../lib/testing";
 import { testingApi } from "../../../services/testing.service";
 import { uploadAssetAPI } from "@/features/cloud/services/upload.service";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
+import { normalizeTestCaseVersionForDisplay } from "./testDesign.model";
 import {
   chooseFields,
   chooseStep,
@@ -31,8 +32,6 @@ const fields = [
   },
   { key: "bdd", label: "Kịch bản BDD", kind: "bdd" },
   { key: "preconditions_doc", label: "Điều kiện trước", kind: "document" },
-  { key: "test_data", label: "Dữ liệu chung", kind: "data" },
-  { key: "expected_result_doc", label: "Kết quả mong đợi chung", kind: "document" },
   { key: "postconditions_doc", label: "Điều kiện sau", kind: "document" },
   { key: "alternate_flows_doc", label: "Luồng thay thế", kind: "document" },
   { key: "exception_flows_doc", label: "Luồng ngoại lệ", kind: "document" },
@@ -76,8 +75,6 @@ const lineageSensitiveFields = new Set([
   "steps.action_doc",
   "steps.expected_doc",
   "steps.test_data",
-  "test_data",
-  "expected_result_doc",
   "postconditions_doc",
   "alternate_flows_doc",
   "exception_flows_doc",
@@ -727,9 +724,15 @@ export default function TestCaseCompareWorkspace({
     try {
       const refreshed = await testingApi.compareTestDraft(requestedDraftId);
       if (requestId !== comparisonRequest.current) return;
-      setContext(refreshed);
+      const normalized = {
+        ...refreshed,
+        original: normalizeTestCaseVersionForDisplay(refreshed.original),
+        proposal: normalizeTestCaseVersionForDisplay(refreshed.proposal),
+        draft: normalizeTestCaseVersionForDisplay(refreshed.draft),
+      };
+      setContext(normalized);
       setContextDraftId(requestedDraftId);
-      setResult(copyValue(refreshed.draft));
+      setResult(copyValue(normalized.draft));
       setChoices([]);
       setDirty(false);
       setRevisionStale(false);
@@ -760,7 +763,13 @@ export default function TestCaseCompareWorkspace({
       .compareTestDraft(draftId)
       .then((data) => {
         if (cancelled || requestId !== comparisonRequest.current) return;
-        setContext(data);
+        const normalized = {
+          ...data,
+          original: normalizeTestCaseVersionForDisplay(data.original),
+          proposal: normalizeTestCaseVersionForDisplay(data.proposal),
+          draft: normalizeTestCaseVersionForDisplay(data.draft),
+        };
+        setContext(normalized);
         setContextDraftId(draftId);
         let recovered = null;
         try {
@@ -771,11 +780,11 @@ export default function TestCaseCompareWorkspace({
           recovered = null;
         }
         if (recovered?.dirty && recovered.result && recovered.draftId === draftId) {
-          setResult(copyValue(recovered.result));
+          setResult(copyValue(normalizeTestCaseVersionForDisplay(recovered.result)));
           setChoices(Array.isArray(recovered.choices) ? recovered.choices : []);
           setDirty(true);
           const sameComparison =
-            recovered.revision === data.draft.revision &&
+            recovered.revision === normalized.draft.revision &&
             recovered.comparisonToken === data.comparison_token;
           setRevisionStale(!sameComparison);
           setNotice(
@@ -784,14 +793,14 @@ export default function TestCaseCompareWorkspace({
               : "Đã khôi phục nội dung đang sửa, nhưng nguồn hoặc bản nháp đã đổi. Hãy đối chiếu lại trước khi lưu.",
           );
         } else {
-          setResult(copyValue(data.draft));
+          setResult(copyValue(normalized.draft));
           if (recovered) {
             try {
               window.sessionStorage.removeItem(recoveryKey);
             } catch {}
           }
         }
-        onComparedRef.current?.(data.draft, { current: !data.stale_reasons?.length });
+        onComparedRef.current?.(normalized.draft, { current: !data.stale_reasons?.length });
       })
       .catch((reason) => {
         if (!cancelled && requestId === comparisonRequest.current) setError(messageOf(reason));
@@ -860,8 +869,17 @@ export default function TestCaseCompareWorkspace({
       expected_revision: context.draft.revision,
       comparison_token: context.comparison_token,
       operation_id: crypto.randomUUID(),
-      result,
+      result: {
+        ...result,
+        test_data: {},
+        expected_result_doc: emptyDoc(),
+      },
       choices,
+    };
+    request.result = {
+      ...request.result,
+      test_data: {},
+      expected_result_doc: emptyDoc(),
     };
     pendingRequest.current = request;
     let saved;

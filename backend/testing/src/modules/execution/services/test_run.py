@@ -14,6 +14,7 @@ from src.repositories.test_run import test_run_repository
 from src.repositories.project import project_repository
 from src.modules.execution.services.execution_context import resolve_execution_context
 from src.modules.execution.services.execution_state import validate_test_versions
+from src.modules.execution.services.test_period import touch_open_test_period
 from src.modules.execution.services.test_plan import verified_approved_plan_snapshot
 from src.clients.project_knowledge import index_artifact
 from src.modules.execution.services.test_run_execution import (
@@ -112,7 +113,8 @@ def _verify_rerun_replay(existing, user, failed_only=False, selected_ids=None):
 
 def _pin_run_to_plan(run, snapshot, snapshot_hash):
     run["test_plan_snapshot_hash"] = snapshot_hash
-    run["phase"] = snapshot.get("phase") or run.get("phase") or ""
+    run["test_period_id"] = snapshot.get("test_period_id") or run.get("test_period_id")
+    run["test_period_snapshot"] = snapshot.get("test_period_snapshot") or run.get("test_period_snapshot")
     run["requirement_version_ids"] = list(snapshot.get("requirement_version_ids") or [])
     run["carry_over_items"] = [dict(item) for item in snapshot.get("carry_over_items", [])]
     schedule = snapshot.get("schedule")
@@ -210,7 +212,6 @@ async def create_test_run_record(payload, project_id, user):
         environment_id=payload.environment_id,
         release=payload.release,
         build=payload.build,
-        environment=payload.environment,
     )
     version_ids = list(dict.fromkeys(payload.test_case_version_ids))
     if payload.test_suite_ids:
@@ -286,6 +287,26 @@ async def create_test_run_record(payload, project_id, user):
                         )
                     approved_snapshot = current_snapshot
                     _pin_run_to_plan(run, current_snapshot, current_snapshot_hash)
+                period_id = run.get("test_period_id")
+                if period_id:
+                    period = await database.value.test_periods.find_one(
+                        {"_id": period_id, "project_id": payload.project_id}, session=session
+                    )
+                    if not period:
+                        raise HTTPException(status_code=409, detail={"code": "TEST_PERIOD_UNAVAILABLE"})
+                    await touch_open_test_period(
+                        payload.project_id, period_id, session, activate=True
+                    )
+                    if period.get("status") == "PLANNED":
+                        await audit(
+                            user.id,
+                            "test_period_started",
+                            "TestPeriod",
+                            period_id,
+                            payload.project_id,
+                            {"started_by_first_run_id": run["_id"]},
+                            session=session,
+                        )
                 await test_run_repository.insert_run(run, session=session)
                 if version_ids:
                     await test_run_repository.insert_results(
@@ -419,7 +440,7 @@ async def rerun_test_run_record(project_id, run_id, payload, user):
     rerun = {
         key: source.get(key)
         for key in (
-            "project_id", "test_plan_id", "test_suite_ids", "phase",
+            "project_id", "test_plan_id", "test_suite_ids", "test_period_id", "test_period_snapshot",
             "environment", "environment_id", "release", "release_id", "build", "build_id",
             "test_case_assignments",
             "assignee_id", "test_plan_snapshot_hash",
@@ -472,6 +493,10 @@ async def rerun_test_run_record(project_id, run_id, payload, user):
                         raise HTTPException(status_code=409, detail={"code": "TEST_RUN_PLAN_SNAPSHOT_CHANGED"})
                     _validate_plan_suite_scope(
                         source.get("test_suite_ids", []), current_snapshot
+                    )
+                if rerun.get("test_period_id"):
+                    await touch_open_test_period(
+                        project_id, rerun["test_period_id"], session, activate=True
                     )
                 await test_run_repository.insert_run(rerun, session=session)
                 await test_run_repository.insert_results(
@@ -585,21 +610,22 @@ async def _update_test_run_record(project_id, run_id, payload, user):
         changes["test_case_version_ids"] = version_ids
     if "test_case_version_ids" in changes:
         await validate_test_versions(project_id, version_ids)
-    if {"release_id", "build_id", "environment_id", "release", "build", "environment"} & set(
+    if {"release_id", "build_id", "environment_id", "release", "build"} & set(
         changes
     ):
-        changes.update(
-            await resolve_execution_context(
-                project_id,
-                user,
-                release_id=changes.get("release_id", run.get("release_id")),
-                build_id=changes.get("build_id", run.get("build_id")),
-                environment_id=changes.get("environment_id", run.get("environment_id")),
-                release=changes.get("release", run.get("release", "")),
-                build=changes.get("build", run.get("build", "")),
-                environment=changes.get("environment", run.get("environment", "")),
-            )
+        resolved_context = await resolve_execution_context(
+            project_id,
+            user,
+            release_id=changes.get("release_id", run.get("release_id")),
+            build_id=changes.get("build_id", run.get("build_id")),
+            environment_id=changes.get("environment_id", run.get("environment_id")),
+            release=changes.get("release", run.get("release", "")),
+            build=changes.get("build", run.get("build", "")),
         )
+        if "environment_id" not in changes:
+            resolved_context["environment_id"] = run.get("environment_id")
+            resolved_context["environment"] = run.get("environment", "")
+        changes.update(resolved_context)
     if "test_plan_id" in changes and run.get("test_plan_id"):
         if changes.get("test_plan_id") != run.get("test_plan_id"):
             raise HTTPException(

@@ -407,7 +407,7 @@ export default function RequirementCurrentVersionPanel({
         {current.status === "DRAFT" && draft && can("requirement.update") ? (
           <div className="space-y-4 md:col-span-3">
             <label className="grid gap-2 text-sm font-medium text-ink">
-              Tên yêu cầu
+              Tên yêu cầu <span className="text-danger">*</span>
               <input
                 aria-label="Tên yêu cầu"
                 className="apple-input"
@@ -416,7 +416,9 @@ export default function RequirementCurrentVersionPanel({
               />
             </label>
             <div>
-              <p className="field-label mb-2">Nội dung yêu cầu</p>
+              <p className="field-label mb-2">
+                Nội dung yêu cầu <span className="text-danger">*</span>
+              </p>
               <DocumentEditor
                 value={draft.content_doc}
                 onChange={(content_doc) => onDraftChange({ content_doc })}

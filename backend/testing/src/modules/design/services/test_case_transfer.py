@@ -198,6 +198,8 @@ async def preview_test_import(
         if not isinstance(exported_steps, list) or not isinstance(exported_test_data, dict):
             invalid_rows.append(index)
             continue
+        legacy_expected = str(row.get("expected_result") or expected).strip()
+        legacy_data = exported_test_data
         steps = []
         for step_index, step in enumerate(exported_steps, 1):
             if not isinstance(step, dict):
@@ -206,7 +208,7 @@ async def preview_test_import(
             step_action = str(step.get("action") or "").strip()
             step_expected = str(step.get("expected") or "").strip()
             step_data = step.get("test_data") or {}
-            if not step_action or not step_expected or not isinstance(step_data, dict):
+            if not step_action or not isinstance(step_data, dict):
                 steps = []
                 break
             steps.append({
@@ -219,6 +221,19 @@ async def preview_test_import(
         if exported_steps and len(steps) != len(exported_steps):
             invalid_rows.append(index)
             continue
+        if steps:
+            if legacy_data:
+                first_step_data = dict(steps[0]["test_data"])
+                for key, value in legacy_data.items():
+                    first_step_data.setdefault(key, value)
+                steps[0]["test_data"] = first_step_data
+            if legacy_expected and not any(
+                plain_text(step["expected_doc"]).strip() for step in steps
+            ):
+                steps[0]["expected_doc"] = text_document(legacy_expected)
+            if any(not plain_text(step["expected_doc"]).strip() for step in steps):
+                invalid_rows.append(index)
+                continue
         if not exported_steps and action and expected:
             steps = [{
                 "id": "step-1",
@@ -239,16 +254,12 @@ async def preview_test_import(
             draft = TestCaseDraftCreate(
                 title=title,
                 module_name=str(row.get("module_name") or "").strip(),
-                flow_type=str(row.get("flow_type") or "").strip(),
                 type=row.get("type") or "",
                 priority=row.get("priority") or "unassessed",
-                risk=row.get("risk") or "unassessed",
                 duration_minutes=str(row.get("duration_minutes") or "").strip() or None,
                 objective_doc=text_document(str(row.get("objective") or projection).strip()),
                 preconditions_doc=text_document(str(row.get("preconditions") or row.get("precondition") or "").strip()),
                 steps=steps,
-                test_data=exported_test_data,
-                expected_result_doc=text_document(str(row.get("expected_result") or expected).strip()),
                 postconditions_doc=text_document(str(row.get("postconditions") or "").strip()),
                 alternate_flows_doc=text_document(str(row.get("alternate_flows") or "").strip()),
                 exception_flows_doc=text_document(str(row.get("exception_flows") or "").strip()),
@@ -270,7 +281,6 @@ async def preview_test_import(
             "title": title,
             "type": draft.type,
             "priority": draft.priority,
-            "risk": draft.risk,
             "expected": expected,
             "incomplete": not bool(steps),
             "source_test_case_key": str(row.get("test_case_key") or "").strip(),
@@ -571,10 +581,8 @@ async def export_test_cases(
         "version": item.get("version"),
         "title": item.get("title"),
         "module_name": item.get("module_name", ""),
-        "flow_type": item.get("flow_type", ""),
         "type": item.get("type"),
         "priority": item.get("priority"),
-        "risk": item.get("risk"),
         "duration_minutes": item.get("duration_minutes"),
         "automation_status": item.get("automation_status"),
         "status": item.get("status"),
@@ -589,8 +597,6 @@ async def export_test_cases(
             }
             for step in item.get("steps", [])
         ], ensure_ascii=False, separators=(",", ":")),
-        "test_data_json": json.dumps(item.get("test_data") or {}, ensure_ascii=False, separators=(",", ":")),
-        "expected_result": plain_text(item.get("expected_result_doc", {})),
         "postconditions": plain_text(item.get("postconditions_doc", {})),
         "alternate_flows": plain_text(item.get("alternate_flows_doc", {})),
         "exception_flows": plain_text(item.get("exception_flows_doc", {})),
@@ -605,9 +611,9 @@ async def export_test_cases(
         "plain_text_projection": item.get("plain_text_projection"),
     } for item in versions]
     fields = [
-        "project_id", "test_case_key", "version", "title", "module_name", "flow_type", "type", "priority", "risk", "duration_minutes",
+        "project_id", "test_case_key", "version", "title", "module_name", "type", "priority", "duration_minutes",
         "automation_status", "status", "objective", "preconditions", "steps_json",
-        "test_data_json", "expected_result", "postconditions", "alternate_flows", "exception_flows", "tags", "owner_id",
+        "postconditions", "alternate_flows", "exception_flows", "tags", "owner_id",
         "techniques", "data_set_version_ids", "requirement_version_ids",
         "acceptance_criterion_ids", "test_condition_ids", "scenario_id",
         "plain_text_projection",

@@ -77,7 +77,6 @@ REQUIREMENT_TABLE_FIELDS = {
     },
     "type": {"type", "loai", "loai yeu cau"},
     "priority": {"priority", "uu tien", "muc uu tien"},
-    "risk": {"risk", "rui ro", "muc do rui ro"},
     "business_rules": {"business rule", "business rules", "quy tac nghiep vu"},
     "tags": {"tag", "tags", "the"},
 }
@@ -327,7 +326,6 @@ def parse_requirement_import(content, format):
                 "title": row.get("title") or f"Requirement nhập dòng {index + 1}",
                 "type": row.get("type") or "Chưa phân loại",
                 "priority": " ".join(str(row.get("priority") or "").split()),
-                "risk": " ".join(str(row.get("risk") or "").split()),
                 "content_doc": text_doc(row.get("content") or row.get("description") or ""),
                 "acceptance_criteria": [],
             }
@@ -416,7 +414,6 @@ def _build_requirement_table_candidate(document, text, source_start, source_end,
         "title": title[:300],
         "type": str(values.get("type") or "").strip() or "Chưa phân loại",
         "priority": " ".join(str(values.get("priority") or "").split()),
-        "risk": " ".join(str(values.get("risk") or "").split()),
         "content_doc": text_doc(description),
         "acceptance_criteria": [],
         "business_rules": _requirement_table_list(values.get("business_rules")),

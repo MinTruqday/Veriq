@@ -1,348 +1,386 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { testingApi } from "../services/testing.service";
 import { downloadTestingFile, testingRequest } from "../services/testing.transport";
 import { ErrorState, Panel } from "./WorkspacePrimitives";
 import { messageOf } from "../lib/testing";
+import { PROJECT_SECTION_SLUGS, projectRoute } from "../routes";
 
-const emptyForm = () => ({
-  type: "PROGRESS",
-  title: "",
-  test_plan_id: "",
-  start_at: "",
-  end_at: "",
-  summary: "",
-  obstacles: "",
-  next_steps: "",
-  evaluation: "",
-  remaining_risks: "",
-  lessons: "",
-});
 const labels = {
   PASS: "Đạt",
   FAIL: "Thất bại",
   BLOCKED: "Bị chặn",
   SKIPPED: "Bỏ qua",
   NOT_APPLICABLE: "Không áp dụng",
-  NOT_RUN: "Chưa ghi nhận trong kỳ",
+  NOT_RUN: "Chưa chạy",
 };
+
+function reportQuery(type, planId) {
+  return new URLSearchParams({ type, test_plan_id: planId }).toString();
+}
 
 export default function SimpleTestReports({ project }) {
   const permissions = useMemo(
     () => project.current_permissions || [],
     [project.current_permissions],
   );
-  const can = (value) => permissions.includes(value);
-  const [reports, setReports] = useState([]);
+  const can = (permission) => permissions.includes(permission);
+  const canReadProgress = can("teststatusreport.read");
+  const canReadCompletion = can("testcompletion.read");
+  const canReadReports = canReadProgress || canReadCompletion;
+  const canReadPlans = can("testplan.read");
+  const reportTypes = useMemo(
+    () => [
+      ...(canReadProgress ? [{ value: "PROGRESS", label: "Tiến độ" }] : []),
+      ...(canReadCompletion ? [{ value: "COMPLETION", label: "Hoàn tất" }] : []),
+    ],
+    [canReadCompletion, canReadProgress],
+  );
   const [plans, setPlans] = useState([]);
-  const [form, setForm] = useState(emptyForm);
-  const [editing, setEditing] = useState(false);
-  const [preview, setPreview] = useState(null);
+  const [reports, setReports] = useState([]);
+  const [type, setType] = useState(reportTypes[0]?.value || "PROGRESS");
+  const [planId, setPlanId] = useState("");
+  const [live, setLive] = useState(null);
   const [selected, setSelected] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const root = `/du-an/${project._id}/bao-cao-kiem-thu`;
-  const load = useCallback(async () => {
-    const [items, planItems] = await Promise.all([
-      testingRequest(root),
-      permissions.includes("testplan.read")
-        ? testingApi.listPlans(project._id, { status: "APPROVED" })
-        : Promise.resolve([]),
-    ]);
+
+  const loadSavedReports = useCallback(async () => {
+    if (!canReadReports) return;
+    const items = await testingRequest(root);
     setReports(items);
-    setPlans(planItems);
-  }, [root, project._id, permissions]);
+  }, [canReadReports, root]);
+
   useEffect(() => {
-    load().catch((reason) => setError(messageOf(reason)));
-  }, [load]);
-  const change = (field, value) => {
-    setForm((current) => ({ ...current, [field]: value }));
-    setPreview(null);
-  };
-  const submit = async (event) => {
-    event.preventDefault();
-    setBusy(true);
-    setError("");
-    try {
-      const payload = {
-        ...form,
-        start_at: new Date(form.start_at).toISOString(),
-        end_at: new Date(form.end_at).toISOString(),
-      };
-      const value = await testingRequest(`${root}/xem-truoc`, {
-        method: "POST",
-        body: JSON.stringify(payload),
+    let active = true;
+    Promise.all([
+      canReadPlans ? testingApi.listPlans(project._id, { status: "APPROVED" }) : [],
+      canReadReports ? testingRequest(root) : [],
+    ])
+      .then(([planItems, reportItems]) => {
+        if (!active) return;
+        const approved = Array.isArray(planItems) ? planItems : [];
+        setPlans(approved);
+        setPlanId((current) => current || approved[0]?._id || "");
+        setReports(Array.isArray(reportItems) ? reportItems : []);
+      })
+      .catch((reason) => {
+        if (active) setError(messageOf(reason));
       });
-      setPreview({
-        value,
-        payload: {
-          ...payload,
-          preview_hash: value.preview_hash,
-          idempotency_key: crypto.randomUUID(),
-        },
-      });
-    } catch (reason) {
-      setError(messageOf(reason));
-    } finally {
-      setBusy(false);
+    return () => {
+      active = false;
+    };
+  }, [canReadPlans, canReadReports, project._id, root]);
+
+  useEffect(() => {
+    setType(reportTypes[0]?.value || "PROGRESS");
+  }, [reportTypes]);
+
+  const loadLive = useCallback(async () => {
+    if (selected) return;
+    if (!planId || !reportTypes.some((item) => item.value === type)) {
+      setLive(null);
+      return;
     }
-  };
-  const save = async () => {
+    try {
+      const value = await testingRequest(`${root}/tu-dong?${reportQuery(type, planId)}`);
+      setLive(value);
+      setSelected(null);
+      setError("");
+    } catch (reason) {
+      setLive(null);
+      setError(messageOf(reason));
+    }
+  }, [planId, reportTypes, root, selected, type]);
+
+  useEffect(() => {
+    loadLive();
+    const timer = window.setInterval(loadLive, 30000);
+    window.addEventListener("focus", loadLive);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", loadLive);
+    };
+  }, [loadLive]);
+
+  const saveSnapshot = async () => {
+    if (!live) return;
     setBusy(true);
     setError("");
     try {
       const saved = await testingRequest(root, {
         method: "POST",
-        body: JSON.stringify(preview.payload),
+        body: JSON.stringify({
+          type: live.type,
+          title: live.title,
+          test_plan_id: live.test_plan_id,
+          test_period_id: live.test_period_id || null,
+          test_run_id: null,
+          start_at: live.start_at,
+          end_at: live.end_at,
+          preview_hash: live.preview_hash,
+          idempotency_key: crypto.randomUUID(),
+        }),
       });
-      await load();
+      await loadSavedReports();
       setSelected(saved);
-      setPreview(null);
-      setEditing(false);
+      setLive(null);
     } catch (reason) {
       setError(messageOf(reason));
     } finally {
       setBusy(false);
     }
   };
-  const displayed = preview?.value || selected;
+
+  const openSavedReport = async (reportId) => {
+    setBusy(true);
+    setError("");
+    try {
+      setSelected(await testingRequest(`${root}/${reportId}`));
+      setLive(null);
+    } catch (reason) {
+      setError(messageOf(reason));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const displayed = live || selected;
+  const exportReport = (format) => {
+    const path = live
+      ? `${root}/tu-dong/xuat?${reportQuery(type, planId)}&format=${format}`
+      : `${root}/${selected?._id}/xuat?format=${format}`;
+    downloadTestingFile(path, `bao-cao.${format}`).catch((reason) => setError(messageOf(reason)));
+  };
+
   return (
     <div className="space-y-5">
       {error && <ErrorState message={error} />}
-      {!editing && (can("teststatusreport.create") || can("testcompletion.create")) && (
-        <button
-          className="apple-button"
-          type="button"
-          onClick={() => {
-            setForm({
-              ...emptyForm(),
-              type: can("teststatusreport.create") ? "PROGRESS" : "COMPLETION",
-            });
-            setPreview(null);
-            setSelected(null);
-            setEditing(true);
-          }}
-        >
-          Tạo báo cáo
-        </button>
-      )}
-      {editing && (
-        <Panel title="Tạo báo cáo">
-          <form className="space-y-4 p-5" onSubmit={submit}>
-            <label className="field-label block">
-              Loại báo cáo
-              <select
-                className="apple-input mt-2"
-                value={form.type}
-                onChange={(event) => change("type", event.target.value)}
-              >
-                {can("teststatusreport.create") && (
-                  <option value="PROGRESS">Tiến độ kiểm thử</option>
-                )}
-                {can("testcompletion.create") && (
-                  <option value="COMPLETION">Hoàn tất kiểm thử</option>
-                )}
-              </select>
-            </label>
-            <label className="field-label block">
-              Tên báo cáo
-              <input
-                className="apple-input mt-2"
-                required
-                minLength={2}
-                value={form.title}
-                onChange={(event) => change("title", event.target.value)}
-              />
-            </label>
-            <label className="field-label block">
-              Kế hoạch kiểm thử
-              <select
-                className="apple-input mt-2"
-                required
-                value={form.test_plan_id}
-                onChange={(event) => change("test_plan_id", event.target.value)}
-              >
-                <option value="">-</option>
-                {plans.map((plan) => (
-                  <option key={plan._id} value={plan._id}>
-                    {plan.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+      {canReadReports && (
+        <Panel title="Báo cáo hiện tại">
+          <div className="space-y-4 p-5">
+            <p className="text-sm text-ink-muted">
+              Báo cáo được tổng hợp tự động từ kết quả mới nhất của từng ca trong kế hoạch. Dữ liệu
+              tự làm mới khi mở lại trang, quay lại tab hoặc mỗi 30 giây.
+            </p>
             <div className="grid gap-4 md:grid-cols-2">
               <label className="field-label block">
-                Bắt đầu kỳ báo cáo
-                <input
+                Kế hoạch đã duyệt
+                <select
                   className="apple-input mt-2"
-                  required
-                  type="datetime-local"
-                  value={form.start_at}
-                  onChange={(event) => change("start_at", event.target.value)}
-                />
+                  value={planId}
+                  onChange={(event) => {
+                    setSelected(null);
+                    setPlanId(event.target.value);
+                  }}
+                >
+                  <option value="">-</option>
+                  {plans.map((plan) => (
+                    <option key={plan._id} value={plan._id}>
+                      {plan.name}
+                    </option>
+                  ))}
+                </select>
               </label>
-              <label className="field-label block">
-                Kết thúc kỳ báo cáo
-                <input
-                  className="apple-input mt-2"
-                  required
-                  type="datetime-local"
-                  value={form.end_at}
-                  onChange={(event) => change("end_at", event.target.value)}
-                />
-              </label>
+              {reportTypes.length > 1 ? (
+                <label className="field-label block">
+                  Loại báo cáo
+                  <select
+                    className="apple-input mt-2"
+                    value={type}
+                    onChange={(event) => {
+                      setSelected(null);
+                      setType(event.target.value);
+                    }}
+                  >
+                    {reportTypes.map((item) => (
+                      <option key={item.value} value={item.value}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <div className="field-label">
+                  Loại báo cáo
+                  <p className="mt-2 rounded-control border border-border px-4 py-3">
+                    {reportTypes[0]?.label || "-"}
+                  </p>
+                </div>
+              )}
             </div>
-            <label className="field-label block">
-              Nhận xét
-              <textarea
-                className="apple-input mt-2"
-                value={form.summary}
-                onChange={(event) => change("summary", event.target.value)}
-              />
-            </label>
-            {form.type === "COMPLETION" && (
-              <label className="field-label block">
-                Đánh giá mục tiêu và tiêu chí kết thúc
-                <textarea
-                  className="apple-input mt-2"
-                  value={form.evaluation}
-                  onChange={(event) => change("evaluation", event.target.value)}
-                />
-              </label>
-            )}
-            <details className="rounded-control border border-border p-4">
-              <summary className="cursor-pointer">Tùy chọn</summary>
-              <div className="mt-4 space-y-4">
-                {[
-                  ["obstacles", "Sai lệch, trở ngại và cách xử lý"],
-                  ...(form.type === "PROGRESS"
-                    ? [["next_steps", "Công việc kiểm thử tiếp theo"]]
-                    : [
-                        ["remaining_risks", "Rủi ro còn lại"],
-                        ["lessons", "Bài học kinh nghiệm"],
-                      ]),
-                ].map(([field, label]) => (
-                  <label key={field} className="field-label block">
-                    {label}
-                    <textarea
-                      className="apple-input mt-2"
-                      value={form[field]}
-                      onChange={(event) => change(field, event.target.value)}
-                    />
-                  </label>
-                ))}
+            {plans.length === 0 ? (
+              <div className="rounded-control border border-border p-4 text-sm">
+                Chưa có kế hoạch kiểm thử được duyệt. Hãy hoàn tất Requirement tại{" "}
+                <Link
+                  className="text-brand hover:underline"
+                  href={projectRoute(project._id, PROJECT_SECTION_SLUGS.requirements)}
+                >
+                  Yêu cầu
+                </Link>
+                , sau đó lập kế hoạch có liên kết Requirement và gửi duyệt.
+                {can("testplan.read") && (
+                  <span>
+                    {" "}
+                    <Link
+                      className="text-brand hover:underline"
+                      href={projectRoute(project._id, PROJECT_SECTION_SLUGS.testPlans)}
+                    >
+                      Mở kế hoạch kiểm thử
+                    </Link>
+                  </span>
+                )}
               </div>
-            </details>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() => {
-                  setEditing(false);
-                  setPreview(null);
-                }}
-              >
-                Hủy
-              </button>
-              <button type="submit" className="apple-button" disabled={busy}>
-                {busy ? "Đang tải…" : "Xem trước"}
-              </button>
-            </div>
-          </form>
-        </Panel>
-      )}
-      {displayed && (
-        <Panel title={preview ? "Xem trước báo cáo" : displayed.title}>
-          <div className="space-y-3 p-5">
-            <p>
-              {displayed.plan_name} · {new Date(displayed.start_at).toLocaleString("vi-VN")} –{" "}
-              {new Date(displayed.end_at).toLocaleString("vi-VN")}
-            </p>
-            <p>Mục tiêu: {displayed.objective || "-"}</p>
-            <p>Phạm vi: {displayed.scope_in?.join(", ") || "-"}</p>
-            {!!displayed.scope_out?.length && (
-              <p>Ngoài phạm vi: {displayed.scope_out.join(", ")}</p>
-            )}
-            {displayed.type === "COMPLETION" && (
-              <p>Tiêu chí kết thúc: {displayed.exit_criteria?.join(", ") || "Chưa có"}</p>
-            )}
-            {!!displayed.environments?.length && (
-              <p>Môi trường: {displayed.environments.join(", ")}</p>
-            )}
-            {!!displayed.builds?.length && <p>Bản dựng: {displayed.builds.join(", ")}</p>}
-            {!!displayed.excluded_run_count && (
-              <p>
-                Có {displayed.excluded_run_count} lần chạy không thuộc phiên bản kế hoạch hiện tại,
-                không được tính.
-              </p>
-            )}
-            <p>Tổng số ca: {displayed.total}</p>
-            <p>
-              Tỷ lệ đạt (Đạt / (Đạt + Thất bại)):{" "}
-              {displayed.pass_rate == null ? "Chưa đủ dữ liệu" : `${displayed.pass_rate}%`}
-            </p>
-            <ul className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">
-              {Object.entries(labels).map(([status, label]) => (
-                <li key={status}>
-                  {label}: {displayed.counts[status]}
-                </li>
-              ))}
-            </ul>
-            <p className="text-sm text-ink-muted">
-              Mỗi ca được tính theo kết quả đã ghi nhận mới nhất trong kỳ; lịch sử từng lần chạy
-              được giữ riêng.
-            </p>
-            {displayed.defects && (
-              <p>
-                Lỗi liên kết: {displayed.defects.total} · Đang mở tại thời điểm lập:{" "}
-                {displayed.defects.open}
-              </p>
-            )}
-            {[
-              ["summary", "Nhận xét"],
-              ["evaluation", "Đánh giá"],
-              ["obstacles", "Trở ngại và cách xử lý"],
-              ["next_steps", "Công việc tiếp theo"],
-              ["remaining_risks", "Rủi ro còn lại"],
-              ["lessons", "Bài học kinh nghiệm"],
-            ].map(([key, label]) =>
-              displayed[key] ? (
-                <p key={key}>
-                  {label}: {displayed[key]}
+            ) : displayed ? (
+              <div className="space-y-3 rounded-control border border-border p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-semibold">{displayed.title}</h2>
+                    <p className="text-sm text-ink-muted">
+                      {displayed.plan_name} · {displayed.period_name || "Không thuộc đợt"}
+                    </p>
+                  </div>
+                  {live && (
+                    <span className="rounded-full bg-brand/10 px-3 py-1 text-sm text-brand">
+                      Đang cập nhật
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm">Phạm vi: {displayed.scope_in?.join(", ") || "-"}</p>
+                {displayed.environments?.length > 0 && (
+                  <p className="text-sm">Môi trường: {displayed.environments.join(", ")}</p>
+                )}
+                {displayed.builds?.length > 0 && (
+                  <p className="text-sm">Bản dựng: {displayed.builds.join(", ")}</p>
+                )}
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <Metric label="Tổng số ca" value={displayed.total} />
+                  <Metric label="Đạt" value={displayed.counts?.PASS || 0} />
+                  <Metric label="Thất bại" value={displayed.counts?.FAIL || 0} />
+                  <Metric
+                    label="Tỷ lệ đạt"
+                    value={
+                      displayed.pass_rate == null ? "Chưa có dữ liệu" : `${displayed.pass_rate}%`
+                    }
+                  />
+                </div>
+                <div className="flex flex-wrap gap-2 text-sm">
+                  {Object.entries(labels).map(([status, label]) => (
+                    <span className="rounded-full border border-border px-3 py-1" key={status}>
+                      {label}: {displayed.counts?.[status] || 0}
+                    </span>
+                  ))}
+                </div>
+                <p className="text-sm text-ink-muted">
+                  Mỗi ca tính theo kết quả mới nhất kể từ khi kế hoạch được duyệt; các lần chạy cũ
+                  vẫn được giữ trong lịch sử.
                 </p>
-              ) : null,
-            )}
-            {preview ? (
-              <button className="apple-button" type="button" disabled={busy} onClick={save}>
-                Lưu báo cáo
-              </button>
-            ) : (
-              can("report.export") && (
-                <div className="flex gap-2">
-                  {["pdf", "docx"].map((format) => (
+                {displayed.defects && (
+                  <p className="text-sm">
+                    Lỗi liên kết: {displayed.defects.total} · Đang mở: {displayed.defects.open}
+                  </p>
+                )}
+                <div className="overflow-x-auto rounded-control border border-border">
+                  <table className="w-full text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="p-3">Mã ca</th>
+                        <th className="p-3">Ca kiểm thử</th>
+                        <th className="p-3">Kết quả mới nhất</th>
+                        <th className="p-3">Lần chạy</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(displayed.case_results || []).map((item) => (
+                        <tr
+                          className="border-b border-border last:border-0"
+                          key={item.test_case_version_id}
+                        >
+                          <td className="p-3">{item.test_case_key}</td>
+                          <td className="p-3">
+                            {item.title} · v{item.version || "—"}
+                          </td>
+                          <td className="p-3">{labels[item.status] || item.status}</td>
+                          <td className="p-3">
+                            {item.test_run_id ? (
+                              <Link
+                                className="text-brand hover:underline"
+                                href={projectRoute(
+                                  project._id,
+                                  PROJECT_SECTION_SLUGS.testRuns,
+                                  item.test_run_id,
+                                )}
+                              >
+                                {item.test_run_name || item.test_run_id}
+                              </Link>
+                            ) : (
+                              "—"
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {displayed.type === "COMPLETION" && (
+                  <div className="space-y-1 text-sm">
+                    <p>
+                      Tiêu chí kết thúc:{" "}
+                      {displayed.exit_criteria?.join("; ") || "Chưa cấu hình trong kế hoạch"}
+                    </p>
+                    <p className="text-ink-muted">
+                      Báo cáo tổng hợp dữ liệu hiện có; người phụ trách quyết định việc chấp nhận
+                      kết quả hoặc phát hành.
+                    </p>
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  {selected && (
                     <button
                       className="secondary-button"
                       type="button"
-                      key={format}
-                      onClick={() =>
-                        downloadTestingFile(
-                          `${root}/${displayed._id}/xuat?format=${format}`,
-                          `bao-cao.${format}`,
-                        ).catch((reason) => setError(messageOf(reason)))
-                      }
+                      onClick={() => setSelected(null)}
                     >
-                      Xuất {format === "pdf" ? "PDF" : "Word"}
+                      Báo cáo hiện tại
                     </button>
-                  ))}
+                  )}
+                  {live &&
+                    (type === "PROGRESS"
+                      ? can("teststatusreport.create")
+                      : can("testcompletion.create")) && (
+                      <button
+                        className="apple-button"
+                        type="button"
+                        disabled={busy}
+                        onClick={saveSnapshot}
+                      >
+                        {busy ? "Đang lưu…" : "Lưu bản chốt"}
+                      </button>
+                    )}
+                  {can("report.export") &&
+                    ["pdf", "docx"].map((format) => (
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        key={format}
+                        onClick={() => exportReport(format)}
+                      >
+                        Xuất {format === "pdf" ? "PDF" : "Word"}
+                      </button>
+                    ))}
                 </div>
-              )
+              </div>
+            ) : (
+              <p className="text-sm text-ink-muted">Đang tổng hợp báo cáo…</p>
             )}
           </div>
         </Panel>
       )}
-      {!editing && (
-        <Panel title="Báo cáo đã lưu">
+      {canReadReports && (
+        <Panel title="Các bản báo cáo đã lưu">
           <div className="divide-y divide-border">
             {reports.length ? (
               reports.map((report) => (
@@ -350,18 +388,29 @@ export default function SimpleTestReports({ project }) {
                   className="block w-full p-4 text-left hover:bg-surface-raised"
                   type="button"
                   key={report._id}
-                  onClick={() => setSelected(report)}
+                  onClick={() => openSavedReport(report._id)}
                 >
                   {report.title} · {report.type === "PROGRESS" ? "Tiến độ" : "Hoàn tất"} ·{" "}
                   {report.plan_name}
                 </button>
               ))
             ) : (
-              <p className="p-4">Chưa có báo cáo</p>
+              <p className="p-4 text-sm text-ink-muted">
+                Chưa lưu bản báo cáo nào. Báo cáo hiện tại vẫn được tổng hợp tự động ở phía trên.
+              </p>
             )}
           </div>
         </Panel>
       )}
+    </div>
+  );
+}
+
+function Metric({ label, value }) {
+  return (
+    <div className="rounded-control bg-surface-raised p-3">
+      <p className="text-sm text-ink-muted">{label}</p>
+      <p className="mt-1 font-semibold">{value}</p>
     </div>
   );
 }

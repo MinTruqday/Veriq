@@ -20,6 +20,7 @@ from src.core.common import (
     visible_defect,
 )
 from src.core.database import database
+from src.modules.execution.services.test_period import register_test_result_period_activity
 from src.modules.execution.services.execution_context import defect_blocks_release, resolve_execution_context, serialize_release_gate
 from src.modules.quality.services.defect_classification import (
     defect_is_blocking,
@@ -186,8 +187,9 @@ async def _create_defect_record(project_id, payload, user):
         environment_id=payload.environment_id or (linked_run or {}).get("environment_id"),
         release=payload.release or (linked_run or {}).get("release", ""),
         build=payload.build or (linked_run or {}).get("build", ""),
-        environment=payload.environment or (linked_run or {}).get("environment", ""),
     )
+    if not context["environment_id"] and linked_run and not linked_run.get("environment_id"):
+        context["environment"] = linked_run.get("environment", "")
     timestamp = now()
     defect = {
         "_id": new_id('DEF'),
@@ -294,6 +296,9 @@ async def _create_defect_record(project_id, payload, user):
                         status_code=409,
                         detail={"code": "DEFECT_TEST_RESULT_CONTEXT_CHANGED"},
                     )
+                await register_test_result_period_activity(
+                    project_id, current_result["_id"], session
+                )
             if defect_blocks_release(defect):
                 await serialize_release_gate(
                     project_id,

@@ -7,7 +7,6 @@ from src.schemas.contracts.environment import (
     BuildPatch,
     EnvironmentCreate,
     EnvironmentPatch,
-    EnvironmentSecretRefs,
     ReleaseCreate,
     ReleasePatch,
     ReleaseTransition,
@@ -130,13 +129,7 @@ async def update_environment(environment_id: str, payload: EnvironmentPatch, use
     return envelope(value, revision=value["revision"])
 
 
-@router.patch("/moi-truong/{environment_id}/bi-mat", openapi_extra={"x-function-ids": ["ENV-04"]})
-async def update_environment_secrets(environment_id: str, payload: EnvironmentSecretRefs, user: CurrentUser = Depends(get_current_user)):
-    value = await ExecutionContextService.update_environment_secrets(environment_id, payload, user)
-    return envelope(value, revision=value["revision"])
-
-
-@router.post("/moi-truong/{environment_id}/luu-tru", openapi_extra={"x-function-ids": ["ENV-05"]})
+@router.post("/moi-truong/{environment_id}/luu-tru", openapi_extra={"x-function-ids": ["ENV-04"]})
 async def archive_environment(environment_id: str, payload: ReleaseTransition, user: CurrentUser = Depends(get_current_user)):
     value = await ExecutionContextService.archive_environment(environment_id, payload, user)
     return envelope(value, revision=value["revision"])

@@ -8,6 +8,7 @@ from src.core.common import audit, get_project, get_project_entity, new_id, now,
 from src.core.database import database
 from src.modules.execution.services.execution_context import defect_blocks_release, resolve_execution_context, serialize_release_gate
 from src.modules.execution.services.execution_state import defect_transitions
+from src.modules.execution.services.test_period import register_test_result_period_activity
 from src.modules.quality.services.defect_authorization import require_defect_editor_assignment
 from src.modules.quality.services.defect_classification import (
     resolve_priority_classification,
@@ -213,21 +214,33 @@ async def update_defect_record(defect_id, payload, project_id, user):
     if {"release_id", "build_id", "environment_id", "release", "build", "environment"} & set(
         changes
     ):
-        changes.update(
-            await resolve_execution_context(
-                defect["project_id"],
-                user,
-                release_id=changes.get("release_id", defect.get("release_id")),
-                build_id=changes.get("build_id", defect.get("build_id")),
-                environment_id=changes.get("environment_id", defect.get("environment_id")),
-                release=changes.get("release", defect.get("release", "")),
-                build=changes.get("build", defect.get("build", "")),
-                environment=changes.get("environment", defect.get("environment", "")),
-            )
+        resolved_context = await resolve_execution_context(
+            defect["project_id"],
+            user,
+            release_id=changes.get("release_id", defect.get("release_id")),
+            build_id=changes.get("build_id", defect.get("build_id")),
+            environment_id=changes.get("environment_id", defect.get("environment_id")),
+            release=changes.get("release", defect.get("release", "")),
+            build=changes.get("build", defect.get("build", "")),
         )
+        if "environment_id" not in changes:
+            resolved_context["environment_id"] = changes.get(
+                "environment_id", defect.get("environment_id")
+            )
+            resolved_context["environment"] = changes.get(
+                "environment", defect.get("environment", "")
+            )
+        changes.update(resolved_context)
     async with await database.client.start_session() as session:
         async with session.start_transaction():
             candidate = {**defect, **changes}
+            if "linked_test_result_id" in changes:
+                await register_test_result_period_activity(
+                    defect["project_id"], defect.get("linked_test_result_id"), session
+                )
+                await register_test_result_period_activity(
+                    defect["project_id"], changes.get("linked_test_result_id"), session
+                )
             if defect_blocks_release(defect) or defect_blocks_release(candidate):
                 old_release_id = defect.get("release_id")
                 new_release_id = candidate.get("release_id")
@@ -320,6 +333,9 @@ async def transition_defect_record(defect_id, payload, user):
             )
             if not updated:
                 raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
+            await register_test_result_period_activity(
+                defect["project_id"], defect.get("linked_test_result_id"), session
+            )
             await audit(
                 user.id,
                 "defect_transitioned",
@@ -420,6 +436,12 @@ async def retest_defect_record(project_id, defect_id, payload, user):
                         ),
                     )
                 await defect_repository.insert_retest(event, session=session)
+                await register_test_result_period_activity(
+                    project_id, defect.get("linked_test_result_id"), session
+                )
+                await register_test_result_period_activity(
+                    project_id, result.get("_id"), session
+                )
                 updated = await defect_repository.apply_retest(
                     defect_id,
                     project_id,

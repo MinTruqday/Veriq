@@ -4,11 +4,6 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
-class TestPlanAIDraftInput(BaseModel):
-    requirement_version_ids: list[str] = Field(min_length=1, max_length=200)
-    instruction: str = Field(default="", max_length=5000)
-    current_test_plan: dict[str, Any] = Field(default_factory=dict)
-
 from src.schemas.contracts.common import TestPlanRiskStatus
 
 
@@ -90,9 +85,16 @@ class TestPlanCommunication(BaseModel):
 
 
 class TestPlanCarryOver(BaseModel):
-    source_test_run_id: str = Field(min_length=1, max_length=200)
+    source_test_run_id: str | None = Field(default=None, min_length=1, max_length=200)
+    source_test_plan_id: str | None = Field(default=None, min_length=1, max_length=200)
     test_case_version_id: str = Field(min_length=1, max_length=200)
     reason: str = Field(min_length=1, max_length=2000)
+
+    @model_validator(mode="after")
+    def require_one_source(self):
+        if bool(self.source_test_run_id) == bool(self.source_test_plan_id):
+            raise ValueError("CARRY_OVER_REQUIRES_ONE_SOURCE")
+        return self
 
     @field_validator("reason")
     @classmethod
@@ -103,36 +105,44 @@ class TestPlanCarryOver(BaseModel):
         return cleaned
 
 
+class TestPlanInlinePeriodCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=200)
+    source_period_id: str | None = Field(default=None, max_length=200)
+
+    @field_validator("name")
+    @classmethod
+    def clean_name(cls, value):
+        cleaned = value.strip()
+        if len(cleaned) < 2:
+            raise ValueError("TEST_PERIOD_NAME_REQUIRED")
+        return cleaned
+
+
 class TestPlanCreate(BaseModel):
     save_as_draft: bool = True
-    phase: str = Field(default="", max_length=120)
+    test_period_id: str | None = Field(default=None, max_length=200)
+    new_test_period: "TestPlanInlinePeriodCreate | None" = None
     carry_over_items: list[TestPlanCarryOver] = Field(default_factory=list, max_length=5000)
     owner_id: str | None = Field(default=None, max_length=200)
     scenario_ids: list[str] = Field(default_factory=list, max_length=1000)
     project_id: str
     name: str = Field(min_length=2, max_length=300)
     objective: str = Field(default="", max_length=5000)
-    scope_in: list[str] = Field(default_factory=list, max_length=500)
     scope_out: list[str] = Field(default_factory=list, max_length=500)
     requirement_version_ids: list[str] = Field(default_factory=list, max_length=2000)
     test_suite_ids: list[str] = Field(default_factory=list, max_length=500)
     test_case_version_ids: list[str] = Field(default_factory=list, max_length=5000)
-    environment: str = Field(default="", max_length=200)
     environment_id: str | None = Field(default=None, max_length=200)
-    environment_notes: str = Field(default="", max_length=5000)
-    test_data_notes: str = Field(default="", max_length=5000)
     entry_criteria: list[str] = Field(default_factory=list, max_length=200)
     exit_criteria: list[str] = Field(default_factory=list, max_length=200)
     test_types: list[str] = Field(default_factory=list, max_length=100)
     test_techniques: list[str] = Field(default_factory=list, max_length=100)
     members: list[str] = Field(default_factory=list, max_length=500)
     test_level: str | None = Field(default=None, min_length=1, max_length=100)
-    test_approach: str = Field(default="", max_length=10000)
     assumptions: list[str] = Field(default_factory=list, max_length=200)
     constraints: list[str] = Field(default_factory=list, max_length=200)
     dependencies: list[dict[str, Any]] = Field(default_factory=list, max_length=500)
     estimation: TestPlanEstimation = Field(default_factory=TestPlanEstimation)
     schedule: TestPlanSchedule = Field(default_factory=TestPlanSchedule)
-    quality_targets: list[dict[str, Any]] = Field(default_factory=list, max_length=200)
     risk_register: list[TestPlanRisk] = Field(default_factory=list, max_length=500)
     communication_plan: TestPlanCommunication = Field(default_factory=TestPlanCommunication)

@@ -149,17 +149,13 @@ class TestCaseDraftCreate(BaseModel):
     title: str = Field(min_length=2, max_length=300)
     type: str = Field(default="", max_length=100)
     module_name: str = Field(default="", max_length=300)
-    flow_type: Literal["", "MAIN", "ALTERNATIVE", "EXCEPTION"] = ""
     test_level: str | None = Field(default=None, max_length=100)
     test_kind: str | None = Field(default=None, max_length=100)
     priority: str = Field(default="unassessed", min_length=1, max_length=100)
-    risk: str = Field(default="unassessed", min_length=1, max_length=100)
     duration_minutes: int | None = Field(default=None, ge=1, le=10080)
     objective_doc: dict[str, Any] = Field(default_factory=empty_doc)
     preconditions_doc: dict[str, Any] = Field(default_factory=empty_doc)
     steps: list[TestStep] = Field(default_factory=list, max_length=500)
-    test_data: dict[str, Any] = Field(default_factory=dict)
-    expected_result_doc: dict[str, Any] = Field(default_factory=empty_doc)
     postconditions_doc: dict[str, Any] = Field(default_factory=empty_doc)
     main_flow_doc: dict[str, Any] = Field(default_factory=empty_doc)
     alternate_flows_doc: dict[str, Any] = Field(default_factory=empty_doc)
@@ -192,7 +188,7 @@ class TestCaseDraftCreate(BaseModel):
         normalized = value.strip()
         return normalized
 
-    @field_validator("priority", "risk")
+    @field_validator("priority")
     @classmethod
     def normalize_assessment_labels(cls, value):
         normalized = " ".join(value.split())
@@ -201,7 +197,7 @@ class TestCaseDraftCreate(BaseModel):
         return normalized
 
     @field_validator(
-        "preconditions_doc", "objective_doc", "expected_result_doc", "postconditions_doc",
+        "preconditions_doc", "objective_doc", "postconditions_doc",
         "main_flow_doc", "alternate_flows_doc", "exception_flows_doc",
     )
     @classmethod
@@ -240,18 +236,14 @@ class TestCaseDraftPatch(BaseModel):
     expected_revision: int = Field(ge=1)
     title: str | None = Field(default=None, min_length=2, max_length=300)
     module_name: str | None = Field(default=None, max_length=300)
-    flow_type: Literal["", "MAIN", "ALTERNATIVE", "EXCEPTION"] | None = None
     type: TestCaseType | None = None
     test_level: str | None = Field(default=None, max_length=100)
     test_kind: str | None = Field(default=None, max_length=100)
     priority: str | None = Field(default=None, min_length=1, max_length=100)
-    risk: str | None = Field(default=None, min_length=1, max_length=100)
     duration_minutes: int | None = Field(default=None, ge=1, le=10080)
     objective_doc: dict[str, Any] | None = None
     preconditions_doc: dict[str, Any] | None = None
     steps: list[TestStep] | None = None
-    test_data: dict[str, Any] | None = None
-    expected_result_doc: dict[str, Any] | None = None
     postconditions_doc: dict[str, Any] | None = None
     main_flow_doc: dict[str, Any] | None = None
     alternate_flows_doc: dict[str, Any] | None = None
@@ -278,7 +270,7 @@ class TestCaseDraftPatch(BaseModel):
         normalized = value.strip()
         return normalized
 
-    @field_validator("priority", "risk")
+    @field_validator("priority")
     @classmethod
     def normalize_assessment_labels(cls, value):
         if value is None:
@@ -289,7 +281,7 @@ class TestCaseDraftPatch(BaseModel):
         return normalized
 
     @field_validator(
-        "preconditions_doc", "objective_doc", "expected_result_doc", "postconditions_doc",
+        "preconditions_doc", "objective_doc", "postconditions_doc",
         "main_flow_doc", "alternate_flows_doc", "exception_flows_doc",
     )
     @classmethod

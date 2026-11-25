@@ -24,6 +24,8 @@ from src.modules.execution.services.execution_state import (
     replay_resume_event,
     select_resume_execution,
 )
+from src.modules.execution.services.test_period import register_period_activity
+from src.modules.execution.services.test_plan import verified_approved_plan_snapshot
 from src.clients.project_knowledge import index_artifact
 
 def _idempotency_fingerprint(payload):
@@ -124,6 +126,30 @@ async def start_test_run_record(run_id, user):
         return run
     if run["status"] not in ['DRAFT', 'READY']:
         raise HTTPException(status_code=409, detail={"code": 'INVALID_STATE_TRANSITION'})
+    if not run.get("test_plan_id"):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "TEST_RUN_PLAN_REQUIRED",
+                "message": "Liên kết Test Run với kế hoạch đã duyệt trước khi bắt đầu.",
+            },
+        )
+    plan = await test_run_repository.find_plan(run["test_plan_id"], run["project_id"])
+    snapshot, snapshot_hash = verified_approved_plan_snapshot(plan, run["project_id"])
+    if run.get("test_plan_snapshot_hash") != snapshot_hash:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "TEST_RUN_PLAN_SNAPSHOT_CHANGED",
+                "message": "Kế hoạch liên kết đã thay đổi. Tạo lại Test Run từ phiên bản kế hoạch đã duyệt.",
+            },
+        )
+    approved_cases = set(snapshot.get("test_case_version_ids") or [])
+    if not set(run.get("test_case_version_ids") or []).issubset(approved_cases):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "TEST_RUN_OUTSIDE_PLAN_SCOPE"},
+        )
     if run.get("environment_id"):
         environment = await test_run_repository.find_environment(
             run["environment_id"], run["project_id"]
@@ -581,6 +607,10 @@ async def correct_test_result_record(result_id, payload, user):
                 )
                 if not corrected:
                     raise HTTPException(status_code=409, detail={"code": 'EXECUTION_CONFLICT'})
+                if run.get("test_period_id"):
+                    await register_period_activity(
+                        result["project_id"], run["test_period_id"], session
+                    )
                 await audit(
                     user.id,
                     'test_result_corrected',

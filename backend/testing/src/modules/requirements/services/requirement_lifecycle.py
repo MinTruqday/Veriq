@@ -5,7 +5,7 @@ from fastapi import HTTPException
 from src.core.auth import CurrentUser
 from src.core.human_decisions import require_ai_publication_authority
 from src.core.human_decisions import can_auto_approve_project_content, reject_self_approval
-from src.core.common import audit, get_project_entity, now
+from src.core.common import audit, get_project_entity, now, plain_text
 from src.core.database import database
 from src.repositories.requirement import requirement_repository
 from src.modules.design.services.linters import requirement_findings
@@ -37,17 +37,16 @@ async def save_requirement_ready(project_id, requirement_id, expected_revision, 
         raise HTTPException(409, detail={'code': 'INVALID_STATE_TRANSITION'})
     if version.get('revision') != expected_revision:
         raise HTTPException(409, detail={'code': 'REVISION_CONFLICT', 'current_revision': version.get('revision')})
-    from src.core.common import plain_text
-    criteria = await requirement_repository.list_acceptance_criteria(version['_id'], None)
-    missing = []
-    if not any(plain_text(item.get('content_doc', {})).strip() for item in criteria):
-        missing.append('acceptance_criteria')
-    if not any(str(item).strip() for item in version.get('business_rules', [])):
-        missing.append('business_rules')
-    if not str((version.get('details') or {}).get('design_reference') or '').strip():
-        missing.append('design_reference')
-    if missing:
-        raise HTTPException(422, detail={'code': 'REQUIREMENT_FIELDS_REQUIRED', 'fields': missing, 'message': 'Vui lòng nhập tiêu chí chấp nhận, quy tắc nghiệp vụ và liên kết thiết kế hoặc tài liệu.'})
+    if not plain_text(version.get("content_doc", {})).strip():
+        raise HTTPException(
+            422,
+            detail={"code": "REQUIREMENT_CONTENT_REQUIRED", "message": "Nội dung yêu cầu không được để trống."},
+        )
+    if not plain_text(version.get("content_doc", {})).strip():
+        raise HTTPException(
+            422,
+            detail={"code": "REQUIREMENT_CONTENT_REQUIRED", "message": "Nội dung yêu cầu không được để trống."},
+        )
     timestamp = now()
     async with await database.client.start_session() as session:
         async with session.start_transaction():

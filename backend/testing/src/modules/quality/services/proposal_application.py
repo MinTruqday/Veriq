@@ -15,7 +15,7 @@ from src.modules.quality.services.maintenance_proposal import (
 )
 from src.modules.quality.services.impact_analysis import require_current_impact_source
 from src.clients.project_knowledge import index_artifact
-from src.modules.design.services.test_case_records import create_test_case_draft_record, project_test_text
+from src.modules.design.services.test_case_records import canonical_case_steps, create_test_case_draft_record, project_test_text
 from src.modules.design.services.test_evidence import requirement_test_evidence_text
 
 
@@ -666,7 +666,7 @@ async def recover_partial_proposal(proposal, user):
 
 async def create_test_draft_from_proposal(proposal, patch, user):
     
-    required = set(['title', 'steps', 'expected_result_doc'])
+    required = set(['title', 'steps'])
     if not required.issubset(patch):
         raise HTTPException(
             status_code=422, detail={"code": 'INCOMPLETE_MAINTENANCE_PATCH'}
@@ -694,9 +694,7 @@ async def create_test_draft_from_proposal(proposal, patch, user):
         type=patch.get("type", 'custom'),
         objective_doc=patch.get("objective_doc", {'type': 'doc', 'content': []}),
         preconditions_doc=patch.get("preconditions_doc", {'type': 'doc', 'content': []}),
-        steps=patch["steps"],
-        test_data=patch.get("test_data", {}),
-        expected_result_doc=patch["expected_result_doc"],
+        steps=canonical_case_steps(patch),
         requirement_version_ids=requirement_version_ids,
         origin='maintenance',
         evidence_refs=requirement_version_ids,

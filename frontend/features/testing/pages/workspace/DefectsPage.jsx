@@ -116,7 +116,6 @@ export default function DefectsPage({ project }) {
     title: "",
     severity: "",
     priority: "",
-    environment: "",
     environmentId: "",
     releaseId: "",
     release: "",
@@ -285,7 +284,6 @@ export default function DefectsPage({ project }) {
       expected_result_doc: textDoc(form.expected),
       severity: form.severity,
       priority: form.priority,
-      environment: form.environment,
       environment_id: can("environment.read") ? form.environmentId || null : null,
       release: form.release,
       release_id: can("release.read") ? form.releaseId || null : null,
@@ -312,7 +310,6 @@ export default function DefectsPage({ project }) {
         title: "",
         severity: classificationOptions.severity[0] || "",
         priority: classificationOptions.priority[0] || "",
-        environment: "",
         environmentId: "",
         release: "",
         releaseId: "",
@@ -652,36 +649,18 @@ export default function DefectsPage({ project }) {
             </label>
             <label className="field-label">
               Môi trường
-              {can("environment.read") ? (
-                <select
-                  className="apple-input mt-2"
-                  value={form.environmentId}
-                  onChange={(event) => {
-                    const environmentId = event.target.value;
-                    const environment = environments.find((item) => item._id === environmentId);
-                    setForm({
-                      ...form,
-                      environmentId,
-                      environment: environment?.name || "",
-                    });
-                  }}
-                >
-                  <option value="">Chọn môi trường</option>
-                  {environments.map((item) => (
-                    <option key={item._id} value={item._id}>
-                      {item.name} · {valueLabel(item.environment_type)}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  className="apple-input mt-2"
-                  value={form.environment}
-                  onChange={(event) =>
-                    setForm({ ...form, environment: event.target.value, environmentId: "" })
-                  }
-                />
-              )}
+              <select
+                className="apple-input mt-2"
+                value={form.environmentId}
+                onChange={(event) => setForm({ ...form, environmentId: event.target.value })}
+              >
+                <option value="">-</option>
+                {environments.map((item) => (
+                  <option key={item._id} value={item._id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
             </label>
             <label className="field-label">
               Bản dựng

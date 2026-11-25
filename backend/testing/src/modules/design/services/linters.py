@@ -19,12 +19,18 @@ def evaluate_rules(scope, value):
         return [_finding("EMPTY_ACCEPTANCE_CRITERION", "error", f"Tiêu chí {value.get('key') or ''} đang để trống", "Nhập điều kiện kích hoạt và hành vi quan sát được", "acceptance_criteria")]
     if scope == "test_case":
         findings = []
-        if not _text(value.get("expected_result_doc")):
+        steps = _case_steps(value)
+        has_step_expected = any(
+            _text(step.get("expected_doc")) for step in steps
+        )
+        has_bdd_expected = any(
+            step.get("keyword") == "Then" and _text(step.get("text"))
+            for step in (value.get("bdd") or {}).get("steps", [])
+        )
+        if not (has_step_expected or has_bdd_expected):
             findings.append(_finding("TCQ-001", "error", "Thiếu kết quả mong đợi", "Cập nhật kết quả mong đợi rồi chạy kiểm tra lại"))
         if not _values(value.get("requirement_version_ids")) and not _values(value.get("acceptance_criterion_ids")):
             findings.append(_finding("TCQ-005", "error", "Ca kiểm thử chưa có liên kết truy vết", "Liên kết yêu cầu hoặc tiêu chí chấp nhận rồi chạy kiểm tra lại"))
-        if not value.get("test_data") and not any(item.get("test_data") for item in value.get("steps", [])):
-            findings.append(_finding("TCQ-009", "warning", "Thiếu dữ liệu kiểm thử", "Bổ sung dữ liệu kiểm thử cho ca hoặc từng bước"))
         return findings
     if scope == "test_step" and not _text(value.get("expected_doc")):
         return [_finding("TCQ-001", "warning", "Bước chưa có kết quả mong đợi", "Bổ sung kết quả mong đợi cho bước")]
@@ -47,6 +53,19 @@ def _text(value):
 def _values(value):
     values = value if isinstance(value, list) else [value]
     return [item for item in values if _text(item)]
+
+
+def _case_steps(value):
+    """Read legacy case-level values as first-step values without writing them."""
+    steps = [dict(step) for step in value.get("steps", [])]
+    if not steps:
+        return steps
+    if value.get("test_data") and not any(step.get("test_data") for step in steps):
+        steps[0]["test_data"] = value["test_data"]
+    legacy_expected = value.get("expected_result_doc") or {}
+    if _text(legacy_expected) and not any(_text(step.get("expected_doc")) for step in steps):
+        steps[0]["expected_doc"] = legacy_expected
+    return steps
 
 
 def requirement_findings(version, acceptance_criteria=None):
@@ -214,10 +233,12 @@ def duplicate_score(left, right, threshold):
     left_text = _test_projection(left)
     right_text = _test_projection(right)
     lexical = SequenceMatcher(None, left_text, right_text).ratio()
-    left_data = [left.get("test_data") or {}, *(step.get("test_data") or {} for step in left.get("steps", []))]
-    right_data = [right.get("test_data") or {}, *(step.get("test_data") or {} for step in right.get("steps", []))]
-    left_actions = " ".join(plain_text(step.get("action_doc", {})) for step in left.get("steps", []))
-    right_actions = " ".join(plain_text(step.get("action_doc", {})) for step in right.get("steps", []))
+    left_steps = _case_steps(left)
+    right_steps = _case_steps(right)
+    left_data = [step.get("test_data") or {} for step in left_steps]
+    right_data = [step.get("test_data") or {} for step in right_steps]
+    left_actions = " ".join(plain_text(step.get("action_doc", {})) for step in left_steps)
+    right_actions = " ".join(plain_text(step.get("action_doc", {})) for step in right_steps)
     def conflicting_data_values(left_value, right_value):
         if isinstance(left_value, dict) and isinstance(right_value, dict):
             return any(
@@ -246,21 +267,19 @@ def duplicate_score(left, right, threshold):
         return 0, ["Giá trị đầu vào khác nhau"]
     left_step_outcomes = [
         " ".join(plain_text(step.get("expected_doc", {})).lower().split())
-        for step in left.get("steps", [])
+        for step in left_steps
     ]
     right_step_outcomes = [
         " ".join(plain_text(step.get("expected_doc", {})).lower().split())
-        for step in right.get("steps", [])
+        for step in right_steps
     ]
     if left_step_outcomes and right_step_outcomes and left_step_outcomes != right_step_outcomes:
         return 0, ["Kết quả từng bước khác nhau"]
     left_outcome = " ".join(" ".join([
-        *(plain_text(step.get("expected_doc", {})) for step in left.get("steps", [])),
-        plain_text(left.get("expected_result_doc", {})),
+        *(plain_text(step.get("expected_doc", {})) for step in left_steps),
     ]).lower().split())
     right_outcome = " ".join(" ".join([
-        *(plain_text(step.get("expected_doc", {})) for step in right.get("steps", [])),
-        plain_text(right.get("expected_result_doc", {})),
+        *(plain_text(step.get("expected_doc", {})) for step in right_steps),
     ]).lower().split())
     if (
         not left_outcome
@@ -275,8 +294,8 @@ def duplicate_score(left, right, threshold):
         right.get("acceptance_criterion_ids", [])
     )
     trace = len(left_links & right_links) / max(1, len(left_links | right_links))
-    left_steps = len(left.get("steps", []))
-    right_steps = len(right.get("steps", []))
+    left_steps = len(left_steps)
+    right_steps = len(right_steps)
     structure = 1 - abs(left_steps - right_steps) / max(1, left_steps, right_steps)
     score = (
         0.6 * lexical + 0.25 * trace + 0.15 * structure
@@ -292,16 +311,16 @@ def duplicate_score(left, right, threshold):
 
 
 def _test_projection(value):
+    steps = _case_steps(value)
     step_text = " ".join(
         f"{plain_text(step.get('action_doc', {}))} {plain_text(step.get('expected_doc', {}))}"
-        for step in value.get("steps", [])
+        for step in steps
     )
     return " ".join(
         [
             str(value.get("title", "")),
             plain_text(value.get("preconditions_doc", {})),
             step_text,
-            plain_text(value.get("expected_result_doc", {})),
         ]
     ).lower()
 

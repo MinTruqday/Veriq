@@ -509,7 +509,6 @@ async def generate_api_tests(operation_id: str, user: CurrentUser):
                 }
                 for step_index, step in enumerate(case.steps)
             ],
-            expected_result_doc=text_document(case.expected),
             techniques=case.techniques,
             evidence_refs=case.evidence_refs,
             evidence_quotes=[item.model_dump() for item in case.evidence_quotes],

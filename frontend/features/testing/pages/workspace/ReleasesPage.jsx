@@ -396,8 +396,6 @@ function readinessGateLabel(gate) {
   return (
     {
       RELEASE_STATE: "Trạng thái phát hành",
-      GATE_REVISION: "Điều kiện phát hành",
-      COMPLETION_REPORT: "Báo cáo hoàn tất",
       BLOCKING_DEFECTS: "Lỗi chặn phát hành",
     }[gate] || "Điều kiện phát hành"
   );
@@ -408,36 +406,9 @@ function readinessCodeLabel(code) {
     {
       RELEASE_ACTIVE: "Phát hành đang hoạt động",
       RELEASE_STATE_INVALID: "Trạng thái hiện tại không cho phép đóng",
-      RELEASE_GATE_REVISION_VALID: "Điều kiện đóng còn hiệu lực",
       RELEASE_GATE_REVISION_INVALID: "Điều kiện đóng đã thay đổi; cần kiểm tra lại",
-      RELEASE_COMPLETION_REPORT_VALID: "Báo cáo hoàn tất hợp lệ",
       OPEN_BLOCKING_DEFECTS: "Còn lỗi mức chặn đang mở",
       NO_OPEN_BLOCKING_DEFECTS: "Không còn lỗi mức chặn đang mở",
-      RELEASE_COMPLETION_GATE_FAILED: "Chưa đạt điều kiện báo cáo hoàn tất",
-      AUTOMATED_COMPLETION_SCOPE_INCOMPLETE:
-        "Lượt kiểm thử tự động chưa có báo cáo hoàn tất cho tất cả kế hoạch trong phạm vi",
-      COMPLETION_PLAN_REPORT_SCOPE_INCOMPLETE:
-        "Còn kế hoạch trong phạm vi chưa có báo cáo hoàn tất được duyệt",
-      APPROVED_COMPLETION_SNAPSHOT_INVALID:
-        "Snapshot báo cáo hoàn tất không còn hợp lệ; cần cập nhật và duyệt lại báo cáo",
-      AUTOMATED_COMPLETION_SNAPSHOT_INVALID:
-        "Snapshot báo cáo của lượt kiểm thử tự động không khớp với dữ liệu hiện tại",
-      COMPLETION_REPORT_NOT_RELEASE_READY: "Báo cáo hoàn tất chưa xác nhận đủ điều kiện phát hành",
-      COMPLETION_REPORT_STALE:
-        "Dữ liệu nguồn đã thay đổi sau khi lập báo cáo; cần cập nhật và duyệt lại",
-      AUTOMATED_COMPLETION_REPORT_REQUIRED:
-        "Lượt kiểm thử tự động cần có báo cáo hoàn tất tương ứng",
-      COMPLETION_EXIT_CRITERIA_UNRESOLVED: "Còn tiêu chí kết thúc kiểm thử chưa được đánh giá đạt",
-      COMPLETION_EXIT_CRITERIA_FAILED: "Có tiêu chí kết thúc kiểm thử chưa đạt",
-      COMPLETION_RECOMMENDATION_NOT_RELEASE_READY:
-        "Khuyến nghị trong báo cáo hoàn tất chưa sẵn sàng phát hành",
-      COMPLETION_MANDATORY_RUNS_INCOMPLETE: "Còn lần chạy bắt buộc chưa hoàn tất",
-      COMPLETION_OPEN_BLOCKER_THRESHOLD_EXCEEDED:
-        "Số lỗi chặn đang mở vượt ngưỡng cho phép của dự án",
-      COMPLETION_UNEXECUTED_SCOPE_REASON_REQUIRED:
-        "Cần ghi lý do cho các mục trong phạm vi chưa được thực thi",
-      RESIDUAL_RISK_OWNER_REQUIRED:
-        "Cần chỉ định người phụ trách cho từng rủi ro nghiêm trọng còn lại",
       RELEASE_TEST_PLAN_SCOPE_REQUIRED: "Cần chọn phạm vi kế hoạch kiểm thử",
       RELEASE_TEST_PLAN_SNAPSHOT_INVALID: "Phạm vi kế hoạch kiểm thử không còn hiệu lực",
       RELEASE_REQUIREMENT_SCOPE_REQUIRED: "Cần có yêu cầu trong phạm vi phát hành",

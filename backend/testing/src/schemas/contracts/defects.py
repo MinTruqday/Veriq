@@ -16,7 +16,6 @@ class DefectCreate(BaseModel):
     expected_result_doc: dict[str, Any] = Field(default_factory=empty_doc)
     severity: str = Field(min_length=1, max_length=100)
     priority: str = Field(min_length=1, max_length=100)
-    environment: str = Field(default="", max_length=500)
     environment_id: str | None = Field(default=None, max_length=200)
     release: str = Field(default="", max_length=200)
     release_id: str | None = Field(default=None, max_length=200)
@@ -46,7 +45,6 @@ class DefectPatch(BaseModel):
     expected_result_doc: dict[str, Any] | None = None
     severity: str | None = Field(default=None, min_length=1, max_length=100)
     priority: str | None = Field(default=None, min_length=1, max_length=100)
-    environment: str | None = Field(default=None, max_length=500)
     environment_id: str | None = Field(default=None, max_length=200)
     release: str | None = Field(default=None, max_length=200)
     release_id: str | None = Field(default=None, max_length=200)

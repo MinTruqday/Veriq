@@ -3,10 +3,24 @@ import json
 
 from fastapi import HTTPException
 
-from src.core.common import audit, get_project, get_project_entity, now, page_payload, sort_spec
+from src.core.common import audit, get_project, get_project_entity, now, page_payload, plain_text, sort_spec
 from src.schemas.contracts.design import TestCaseDraftCreate
 from src.repositories.test_design import test_design_repository
 from src.modules.design.services.test_case_records import create_test_case_draft_record
+
+
+def _steps_with_legacy_case_data(version):
+    steps = [dict(step) for step in (version.get("steps") or [])]
+    if version.get("bdd") or not steps:
+        return steps
+    if version.get("test_data") and not any(step.get("test_data") for step in steps):
+        steps[0]["test_data"] = version["test_data"]
+    legacy_expected = version.get("expected_result_doc") or {}
+    if plain_text(legacy_expected).strip() and not any(
+        plain_text(step.get("expected_doc") or {}).strip() for step in steps
+    ):
+        steps[0]["expected_doc"] = legacy_expected
+    return steps
 
 
 
@@ -223,18 +237,14 @@ async def clone_test_case_record(test_case_id, payload, user):
         TestCaseDraftCreate(
             title=payload.title or f"{version['title']}{' bản sao'}",
             module_name=version.get("module_name", ""),
-            flow_type=version.get("flow_type", ""),
             type=version["type"],
             test_level=version.get("test_level"),
             test_kind=version.get("test_kind"),
             priority=version.get("priority") or "unassessed",
-            risk=version.get("risk") or "unassessed",
             duration_minutes=version.get("duration_minutes"),
             objective_doc=version.get("objective_doc", {"type": "doc", "content": []}),
             preconditions_doc=version["preconditions_doc"],
-            steps=version["steps"],
-            test_data=version["test_data"],
-            expected_result_doc=version["expected_result_doc"],
+            steps=_steps_with_legacy_case_data(version),
             postconditions_doc=version["postconditions_doc"],
             main_flow_doc=version.get("main_flow_doc") or {"type": "doc", "content": []},
             alternate_flows_doc=version.get("alternate_flows_doc") or {"type": "doc", "content": []},
@@ -302,18 +312,14 @@ async def create_test_case_version_draft_record(test_case_id, payload, user):
             test_case_key=test_case["test_case_key"],
             title=payload.title or version["title"],
             module_name=version.get("module_name", ""),
-            flow_type=version.get("flow_type", ""),
             type=version["type"],
             priority=version.get("priority") or "unassessed",
-            risk=version.get("risk") or "unassessed",
             duration_minutes=version.get("duration_minutes"),
             test_level=version.get("test_level"),
             test_kind=version.get("test_kind"),
             objective_doc=version.get("objective_doc", {"type": "doc", "content": []}),
             preconditions_doc=version["preconditions_doc"],
-            steps=version["steps"],
-            test_data=version["test_data"],
-            expected_result_doc=version["expected_result_doc"],
+            steps=_steps_with_legacy_case_data(version),
             postconditions_doc=version["postconditions_doc"],
             main_flow_doc=version.get("main_flow_doc") or {"type": "doc", "content": []},
             alternate_flows_doc=version.get("alternate_flows_doc") or {"type": "doc", "content": []},

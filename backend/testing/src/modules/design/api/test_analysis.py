@@ -17,7 +17,6 @@ from src.schemas.test_analysis import (
 from src.modules.design.services.test_analysis import (
     assign_analysis_finding,
     bulk_prioritize_conditions,
-    condition_coverage,
     create_analysis_finding,
     create_condition,
     get_condition_for_user,
@@ -145,13 +144,6 @@ async def run_test_analysis_ai(
     project_id: str, payload: TestAnalysisAIInput, user: CurrentUser = Depends(get_current_user)
 ):
     return envelope(await run_ai_analysis(project_id, payload, user))
-
-
-@router.get("/du-an/{project_id}/phan-tich-kiem-thu/truy-vet")
-async def get_test_condition_coverage(
-    project_id: str, user: CurrentUser = Depends(get_current_user)
-):
-    return envelope(await condition_coverage(project_id, user))
 
 
 @router.get("/du-an/{project_id}/phan-tich-kiem-thu/co-so")

@@ -27,28 +27,6 @@ class TestAnalysisRepository:
             {"project_id": project_id, "status": {"$ne": archived_status}}
         ).sort([("_id", 1)]).limit(limit + 1).to_list(limit + 1)
 
-    async def list_scenarios(self, project_id, condition_ids, limit):
-        return await database.value.test_scenarios.find(
-            {"project_id": project_id, "test_condition_ids": {"$in": condition_ids}}
-        ).sort([("_id", 1)]).limit(limit + 1).to_list(limit + 1)
-
-    async def list_case_versions(self, project_id, condition_ids, scenario_ids, limit):
-        return await database.value.test_cases.aggregate([
-            {"$match": {"project_id": project_id, "status": "ACTIVE", "current_version_id": {"$ne": None}}},
-            {"$lookup": {"from": "test_case_versions", "localField": "current_version_id", "foreignField": "_id", "as": "version"}},
-            {"$unwind": "$version"},
-            {"$replaceRoot": {"newRoot": "$version"}},
-            {"$match": {
-                "project_id": project_id,
-                "$or": [
-                    {"test_condition_ids": {"$in": condition_ids}},
-                    {"scenario_id": {"$in": scenario_ids}},
-                ],
-            }},
-            {"$sort": {"_id": 1}},
-            {"$limit": limit + 1},
-        ]).to_list(limit + 1)
-
     async def list_findings(self, query, limit):
         return await database.value.test_analysis_findings.find(query).sort(
             "updated_at", -1

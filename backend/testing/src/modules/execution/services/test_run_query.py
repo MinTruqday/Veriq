@@ -26,6 +26,8 @@ async def list_test_run_records(
     build_id="",
     environment="",
     environment_id="",
+    test_plan_id="",
+    test_period_id="",
     status="",
     created_by="",
     page=1,
@@ -47,6 +49,8 @@ async def list_test_run_records(
         "environment": environment,
         "environment_id": environment_id,
         "created_by": created_by,
+        "test_plan_id": test_plan_id,
+        "test_period_id": test_period_id,
     }.items():
         if value:
             query[field] = value

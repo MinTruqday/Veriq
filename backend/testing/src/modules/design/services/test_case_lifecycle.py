@@ -9,12 +9,13 @@ from src.core.human_decisions import (
 )
 from src.modules.design.services.design_authorization import require_assigned_design_draft
 
-from src.core.common import audit, get_project_entity, new_id, now
+from src.core.common import audit, get_project_entity, new_id, now, plain_text
 from src.core.database import database
 from src.repositories.test_design import test_design_repository
 from src.modules.design.services.linters import has_verifiable_steps, lint_test_case
 from src.clients.project_knowledge import index_artifact
 from src.modules.design.services.test_case_records import (
+    canonical_case_steps,
     project_test_index_metadata,
     project_test_text,
 )
@@ -22,16 +23,7 @@ from src.core.project_settings import resolve_testcase_duplicate_threshold
 from src.schemas.contracts.design import TestCaseFreezeInput
 
 def trace_is_missing_for_approval(draft, project_settings):
-    trace_sources = (
-        "requirement_version_ids",
-        "acceptance_criterion_ids",
-        "coverage_item_ids",
-        "test_condition_ids",
-        "scenario_id",
-    )
-    return project_settings.get("trace_before_testcase_approve", False) and not any(
-        draft.get(field) for field in trace_sources
-    )
+    return not draft.get("requirement_version_ids")
 
 async def lint_test_case_draft_record(draft_id, user, project_id=None):
     draft = await require_assigned_design_draft('test_case_drafts', draft_id, user, 'testcase.lint')
@@ -95,6 +87,12 @@ async def submit_test_case_review_record(project_id, draft_id, payload, user):
             status_code=409,
             detail={"code": 'REVISION_CONFLICT', "current_revision": draft["revision"]},
         )
+    legacy_content = bool(
+        draft.get("test_data")
+        or plain_text(draft.get("expected_result_doc") or {}).strip()
+    )
+    if legacy_content:
+        draft = {**draft, "steps": canonical_case_steps(draft)}
     from src.modules.design.services.test_case_review import validate_review_sources_before_approval
 
     await validate_review_sources_before_approval(draft)
@@ -125,6 +123,11 @@ async def submit_test_case_review_record(project_id, draft_id, payload, user):
             "review_submitted_by": user.id,
             "review_submitted_at": timestamp,
             "updated_at": timestamp,
+            **({
+                "steps": draft["steps"],
+                "test_data": {},
+                "expected_result_doc": {"type": "doc", "content": []},
+            } if legacy_content else {}),
         },
     )
     if not transitioned:
@@ -161,6 +164,12 @@ async def request_test_case_changes_record(project_id, draft_id, payload, user):
             status_code=409,
             detail={"code": 'REVISION_CONFLICT', "current_revision": draft["revision"]},
         )
+    legacy_content = bool(
+        draft.get("test_data")
+        or plain_text(draft.get("expected_result_doc") or {}).strip()
+    )
+    if legacy_content:
+        draft = {**draft, "steps": canonical_case_steps(draft)}
     timestamp = now()
     transitioned = await test_design_repository.transition_case_draft(
         draft_id,
@@ -211,7 +220,10 @@ async def approve_test_case_draft_record(draft_id, payload, user):
     if trace_is_missing_for_approval(draft, project_settings):
         raise HTTPException(
             status_code=409,
-            detail={"code": "TEST_CASE_TRACE_REQUIRED"},
+            detail={
+                "code": "TEST_CASE_TRACE_REQUIRED",
+                "message": "Liên kết ít nhất một phiên bản Requirement trước khi duyệt ca kiểm thử.",
+            },
         )
     lint_blocking = project_settings.get(
         'testcase_lint_blocking', True
@@ -239,6 +251,10 @@ async def approve_test_case_draft_record(draft_id, payload, user):
         )
     if draft.get("origin") == "ai_generated" and not draft.get("evidence_refs"):
         raise HTTPException(409, detail={"code": "TEST_CASE_SOURCE_REVIEW_REQUIRED", "message": "Ca đã được sửa; cần đối chiếu lại nguồn trước khi duyệt."})
+    legacy_content = bool(
+        draft.get("test_data")
+        or plain_text(draft.get("expected_result_doc") or {}).strip()
+    )
     from src.modules.design.services.test_case_review import (
         assert_sources_current_in_session,
         validate_test_case_publication_uniqueness,
@@ -256,6 +272,8 @@ async def approve_test_case_draft_record(draft_id, payload, user):
         )
         if not current_draft:
             raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
+        if legacy_content:
+            current_draft = {**current_draft, "steps": canonical_case_steps(current_draft)}
         await assert_sources_current_in_session(current_draft, session)
         await validate_test_case_publication_uniqueness(
             current_draft,
@@ -337,6 +355,11 @@ async def approve_test_case_draft_record(draft_id, payload, user):
                     "approved_by": user.id,
                     "approved_at": timestamp,
                     "updated_at": timestamp,
+                    **({
+                        "steps": current_draft["steps"],
+                        "test_data": {},
+                        "expected_result_doc": {"type": "doc", "content": []},
+                    } if legacy_content else {}),
                 },
                 "$inc": {"revision": 1},
             },
@@ -503,18 +526,14 @@ def build_test_case_version(draft, test_case_id, version_number, parent_version_
         "version": version_number,
         "title": draft["title"],
         "module_name": draft.get("module_name", ""),
-        "flow_type": draft.get("flow_type", ""),
         "type": draft["type"],
         "test_level": draft.get("test_level"),
         "test_kind": draft.get("test_kind"),
         "priority": draft["priority"],
-        "risk": draft["risk"],
         "duration_minutes": draft.get("duration_minutes"),
         "objective_doc": draft.get("objective_doc", {"type": "doc", "content": []}),
         "preconditions_doc": draft["preconditions_doc"],
         "steps": draft["steps"],
-        "test_data": draft["test_data"],
-        "expected_result_doc": draft["expected_result_doc"],
         "postconditions_doc": draft["postconditions_doc"],
         "main_flow_doc": draft.get("main_flow_doc") or {"type": "doc", "content": []},
         "alternate_flows_doc": draft.get("alternate_flows_doc") or {"type": "doc", "content": []},

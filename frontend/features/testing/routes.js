@@ -11,6 +11,7 @@ export const PROJECT_SECTION_SLUGS = Object.freeze({
   testData: "du-lieu-kiem-thu",
   testSets: "bo-kiem-thu",
   testPlans: "ke-hoach-kiem-thu",
+  testPeriods: "chu-ky-kiem-thu",
   testRuns: "lan-chay-kiem-thu",
   automation: "tu-dong-hoa",
   traceability: "truy-vet",

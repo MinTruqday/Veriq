@@ -84,19 +84,6 @@ async def execute_skill(capability, project_id, instruction, config):
                 "reason_codes": ["INSUFFICIENT_EVIDENCE"],
             }
         )
-    if capability == "completion_report_narrative" and not any(
-        getattr(item, "artifact_type", None) == "test_completion_report"
-        or isinstance(item, dict)
-        and item.get("artifact_type") == "test_completion_report"
-        for item in evidence
-    ):
-        return json.dumps(
-            {
-                "status": "INSUFFICIENT_EVIDENCE",
-                "capability": capability,
-                "reason_codes": ["COMPLETION_REPORT_EVIDENCE_REQUIRED"],
-            }
-        )
     result = await generate_ai_capability(
         TestingCapabilityRequest(
             capability=capability,
@@ -188,18 +175,5 @@ agent_capabilities = [
         "Generate structured test conditions",
         ["test_design"],
         "testanalysis.run_ai",
-    ),
-    testing_skill(
-        "completion_report_narrative",
-        "Draft an evidence grounded completion report",
-        ["reporting"],
-        "testcompletion.update",
-        "Báo cáo hoàn tất",
-    ),
-    testing_skill(
-        "lessons_learned_clustering",
-        "Cluster lessons learned from evidence",
-        ["reporting"],
-        "testcompletion.update",
     ),
 ]

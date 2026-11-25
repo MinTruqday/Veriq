@@ -377,8 +377,7 @@ async def get_project(
     if project.get("administrative_status", 'ACTIVE') != 'ACTIVE':
         raise HTTPException(status_code=423, detail={"code": 'PROJECT_ADMINISTRATIVELY_SUSPENDED'})
     if permission.endswith((".approve", ".submit_review", ".publish", ".confirm", ".decide")) or permission in {
-        "proposal.bulk.approve", "release.close", "qualitygate.decide",
-        "qualitygate.accept_risk", "qualitygate.override",
+        "proposal.bulk.approve", "release.close",
     }:
         require_ai_publication_authority(user, permission)
     active_roles = (

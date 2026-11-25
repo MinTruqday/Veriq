@@ -35,7 +35,6 @@ from src.services.source_provenance import (
     carry_source_fact_lineage,
     has_provenance_gap,
     source_fact_identity,
-    verified_release_gate_mutation_refs,
     verified_source_span,
 )
 from src.services.inference import model_metadata
@@ -953,23 +952,7 @@ class AIRunWorker:
                     output_refs,
                     lineage_by_ref,
                 )
-                control_event_refs = (
-                    verified_release_gate_mutation_refs(
-                        automatic=True,
-                        source_event_verified=running.source_event_verified,
-                        trigger=str((running.constraints or {}).get("trigger") or ""),
-                        project_id=running.project_id,
-                        source_event_id=running.source_event_id,
-                        control_evidence=source_evidence,
-                        tool_name=str(tool_name),
-                        arguments=record.get("arguments") or {},
-                        input_refs=input_refs,
-                        output_refs=output_refs,
-                    )
-                    if verified_mutation
-                    else []
-                )
-                if verified_mutation and output_refs and not input_fact_ids and not control_event_refs:
+                if verified_mutation and output_refs and not input_fact_ids:
                     unlinked_mutation_count += 1
                 output_versions = list(
                     dict.fromkeys(

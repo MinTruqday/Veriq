@@ -68,6 +68,7 @@ import {
   scenarioPayload,
   createTestCaseForm,
   testDataEntriesToObject,
+  normalizeTestCaseVersionForDisplay,
   UNASSESSED_VALUE,
   buildTestCaseDraftChanges,
 } from "./test-design/testDesign.model";
@@ -126,6 +127,7 @@ export default function TestDesignPage({ project, workspaceView, section }) {
     q: "",
     status: "",
     priority: "",
+    suite_id: "",
     stale_status: "",
     automation_status: "",
     sort: "-updated_at",
@@ -199,10 +201,7 @@ export default function TestDesignPage({ project, workspaceView, section }) {
     (scenario) => scenario.owner_id === currentUserId && scenario.status !== "archived",
   );
   const canCreateUnassignedCase = can("testcase.create");
-  const availableScenarios = canCreateUnassignedCase
-    ? scenarios
-    : assignedScenarios.filter((scenario) => canDraft("testscenario.update", scenario));
-  const canCreateCase = canCreateUnassignedCase || availableScenarios.length > 0;
+  const canCreateCase = canCreateUnassignedCase;
   const permissions = useMemo(
     () => project.current_permissions || [],
     [project.current_permissions],
@@ -428,8 +427,11 @@ export default function TestDesignPage({ project, workspaceView, section }) {
           setError("Ca kiểm thử không thuộc dự án đang mở.");
           return;
         }
-        setSelectedTestRecord(record);
-        setTestVersions(versions);
+        setSelectedTestRecord({
+          ...record,
+          current_version: normalizeTestCaseVersionForDisplay(record.current_version),
+        });
+        setTestVersions(versions.map(normalizeTestCaseVersionForDisplay));
       })
       .catch((reason) => {
         if (active) setError(messageOf(reason));
@@ -479,10 +481,24 @@ export default function TestDesignPage({ project, workspaceView, section }) {
     if (loadedDraft.current === selectedDraft._id) return;
     loadedDraft.current = selectedDraft._id;
     setTestLint(null);
+    const steps = (selectedDraft.steps || []).map((step) => ({
+      id: step.id,
+      action: docText(step.action_doc),
+      data: step.test_data || {},
+      expected: docText(step.expected_doc),
+    }));
+    const legacyTestData = selectedDraft.test_data || {};
+    const legacyExpected = docText(selectedDraft.expected_result_doc);
+    const hasStepData = steps.some((step) => Object.keys(step.data || {}).length > 0);
+    const hasStepExpected = steps.some((step) => String(step.expected || "").trim());
+    if (!selectedDraft.bdd && steps.length) {
+      if (!hasStepData && Object.keys(legacyTestData).length)
+        steps[0] = { ...steps[0], data: legacyTestData };
+      if (!hasStepExpected && legacyExpected) steps[0] = { ...steps[0], expected: legacyExpected };
+    }
     setDraftEdit({
       title: selectedDraft.title,
       module_name: selectedDraft.module_name || "",
-      flow_type: selectedDraft.flow_type || "",
       type: selectedDraft.type,
       priority: selectedDraft.priority,
       risk: selectedDraft.risk,
@@ -506,14 +522,9 @@ export default function TestDesignPage({ project, workspaceView, section }) {
         : null,
       objective: docText(selectedDraft.objective_doc),
       preconditions: docText(selectedDraft.preconditions_doc),
-      steps: (selectedDraft.steps || []).map((step) => ({
-        id: step.id,
-        action: docText(step.action_doc),
-        data: step.test_data || {},
-        expected: docText(step.expected_doc),
-      })),
-      testData: selectedDraft.test_data || {},
-      expected: docText(selectedDraft.expected_result_doc),
+      steps,
+      testData: selectedDraft.bdd ? legacyTestData : {},
+      expected: selectedDraft.bdd ? legacyExpected : "",
       postconditions: docText(selectedDraft.postconditions_doc),
       mainFlow: docText(selectedDraft.main_flow_doc),
       alternateFlows: docText(selectedDraft.alternate_flows_doc),
@@ -583,11 +594,8 @@ export default function TestDesignPage({ project, workspaceView, section }) {
         save_as_draft: saveAsDraft,
         title: form.title,
         module_name: form.moduleName,
-        flow_type: form.flowType,
-        scenario_id: form.scenarioId || null,
         type: form.type,
-        priority: form.priority,
-        risk: form.risk,
+        ...(form.priority ? { priority: form.priority } : {}),
         duration_minutes: form.durationMinutes ? Number(form.durationMinutes) : null,
         test_level: form.testLevel || null,
         test_kind: form.testKind || null,
@@ -607,8 +615,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                 test_data: testDataEntriesToObject(step.data),
                 expected_doc: step.expected,
               })),
-        test_data: testDataEntriesToObject(form.testData),
-        expected_result_doc: form.expectedResult,
         postconditions_doc: form.postconditions,
         main_flow_doc: form.mainFlow,
         alternate_flows_doc: form.alternateFlows,
@@ -1123,8 +1129,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
               setForm={setForm}
               testConditions={testConditions}
               requirements={requirements}
-              scenarios={availableScenarios}
-              scenarioRequired={!canCreateUnassignedCase}
               members={projectMembers}
               canReadMembers={permissions.includes("project.members.read")}
               membersUnavailable={projectMembersUnavailable}
@@ -1195,15 +1199,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
           ) : (
             <ProjectCrumb projectId={project._id} />
           )}
-          {!linkedCaseId && workspaceView === "test-sets" && (
-            <button
-              className="secondary-button"
-              type="button"
-              onClick={() => router.push(caseListPath)}
-            >
-              Quay lại ca kiểm thử
-            </button>
-          )}
           {!linkedCaseId && isCaseWorkspace && caseTab !== "cases" && (
             <button
               className="secondary-button"
@@ -1213,13 +1208,9 @@ export default function TestDesignPage({ project, workspaceView, section }) {
               Quay lại ca kiểm thử
             </button>
           )}
-          {!linkedCaseId && showCases && can("testsuite.read") && (
-            <button
-              className="secondary-button"
-              type="button"
-              onClick={() => router.push(`${caseListPath}/bo-kiem-thu`)}
-            >
-              Bộ kiểm thử
+          {!linkedCaseId && showCases && can("testsuite.create") && (
+            <button className="secondary-button" type="button" onClick={createTestSet}>
+              Tạo bộ kiểm thử
             </button>
           )}
           {!linkedCaseId &&
@@ -1227,12 +1218,10 @@ export default function TestDesignPage({ project, workspaceView, section }) {
             (can("testcase.template.read") ||
               can("testcase.import") ||
               can("testcase.export") ||
-              (canReadTestData && dataSets.length > 0) ||
-              (can("testscenario.read") && scenarios.length > 0) ||
               (can("testcondition.read") && testConditions.length > 0)) && (
               <details className="relative">
                 <summary className="secondary-button cursor-pointer list-none [&::-webkit-details-marker]:hidden">
-                  Tác vụ
+                  Mẫu và nhập/xuất
                 </summary>
                 <div className="absolute right-0 z-30 mt-1 min-w-52 rounded-control border border-border bg-surface p-1 shadow-panel">
                   {can("testcase.template.read") && (
@@ -1251,26 +1240,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                       onClick={() => router.push(`${caseListPath}/nhap-xuat`)}
                     >
                       Nhập và xuất
-                    </button>
-                  )}
-                  {can("testscenario.read") && scenarios.length > 0 && (
-                    <button
-                      type="button"
-                      className="block w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
-                      onClick={() => router.push(`${caseListPath}/kich-ban`)}
-                    >
-                      Kịch bản đã có
-                    </button>
-                  )}
-                  {canReadTestData && dataSets.length > 0 && (
-                    <button
-                      type="button"
-                      className="block w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
-                      onClick={() =>
-                        router.push(projectRoute(project._id, PROJECT_SECTION_SLUGS.testData))
-                      }
-                    >
-                      Bộ dữ liệu đã có
                     </button>
                   )}
                   {can("testcondition.read") && testConditions.length > 0 && (
@@ -1347,16 +1316,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                   <dt className="text-xs text-ink-muted">Module / Tính năng</dt>
                   <dd className="mt-1 text-sm">
                     {selectedTestRecord.current_version?.module_name || "-"}
-                  </dd>
-                </div>
-                <div className="min-w-0">
-                  <dt className="text-xs text-ink-muted">Loại luồng</dt>
-                  <dd className="mt-1 text-sm">
-                    {{
-                      MAIN: "Luồng chính",
-                      ALTERNATIVE: "Luồng thay thế",
-                      EXCEPTION: "Luồng ngoại lệ",
-                    }[selectedTestRecord.current_version?.flow_type] || "-"}
                   </dd>
                 </div>
                 <div className="min-w-0">
@@ -1499,20 +1458,8 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                     })
                     .join("\n"),
                 ],
-                [
-                  "Kịch bản kiểm thử",
-                  scenarios.find(
-                    (item) => item._id === selectedTestRecord.current_version?.scenario_id,
-                  )?.title || selectedTestRecord.current_version?.scenario_id,
-                ],
                 ["Kỹ thuật", selectedTestRecord.current_version?.techniques],
                 ["Thẻ", selectedTestRecord.current_version?.tags],
-                [
-                  "Dữ liệu kiểm thử",
-                  Object.entries(selectedTestRecord.current_version?.test_data || {})
-                    .map(([key, value]) => `${key}: ${docText(value) || String(value)}`)
-                    .join("\n"),
-                ],
               ].map(([label, content]) => (
                 <div className="py-3" key={label}>
                   <dt className="text-xs text-ink-muted">{label}</dt>
@@ -2055,7 +2002,43 @@ export default function TestDesignPage({ project, workspaceView, section }) {
               </div>
             }
           >
-            <div className="grid min-w-0 gap-3 border-b border-border px-4 py-3 md:grid-cols-2 xl:grid-cols-5">
+            <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
+              <span className="mr-1 text-sm text-ink-muted">Nhóm ca:</span>
+              <button
+                type="button"
+                aria-pressed={!testFilters.suite_id}
+                className={`rounded-full border px-3 py-1.5 text-sm ${!testFilters.suite_id ? "border-brand bg-brand/10 font-medium text-brand" : "border-border text-ink-muted hover:bg-surface-quiet"}`}
+                onClick={() => {
+                  setTestFilters({ ...testFilters, suite_id: "" });
+                  setTestPage(1);
+                }}
+              >
+                Tất cả ca
+              </button>
+              {suites
+                .filter((item) => item.status !== "ARCHIVED")
+                .map((item) => (
+                  <button
+                    type="button"
+                    key={item._id}
+                    aria-pressed={testFilters.suite_id === item._id}
+                    className={`rounded-full border px-3 py-1.5 text-sm ${testFilters.suite_id === item._id ? "border-brand bg-brand/10 font-medium text-brand" : "border-border text-ink-muted hover:bg-surface-quiet"}`}
+                    onClick={() => {
+                      setTestFilters({ ...testFilters, suite_id: item._id });
+                      setTestPage(1);
+                    }}
+                  >
+                    {item.name}{" "}
+                    <span className="text-xs">({item.test_case_version_ids?.length || 0})</span>
+                  </button>
+                ))}
+              {suites.filter((item) => item.status !== "ARCHIVED").length === 0 && (
+                <span className="text-sm text-ink-muted">
+                  Chưa có bộ kiểm thử. Các ca vẫn dùng được khi chưa gom vào bộ.
+                </span>
+              )}
+            </div>
+            <div className="grid min-w-0 gap-3 border-b border-border px-4 py-3 md:grid-cols-2 xl:grid-cols-5 2xl:grid-cols-7">
               <SearchField
                 ariaLabel="Tìm ca kiểm thử"
                 className="min-w-0 xl:col-span-2"
@@ -2211,7 +2194,11 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                   : undefined
               }
               selectionLabel="Chọn ca kiểm thử"
-              empty="Chưa có ca kiểm thử được phê duyệt"
+              empty={
+                testFilters.suite_id
+                  ? "Bộ kiểm thử này chưa có ca kiểm thử được phê duyệt"
+                  : "Chưa có ca kiểm thử được phê duyệt"
+              }
               columns={[
                 { key: "test_case_key", label: "Mã", minWidth: 88 },
                 {
@@ -2331,7 +2318,13 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                                     setSelectedTestIds([]);
                                     await Promise.all([
                                       load(),
-                                      testingApi.listTestVersions(item._id).then(setTestVersions),
+                                      testingApi
+                                        .listTestVersions(item._id)
+                                        .then((versions) =>
+                                          setTestVersions(
+                                            versions.map(normalizeTestCaseVersionForDisplay),
+                                          ),
+                                        ),
                                     ]);
                                     setSelectedDraftId(draft._id);
                                   } catch (reasonValue) {
@@ -2398,7 +2391,11 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                                     });
                                     await load();
                                     if (selectedTestId === item._id) {
-                                      setTestVersions(await testingApi.listTestVersions(item._id));
+                                      setTestVersions(
+                                        (await testingApi.listTestVersions(item._id)).map(
+                                          normalizeTestCaseVersionForDisplay,
+                                        ),
+                                      );
                                     }
                                   } catch (reasonValue) {
                                     setError(messageOf(reasonValue));
@@ -2774,27 +2771,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                       </label>
                     </div>
                     <div className="grid gap-4 lg:col-span-2">
-                      <label className="field-label">
-                        Kịch bản liên kết
-                        <select
-                          className="apple-input mt-2"
-                          aria-label="Kịch bản liên kết"
-                          value={draftEdit.scenarioId}
-                          onChange={(event) => changeDraftEdit({ scenarioId: event.target.value })}
-                        >
-                          <option value="">-</option>
-                          {scenarios.map((scenario) => (
-                            <option key={scenario._id} value={scenario._id}>
-                              {scenario.scenario_key || scenario._id} ·{" "}
-                              {scenario.title || "Kịch bản"}
-                            </option>
-                          ))}
-                          {draftEdit.scenarioId &&
-                            !scenarios.some(
-                              (scenario) => scenario._id === draftEdit.scenarioId,
-                            ) && <option value={draftEdit.scenarioId}>Kịch bản đã liên kết</option>}
-                        </select>
-                      </label>
                       <MultiSelect
                         showSearch={false}
                         label="Phiên bản yêu cầu liên quan"
@@ -2898,14 +2874,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                         onChange={(event) => changeDraftEdit({ preconditions: event.target.value })}
                       />
                     </label>
-                    {Object.keys(selectedDraft.test_data || {}).length > 0 && (
-                      <ObjectTestDataEntries
-                        key={selectedDraft._id}
-                        label="Dữ liệu chung đã lưu"
-                        value={draftEdit.testData}
-                        onChange={(testData) => changeDraftEdit({ testData })}
-                      />
-                    )}
                     {draftEdit.dataSetVersionIds.length > 0 && (
                       <MultiSelect
                         label="Phiên bản bộ dữ liệu tham số"
@@ -2934,16 +2902,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                       value={draftEdit.testConditionIds}
                       onChange={(testConditionIds) => changeDraftEdit({ testConditionIds })}
                     />
-                    {docText(selectedDraft.expected_result_doc).trim() && (
-                      <label className="field-label">
-                        Kết quả mong đợi chung đã lưu
-                        <textarea
-                          className="apple-input mt-2 min-h-28"
-                          value={draftEdit.expected}
-                          onChange={(event) => changeDraftEdit({ expected: event.target.value })}
-                        />
-                      </label>
-                    )}
                     <label className="field-label lg:col-span-2">
                       Hậu điều kiện
                       <textarea
@@ -3115,7 +3073,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                   ["Mức ưu tiên", valueLabel(draftEdit.priority)],
                   ["Mục tiêu", draftEdit.objective],
                   ["Tiền điều kiện", draftEdit.preconditions],
-                  ["Kết quả mong đợi", draftEdit.expected],
                   ["Hậu điều kiện", draftEdit.postconditions],
                   ["Luồng chính", draftEdit.mainFlow],
                   ["Luồng thay thế", draftEdit.alternateFlows],

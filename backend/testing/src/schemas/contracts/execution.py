@@ -20,8 +20,6 @@ from src.schemas.contracts.planning import (
 class ReleaseReadinessCheck(BaseModel):
     gate: Literal[
         "RELEASE_STATE",
-        "GATE_REVISION",
-        "COMPLETION_REPORT",
         "BLOCKING_DEFECTS",
     ]
     status: Literal["PASS", "BLOCKED"]
@@ -42,35 +40,29 @@ class ReleaseReadiness(BaseModel):
 
 
 class TestPlanPatch(BaseModel):
-    phase: str | None = Field(default=None, max_length=120)
+    test_period_id: str | None = Field(default=None, max_length=200)
     carry_over_items: list[TestPlanCarryOver] | None = Field(default=None, max_length=5000)
     owner_id: str | None = Field(default=None, max_length=200)
     scenario_ids: list[str] | None = Field(default=None, max_length=1000)
     expected_revision: int = Field(ge=1)
     name: str | None = Field(default=None, min_length=2, max_length=300)
     objective: str | None = Field(default=None, max_length=5000)
-    scope_in: list[str] | None = Field(default=None, max_length=500)
     scope_out: list[str] | None = Field(default=None, max_length=500)
     requirement_version_ids: list[str] | None = Field(default=None, max_length=2000)
     test_suite_ids: list[str] | None = Field(default=None, max_length=500)
     test_case_version_ids: list[str] | None = Field(default=None, max_length=5000)
-    environment: str | None = Field(default=None, max_length=200)
     environment_id: str | None = Field(default=None, max_length=200)
-    environment_notes: str | None = Field(default=None, max_length=5000)
-    test_data_notes: str | None = Field(default=None, max_length=5000)
     entry_criteria: list[str] | None = Field(default=None, max_length=200)
     exit_criteria: list[str] | None = Field(default=None, max_length=200)
     test_types: list[str] | None = Field(default=None, max_length=100)
     test_techniques: list[str] | None = Field(default=None, max_length=100)
     members: list[str] | None = Field(default=None, max_length=500)
     test_level: str | None = Field(default=None, min_length=1, max_length=100)
-    test_approach: str | None = Field(default=None, max_length=10000)
     assumptions: list[str] | None = Field(default=None, max_length=200)
     constraints: list[str] | None = Field(default=None, max_length=200)
     dependencies: list[dict[str, Any]] | None = Field(default=None, max_length=500)
     estimation: TestPlanEstimation | None = None
     schedule: TestPlanSchedule | None = None
-    quality_targets: list[dict[str, Any]] | None = Field(default=None, max_length=200)
     risk_register: list[TestPlanRisk] | None = Field(default=None, max_length=500)
     communication_plan: TestPlanCommunication | None = None
 
@@ -100,12 +92,10 @@ class TestRunCreate(BaseModel):
     project_id: str
     idempotency_key: str | None = Field(default=None, min_length=8, max_length=200)
     name: str = Field(min_length=2, max_length=300)
-    phase: str | None = Field(default=None, max_length=120)
     test_plan_id: str | None = None
     expected_test_plan_snapshot_hash: str | None = Field(default=None, min_length=1, max_length=128)
     test_suite_ids: list[str] = Field(default_factory=list, max_length=500)
     test_case_version_ids: list[str] = Field(default_factory=list, max_length=5000)
-    environment: str = Field(default="", max_length=200)
     environment_id: str | None = Field(default=None, max_length=200)
     release: str = Field(default="", max_length=200)
     release_id: str | None = Field(default=None, max_length=200)
@@ -130,7 +120,6 @@ class TestRunPatch(BaseModel):
     test_plan_id: str | None = None
     test_suite_ids: list[str] | None = Field(default=None, max_length=500)
     test_case_version_ids: list[str] | None = Field(default=None, max_length=5000)
-    environment: str | None = Field(default=None, max_length=200)
     environment_id: str | None = Field(default=None, max_length=200)
     release: str | None = Field(default=None, max_length=200)
     release_id: str | None = Field(default=None, max_length=200)

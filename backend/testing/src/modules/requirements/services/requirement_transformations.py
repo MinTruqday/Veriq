@@ -196,7 +196,6 @@ async def prepare_requirement_output(
         "title": draft.title,
         "type": draft.type,
         "priority": draft.priority,
-        "risk": draft.risk,
         "content_doc": draft.content_doc,
         "plain_text_projection": plain_text(draft.content_doc),
         "business_rules": draft.business_rules,

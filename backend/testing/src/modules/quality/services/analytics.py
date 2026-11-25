@@ -81,7 +81,10 @@ class AnalyticsService:
             analytics_repository.count_records(
                 "test_plans", {"project_id": project_id, "status": {"$ne": "ARCHIVED"}}
             ),
-            analytics_repository.count_records("test_completion_reports", {"project_id": project_id}),
+            analytics_repository.count_records(
+                "simple_test_reports",
+                {"project_id": project_id, "type": "COMPLETION"},
+            ),
             analytics_repository.count_records("releases", {"project_id": project_id}),
         )
         active_tests = await analytics_repository.count_records(

@@ -58,7 +58,6 @@ export default function TestAnalysisPage({ project }) {
   const [conditions, setConditions] = useState([]);
   const [requirements, setRequirements] = useState([]);
   const [members, setMembers] = useState([]);
-  const [coverage, setCoverage] = useState(null);
   const [findings, setFindings] = useState([]);
   const [selected, setSelected] = useState(null);
   const [activeTab, setActiveTab] = useState("conditions");
@@ -90,40 +89,30 @@ export default function TestAnalysisPage({ project }) {
     }
     try {
       let memberLoadError = "";
-      const [
-        conditionResult,
-        requirementValues,
-        coverageValue,
-        findingValues,
-        aiResultValues,
-        memberValues,
-      ] = await Promise.all([
-        can("testcondition.read")
-          ? testingApi.listTestConditions(project._id, { q: query, status, page_size: 200 })
-          : Promise.resolve({ items: [] }),
-        can("requirement.read")
-          ? testingApi.listRequirements(project._id, { status: "BASELINED", page_size: 500 })
-          : Promise.resolve([]),
-        can("testcondition.read")
-          ? testingApi.getTestConditionCoverage(project._id)
-          : Promise.resolve(null),
-        can("testanalysis.read")
-          ? testingApi.listTestAnalysisFindings(project._id)
-          : Promise.resolve({ items: [] }),
-        can("testanalysis.read")
-          ? testingApi.listTestAnalysisAiResults(project._id)
-          : Promise.resolve([]),
-        can("testanalysis.finding.assign") && can("project.members.read")
-          ? testingApi.listMembers(project._id).catch((reason) => {
-              memberLoadError = `Không tải được danh sách thành viên để phân công: ${messageOf(reason)}`;
-              return [];
-            })
-          : Promise.resolve([]),
-      ]);
+      const [conditionResult, requirementValues, findingValues, aiResultValues, memberValues] =
+        await Promise.all([
+          can("testcondition.read")
+            ? testingApi.listTestConditions(project._id, { q: query, status, page_size: 200 })
+            : Promise.resolve({ items: [] }),
+          can("requirement.read")
+            ? testingApi.listRequirements(project._id, { status: "BASELINED", page_size: 500 })
+            : Promise.resolve([]),
+          can("testanalysis.read")
+            ? testingApi.listTestAnalysisFindings(project._id)
+            : Promise.resolve({ items: [] }),
+          can("testanalysis.read")
+            ? testingApi.listTestAnalysisAiResults(project._id)
+            : Promise.resolve([]),
+          can("testanalysis.finding.assign") && can("project.members.read")
+            ? testingApi.listMembers(project._id).catch((reason) => {
+                memberLoadError = `Không tải được danh sách thành viên để phân công: ${messageOf(reason)}`;
+                return [];
+              })
+            : Promise.resolve([]),
+        ]);
       const nextConditions = conditionResult.items || [];
       setConditions(nextConditions);
       setRequirements(requirementValues);
-      setCoverage(coverageValue);
       setFindings(findingValues.items || []);
       setAiResults(aiResultValues || []);
       setMembers(memberValues || []);
@@ -148,7 +137,6 @@ export default function TestAnalysisPage({ project }) {
     ...(can("testcondition.read") ? [{ id: "conditions", label: "Điều kiện kiểm thử" }] : []),
     ...(can("testanalysis.read") ? [{ id: "ai", label: "Đề xuất AI" }] : []),
     ...(can("testanalysis.read") ? [{ id: "findings", label: "Phát hiện" }] : []),
-    ...(can("testcondition.read") ? [{ id: "traceability", label: "Truy vết" }] : []),
   ];
   const visibleTab = tabs.some((tab) => tab.id === activeTab) ? activeTab : tabs[0]?.id;
   const aiCandidateItems = aiResults.flatMap((result) =>
@@ -977,97 +965,6 @@ export default function TestAnalysisPage({ project }) {
                         </button>
                       )}
                     </span>
-                  ),
-                },
-              ]}
-            />
-          </Panel>
-        </div>
-      )}
-      {can("testcondition.read") && (
-        <div className="space-y-5" hidden={visibleTab !== "traceability"}>
-          <Panel title="Liên kết yêu cầu, điều kiện và ca kiểm thử">
-            {coverage?.scope_complete === false && (
-              <div
-                className="mx-5 mt-5 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-                role="status"
-              >
-                Chưa thể xác định toàn bộ độ phủ vì danh sách vượt giới hạn xử lý. Các mục chưa tìm
-                thấy liên kết được giữ ở trạng thái chưa xác định.
-                {coverage.truncated_sources?.length > 0 && (
-                  <span className="mt-1 block">
-                    Cần thu hẹp phạm vi: {coverage.truncated_sources.join(", ")}.
-                  </span>
-                )}
-              </div>
-            )}
-            <DataTable
-              items={coverage?.items || []}
-              empty="Chưa có điều kiện để tính độ phủ"
-              columns={[
-                { key: "condition_key", label: "Điều kiện" },
-                {
-                  key: "basis_refs",
-                  label: "Yêu cầu hoặc cơ sở",
-                  render: (item) =>
-                    item.basis_refs
-                      .map((ref) => {
-                        const referenceId = ref.artifact_version_id || ref.artifact_id;
-                        const requirement = requirements.find(
-                          (value) => value.current_version_id === referenceId,
-                        );
-                        return requirement
-                          ? `${requirement.requirement_key} · v${requirement.current_version?.version}`
-                          : ref.label || ref.source_label || "Nguồn liên kết khác";
-                      })
-                      .join(" · "),
-                },
-                {
-                  key: "scenario_ids",
-                  label: "Kịch bản",
-                  render: (item) => item.scenario_ids.length,
-                },
-                {
-                  key: "test_case_version_ids",
-                  label: "Ca kiểm thử",
-                  render: (item) => {
-                    const linkedCases = item.test_cases || [];
-                    if (!linkedCases.length) return item.test_case_version_ids.length;
-                    return (
-                      <div className="space-y-1">
-                        {linkedCases.map((testCase) => (
-                          <a
-                            className="block break-words font-medium text-brand underline-offset-2 hover:underline"
-                            href={`${projectRoute(project._id, PROJECT_SECTION_SLUGS.testCases)}?case=${encodeURIComponent(testCase.id)}`}
-                            key={testCase.version_id}
-                            onClick={(event) => {
-                              event.preventDefault();
-                              router.push(
-                                `${projectRoute(project._id, PROJECT_SECTION_SLUGS.testCases)}?case=${encodeURIComponent(testCase.id)}`,
-                              );
-                            }}
-                          >
-                            {testCase.key} · {testCase.title}
-                            {testCase.version ? ` · v${testCase.version}` : ""}
-                          </a>
-                        ))}
-                      </div>
-                    );
-                  },
-                },
-                {
-                  key: "uncovered",
-                  label: "Độ phủ",
-                  render: (item) => (
-                    <StatusPill
-                      value={
-                        item.coverage_status === "UNKNOWN"
-                          ? "Chưa xác định"
-                          : item.coverage_status === "UNCOVERED"
-                            ? "Chưa có ca kiểm thử"
-                            : "Đã liên kết ca kiểm thử"
-                      }
-                    />
                   ),
                 },
               ]}

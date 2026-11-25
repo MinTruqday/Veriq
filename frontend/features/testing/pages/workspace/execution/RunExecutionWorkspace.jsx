@@ -229,7 +229,7 @@ export default function RunExecutionWorkspace({
                         });
                         resumeOperation.current = null;
                         onResumeChange(value);
-                        onRunChange(value.run);
+                        onRunChange({ ...run, ...value.run });
                       } catch (reason) {
                         if (reason?.status === 409) {
                           resumeOperation.current = null;
@@ -504,7 +504,7 @@ export default function RunExecutionWorkspace({
           <div className="divide-y divide-border">
             {testCaseVersions.map((item, caseIndex) => {
               const result = run.results?.find((value) => value.test_case_version_id === item._id);
-              const assigneeId = run.test_case_assignments?.[item._id];
+              const assigneeId = run.test_case_assignments?.[item._id] || run.assignee_id;
               const assignee = assigneeId
                 ? run.test_case_assignment_identities?.[assigneeId]?.display_name ||
                   "Thành viên không còn trong dự án"

@@ -1,19 +1,15 @@
 import {
   Activity,
-  Archive,
-  BrainCircuit,
   Bug,
   BarChart3,
   ClipboardCheck,
   FileCheck2,
   FolderKanban,
   LayoutDashboard,
-  Network,
   PlayCircle,
   Search,
   Settings,
   TestTube2,
-  Database,
   History,
 } from "lucide-react";
 import {
@@ -55,13 +51,6 @@ export function testCaseSubsectionItems(projectId, includeLegacy = false) {
   return [
     ...items,
     {
-      id: "ai",
-      label: "Hoạt động AI",
-      href: `${root}/ai`,
-      anyPermission: ["requirement.read", "proposal.read"],
-      permissions: ["testcase.read"],
-    },
-    {
       id: "sets",
       label: "Bộ kiểm thử",
       href: `${root}/bo-kiem-thu`,
@@ -69,31 +58,10 @@ export function testCaseSubsectionItems(projectId, includeLegacy = false) {
       permissions: ["testcase.read"],
     },
     {
-      id: "scenarios",
-      label: "Kịch bản",
-      href: `${root}/kich-ban`,
-      permission: "testscenario.read",
-      permissions: ["testcase.read"],
-    },
-    {
       id: "templates",
       label: "Mẫu",
       href: `${root}/mau`,
       permission: "testcase.template.read",
-      permissions: ["testcase.read"],
-    },
-    {
-      id: "automation",
-      label: "Mã kiểm thử tự động",
-      href: `${root}/tu-dong-hoa`,
-      permission: "automation.read",
-      permissions: ["testcase.read"],
-    },
-    {
-      id: "api",
-      label: "API",
-      href: `${root}/api`,
-      permission: "apiartifact.read",
       permissions: ["testcase.read"],
     },
     {
@@ -111,9 +79,7 @@ export function testDesignSectionItems(projectId) {
     navigationGroupsFor(projectRoute(projectId)).find((group) =>
       group.items.some((item) => item.id === "test-cases"),
     )?.items || [];
-  return designItems.filter((item) =>
-    ["test-scenarios", "test-cases", "test-data", "test-sets"].includes(item.id),
-  );
+  return designItems.filter((item) => item.id === "test-cases");
 }
 
 export function projectIdFromPath(pathname) {
@@ -159,22 +125,6 @@ export function navigationGroupsFor(pathname) {
             icon: TestTube2,
             permission: "testcase.read",
           },
-          {
-            id: "test-data",
-            label: "Dữ liệu kiểm thử",
-            href: `${root}/${PROJECT_SECTION_SLUGS.testData}`,
-            icon: Database,
-            permission: "testdata.read",
-            permissions: ["testcase.read"],
-          },
-          {
-            id: "test-sets",
-            label: "Bộ kiểm thử",
-            href: `${root}/${PROJECT_SECTION_SLUGS.testSets}`,
-            icon: Archive,
-            permission: "testsuite.read",
-            permissions: ["testcase.read"],
-          },
         ],
         execution: [
           {
@@ -199,13 +149,6 @@ export function navigationGroupsFor(pathname) {
             permission: "testrun.read",
           },
           {
-            id: "automation",
-            label: "Mã kiểm thử tự động",
-            href: `${root}/${PROJECT_SECTION_SLUGS.automation}`,
-            icon: BrainCircuit,
-            permission: "automation.read",
-          },
-          {
             id: "defects",
             label: "Lỗi",
             href: `${root}/${PROJECT_SECTION_SLUGS.defects}`,
@@ -214,20 +157,6 @@ export function navigationGroupsFor(pathname) {
           },
         ],
         quality: [
-          {
-            id: "monitoring",
-            label: "Giám sát kiểm thử",
-            href: `${root}/${PROJECT_SECTION_SLUGS.monitoring}`,
-            icon: Activity,
-            permission: "testmonitor.read",
-          },
-          {
-            id: "traceability",
-            label: "Truy vết",
-            href: `${root}/${PROJECT_SECTION_SLUGS.traceability}`,
-            icon: Network,
-            permission: "trace.read",
-          },
           {
             id: "reports",
             label: "Báo cáo",
@@ -302,7 +231,7 @@ export function navigationGroupsFor(pathname) {
         },
       ],
     },
-    { label: "Dự án", items: projectItems.project },
+    { label: "Tổng quan", items: projectItems.project },
     {
       label: "Bảo đảm yêu cầu",
       items: projectItems.requirements,

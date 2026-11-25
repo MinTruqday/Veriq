@@ -6,12 +6,6 @@ from src.core.configuration import settings
 QUALITY_PROCESS_COLLECTIONS = (
     "test_conditions",
     "test_analysis_findings",
-    "test_monitoring_snapshots",
-    "quality_gate_evaluations",
-    "quality_decisions",
-    "test_control_actions",
-    "test_status_reports",
-    "test_completion_reports",
 )
 
 
@@ -114,6 +108,11 @@ async def create_indexes():
     await db.import_jobs.update_many({"revision": {"$exists": False}}, {"$set": {"revision": 1}})
     await db.trace_links.update_many({"revision": {"$exists": False}}, {"$set": {"revision": 1}})
     await db.projects.create_index("key", unique=True)
+    await db.test_periods.create_index([("project_id", 1), ("sequence", -1)])
+    await db.test_periods.create_index([("project_id", 1), ("status", 1), ("updated_at", -1)])
+    await db.test_plans.create_index([("project_id", 1), ("test_period_id", 1), ("status", 1)])
+    await db.test_runs.create_index([("project_id", 1), ("test_period_id", 1), ("created_at", -1)])
+    await db.test_runs.create_index([("project_id", 1), ("test_plan_id", 1), ("created_at", -1)])
     await db.projects.create_index([("created_by", 1), ("updated_at", -1)])
     await db.project_members.create_index([("project_id", 1), ("user_id", 1)], unique=True)
     await db.project_members.create_index([("user_id", 1), ("status", 1)])
@@ -269,63 +268,6 @@ async def create_indexes():
     )
     await db.test_analysis_findings.create_index(
         [("project_id", 1), ("artifact_id", 1), ("artifact_version_id", 1)]
-    )
-    await db.test_monitoring_snapshots.create_index(
-        [("project_id", 1), ("test_plan_id", 1), ("snapshot_at", -1)]
-    )
-    await db.test_monitoring_snapshots.create_index(
-        [("project_id", 1), ("release_id", 1), ("snapshot_at", -1)]
-    )
-    await ensure_partial_unique_index(
-        db.test_monitoring_snapshots,
-        [("project_id", 1), ("idempotency_key", 1)],
-        {"idempotency_key": {"$type": "string"}},
-    )
-    await db.test_monitoring_overrides.create_index(
-        [("snapshot_id", 1), ("criterion_id", 1), ("created_at", -1)]
-    )
-    await db.test_control_actions.create_index([("project_id", 1), ("status", 1), ("due_at", 1)])
-    await db.test_control_actions.create_index([("project_id", 1), ("owner_id", 1), ("status", 1)])
-    await db.quality_gate_evaluations.create_index(
-        [("project_id", 1), ("snapshot_id", 1)], unique=True
-    )
-    await db.quality_gate_evaluations.create_index(
-        [("project_id", 1), ("release_id", 1), ("evaluated_at", -1)]
-    )
-    await db.quality_decisions.create_index(
-        [("project_id", 1), ("release_id", 1), ("decided_at", -1)]
-    )
-    await ensure_partial_unique_index(
-        db.quality_decisions,
-        [("project_id", 1), ("idempotency_key", 1)],
-        {"idempotency_key": {"$type": "string"}},
-    )
-    await db.test_status_reports.create_index([("project_id", 1), ("created_at", -1)])
-    await db.test_status_reports.create_index(
-        [("project_id", 1), ("test_plan_id", 1), ("release_id", 1), ("sequence", -1)], unique=True
-    )
-    await db.test_status_reports.create_index(
-        [("project_id", 1), ("status", 1), ("updated_at", -1)]
-    )
-    await db.test_status_reports.create_index([("snapshot_id", 1), ("created_at", -1)])
-    await ensure_partial_unique_index(
-        db.test_status_reports,
-        [("project_id", 1), ("idempotency_key", 1)],
-        {"idempotency_key": {"$type": "string"}},
-    )
-    await db.test_completion_reports.create_index(
-        [("project_id", 1), ("release_id", 1), ("sequence", -1)], unique=True
-    )
-    await db.test_completion_reports.create_index(
-        [("project_id", 1), ("status", 1), ("updated_at", -1)]
-    )
-    await db.test_completion_reports.create_index(
-        [("monitoring_snapshot_id", 1), ("created_at", -1)]
-    )
-    await ensure_partial_unique_index(
-        db.test_completion_reports,
-        [("project_id", 1), ("idempotency_key", 1)],
-        {"idempotency_key": {"$type": "string"}},
     )
     await db.test_suites.create_index([("project_id", 1), ("updated_at", -1)])
     await db.test_runs.create_index([("project_id", 1), ("status", 1), ("updated_at", -1)])

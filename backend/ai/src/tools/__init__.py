@@ -17,10 +17,7 @@ from src.tools.execution_tools import (
 )
 from src.tools.execution_workflows import (
     process_approved_test_plan,
-    process_changed_release,
     process_changed_test_plan,
-    process_created_status_report,
-    process_created_test_completion_report,
 )
 from src.tools.knowledge_tools import (
     get_project_context,
@@ -80,9 +77,6 @@ tools = [
     recommend_test_design_techniques_for_requirement_change,
     process_approved_test_plan,
     process_changed_test_plan,
-    process_changed_release,
-    process_created_status_report,
-    process_created_test_completion_report,
     compare_requirement_versions,
     get_acceptance_criteria,
     get_trace_links,

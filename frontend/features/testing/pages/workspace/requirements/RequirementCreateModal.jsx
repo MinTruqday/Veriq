@@ -14,7 +14,7 @@ export default function RequirementCreateModal({ error, form, setForm, customFie
       )}
       <form id="requirement-create-form" className="space-y-4 p-5" onSubmit={onSubmit}>
         <label className="field-label">
-          Tên
+          Tên <span className="text-danger">*</span>
           <input
             className="apple-input mt-2"
             required
@@ -24,7 +24,9 @@ export default function RequirementCreateModal({ error, form, setForm, customFie
           />
         </label>
         <div>
-          <p className="field-label mb-2">Nội dung yêu cầu</p>
+          <p className="field-label mb-2">
+            Nội dung yêu cầu <span className="text-danger">*</span>
+          </p>
           <DocumentEditor
             value={form.content_doc}
             onChange={(content_doc) => updateForm({ content_doc })}
@@ -34,20 +36,17 @@ export default function RequirementCreateModal({ error, form, setForm, customFie
         <RequirementLines
           label="Tiêu chí chấp nhận"
           value={form.acceptance}
-          required
           onChange={(acceptance) => updateForm({ acceptance })}
         />
         <RequirementLines
           label="Quy tắc nghiệp vụ"
           value={form.businessRules}
-          required
           onChange={(businessRules) => updateForm({ businessRules })}
         />
         <label className="field-label">
           Liên kết thiết kế hoặc tài liệu
           <input
             className="apple-input mt-2"
-            required
             value={form.designReference}
             onChange={(event) => updateForm({ designReference: event.target.value })}
             placeholder="Dán liên kết liên quan"

@@ -7,10 +7,8 @@ export function createTestCaseForm() {
   return {
     title: "",
     moduleName: "",
-    flowType: "",
     type: "",
-    priority: UNASSESSED_VALUE,
-    risk: UNASSESSED_VALUE,
+    priority: "",
     durationMinutes: "",
     testLevel: "",
     testKind: "",
@@ -29,8 +27,6 @@ export function createTestCaseForm() {
         expected: emptyDoc(),
       },
     ],
-    testData: emptyDataEntries(),
-    expectedResult: emptyDoc(),
     postconditions: emptyDoc(),
     mainFlow: emptyDoc(),
     alternateFlows: emptyDoc(),
@@ -65,6 +61,25 @@ export function testDataEntriesToObject(entries) {
     });
   }
   return result;
+}
+
+export function normalizeTestCaseVersionForDisplay(version) {
+  if (!version || typeof version !== "object") return version;
+  const steps = (version.steps || []).map((step) => ({ ...step }));
+  if (!version.bdd && steps.length) {
+    const legacyData = version.test_data || {};
+    const legacyExpected = version.expected_result_doc;
+    if (
+      Object.keys(legacyData).length &&
+      !steps.some((step) => Object.keys(step.test_data || {}).length)
+    ) {
+      steps[0].test_data = legacyData;
+    }
+    if (legacyExpected && !steps.some((step) => docText(step.expected_doc).trim())) {
+      steps[0].expected_doc = legacyExpected;
+    }
+  }
+  return { ...version, steps };
 }
 
 export function createScenarioForm() {
@@ -180,7 +195,6 @@ export function buildTestCaseDraftChanges(snapshot, draft) {
     "test_level",
     "test_kind",
     "module_name",
-    "flow_type",
   ]) {
     if (snapshot[field] !== undefined && snapshot[field] !== draft[field]) {
       changes[field] =

@@ -74,6 +74,15 @@ export default function DataTable({
         return hasRenderableContent(value);
       }),
   );
+  const primaryMobileColumn =
+    visibleColumns.find(
+      (column) =>
+        /(?:^|_)(?:title|name|summary|subject)(?:$|_)/i.test(column.key) &&
+        !/(?:^|_)(?:actions?|lifecycle|operations?)(?:$|_)/i.test(column.key),
+    ) ||
+    visibleColumns.find(
+      (column) => !/(?:^|_)(?:actions?|lifecycle|operations?)(?:$|_)/i.test(column.key),
+    );
   const rowKey = (item, index) =>
     `${String(getRowKey?.(item, index) ?? itemId(item) ?? "dòng")}-${index}`;
   const toggleAll = () =>
@@ -307,21 +316,27 @@ export default function DataTable({
             {renderMobileCard ? (
               renderMobileCard(item, index)
             ) : (
-              <dl className={layout === "wide-table" ? "grid gap-3" : "space-y-3"}>
+              <dl className="data-table-mobile-card grid min-w-0 grid-cols-2 gap-x-4 gap-y-3">
                 {visibleColumns.map((column) => {
                   const value = renderMobileValue(column, item);
                   if (value === null || value === undefined || value === "") return null;
+                  const isPrimary = column.key === primaryMobileColumn?.key;
+                  const isAction = /(?:^|_)(?:actions?|lifecycle|operations?)(?:$|_)/i.test(
+                    column.key,
+                  );
                   return (
                     <div
-                      className="grid min-w-0 grid-cols-[minmax(0,40%)_minmax(0,1fr)] gap-3"
+                      className={`data-table-mobile-card-field min-w-0 ${isPrimary || isAction ? "col-span-2" : ""} ${isPrimary ? "data-table-mobile-card-primary" : ""} ${isAction ? "data-table-mobile-card-actions" : ""}`}
                       data-column-key={column.key}
                       key={column.key}
                     >
-                      <dt className="min-w-0 break-words text-[12px] font-semibold leading-5 text-ink-muted">
+                      <dt
+                        className={`min-w-0 break-words text-[11px] font-medium leading-4 text-ink-muted ${isPrimary ? "sr-only" : ""}`}
+                      >
                         {column.label}
                       </dt>
                       <dd
-                        className={`min-w-0 break-words [overflow-wrap:anywhere] text-[13px] text-ink ${columnAlignmentClass(column)}`}
+                        className={`mt-1 min-w-0 break-words [overflow-wrap:anywhere] text-[13px] text-ink ${isPrimary ? "text-[15px] font-semibold leading-5" : ""} ${columnAlignmentClass(column)}`}
                       >
                         {value}
                       </dd>

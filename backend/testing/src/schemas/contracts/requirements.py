@@ -42,7 +42,6 @@ class RequirementCreate(BaseModel):
     title: str = Field(min_length=2, max_length=300)
     type: str = Field(min_length=1, max_length=100)
     priority: str = Field(default="", max_length=100)
-    risk: str = Field(default="", max_length=100)
     content_doc: dict[str, Any] = Field(default_factory=empty_doc)
     acceptance_criteria: list[AcceptanceCriterionInput] = Field(
         default_factory=list, max_length=200
@@ -75,7 +74,7 @@ class RequirementCreate(BaseModel):
             raise ValueError("Requirement type must not be empty")
         return normalized
 
-    @field_validator("priority", "risk")
+    @field_validator("priority")
     @classmethod
     def normalize_assessment_labels(cls, value):
         return " ".join(value.split())
@@ -103,7 +102,6 @@ class RequirementDraftPatch(BaseModel):
     title: str | None = Field(default=None, min_length=2, max_length=300)
     type: str | None = None
     priority: str | None = Field(default=None, max_length=100)
-    risk: str | None = Field(default=None, max_length=100)
     content_doc: dict[str, Any] | None = None
     acceptance_criteria: list[AcceptanceCriterionInput] | None = Field(default=None, max_length=200)
     business_rules: list[str] | None = Field(default=None, max_length=200)
@@ -126,7 +124,7 @@ class RequirementDraftPatch(BaseModel):
             if key not in {"actors", "user_story.actor"}
         }
 
-    @field_validator("priority", "risk")
+    @field_validator("priority")
     @classmethod
     def normalize_assessment_labels(cls, value):
         if value is None:

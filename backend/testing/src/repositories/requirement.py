@@ -315,6 +315,12 @@ class RequirementRepository:
             {"requirement_id": requirement_id}, sort=[("version", -1)]
         )
 
+    async def find_requirement(self, requirement_id, project_id=None, projection=None):
+        query = {"_id": requirement_id}
+        if project_id:
+            query["project_id"] = project_id
+        return await database.value.requirements.find_one(query, projection)
+
     async def activate_version(
         self,
         requirement_id,

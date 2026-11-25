@@ -51,7 +51,6 @@ function emptyRequirement() {
     type: "",
     requirement_key: "",
     priority: "",
-    risk: "",
     owner_id: "",
     source_status: "",
     business_rules: "",
@@ -138,7 +137,6 @@ function toStored(item, fields) {
     title: item.title.trim(),
     type: item.type,
     priority: item.priority,
-    risk: item.risk,
     owner_id: item.owner_id || null,
     business_rules: item.business_rules
       .split("\n")

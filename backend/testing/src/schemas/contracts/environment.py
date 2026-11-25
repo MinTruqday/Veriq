@@ -1,4 +1,4 @@
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -48,39 +48,15 @@ class BuildPatch(BaseModel):
 
 class EnvironmentCreate(BaseModel):
     name: str = Field(min_length=2, max_length=200)
-    environment_type: str = Field(min_length=1, max_length=100)
     base_url: str | None = Field(default=None, max_length=2000)
-    capabilities: dict[str, Any] = Field(default_factory=dict)
     availability: Literal["AVAILABLE", "UNAVAILABLE", "MAINTENANCE"] = "AVAILABLE"
-    secret_refs: dict[str, str] = Field(default_factory=dict)
-
-    @field_validator("secret_refs")
-    @classmethod
-    def validate_secret_refs(cls, value):
-        if any(not str(ref).startswith("secret://") for ref in value.values()):
-            raise ValueError("Secret reference phải bắt đầu bằng secret://")
-        return value
 
 
 class EnvironmentPatch(BaseModel):
     expected_revision: int = Field(ge=1)
     name: str | None = Field(default=None, min_length=2, max_length=200)
-    environment_type: str | None = Field(default=None, min_length=1, max_length=100)
     base_url: str | None = Field(default=None, max_length=2000)
-    capabilities: dict[str, Any] | None = None
     availability: Literal["AVAILABLE", "UNAVAILABLE", "MAINTENANCE"] | None = None
-
-
-class EnvironmentSecretRefs(BaseModel):
-    expected_revision: int = Field(ge=1)
-    secret_refs: dict[str, str]
-
-    @field_validator("secret_refs")
-    @classmethod
-    def validate_secret_refs(cls, value):
-        if any(not str(ref).startswith("secret://") for ref in value.values()):
-            raise ValueError("Secret reference phải bắt đầu bằng secret://")
-        return value
 
 
 class NotificationWatchInput(BaseModel):

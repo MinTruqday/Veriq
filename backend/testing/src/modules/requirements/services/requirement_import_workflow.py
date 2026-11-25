@@ -840,7 +840,6 @@ async def resolve_requirement_import_candidate(job_id, candidate_id, payload, us
         values["acceptance_criteria"] = candidate_criteria
         for field in (
             "priority",
-            "risk",
             "business_rules",
             "dependencies",
             "tags",

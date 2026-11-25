@@ -72,7 +72,6 @@ export function createInitialRequirementForm() {
     title: "",
     type: "Chưa phân loại",
     priority: "",
-    risk: "",
     content_doc: emptyDoc(),
     acceptance: "",
     businessRules: "",

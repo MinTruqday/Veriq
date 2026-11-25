@@ -75,6 +75,9 @@ def validate_merge_replay(
 
 def proposal_snapshot(draft):
     """Capture once at generation, never relabel an edited legacy draft as AI's original."""
+    from src.modules.design.services.test_case_records import canonical_case_steps
+
+    draft = {**draft, "steps": canonical_case_steps(draft)}
     return deepcopy({key: value for key, value in draft.items() if key in TestCaseDraftCreate.model_fields})
 
 
@@ -482,6 +485,17 @@ async def save_merged_test_case(draft_id, payload, user):
     await validate_data_set_versions(draft["project_id"], values["data_set_version_ids"])
     await validate_coverage_items(draft["project_id"], values["requirement_version_ids"], values["coverage_item_ids"])
     merged = {**draft, **changes}
+    legacy_content = bool(
+        draft.get("test_data")
+        or plain_text(draft.get("expected_result_doc") or {}).strip()
+    )
+    if legacy_content:
+        from src.modules.design.services.test_case_records import canonical_case_steps
+
+        merged["steps"] = canonical_case_steps(merged, merged.get("steps", []))
+        changes["steps"] = merged["steps"]
+        changes["test_data"] = {}
+        changes["expected_result_doc"] = {"type": "doc", "content": []}
     proposal = draft.get("ai_proposal_snapshot")
     if proposal and not merged.get("evidence_refs"):
         for key in ("evidence_refs", "evidence_quotes", "source_evidence"):
@@ -503,6 +517,9 @@ async def save_merged_test_case(draft_id, payload, user):
 
 
 async def validate_review_sources_before_approval(draft):
+    from src.modules.design.services.test_case_records import canonical_case_steps
+
+    draft = {**draft, "steps": canonical_case_steps(draft)}
     try:
         TestCaseDraftCreate.model_validate(draft)
     except ValidationError as error:

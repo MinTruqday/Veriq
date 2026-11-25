@@ -57,166 +57,6 @@ def defect_blocks_release(defect, *, status=None):
         "REOPENED",
     } and defect_is_blocking(current_defect)
 
-async def ensure_release_completion_gate(
-    project_id: str, release_id: str, session=None, ai_run_id=None
-):
-    from src.modules.execution.services.test_completion_readiness import (
-        validate_completion_outcome,
-        validate_completion_readiness,
-    )
-    from src.schemas.test_completion import completion_hash, completion_snapshot
-
-    if ai_run_id:
-        plans = await execution_context_repository.list_approved_test_plan_scopes(
-            project_id, release_id, session=session
-        )
-        reports = await execution_context_repository.list_automation_completions(
-            project_id, release_id, str(ai_run_id), session=session
-        )
-        plan_ids = {item.get("_id") for item in plans if item.get("_id")}
-        report_plan_ids = [item.get("test_plan_id") for item in reports]
-        if not plan_ids or len(reports) != len(plan_ids) or set(report_plan_ids) != plan_ids:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": "RELEASE_COMPLETION_GATE_FAILED",
-                    "reason_code": "AUTOMATED_COMPLETION_SCOPE_INCOMPLETE",
-                    "test_plan_ids": sorted(plan_ids - set(report_plan_ids)),
-                },
-            )
-        reports_to_validate = reports
-    else:
-        plans = await execution_context_repository.list_approved_test_plan_scopes(
-            project_id, release_id, session=session
-        )
-        plan_ids = {str(item.get("_id")) for item in plans if item.get("_id")}
-        reports = await execution_context_repository.list_approved_completions(
-            project_id, release_id, ["APPROVED", "CLOSED"], session=session
-        )
-        latest_by_plan = {}
-        for item in reports:
-            plan_id = item.get("test_plan_id")
-            if plan_id and str(plan_id) in plan_ids and str(plan_id) not in latest_by_plan:
-                latest_by_plan[str(plan_id)] = item
-        if not plan_ids or set(latest_by_plan) != plan_ids:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": "RELEASE_COMPLETION_GATE_FAILED",
-                    "reason_code": "COMPLETION_PLAN_REPORT_SCOPE_INCOMPLETE",
-                    "test_plan_ids": sorted(plan_ids - set(latest_by_plan)),
-                },
-            )
-        reports_to_validate = list(latest_by_plan.values())
-        for report in reports_to_validate:
-            snapshot = report.get("approved_snapshot")
-            if (
-                not report.get("approved_by")
-                or not report.get("approved_at")
-                or not isinstance(snapshot, dict)
-                or snapshot != completion_snapshot(report)
-                or report.get("approved_snapshot_hash") != completion_hash(report)
-            ):
-                raise HTTPException(
-                    status_code=409,
-                    detail={
-                        "code": "RELEASE_COMPLETION_GATE_FAILED",
-                        "reason_code": "APPROVED_COMPLETION_SNAPSHOT_INVALID",
-                        "test_plan_id": report.get("test_plan_id"),
-                    },
-                )
-
-    for report in reports_to_validate:
-        automated = bool(ai_run_id)
-        scope = report.get("scope_snapshot")
-        report_snapshot = report.get("automation_gate_snapshot") if automated else report.get("approved_snapshot")
-        report_hash = report.get("automation_gate_hash") if automated else report.get("approved_snapshot_hash")
-        if (
-            (automated and (report.get("status") != "DRAFT" or report.get("ai_run_id") != str(ai_run_id)))
-            or not report.get("test_plan_id")
-            or not report.get("monitoring_snapshot_id")
-            or not isinstance((scope or {}).get("runs"), list)
-            or not isinstance(report_snapshot, dict)
-            or report_snapshot != completion_snapshot(report)
-            or report_hash != completion_hash(report)
-        ):
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": "RELEASE_COMPLETION_GATE_FAILED",
-                    "reason_code": "AUTOMATED_COMPLETION_SNAPSHOT_INVALID" if automated else "APPROVED_COMPLETION_SNAPSHOT_INVALID",
-                    "test_plan_id": report.get("test_plan_id"),
-                },
-            )
-        try:
-            validate_completion_outcome(report)
-            if automated:
-                await validate_completion_readiness(report)
-        except OperationFailure as error:
-            raise_release_gate_conflict(error)
-            raise
-        except HTTPException as error:
-            detail = error.detail if isinstance(error.detail, dict) else {}
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": "RELEASE_COMPLETION_GATE_FAILED",
-                    "reason_code": detail.get("reason_code", "COMPLETION_REPORT_NOT_RELEASE_READY"),
-                    "completion_details": detail,
-                    "test_plan_id": report.get("test_plan_id"),
-                },
-            ) from error
-        run_ids = [item.get("run_id") for item in scope["runs"] if item.get("run_id")]
-        evidence_since = report.get("created_at") if automated else report.get("approved_at")
-        if await execution_context_repository.release_snapshot_sources_changed(
-            project_id,
-            report["monitoring_snapshot_id"],
-            release_id=release_id,
-            test_plan_id=report["test_plan_id"],
-            run_ids=run_ids,
-            session=session,
-        ) or await execution_context_repository.release_evidence_changed_since(
-            project_id,
-            release_id,
-            run_ids,
-            evidence_since,
-            session=session,
-        ):
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": "RELEASE_COMPLETION_GATE_FAILED",
-                    "reason_code": "COMPLETION_REPORT_STALE",
-                    "test_plan_id": report.get("test_plan_id"),
-                },
-            )
-
-    report = max(
-        reports_to_validate,
-        key=lambda item: item.get("approved_at") or item.get("created_at") or now(),
-    )
-    if not report:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "code": "RELEASE_COMPLETION_GATE_FAILED",
-                "reason_code": "AUTOMATED_COMPLETION_REPORT_REQUIRED",
-            },
-        )
-    open_blockers = await execution_context_repository.list_open_blocking_defects(
-        project_id, release_id, session=session
-    )
-    if open_blockers:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "code": "RELEASE_COMPLETION_GATE_FAILED",
-                "reason_code": "OPEN_BLOCKING_DEFECTS",
-                "defect_ids": [item["_id"] for item in open_blockers],
-            },
-        )
-    return report
-
 async def resolve_execution_context(
     project_id: str,
     user: CurrentUser,
@@ -226,7 +66,6 @@ async def resolve_execution_context(
     environment_id: str | None = None,
     release: str = "",
     build: str = "",
-    environment: str = "",
 ):
     
     
@@ -277,13 +116,15 @@ async def resolve_execution_context(
         "environment_id": environment_id,
         "release": (release_entity or {}).get("key") or release,
         "build": (build_entity or {}).get("identifier") or build,
-        "environment": (environment_entity or {}).get("name") or environment,
+        "environment": (environment_entity or {}).get("name") or "",
     }
 
 def clean_secret_fields(item):
     result = dict(item)
     result.pop("secret_refs", None)
-    result["secret_ref_names"] = sorted((item.get("secret_refs") or {}).keys())
+    result.pop("secret_ref_names", None)
+    result.pop("environment_type", None)
+    result.pop("capabilities", None)
     return result
 
 class ExecutionContextService:
@@ -317,7 +158,6 @@ class ExecutionContextService:
         )
         project_id = authorized_release['project_id']
         checks = []
-        completion_report = None
 
         async with await database.client.start_session() as session:
             async with session.start_transaction():
@@ -340,56 +180,6 @@ class ExecutionContextService:
                         },
                     )
                 )
-
-                gate_revision = release.get('gate_revision', 0)
-                valid_gate_revision = (
-                    isinstance(gate_revision, int)
-                    and not isinstance(gate_revision, bool)
-                    and gate_revision >= 0
-                )
-                checks.append(
-                    ReleaseReadinessCheck(
-                        gate='GATE_REVISION',
-                        status='PASS' if valid_gate_revision else 'BLOCKED',
-                        code=(
-                            'RELEASE_GATE_REVISION_VALID'
-                            if valid_gate_revision
-                            else 'RELEASE_GATE_REVISION_INVALID'
-                        ),
-                        details={'gate_revision': gate_revision if valid_gate_revision else None},
-                    )
-                )
-
-                try:
-                    completion_report = await ensure_release_completion_gate(
-                        project_id,
-                        release_id,
-                        session=session,
-                    )
-                    completion_details = {
-                        'completion_report_id': completion_report.get('_id'),
-                        'test_plan_id': completion_report.get('test_plan_id'),
-                        'monitoring_snapshot_id': completion_report.get('monitoring_snapshot_id'),
-                        'approved_at': completion_report.get('approved_at'),
-                    }
-                    checks.append(
-                        ReleaseReadinessCheck(
-                            gate='COMPLETION_REPORT',
-                            status='PASS',
-                            code='RELEASE_COMPLETION_REPORT_VALID',
-                            details=completion_details,
-                        )
-                    )
-                except HTTPException as error:
-                    detail = error.detail if isinstance(error.detail, dict) else {}
-                    checks.append(
-                        ReleaseReadinessCheck(
-                            gate='COMPLETION_REPORT',
-                            status='BLOCKED',
-                            code=detail.get('reason_code') or detail.get('code') or 'RELEASE_COMPLETION_GATE_FAILED',
-                            details=detail,
-                        )
-                    )
 
                 blocking_defects = await execution_context_repository.list_open_blocking_defects(
                     project_id,
@@ -416,13 +206,12 @@ class ExecutionContextService:
                 )
 
                 blockers = [item for item in checks if item.status == 'BLOCKED']
-                gate_revision_value = gate_revision if valid_gate_revision else None
                 return ReleaseReadiness(
                     release_id=release_id,
                     project_id=project_id,
                     status=release.get('status', ''),
                     revision=release.get('revision', 1),
-                    gate_revision=gate_revision_value,
+                    gate_revision=release.get('gate_revision', 0),
                     evaluated_at=now(),
                     can_close=not blockers,
                     checks=checks,
@@ -533,7 +322,6 @@ class ExecutionContextService:
                     "target_status": target,
                 },
             )
-        completion_gate_applied = False
         try:
             gate_revision = release.get("gate_revision", 0)
             if target == 'CLOSED' and (
@@ -557,18 +345,19 @@ class ExecutionContextService:
                             },
                             required_statuses={release_id: "ACTIVE"},
                         )
-                        completion_report = await ensure_release_completion_gate(
+                        blocking_defects = await execution_context_repository.list_open_blocking_defects(
                             release["project_id"],
                             release_id,
                             session=session,
-                            ai_run_id=getattr(user, "_ai_capability_run_id", None),
                         )
-                        completion_gate_applied = bool(completion_report)
-                    event = (
-                        'release_closed_after_completion'
-                        if completion_gate_applied
-                        else transition["event"]
-                    )
+                        if blocking_defects:
+                            raise HTTPException(
+                                status_code=409,
+                                detail={
+                                    "code": "OPEN_BLOCKING_DEFECTS",
+                                    "defect_ids": [item.get("_id") for item in blocking_defects],
+                                },
+                            )
                     updated = await optimistic_patch(
                         'releases',
                         release_id,
@@ -589,7 +378,7 @@ class ExecutionContextService:
                         updated["is_current"] = True
                     await audit(
                         user.id,
-                        event,
+                        transition["event"],
                         'Release',
                         release_id,
                         release["project_id"],
@@ -598,13 +387,10 @@ class ExecutionContextService:
                     )
         except HTTPException as error:
             gate_codes = {
-                'RELEASE_COMPLETION_GATE_FAILED',
                 'RELEASE_GATE_REVISION_CONFLICT',
                 'RELEASE_GATE_REVISION_INVALID',
+                'OPEN_BLOCKING_DEFECTS',
                 'REVISION_CONFLICT',
-                'RELEASE_TEST_PLAN_SCOPE_REQUIRED',
-                'RELEASE_TEST_PLAN_SNAPSHOT_INVALID',
-                'RELEASE_REQUIREMENT_SCOPE_REQUIRED',
             }
             error_detail = error.detail if isinstance(error.detail, dict) else {}
             if target == 'CLOSED' and error_detail.get("code") in gate_codes:
@@ -792,32 +578,6 @@ class ExecutionContextService:
             'TestEnvironment',
             environment_id,
             environment["project_id"],
-        )
-        return clean_secret_fields(updated)
-
-    @staticmethod
-    async def update_environment_secrets(environment_id, payload, user):
-        
-        environment = await get_project_entity(
-            'test_environments',
-            environment_id,
-            user,
-            'environment.secret_ref.manage',
-        )
-        updated = await optimistic_patch(
-            'test_environments',
-            environment_id,
-            environment["project_id"],
-            payload.expected_revision,
-            {"secret_refs": payload.secret_refs},
-        )
-        await audit(
-            user.id,
-            'environment_secret_refs_updated',
-            'TestEnvironment',
-            environment_id,
-            environment["project_id"],
-            {"names": sorted(payload.secret_refs)},
         )
         return clean_secret_fields(updated)
 

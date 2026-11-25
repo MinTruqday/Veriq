@@ -58,6 +58,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
   const searchParams = useSearchParams();
   const sourceRequirementId = searchParams.get("requirementVersionId") || "";
   const sourcePlanId = searchParams.get("testPlanId") || "";
+  const sourcePeriodId = searchParams.get("source_period_id") || "";
   const openedRequirement = useRef("");
   const openedSourcePlan = useRef("");
   const planRoute = workspaceView === "test-plans" ? section[0] : "";
@@ -66,6 +67,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
   const openPlan = (id, action) =>
     router.push([planPath, encodeURIComponent(id), action].filter(Boolean).join("/"));
   const [plans, setPlans] = useState([]);
+  const [testPeriods, setTestPeriods] = useState([]);
   const [scenarios, setScenarios] = useState([]);
   const [suites, setSuites] = useState([]);
   const [releases, setReleases] = useState([]);
@@ -86,6 +88,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
   const [planFilters, setPlanFilters] = useState({
     q: "",
     status: "",
+    test_period_id: searchParams.get("test_period_id") || "",
     sort: "-updated_at",
   });
   const [planOwnerFilter, setPlanOwnerFilter] = useState("");
@@ -125,7 +128,6 @@ export default function ExecutionPage({ project, section, workspaceView }) {
     name: "",
     release: "",
     build: "",
-    environment: "",
     environmentId: "",
     releaseId: "",
     buildId: "",
@@ -182,6 +184,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
         requirementValues,
         scenarioValues,
         memberValues,
+        testPeriodValues,
       ] = await Promise.all([
         permissions.includes("testplan.read")
           ? testingApi.listPlans(project._id, planRoute ? {} : planFilters)
@@ -225,6 +228,9 @@ export default function ExecutionPage({ project, section, workspaceView }) {
               return [];
             })
           : Promise.resolve([]),
+        permissions.includes("testplan.read")
+          ? testingApi.listTestPeriods(project._id)
+          : Promise.resolve([]),
       ]);
       const runValue =
         runId && permissions.includes("testrun.read") ? await testingApi.getRun(runId) : null;
@@ -234,6 +240,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
       }
       if (memberLoadError) setError(memberLoadError);
       setPlans(planValues);
+      setTestPeriods(testPeriodValues);
       setSuites(suiteValues);
       setRuns(runValues.items);
       setSourceRuns(sourceRunValues.items);
@@ -320,7 +327,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
     if (
       !planRoute ||
       planRoute === "tao-moi" ||
-      !permissions.includes("testmonitor.read") ||
+      !permissions.includes("testrun.read") ||
       !plans.some((plan) => plan._id === planRoute && plan.status === "APPROVED")
     ) {
       setPlanProgress(null);
@@ -393,7 +400,6 @@ export default function ExecutionPage({ project, section, workspaceView }) {
         plans.find((item) => item._id === runForm.testPlanId)?.approved_snapshot_hash || null,
       test_suite_ids: runForm.suiteIds,
       test_case_version_ids: runForm.versionIds,
-      environment: runForm.environment || undefined,
       environment_id: runForm.environmentId || null,
       release: runForm.release,
       release_id: runForm.releaseId || null,
@@ -418,7 +424,6 @@ export default function ExecutionPage({ project, section, workspaceView }) {
         name: "",
         release: "",
         build: "",
-        environment: "",
         environmentId: "",
         releaseId: "",
         buildId: "",
@@ -632,7 +637,6 @@ export default function ExecutionPage({ project, section, workspaceView }) {
             expected_result_doc: textDoc(values.expected),
             severity: values.severity,
             priority: values.priority,
-            environment: run.environment || "",
             build: run.build || "",
             attachments: result.attachments || [],
             linked_test_result_id: result._id,
@@ -679,7 +683,6 @@ export default function ExecutionPage({ project, section, workspaceView }) {
         severity: values.severity,
         priority: "unassessed",
         assignee: values.assignee || null,
-        environment: run.environment || "",
         environment_id: run.environment_id || null,
         release: run.release || "",
         release_id: run.release_id || null,
@@ -1057,16 +1060,6 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                     <p className="mt-1">{planProgress.open_critical_high}</p>
                   </div>
                 </div>
-                {planProgress.critical_high_criterion_enabled && (
-                  <p className="px-5 pb-5 text-sm">
-                    Tiêu chí lỗi:{" "}
-                    {planProgress.executed === 0
-                      ? "Chưa đủ dữ liệu"
-                      : planProgress.open_critical_high === 0
-                        ? "Đạt"
-                        : "Chưa đạt"}
-                  </p>
-                )}
               </Panel>
             )}
             {planProgressError && (
@@ -1078,10 +1071,13 @@ export default function ExecutionPage({ project, section, workspaceView }) {
               <TestPlanEditor
                 key={creating ? project._id : `${plan._id}:${plan.revision}:${editing}`}
                 projectId={project._id}
-                initialValue={plan}
+                initialValue={
+                  creating ? { test_period_id: planFilters.test_period_id || "" } : plan
+                }
                 initialRequirementVersionIds={
                   creating && sourceRequirementId ? [sourceRequirementId] : []
                 }
+                sourcePeriodId={creating ? sourcePeriodId : ""}
                 readOnly={!creating && !editing}
                 requirements={requirements}
                 scenarios={scenarios}
@@ -1121,6 +1117,14 @@ export default function ExecutionPage({ project, section, workspaceView }) {
             <button className="apple-button" type="button" onClick={() => openPlan("tao-moi")}>
               Tạo kế hoạch
             </button>
+          )}
+          {workspaceView === "test-plans" && can("testplan.read") && (
+            <Link
+              className="secondary-button"
+              href={projectRoute(project._id, PROJECT_SECTION_SLUGS.testPeriods)}
+            >
+              Quản lý chu kỳ
+            </Link>
           )}
           {!workspaceView && can("testsuite.create") && (
             <button
@@ -1379,18 +1383,16 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                       value={runForm.environmentId}
                       onChange={(event) => {
                         const environmentId = event.target.value;
-                        const environment = environments.find((item) => item._id === environmentId);
                         setRunForm({
                           ...runForm,
                           environmentId,
-                          environment: environment?.name || "",
                         });
                       }}
                     >
                       <option value="">-</option>
                       {environments.map((item) => (
                         <option key={item._id} value={item._id}>
-                          {item.name} · {valueLabel(item.environment_type)}
+                          {item.name}
                         </option>
                       ))}
                     </select>
@@ -1450,17 +1452,32 @@ export default function ExecutionPage({ project, section, workspaceView }) {
         <div className="w-full">
           <Panel title="Danh sách kế hoạch kiểm thử">
             {workspaceView === "test-plans" ? (
-              <div className="flex flex-wrap items-center gap-3 border-b border-border p-4">
+              <div className="workspace-filter-bar grid grid-cols-1 gap-3 border-b border-border p-4 sm:grid-cols-2 xl:grid-cols-4">
                 <SearchField
                   ariaLabel="Tìm kế hoạch kiểm thử"
                   onChange={(event) => setPlanFilters({ ...planFilters, q: event.target.value })}
-                  className="min-w-[16rem] flex-1"
+                  className="w-full"
                   placeholder="Tìm theo mã hoặc tên kế hoạch"
                   value={planFilters.q}
                 />
                 <select
+                  aria-label="Lọc chu kỳ"
+                  className="apple-input w-full"
+                  value={planFilters.test_period_id}
+                  onChange={(event) =>
+                    setPlanFilters({ ...planFilters, test_period_id: event.target.value })
+                  }
+                >
+                  <option value="">Mọi chu kỳ</option>
+                  {testPeriods.map((period) => (
+                    <option key={period._id} value={period._id}>
+                      Chu kỳ {period.sequence}: {period.name}
+                    </option>
+                  ))}
+                </select>
+                <select
                   aria-label="Lọc trạng thái kế hoạch"
-                  className="apple-input min-w-40 flex-1"
+                  className="apple-input w-full"
                   value={planFilters.status}
                   onChange={(event) =>
                     setPlanFilters({ ...planFilters, status: event.target.value })
@@ -1475,7 +1492,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                 </select>
                 <select
                   aria-label="Lọc người phụ trách"
-                  className="apple-input min-w-48 flex-1"
+                  className="apple-input w-full"
                   value={planOwnerFilter}
                   onChange={(event) => setPlanOwnerFilter(event.target.value)}
                 >
@@ -1488,7 +1505,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                 </select>
                 <select
                   aria-label="Sắp xếp kế hoạch"
-                  className="apple-input min-w-40 flex-1"
+                  className="apple-input w-full"
                   value={planFilters.sort}
                   onChange={(event) => setPlanFilters({ ...planFilters, sort: event.target.value })}
                 >
@@ -1496,27 +1513,29 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                   <option value="updated_at">Cũ cập nhật</option>
                   <option value="name">Tên tăng dần</option>
                 </select>
-                <button
-                  aria-label="Xóa bộ lọc kế hoạch"
-                  className="secondary-button"
-                  type="button"
-                  onClick={() => {
-                    setPlanFilters({ q: "", status: "", sort: "-updated_at" });
-                    setPlanOwnerFilter("");
-                    setPlanPage(1);
-                  }}
-                >
-                  Xóa lọc
-                </button>
-                <button
-                  aria-label="Tải lại danh sách kế hoạch"
-                  className="icon-button h-10 w-10"
-                  type="button"
-                  title="Tải lại danh sách kế hoạch"
-                  onClick={() => void load()}
-                >
-                  <RefreshCw aria-hidden="true" size={16} />
-                </button>
+                <div className="col-span-full flex flex-wrap items-center gap-2">
+                  <button
+                    aria-label="Xóa bộ lọc kế hoạch"
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => {
+                      setPlanFilters({ q: "", status: "", sort: "-updated_at" });
+                      setPlanOwnerFilter("");
+                      setPlanPage(1);
+                    }}
+                  >
+                    Xóa lọc
+                  </button>
+                  <button
+                    aria-label="Tải lại danh sách kế hoạch"
+                    className="icon-button h-10 w-10"
+                    type="button"
+                    title="Tải lại danh sách kế hoạch"
+                    onClick={() => void load()}
+                  >
+                    <RefreshCw aria-hidden="true" size={16} />
+                  </button>
+                </div>
               </div>
             ) : (
               <details className="border-b border-border p-4">
@@ -1597,8 +1616,9 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                   minWidth: 260,
                   render: (item) => (
                     <button
-                      className="text-left font-medium text-ink hover:text-brand"
+                      className="block max-w-full truncate text-left font-medium text-ink hover:text-brand"
                       type="button"
+                      title={item.name || ""}
                       onClick={() => openPlan(item._id)}
                     >
                       {item.name}
@@ -1606,10 +1626,24 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                   ),
                 },
                 {
-                  key: "phase",
-                  label: "Giai đoạn",
+                  key: "test_period",
+                  label: "Chu kỳ",
                   minWidth: 140,
-                  render: (item) => item.phase || "—",
+                  render: (item) =>
+                    item.test_period_snapshot?._id ? (
+                      <Link
+                        className="text-brand hover:underline"
+                        href={projectRoute(
+                          project._id,
+                          PROJECT_SECTION_SLUGS.testPeriods,
+                          item.test_period_snapshot._id,
+                        )}
+                      >
+                        {item.test_period_snapshot.name || "Mở chu kỳ"}
+                      </Link>
+                    ) : (
+                      "—"
+                    ),
                 },
                 {
                   key: "schedule",

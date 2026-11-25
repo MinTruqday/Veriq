@@ -28,6 +28,9 @@ const DocumentReaderPage = dynamic(() => import("./workspace/DocumentReaderPage"
 const ExecutionPage = dynamic(() => import("./workspace/ExecutionPage"), {
   loading: workspaceLoading,
 });
+const TestPeriodsPage = dynamic(() => import("./workspace/TestPeriodsPage"), {
+  loading: workspaceLoading,
+});
 const KnowledgePage = dynamic(() => import("./workspace/KnowledgePage"), {
   loading: workspaceLoading,
 });
@@ -44,13 +47,7 @@ const SettingsPage = dynamic(() => import("./workspace/SettingsPage"), {
 const TestDesignPage = dynamic(() => import("./workspace/TestDesignPage"), {
   loading: workspaceLoading,
 });
-const TraceabilityPage = dynamic(() => import("./workspace/TraceabilityPage"), {
-  loading: workspaceLoading,
-});
 const TestAnalysisPage = dynamic(() => import("./workspace/TestAnalysisPage"), {
-  loading: workspaceLoading,
-});
-const MonitoringPage = dynamic(() => import("./workspace/MonitoringPage"), {
   loading: workspaceLoading,
 });
 const ReleasesPage = dynamic(() => import("./workspace/ReleasesPage"), {
@@ -63,17 +60,14 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
   const dateTimeOptions = useDateTimeOptions(state.project);
   const areaBySlug = {
     [PROJECT_SECTION_SLUGS.testAnalysis]: "test-analysis",
-    [PROJECT_SECTION_SLUGS.monitoring]: "monitoring",
     [PROJECT_SECTION_SLUGS.releases]: "releases",
     [PROJECT_SECTION_SLUGS.requirements]: "requirements",
     [PROJECT_SECTION_SLUGS.testCases]: "test-design",
-    [PROJECT_SECTION_SLUGS.testData]: "test-design",
     [PROJECT_SECTION_SLUGS.testSets]: "test-design",
-    [PROJECT_SECTION_SLUGS.traceability]: "traceability",
     [PROJECT_SECTION_SLUGS.execution]: "execution",
     [PROJECT_SECTION_SLUGS.testPlans]: "execution",
+    [PROJECT_SECTION_SLUGS.testPeriods]: "test-periods",
     [PROJECT_SECTION_SLUGS.testRuns]: "execution",
-    [PROJECT_SECTION_SLUGS.automation]: "execution",
     [PROJECT_SECTION_SLUGS.aiReview]: "ai-review",
     [PROJECT_SECTION_SLUGS.defects]: "defects",
     [PROJECT_SECTION_SLUGS.reports]: "reports",
@@ -88,7 +82,19 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
       ? projectRoute(projectId, PROJECT_SECTION_SLUGS.requirements)
       : section[0] === PROJECT_SECTION_SLUGS.testDesign
         ? projectRoute(projectId, PROJECT_SECTION_SLUGS.testCases)
-        : "";
+        : section[0] === PROJECT_SECTION_SLUGS.monitoring
+          ? projectRoute(projectId, PROJECT_SECTION_SLUGS.execution)
+          : section[0] === PROJECT_SECTION_SLUGS.traceability
+            ? projectRoute(projectId, PROJECT_SECTION_SLUGS.requirements)
+            : section[0] === PROJECT_SECTION_SLUGS.testSets ||
+                (section[0] === PROJECT_SECTION_SLUGS.testCases && section[1] === "bo-kiem-thu")
+              ? projectRoute(projectId, PROJECT_SECTION_SLUGS.testCases)
+              : section[0] === PROJECT_SECTION_SLUGS.testData ||
+                  section[0] === PROJECT_SECTION_SLUGS.automation ||
+                  (section[0] === PROJECT_SECTION_SLUGS.testCases &&
+                    ["ai", "kich-ban", "tu-dong-hoa", "api"].includes(section[1]))
+                ? projectRoute(projectId, PROJECT_SECTION_SLUGS.testCases)
+                : "";
   const area = section[0] ? areaBySlug[section[0]] : "dashboard";
   const caseSubsectionItem =
     section[0] === PROJECT_SECTION_SLUGS.testCases &&
@@ -107,13 +113,12 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
   );
   const requiredPermissions = {
     "test-analysis": "testcondition.read",
-    monitoring: "testmonitor.read",
     releases: "release.read",
     dashboard: "project.read",
     requirements: "requirement.read",
     "test-design": "testcase.read",
+    "test-periods": "testplan.read",
     "ai-review": null,
-    traceability: "trace.read",
     execution: "testrun.read",
     defects: "defect.read",
     knowledge: "knowledge.read",
@@ -123,11 +128,9 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
     documents: "requirement_document.read",
   };
   const sectionPermission = {
-    [PROJECT_SECTION_SLUGS.testData]: ["testdata.read", "testcase.read"],
     [PROJECT_SECTION_SLUGS.testSets]: ["testsuite.read", "testcase.read"],
     [PROJECT_SECTION_SLUGS.testPlans]: "testplan.read",
     [PROJECT_SECTION_SLUGS.testRuns]: "testrun.read",
-    [PROJECT_SECTION_SLUGS.automation]: "automation.read",
   }[section[0]];
   const sectionAnyPermissions = {
     [PROJECT_SECTION_SLUGS.testAnalysis]: ["testcondition.read", "testanalysis.read"],
@@ -214,12 +217,11 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
     );
   const workspaceViewBySlug = {
     [PROJECT_SECTION_SLUGS.testCases]: "cases",
-    [PROJECT_SECTION_SLUGS.testData]: "test-data",
     [PROJECT_SECTION_SLUGS.testSets]: "test-sets",
     [PROJECT_SECTION_SLUGS.testPlans]: "test-plans",
+    [PROJECT_SECTION_SLUGS.testPeriods]: "test-periods",
     [PROJECT_SECTION_SLUGS.testRuns]: "test-runs",
     [PROJECT_SECTION_SLUGS.execution]: "test-runs",
-    [PROJECT_SECTION_SLUGS.automation]: "automation",
     [PROJECT_SECTION_SLUGS.audit]: "audit",
   };
   const props = {
@@ -233,14 +235,13 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
   };
   const pages = {
     "test-analysis": <TestAnalysisPage {...props} />,
-    monitoring: <MonitoringPage {...props} />,
     releases: <ReleasesPage {...props} />,
     requirements: <RequirementsPage {...props} />,
     documents: <RequirementsPage {...props} workspaceView="documents" />,
     "test-design": <TestDesignPage {...props} />,
     "ai-review": <ReviewQueuePage {...props} />,
-    traceability: <TraceabilityPage {...props} />,
     execution: <ExecutionPage {...props} />,
+    "test-periods": <TestPeriodsPage {...props} />,
     defects: <DefectsPage {...props} />,
     knowledge: (
       <KnowledgePage

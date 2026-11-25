@@ -817,25 +817,6 @@ async def aggregate(state):
                 warnings.append("TEST_CASE_PARENT_VERSION_READBACK_UNAVAILABLE")
             if trace_result is None:
                 warnings.append("TEST_CASE_TRACE_IMPACT_READBACK_UNAVAILABLE")
-    if trigger == "RELEASE_CHANGED":
-        release_result = next(
-            (
-                observation.get("result")
-                for observation in run.observations
-                if observation.get("tool_name") == "process_changed_release"
-                and observation.get("status") == ToolExecutionStatus.COMPLETED
-            ),
-            None,
-        )
-        if isinstance(release_result, str):
-            try:
-                release_result = json.loads(release_result)
-            except (TypeError, ValueError):
-                release_result = None
-        if isinstance(release_result, dict) and release_result.get("status") != "completed":
-            warnings.append(
-                str(release_result.get("reason_code") or "RELEASE_PROCESSING_INCOMPLETE")
-            )
     coverage = next(
         (
             observation.get("result") or {}

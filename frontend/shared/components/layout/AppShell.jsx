@@ -16,7 +16,6 @@ import {
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
 import { testingApi } from "@/features/testing/services/testing.service";
 import { useAnnouncements } from "@/shared/contexts/AnnouncementContext";
-import ProjectNavigation from "./ProjectNavigation";
 import { PROJECTS_ROUTE, PROJECT_SECTION_SLUGS, projectRoute } from "@/features/testing/routes";
 import {
   canOpenRoleRestrictedPath,
@@ -52,21 +51,20 @@ function activeNavigationGroup(groups, pathname) {
 }
 
 function initialNavigationGroups(groups, pathname) {
-  const activeGroup = activeNavigationGroup(groups, pathname);
-  return Object.fromEntries(
-    groups.map((group) => [group.label, group.label !== activeGroup?.label]),
-  );
+  // Keep the project map visible on first open so people can scan the whole workflow.
+  // Groups remain collapsible when the sidebar gets crowded.
+  return Object.fromEntries(groups.map((group) => [group.label, false]));
 }
 
-function NavigationList({ onNavigate, projectPermissions, collapsed = false, globalOnly = false }) {
+function NavigationList({ onNavigate, projectPermissions, collapsed = false, groupsOverride }) {
   const pathname = usePathname();
   const { user } = useAuth();
-  const groups = useMemo(() => {
-    const available = availableNavigation(navigationGroupsFor(pathname), user, projectPermissions);
-    return globalOnly
-      ? available.filter((group) => ["Không gian làm việc", "Tài khoản"].includes(group.label))
-      : available;
-  }, [globalOnly, pathname, projectPermissions, user]);
+  const groups = useMemo(
+    () =>
+      groupsOverride ||
+      availableNavigation(navigationGroupsFor(pathname), user, projectPermissions),
+    [groupsOverride, pathname, projectPermissions, user],
+  );
   const [collapsedGroups, setCollapsedGroups] = useState(() =>
     initialNavigationGroups(groups, pathname),
   );
@@ -392,27 +390,10 @@ export default function AppShell({ children, requireAuth }) {
       user,
       currentProjectPermissions,
     ).filter((group) => !["Không gian làm việc", "Tài khoản"].includes(group.label));
-    const designGroup = groups.find((group) => group.label === "Thiết kế kiểm thử");
-    let nextGroups = groups;
-    if (designGroup) {
-      const testCaseItems =
-        availableNavigation(
-          [{ label: "", items: testCaseSubsectionItems(projectId) }],
-          user,
-          currentProjectPermissions,
-        )[0]?.items || [];
-      const uniqueItems = [...designGroup.items, ...testCaseItems].filter(
-        (item, index, items) =>
-          items.findIndex((candidate) => candidate.href === item.href) === index,
-      );
-      nextGroups = nextGroups.map((group) =>
-        group === designGroup ? { ...group, items: uniqueItems } : group,
-      );
-    }
-    const searchItem = projectSearchRouteItem(projectId);
-    const resourcesGroup = nextGroups.find((group) => group.label === "Tài liệu");
+    const searchItem = { ...projectSearchRouteItem(projectId), icon: Search };
+    const resourcesGroup = groups.find((group) => group.label === "Tài liệu");
     if (resourcesGroup && hasNavigationPermission(searchItem, currentProjectPermissions)) {
-      nextGroups = nextGroups.map((group) =>
+      return groups.map((group) =>
         group === resourcesGroup
           ? {
               ...group,
@@ -425,41 +406,17 @@ export default function AppShell({ children, requireAuth }) {
           : group,
       );
     }
-    return nextGroups;
+    return groups;
   }, [currentProjectPermissions, pathname, projectId, user]);
-  const selectedProjectNavigationGroup = useMemo(() => {
-    const isDocumentReader = pathname.startsWith(
-      `${projectRoute(projectId, PROJECT_SECTION_SLUGS.documentReader)}/`,
-    );
-    const isTestRunExecution = pathname.startsWith(
-      `${projectRoute(projectId, PROJECT_SECTION_SLUGS.execution)}/`,
-    );
-    const group =
-      activeNavigationGroup(projectNavigationGroups, pathname) ||
-      (isTestRunExecution &&
-        projectNavigationGroups.find((item) => item.label === "Thực thi kiểm thử")) ||
-      (isDocumentReader && projectNavigationGroups.find((item) => item.label === "Tài liệu")) ||
-      (isDocumentReader &&
-        projectNavigationGroups.find((item) => item.label === "Bảo đảm yêu cầu")) ||
-      projectNavigationGroups[0];
-    if (!group) return null;
-    const activeItem =
-      group.items.find((item) => pathname === item.href) ||
-      group.items.find(
-        (item) =>
-          !["dashboard", "projects"].includes(item.id) && pathname.startsWith(`${item.href}/`),
-      ) ||
-      (pathname === group.href
-        ? group.items.find((item) => item.id === group.defaultActiveItemId)
-        : null) ||
-      (isTestRunExecution ? group.items.find((item) => item.id === "test-runs") : null);
-    return {
-      ...group,
-      activeItemId: activeItem?.id || (isDocumentReader ? null : group.items[0]?.id),
-    };
-  }, [pathname, projectId, projectNavigationGroups]);
-  const hasProjectSubnavigation = (selectedProjectNavigationGroup?.items.length || 0) > 1;
-  const projectNavigationVisible = projectNavigationGroups.length > 0;
+  const sidebarNavigationGroups = useMemo(() => {
+    if (!projectId) return undefined;
+    const workspaceGroups = availableNavigation(
+      navigationGroupsFor(pathname),
+      user,
+      currentProjectPermissions,
+    ).filter((group) => group.label === "Không gian làm việc");
+    return [...workspaceGroups, ...projectNavigationGroups];
+  }, [currentProjectPermissions, pathname, projectId, projectNavigationGroups, user]);
   const globalRoleAccess = projectId
     ? null
     : canOpenRoleRestrictedPath(navigationGroupsFor(pathname), pathname, user);
@@ -744,14 +701,6 @@ export default function AppShell({ children, requireAuth }) {
         </div>
       </header>
 
-      {projectNavigationVisible && (
-        <ProjectNavigation
-          groups={projectNavigationGroups}
-          selectedGroup={selectedProjectNavigationGroup}
-          sidebarCollapsed={sidebarCollapsed}
-        />
-      )}
-
       <aside
         className={`fixed inset-y-0 left-0 z-40 hidden border-r border-border bg-surface transition-[width] duration-200 lg:block ${sidebarCollapsed ? "w-[76px]" : "w-[260px]"}`}
       >
@@ -798,10 +747,26 @@ export default function AppShell({ children, requireAuth }) {
           className={`h-[calc(100dvh-68px)] overflow-y-auto ${sidebarCollapsed ? "px-2 py-4" : "px-4 py-6"}`}
           aria-label="Điều hướng chính"
         >
+          {projectId && !sidebarCollapsed && (
+            <div className="mb-4 border-b border-border px-3 pb-4">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-faint">
+                Dự án đang mở
+              </p>
+              <Link
+                href={projectRoute(projectId)}
+                className="mt-1 block truncate text-[14px] font-semibold text-ink hover:text-brand"
+                title={
+                  currentProjectContext?.name || currentProjectContext?.project_name || projectId
+                }
+              >
+                {currentProjectContext?.name || currentProjectContext?.project_name || projectId}
+              </Link>
+            </div>
+          )}
           <NavigationList
             projectPermissions={currentProjectPermissions}
             collapsed={sidebarCollapsed}
-            globalOnly={Boolean(projectId)}
+            groupsOverride={sidebarNavigationGroups}
           />
         </nav>
       </aside>
@@ -860,9 +825,9 @@ export default function AppShell({ children, requireAuth }) {
       <main
         id="main-content"
         tabIndex={-1}
-        className={`min-h-[100dvh] min-w-0 pt-[68px] ${projectNavigationVisible ? (hasProjectSubnavigation ? "lg:pt-[152px]" : "lg:pt-[112px]") : ""} transition-[padding] duration-200 ${sidebarCollapsed ? "lg:pl-[76px]" : "lg:pl-[260px]"}`}
+        className={`min-h-[100dvh] min-w-0 pt-[68px] transition-[padding] duration-200 ${sidebarCollapsed ? "lg:pl-[76px]" : "lg:pl-[260px]"}`}
       >
-        <div className={`page-shell ${projectNavigationVisible ? "project-navigation-shell" : ""}`}>
+        <div className="page-shell">
           {projectContextError ? (
             <section
               className="mx-auto max-w-xl rounded-panel border border-border bg-surface p-6"
