@@ -2,7 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { BookOpen, ClipboardCheck, FileText, GitBranch, RefreshCw, TestTube2 } from "lucide-react";
+import {
+  BookOpen,
+  ClipboardCheck,
+  FileText,
+  GitBranch,
+  RefreshCw,
+  TestTube2,
+  X,
+} from "lucide-react";
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
 import {
   agentAuthorizationGuidance,
@@ -20,7 +28,7 @@ import { ErrorState, LoadingState, Panel, StatusPill } from "./WorkspacePrimitiv
 import ContentOriginBadge from "../../../shared/components/common/ContentOriginBadge";
 import { useDateTimeOptions } from "../hooks/useDateTimeOptions";
 
-const activeStatuses = new Set(["QUEUED", "RUNNING"]);
+const activeStatuses = new Set(["QUEUED", "RUNNING", "VERIFYING"]);
 
 const documentWorkflowStageLabels = {
   test_plan: "Kế hoạch kiểm thử",
@@ -314,6 +322,7 @@ export default function AIRunPanel({
   const [agentCapabilities, setAgentCapabilities] = useState([]);
   const [run, setRun] = useState(null);
   const [checkpoints, setCheckpoints] = useState([]);
+  const [dismissedProgressRunId, setDismissedProgressRunId] = useState(null);
   const [receipt, setReceipt] = useState(null);
   const [sourceFacts, setSourceFacts] = useState([]);
   const [toolEvidence, setToolEvidence] = useState([]);
@@ -427,6 +436,7 @@ export default function AIRunPanel({
 
   const loadRun = async (runId) => {
     const requestVersion = ++detailRequestVersion.current;
+    if (selectedRunIdRef.current !== runId) setDismissedProgressRunId(null);
     selectedRunIdRef.current = runId;
     selectedRunSnapshotRef.current = null;
     setSourceFacts([]);
@@ -914,36 +924,6 @@ export default function AIRunPanel({
                   </button>
                 </div>
               )}
-              <section
-                aria-label="Tiến độ xử lý AI"
-                className="grid gap-2 rounded-control border border-border bg-surface p-4"
-                role="status"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <span
-                    className={`font-semibold ${runProgress.tone === "danger" ? "text-danger" : runProgress.tone === "success" ? "text-green-700" : "text-warning"}`}
-                  >
-                    {runProgress.label}
-                  </span>
-                  <span className="tabular-nums font-semibold text-ink">
-                    {runProgress.percent}%
-                  </span>
-                </div>
-                <div
-                  aria-label={`Tiến độ ${runProgress.label.toLowerCase()}`}
-                  aria-valuemax={100}
-                  aria-valuemin={0}
-                  aria-valuenow={runProgress.percent}
-                  aria-valuetext={`${runProgress.label} ${runProgress.percent}%`}
-                  className="h-2 overflow-hidden rounded-full bg-surface-quiet"
-                  role="progressbar"
-                >
-                  <div
-                    className={`h-full rounded-full transition-[width] duration-500 ease-out ${runProgress.tone === "danger" ? "bg-danger" : runProgress.tone === "success" ? "bg-green-600" : "bg-warning"}`}
-                    style={{ width: `${runProgress.percent}%` }}
-                  />
-                </div>
-              </section>
               {Array.isArray(run.target_artifact_ids) && (
                 <section
                   aria-label="Phạm vi của lượt AI đang xem"
@@ -1458,6 +1438,43 @@ export default function AIRunPanel({
           )}
         </div>
       </div>
+      {run && dismissedProgressRunId !== run.ai_run_id && (
+        <aside
+          aria-label="Tiến độ xử lý AI"
+          className="fixed bottom-5 right-4 z-[80] grid w-[min(380px,calc(100vw-2rem))] gap-2 rounded-panel border border-border bg-surface p-4 shadow-[0_12px_36px_rgba(32,32,30,0.16)] sm:right-6"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <span
+              className={`min-w-0 flex-1 font-semibold ${runProgress.tone === "danger" ? "text-danger" : runProgress.tone === "success" ? "text-green-700" : "text-warning"}`}
+            >
+              {runProgress.label} • {runProgress.percent}%
+            </span>
+            <button
+              aria-label="Ẩn tiến độ lượt AI"
+              className="icon-button -my-2 -mr-2 h-10 w-10 shrink-0"
+              onClick={() => setDismissedProgressRunId(run.ai_run_id)}
+              title="Ẩn tiến độ lượt AI"
+              type="button"
+            >
+              <X aria-hidden="true" size={16} />
+            </button>
+          </div>
+          <div
+            aria-label={`Tiến độ ${runProgress.label.toLowerCase()}`}
+            aria-valuemax={100}
+            aria-valuemin={0}
+            aria-valuenow={runProgress.percent}
+            aria-valuetext={`${runProgress.label} ${runProgress.percent}%`}
+            className="h-2 overflow-hidden rounded-full bg-surface-quiet"
+            role="progressbar"
+          >
+            <div
+              className={`h-full rounded-full transition-[width] duration-500 ease-out ${runProgress.tone === "danger" ? "bg-danger" : runProgress.tone === "success" ? "bg-green-600" : "bg-warning"}`}
+              style={{ width: `${runProgress.percent}%` }}
+            />
+          </div>
+        </aside>
+      )}
     </Panel>
   );
 }
