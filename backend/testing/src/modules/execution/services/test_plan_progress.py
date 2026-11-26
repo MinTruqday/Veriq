@@ -58,8 +58,17 @@ async def get_live_plan_progress(project_id, plan_id, user):
     plan = await test_plan_progress_repository.find_plan(project_id, plan_id)
     if not plan or plan.get("status") != "APPROVED":
         raise HTTPException(status_code=404, detail={"code": "TEST_PLAN_NOT_APPROVED"})
-    verified_approved_plan_snapshot(plan, project_id)
-    runs = await test_plan_progress_repository.list_runs(project_id, plan_id, 10000)
+    _, approved_snapshot_hash = verified_approved_plan_snapshot(plan, project_id)
+    all_runs = await test_plan_progress_repository.list_runs(project_id, plan_id, 10000)
+    excluded_run_count = sum(
+        run.get("test_plan_snapshot_hash") != approved_snapshot_hash
+        for run in all_runs
+    )
+    runs = [
+        run
+        for run in all_runs
+        if run.get("test_plan_snapshot_hash") == approved_snapshot_hash
+    ]
     results = await test_plan_progress_repository.list_results(
         project_id, [item["_id"] for item in runs], 50000
     )
@@ -77,7 +86,7 @@ async def get_live_plan_progress(project_id, plan_id, user):
         )
     }
     result_recorded = sum(statuses[status] for status in RECORDED_RESULT_STATUSES)
-    if len(runs) >= 10000 or len(results) >= 50000:
+    if len(all_runs) >= 10000 or len(results) >= 50000:
         raise HTTPException(status_code=409, detail={"code": "PLAN_PROGRESS_SCOPE_TOO_LARGE"})
     result_ids = {item["_id"] for item in results}
     defect_ids = {item for result in results for item in result.get("linked_defect_ids", [])}
@@ -109,4 +118,5 @@ async def get_live_plan_progress(project_id, plan_id, user):
         **pass_rate_metrics(statuses["PASS"], statuses["FAIL"]),
         "statuses": statuses,
         "open_critical_high": critical_high,
+        "excluded_run_count": excluded_run_count,
     }

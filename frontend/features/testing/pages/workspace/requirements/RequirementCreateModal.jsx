@@ -34,24 +34,15 @@ export default function RequirementCreateModal({ error, form, setForm, customFie
           />
         </div>
         <RequirementLines
-          label="Tiêu chí chấp nhận"
+          label="Tiêu chí chấp nhận (tùy chọn)"
           value={form.acceptance}
           onChange={(acceptance) => updateForm({ acceptance })}
         />
         <RequirementLines
-          label="Quy tắc nghiệp vụ"
+          label="Quy tắc nghiệp vụ (tùy chọn)"
           value={form.businessRules}
           onChange={(businessRules) => updateForm({ businessRules })}
         />
-        <label className="field-label">
-          Liên kết thiết kế hoặc tài liệu
-          <input
-            className="apple-input mt-2"
-            value={form.designReference}
-            onChange={(event) => updateForm({ designReference: event.target.value })}
-            placeholder="Dán liên kết liên quan"
-          />
-        </label>
         <details className="rounded-control border border-border p-4">
           <summary className="cursor-pointer font-medium">Tùy chọn</summary>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -68,19 +59,13 @@ export default function RequirementCreateModal({ error, form, setForm, customFie
                 <option value="LOW">Thấp</option>
               </select>
             </label>
-            <label className="field-label">
-              Trạng thái theo dõi
-              <select
+            <label className="field-label sm:col-span-2">
+              Liên kết thiết kế hoặc tài liệu (tùy chọn)
+              <input
                 className="apple-input mt-2"
-                value={form.progressStatus}
-                onChange={(event) => updateForm({ progressStatus: event.target.value })}
-              >
-                <option value="">-</option>
-                <option value="DRAFT">Bản nháp</option>
-                <option value="APPROVED">Đã phê duyệt</option>
-                <option value="IN_DEV">Đang phát triển</option>
-                <option value="DONE">Hoàn thành</option>
-              </select>
+                value={form.designReference}
+                onChange={(event) => updateForm({ designReference: event.target.value })}
+              />
             </label>
           </div>
         </details>

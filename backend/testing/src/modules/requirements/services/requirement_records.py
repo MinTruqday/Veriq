@@ -54,7 +54,7 @@ async def persist_acceptance_criteria(version, values, session=None):
     version["acceptance_criteria"] = criteria
     return version
 
-async def validate_requirement_custom_values(project_id, requirement):
+async def validate_requirement_custom_values(project_id, requirement, require_required=True):
     values = requirement.custom_values or {}
     fields = await requirement_template_repository.list_fields(project_id)
     definitions = {field["key"]: field for field in fields}
@@ -69,7 +69,7 @@ async def validate_requirement_custom_values(project_id, requirement):
                 )
             continue
         value = values.get(field["key"])
-        if field["required"] and value in (None, ""):
+        if require_required and field["required"] and value in (None, ""):
             raise HTTPException(
                 status_code=422, detail={"code": "CUSTOM_FIELD_REQUIRED", "field": field["key"]}
             )
@@ -95,12 +95,14 @@ async def validate_requirement_custom_values(project_id, requirement):
 async def create_requirement_record(project_id, payload, user, origin="manual", session=None):
     await get_project(project_id, user, "requirement.create")
     content_doc = validate_doc(payload.content_doc)
-    if not plain_text(content_doc).strip():
+    if not payload.save_as_draft and not plain_text(content_doc).strip():
         raise HTTPException(
             status_code=422,
             detail={"code": "REQUIREMENT_CONTENT_REQUIRED", "message": "Nội dung yêu cầu không được để trống."},
         )
-    await validate_requirement_custom_values(project_id, payload)
+    await validate_requirement_custom_values(
+        project_id, payload, require_required=not payload.save_as_draft
+    )
     await validate_requirement_sources(project_id, payload.source_refs, user)
     await validate_requirement_api_operations(
         project_id, payload.details, payload.source_refs, user
@@ -132,7 +134,7 @@ async def create_requirement_record(project_id, payload, user, origin="manual", 
         "parent_version_id": None,
         "change_reason": "Khởi tạo Requirement",
         "status": initial_status,
-        "index_status": "PENDING",
+        "index_status": "PENDING" if plain_text(content_doc).strip() else "NOT_REQUESTED",
         "revision": 1,
         "origin": origin,
         "created_by": user.id,
@@ -175,8 +177,9 @@ async def create_requirement_record(project_id, payload, user, origin="manual", 
             await persist(session)
     except DuplicateKeyError as error:
         raise HTTPException(status_code=409, detail={"code": "REQUIREMENT_KEY_EXISTS"}) from error
-    if session is None:
+    if session is None and plain_text(content_doc).strip():
         await index_requirement_version(version)
+    if session is None:
         if (
             origin == "manual"
             and not payload.save_as_draft
@@ -375,15 +378,12 @@ async def update_requirement_draft_record(project_id, requirement_id, payload, u
                     ],
                 },
             ) from error
-        await validate_requirement_custom_values(project_id, validation_payload)
+        await validate_requirement_custom_values(
+            project_id, validation_payload, require_required=False
+        )
     content_doc = changes.get("content_doc")
     if content_doc is not None:
         validate_doc(content_doc)
-        if not plain_text(content_doc).strip():
-            raise HTTPException(
-                status_code=422,
-                detail={"code": "REQUIREMENT_CONTENT_REQUIRED", "message": "Nội dung yêu cầu không được để trống."},
-            )
         changes["plain_text_projection"] = plain_text(content_doc)
     if "requirement_key" in changes and changes["requirement_key"] != requirement.get(
         "requirement_key"

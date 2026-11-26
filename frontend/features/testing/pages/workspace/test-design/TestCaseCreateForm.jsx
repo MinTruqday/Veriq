@@ -1,5 +1,4 @@
 import { TestDataEntries, TechniqueSelector, TestTypeSelector } from "./TestCaseOptions";
-import DocumentEditor from "../../../editor/DocumentEditor";
 import { docText, valueLabel } from "../../../lib/testing";
 import MultiSelect from "@/shared/components/ui/MultiSelect";
 import RequirementCoverageSelector from "./RequirementCoverageSelector";
@@ -53,6 +52,7 @@ export default function TestCaseCreateForm({
   const scopedTestConditions = testConditions.filter((condition) =>
     matchesConditionScope(condition, requirementIds, scopedCriterionIds),
   );
+  const hasAnalysisLinks = form.requirementVersionIds.length > 0 || scopedTestConditions.length > 0;
   const testLevelOptions = [
     ["COMPONENT", "Thành phần"],
     ["COMPONENT_INTEGRATION", "Tích hợp thành phần"],
@@ -136,9 +136,10 @@ export default function TestCaseCreateForm({
                   )}
                 </div>
                 <label className="field-label">
-                  Thao tác
+                  Thao tác <span className="text-danger">*</span>
                   <textarea
                     className="apple-input mt-2 min-h-20"
+                    required
                     value={docText(step.action)}
                     onChange={(event) => updateStep(index, { action: textDoc(event.target.value) })}
                   />
@@ -149,9 +150,10 @@ export default function TestCaseCreateForm({
                   onChange={(data) => updateStep(index, { data })}
                 />
                 <label className="field-label">
-                  Kết quả mong đợi
+                  Kết quả mong đợi <span className="text-danger">*</span>
                   <textarea
                     className="apple-input mt-2 min-h-20"
+                    required
                     value={docText(step.expected)}
                     onChange={(event) =>
                       updateStep(index, { expected: textDoc(event.target.value) })
@@ -162,80 +164,40 @@ export default function TestCaseCreateForm({
             ))}
           </section>
         )}
-        <section className="space-y-3 rounded-control border border-border p-4">
-          <h3 className="font-semibold">Luồng kiểm thử (tùy chọn)</h3>
-          <div className="grid gap-4 md:grid-cols-2">
-            {[
-              ["mainFlow", "Luồng chính"],
-              ["alternateFlows", "Luồng thay thế"],
-              ["exceptionFlows", "Luồng ngoại lệ"],
-            ].map(([field, label]) => (
-              <label className="field-label" key={field}>
-                {label}
-                <textarea
-                  className="apple-input mt-2 min-h-20"
-                  value={docText(form[field])}
-                  placeholder="-"
-                  onChange={(event) => update({ [field]: textDoc(event.target.value) })}
-                />
-              </label>
-            ))}
-          </div>
-        </section>
       </div>
       {form.testStyle === "BDD" && (
         <div className="grid gap-3 rounded-control border border-border p-4">
           <p className="field-label">Kịch bản BDD</p>
-          <input
-            aria-label="Tính năng trong kịch bản BDD"
-            className="apple-input"
-            value={form.feature}
-            onChange={(event) => update({ feature: event.target.value })}
-            placeholder="Tính năng"
-            required
-          />
-          <input
-            aria-label="Tên kịch bản BDD"
-            className="apple-input"
-            value={form.scenario}
-            onChange={(event) => update({ scenario: event.target.value })}
-            placeholder="Tên kịch bản"
-            required
-          />
-          <input
-            aria-label="Điều kiện ban đầu của kịch bản BDD"
-            className="apple-input"
-            value={form.given}
-            onChange={(event) => update({ given: event.target.value })}
-            placeholder="Điều kiện ban đầu"
-            required
-          />
-          <input
-            aria-label="Hành động của kịch bản BDD"
-            className="apple-input"
-            value={form.when}
-            onChange={(event) => update({ when: event.target.value })}
-            placeholder="Hành động"
-            required
-          />
-          <input
-            aria-label="Kết quả mong đợi của kịch bản BDD"
-            className="apple-input"
-            value={form.then}
-            onChange={(event) => update({ then: event.target.value })}
-            placeholder="Kết quả mong đợi"
-            required
-          />
+          {[
+            ["feature", "Tính năng"],
+            ["scenario", "Tên kịch bản"],
+            ["given", "Given · Điều kiện ban đầu"],
+            ["when", "When · Hành động"],
+            ["then", "Then · Kết quả mong đợi"],
+          ].map(([field, label]) => (
+            <label className="field-label" key={field}>
+              {label} <span className="text-danger">*</span>
+              <input
+                aria-label={label}
+                className="apple-input mt-2"
+                value={form[field]}
+                onChange={(event) => update({ [field]: event.target.value })}
+                required
+              />
+            </label>
+          ))}
         </div>
       )}
       <section className="space-y-3 rounded-control border border-border p-4">
         <h3 className="font-semibold">Liên kết yêu cầu</h3>
-        <p className="text-sm text-ink-muted">
-          Mỗi ca cần gắn với yêu cầu để người duyệt kiểm tra được ca này đang xác nhận điều gì.
-        </p>
+        <p className="text-sm text-ink-muted">Chọn phiên bản yêu cầu mà ca này kiểm thử.</p>
         <MultiSelect
           showSearch={false}
-          label="Phiên bản yêu cầu liên quan *"
+          label={
+            <span>
+              Phiên bản yêu cầu liên quan <span className="text-danger">*</span>
+            </span>
+          }
           searchPlaceholder="Tìm yêu cầu"
           options={requirements.map((item) => ({
             value: item.current_version_id,
@@ -300,8 +262,45 @@ export default function TestCaseCreateForm({
       </section>
       <details className="rounded-control border border-border p-4">
         <summary className="cursor-pointer font-medium">Tùy chọn</summary>
-        <div className="mt-4 grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <div
+          className={`mt-4 grid min-w-0 items-start gap-4 ${
+            hasAnalysisLinks ? "xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]" : "grid-cols-1"
+          }`}
+        >
           <div className="min-w-0 space-y-4">
+            {form.testStyle !== "BDD" && (
+              <section className="space-y-3 rounded-control border border-border p-4">
+                <h3 className="font-semibold">Luồng (tùy chọn)</h3>
+                <label className="field-label block">
+                  Luồng chính
+                  <textarea
+                    className="apple-input mt-2 min-h-20"
+                    value={docText(form.mainFlow)}
+                    placeholder="-"
+                    onChange={(event) => update({ mainFlow: textDoc(event.target.value) })}
+                  />
+                </label>
+                <fieldset className="space-y-3 rounded-control border border-border p-4">
+                  <legend className="px-1 font-medium">Luồng thay thế và ngoại lệ</legend>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {[
+                      ["alternateFlows", "Luồng thay thế"],
+                      ["exceptionFlows", "Luồng ngoại lệ"],
+                    ].map(([field, label]) => (
+                      <label className="field-label" key={field}>
+                        {label}
+                        <textarea
+                          className="apple-input mt-2 min-h-20"
+                          value={docText(form[field])}
+                          placeholder="-"
+                          onChange={(event) => update({ [field]: textDoc(event.target.value) })}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+              </section>
+            )}
             <section className="space-y-3 rounded-control border border-border p-4">
               <h3 className="font-semibold">Thông tin chung</h3>
               <label className="field-label">
@@ -419,24 +418,22 @@ export default function TestCaseCreateForm({
             <section className="space-y-3 rounded-control border border-border p-4">
               <h3 className="font-semibold">Tiền điều kiện và hậu điều kiện</h3>
               <div className="grid gap-3 md:grid-cols-2">
-                <div>
-                  <p className="field-label mb-2">Tiền điều kiện</p>
-                  <DocumentEditor
-                    value={form.preconditions}
-                    onChange={(preconditions) => update({ preconditions })}
-                    label="Điều kiện cần có trước khi chạy"
-                    minHeight="min-h-20"
+                <label className="field-label">
+                  Tiền điều kiện
+                  <textarea
+                    className="apple-input mt-2 min-h-20"
+                    value={docText(form.preconditions)}
+                    onChange={(event) => update({ preconditions: textDoc(event.target.value) })}
                   />
-                </div>
-                <div>
-                  <p className="field-label mb-2">Hậu điều kiện</p>
-                  <DocumentEditor
-                    value={form.postconditions}
-                    onChange={(postconditions) => update({ postconditions })}
-                    label="Hậu điều kiện khi chạy ca kiểm thử"
-                    minHeight="min-h-20"
+                </label>
+                <label className="field-label">
+                  Hậu điều kiện
+                  <textarea
+                    className="apple-input mt-2 min-h-20"
+                    value={docText(form.postconditions)}
+                    onChange={(event) => update({ postconditions: textDoc(event.target.value) })}
                   />
-                </div>
+                </label>
               </div>
             </section>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -466,36 +463,31 @@ export default function TestCaseCreateForm({
               </label>
             </div>
           </div>
-          <section className="min-w-0 space-y-4 rounded-control border border-border p-4">
-            <h3 className="font-semibold">Mô tả và liên kết</h3>
-            <div>
-              <p className="field-label mb-2">Mô tả ca kiểm thử</p>
-              <DocumentEditor
-                value={form.objective}
-                onChange={(objective) => update({ objective })}
-                label="Mô tả ca kiểm thử"
-                minHeight="min-h-20"
-              />
-            </div>
-            {form.requirementVersionIds.length > 0 && (
-              <RequirementCoverageSelector
-                requirements={requirements}
-                requirementVersionIds={form.requirementVersionIds}
-                value={form.coverageItemIds || []}
-                onChange={(coverageItemIds) => update({ coverageItemIds })}
-              />
-            )}
-            <MultiSelect
-              showSearch={false}
-              label="Điều kiện kiểm thử đã phê duyệt"
-              options={scopedTestConditions.map((item) => ({
-                value: item._id,
-                label: `${item.condition_key} ${item.title}`,
-              }))}
-              value={form.testConditionIds}
-              onChange={(testConditionIds) => update({ testConditionIds })}
-            />
-          </section>
+          {hasAnalysisLinks && (
+            <section className="min-w-0 space-y-4 rounded-control border border-border p-4">
+              <h3 className="font-semibold">Liên kết phân tích</h3>
+              {form.requirementVersionIds.length > 0 && (
+                <RequirementCoverageSelector
+                  requirements={requirements}
+                  requirementVersionIds={form.requirementVersionIds}
+                  value={form.coverageItemIds || []}
+                  onChange={(coverageItemIds) => update({ coverageItemIds })}
+                />
+              )}
+              {scopedTestConditions.length > 0 && (
+                <MultiSelect
+                  showSearch={false}
+                  label="Điều kiện kiểm thử đã duyệt"
+                  options={scopedTestConditions.map((item) => ({
+                    value: item._id,
+                    label: `${item.condition_key} ${item.title}`,
+                  }))}
+                  value={form.testConditionIds}
+                  onChange={(testConditionIds) => update({ testConditionIds })}
+                />
+              )}
+            </section>
+          )}
         </div>
       </details>
     </form>

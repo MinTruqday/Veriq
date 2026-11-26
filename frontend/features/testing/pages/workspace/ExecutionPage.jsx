@@ -1064,6 +1064,12 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                     <p className="mt-1">{planProgress.open_critical_high}</p>
                   </div>
                 </div>
+                {planProgress.excluded_run_count > 0 && (
+                  <p className="px-5 pb-5 text-sm text-ink-muted">
+                    Không tính {planProgress.excluded_run_count} lần chạy thuộc phiên bản kế hoạch
+                    khác. Các lần chạy này vẫn còn trong lịch sử.
+                  </p>
+                )}
               </Panel>
             )}
             {planProgressError && (

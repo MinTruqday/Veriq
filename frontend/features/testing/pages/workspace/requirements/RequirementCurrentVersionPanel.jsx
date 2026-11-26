@@ -6,13 +6,6 @@ import RequirementLines from "./RequirementLines";
 import { messageOf, valueLabel } from "../../../lib/testing";
 import { testingApi } from "../../../services/testing.service";
 
-const progressLabels = {
-  DRAFT: "Bản nháp",
-  APPROVED: "Đã phê duyệt",
-  IN_DEV: "Đang phát triển",
-  DONE: "Hoàn thành",
-};
-
 export default function RequirementCurrentVersionPanel({
   projectId,
   current,
@@ -395,12 +388,6 @@ export default function RequirementCurrentVersionPanel({
                 <p className="field-label">Ưu tiên</p>
                 <p className="mt-1 font-semibold">{valueLabel(current.priority || "unassessed")}</p>
               </div>
-              <div>
-                <p className="field-label">Trạng thái theo dõi</p>
-                <p className="mt-1 font-semibold">
-                  {progressLabels[current.details?.progress_status] || "Chưa chọn"}
-                </p>
-              </div>
             </div>
           </details>
         )}
@@ -427,31 +414,18 @@ export default function RequirementCurrentVersionPanel({
               />
             </div>
             <RequirementLines
-              label="Tiêu chí chấp nhận"
+              label="Tiêu chí chấp nhận (tùy chọn)"
               value={draft.acceptance}
               onChange={(acceptance) => onDraftChange({ acceptance })}
             />
             <RequirementLines
-              label="Quy tắc nghiệp vụ"
+              label="Quy tắc nghiệp vụ (tùy chọn)"
               value={draft.businessRules}
               onChange={(businessRules) => onDraftChange({ businessRules })}
             />
-            <label className="field-label grid gap-2">
-              Liên kết thiết kế hoặc tài liệu
-              <input
-                className="apple-input"
-                value={draft.details?.design_reference || ""}
-                onChange={(event) =>
-                  onDraftChange({
-                    details: { ...draft.details, design_reference: event.target.value },
-                  })
-                }
-                placeholder="Dán liên kết liên quan"
-              />
-            </label>
             <details className="rounded-control border border-border p-4">
               <summary className="cursor-pointer font-medium">Tùy chọn</summary>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div className="mt-3 grid gap-3">
                 <label className="field-label">
                   Mức ưu tiên
                   <select
@@ -469,26 +443,90 @@ export default function RequirementCurrentVersionPanel({
                     )}
                   </select>
                 </label>
-                <label className="field-label">
-                  Trạng thái theo dõi
-                  <select
-                    className="apple-input mt-2"
-                    value={draft.details?.progress_status || ""}
+                <label className="field-label grid gap-2">
+                  Liên kết thiết kế hoặc tài liệu (tùy chọn)
+                  <input
+                    className="apple-input"
+                    value={draft.details?.design_reference || ""}
                     onChange={(event) =>
                       onDraftChange({
-                        details: { ...draft.details, progress_status: event.target.value },
+                        details: { ...draft.details, design_reference: event.target.value },
                       })
                     }
-                  >
-                    <option value="">-</option>
-                    <option value="DRAFT">Bản nháp</option>
-                    <option value="APPROVED">Đã phê duyệt</option>
-                    <option value="IN_DEV">Đang phát triển</option>
-                    <option value="DONE">Hoàn thành</option>
-                  </select>
+                  />
                 </label>
               </div>
             </details>
+            {customFields
+              .filter(
+                (field) =>
+                  field.required &&
+                  (!field.requirement_types?.length ||
+                    field.requirement_types.includes(current.type)),
+              )
+              .map((field) => (
+                <label className="field-label block" key={field.key}>
+                  {field.label} <span className="text-danger">*</span>
+                  {field.value_type === "choice" ? (
+                    <select
+                      className="apple-input mt-2"
+                      required
+                      value={draft.customValues?.[field.key] ?? ""}
+                      onChange={(event) =>
+                        onDraftChange({
+                          customValues: {
+                            ...draft.customValues,
+                            [field.key]: event.target.value,
+                          },
+                        })
+                      }
+                    >
+                      <option value="">-</option>
+                      {field.choices.map((choice) => (
+                        <option key={choice}>{choice}</option>
+                      ))}
+                    </select>
+                  ) : field.value_type === "boolean" ? (
+                    <input
+                      className="ml-2"
+                      type="checkbox"
+                      checked={Boolean(draft.customValues?.[field.key])}
+                      onChange={(event) =>
+                        onDraftChange({
+                          customValues: {
+                            ...draft.customValues,
+                            [field.key]: event.target.checked,
+                          },
+                        })
+                      }
+                    />
+                  ) : (
+                    <input
+                      className="apple-input mt-2"
+                      required
+                      type={
+                        field.value_type === "number"
+                          ? "number"
+                          : field.value_type === "date"
+                            ? "date"
+                            : "text"
+                      }
+                      value={draft.customValues?.[field.key] ?? ""}
+                      onChange={(event) =>
+                        onDraftChange({
+                          customValues: {
+                            ...draft.customValues,
+                            [field.key]:
+                              field.value_type === "number" && event.target.value !== ""
+                                ? Number(event.target.value)
+                                : event.target.value,
+                          },
+                        })
+                      }
+                    />
+                  )}
+                </label>
+              ))}
             {current.parent_version_id && (
               <details className="rounded-control border border-border p-4">
                 <summary className="cursor-pointer font-medium">

@@ -1,11 +1,11 @@
 import { useState } from "react";
 
 const techniques = [
-  ["equivalence_partitioning", "Phân vùng tương đương"],
-  ["boundary_value", "Phân tích giá trị biên"],
-  ["decision_table", "Bảng quyết định"],
-  ["state_transition", "Chuyển đổi trạng thái"],
-  ["error_guessing", "Đoán lỗi"],
+  ["equivalence_partitioning", "Phân vùng tương đương", "black_box"],
+  ["boundary_value", "Phân tích giá trị biên", "black_box"],
+  ["decision_table", "Bảng quyết định", "black_box"],
+  ["state_transition", "Chuyển đổi trạng thái", "black_box"],
+  ["error_guessing", "Đoán lỗi", "experience"],
 ];
 
 export function TechniqueSelector({ value, onChange }) {
@@ -17,30 +17,48 @@ export function TechniqueSelector({ value, onChange }) {
     ...techniques,
     ...selected
       .filter((item) => !techniques.some(([id]) => id === item))
-      .map((item) => [item, item]),
+      .map((item) => [item, item, "legacy"]),
   ];
   return (
     <fieldset className="space-y-2 lg:col-span-2">
       <legend className="field-label">Kỹ thuật kiểm thử</legend>
-      <div className="flex flex-wrap gap-x-5 gap-y-2">
-        {options.map(([id, label]) => (
-          <label className="flex items-center gap-2 text-sm" key={id}>
-            <input
-              type="checkbox"
-              checked={selected.includes(id)}
-              onChange={(event) =>
-                onChange(
-                  (event.target.checked
-                    ? [...selected, id]
-                    : selected.filter((item) => item !== id)
-                  ).join(", "),
-                )
-              }
-            />
-            {label}
-          </label>
-        ))}
-      </div>
+      {[
+        ["black_box", "Hộp đen", "Đặc tả hành vi"],
+        ["experience", "Dựa trên kinh nghiệm", ""],
+        ["legacy", "Giá trị cũ", ""],
+      ].map(([group, heading, description]) => {
+        const groupOptions = options.filter(([, , category]) => category === group);
+        if (!groupOptions.length) return null;
+        return (
+          <div className="space-y-2" key={group}>
+            <p className="text-sm font-medium">
+              {heading}
+              {description && (
+                <span className="ml-2 font-normal text-ink-muted">{description}</span>
+              )}
+            </p>
+            <div className="flex flex-wrap gap-x-5 gap-y-2">
+              {groupOptions.map(([id, label]) => (
+                <label className="flex items-center gap-2 text-sm" key={id}>
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(id)}
+                    onChange={(event) =>
+                      onChange(
+                        (event.target.checked
+                          ? [...selected, id]
+                          : selected.filter((item) => item !== id)
+                        ).join(", "),
+                      )
+                    }
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </div>
+        );
+      })}
     </fieldset>
   );
 }
@@ -125,13 +143,19 @@ export function TestTypeSelector({ value, onChange }) {
     ["", "-"],
     ["functional", "Chức năng"],
     ["non_functional", "Phi chức năng"],
-    ["confirmation", "Xác nhận"],
-    ["regression", "Hồi quy"],
+    ["black_box", "Hộp đen"],
+    ["white_box", "Hộp trắng"],
   ];
-  if (value && !options.some(([id]) => id === value)) options.push([value, value]);
+  const legacyLabels = {
+    confirmation: "Xác nhận (dữ liệu cũ)",
+    regression: "Hồi quy (dữ liệu cũ)",
+  };
+  if (value && !options.some(([id]) => id === value)) {
+    options.push([value, legacyLabels[value] || `${value} (dữ liệu cũ)`]);
+  }
   return (
     <label className="field-label">
-      Loại ca kiểm thử
+      Loại kiểm thử
       <select
         className="apple-input mt-2"
         value={value || ""}

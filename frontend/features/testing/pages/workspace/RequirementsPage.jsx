@@ -513,7 +513,12 @@ export default function RequirementsPage({ project, section, workspaceView }) {
   const create = async (event) => {
     event.preventDefault();
     if (saving) return;
-    if (!docText(form.content_doc).trim()) {
+    const saveAsDraft = event.nativeEvent.submitter?.value === "draft";
+    if (form.title.trim().length < 2) {
+      setError("Tên yêu cầu phải có ít nhất 2 ký tự.");
+      return;
+    }
+    if (!saveAsDraft && !docText(form.content_doc).trim()) {
       setError("Nhập nội dung yêu cầu trước khi lưu.");
       return;
     }
@@ -521,8 +526,8 @@ export default function RequirementsPage({ project, section, workspaceView }) {
     setError("");
     try {
       await testingApi.createRequirement(project._id, {
-        save_as_draft: event.nativeEvent.submitter?.value === "draft",
-        title: form.title,
+        save_as_draft: saveAsDraft,
+        title: form.title.trim(),
         type: form.type,
         priority: form.priority,
         content_doc: form.content_doc,
@@ -538,7 +543,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
         source_refs: [],
         details: {
           ...(form.designReference.trim() ? { design_reference: form.designReference.trim() } : {}),
-          ...(form.progressStatus ? { progress_status: form.progressStatus } : {}),
         },
         tags: form.tags
           .split(",")

@@ -35,6 +35,7 @@ export default function RequirementCoverageSelector({
       return undefined;
     }
     let active = true;
+    setItems([]);
     setLoading(true);
     setError("");
     Promise.all(versionIds.map((id) => testingApi.listRequirementCoverageItems(id)))
@@ -81,14 +82,22 @@ export default function RequirementCoverageSelector({
 
   return (
     <div className="space-y-1">
-      <MultiSelect
-        showSearch={false}
-        label="Quy tắc nghiệp vụ cần bao phủ"
-        searchPlaceholder="Tìm quy tắc nghiệp vụ"
-        options={[...options, ...missing]}
-        value={value}
-        onChange={onChange}
-      />
+      {loading ? (
+        <p className="field-label">Đang tải quy tắc nghiệp vụ…</p>
+      ) : options.length || missing.length ? (
+        <MultiSelect
+          showSearch={false}
+          label="Quy tắc nghiệp vụ được ca này kiểm thử"
+          searchPlaceholder="Tìm quy tắc nghiệp vụ"
+          options={[...options, ...missing]}
+          value={value}
+          onChange={onChange}
+        />
+      ) : (
+        <p className="field-label">
+          Quy tắc nghiệp vụ được ca này kiểm thử <span className="ml-2 font-normal">-</span>
+        </p>
+      )}
       {error && (
         <p role="status" className="text-sm text-danger">
           {error}

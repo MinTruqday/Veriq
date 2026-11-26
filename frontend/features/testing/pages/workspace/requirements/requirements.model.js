@@ -77,7 +77,6 @@ export function createInitialRequirementForm() {
     businessRules: "",
     dependencies: "",
     designReference: "",
-    progressStatus: "",
     tags: "",
     ownerId: "",
   };

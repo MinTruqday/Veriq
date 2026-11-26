@@ -74,6 +74,11 @@ class RequirementCreate(BaseModel):
             raise ValueError("Requirement type must not be empty")
         return normalized
 
+    @field_validator("title", mode="before")
+    @classmethod
+    def normalize_requirement_title(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
     @field_validator("priority")
     @classmethod
     def normalize_assessment_labels(cls, value):
@@ -112,6 +117,11 @@ class RequirementDraftPatch(BaseModel):
     details: dict[str, Any] | None = None
     section_states: dict[str, Literal["provided", "missing", "not_applicable"]] | None = None
     custom_values: dict[str, Any] | None = None
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def normalize_requirement_title(cls, value):
+        return value.strip() if isinstance(value, str) else value
 
     @field_validator("section_states", mode="before")
     @classmethod

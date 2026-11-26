@@ -42,12 +42,18 @@ async def save_requirement_ready(project_id, requirement_id, expected_revision, 
             422,
             detail={"code": "REQUIREMENT_CONTENT_REQUIRED", "message": "Nội dung yêu cầu không được để trống."},
         )
-    if not plain_text(version.get("content_doc", {})).strip():
-        raise HTTPException(
-            422,
-            detail={"code": "REQUIREMENT_CONTENT_REQUIRED", "message": "Nội dung yêu cầu không được để trống."},
-        )
     timestamp = now()
+    from src.modules.requirements.services.requirement_records import validate_requirement_custom_values
+    from src.schemas.contracts.requirements import RequirementCreate
+
+    await validate_requirement_custom_values(
+        project_id,
+        RequirementCreate(
+            title=version["title"],
+            type=version["type"],
+            custom_values=version.get("custom_values", {}),
+        ),
+    )
     async with await database.client.start_session() as session:
         async with session.start_transaction():
             updated = await requirement_repository.transition_version(version['_id'], project_id, expected_revision, 'DRAFT', 'READY', {'updated_at': timestamp}, session=session)
@@ -57,6 +63,8 @@ async def save_requirement_ready(project_id, requirement_id, expected_revision, 
             if not changed:
                 raise HTTPException(409, detail={'code': 'REQUIREMENT_STATUS_CONFLICT'})
             await audit(user.id, 'requirement_saved', 'RequirementVersion', version['_id'], project_id, session=session)
+    ready_version = await requirement_repository.find_version(version['_id'], project_id)
+    await index_requirement_version(ready_version)
     return await requirement_repository.find_version(version['_id'], project_id)
 
 async def submit_requirement_for_review(
@@ -107,6 +115,22 @@ async def submit_requirement_for_review(
                 "current_revision": version["revision"],
             },
         )
+    if not plain_text(version.get("content_doc", {})).strip():
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "REQUIREMENT_CONTENT_REQUIRED", "message": "Nội dung yêu cầu không được để trống."},
+        )
+    from src.modules.requirements.services.requirement_records import validate_requirement_custom_values
+    from src.schemas.contracts.requirements import RequirementCreate
+
+    await validate_requirement_custom_values(
+        project_id,
+        RequirementCreate(
+            title=version["title"],
+            type=version["type"],
+            custom_values=version.get("custom_values", {}),
+        ),
+    )
     timestamp = now()
     async with await database.client.start_session() as session:
         async with session.start_transaction():

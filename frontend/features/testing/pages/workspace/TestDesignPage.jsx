@@ -564,6 +564,31 @@ export default function TestDesignPage({ project, workspaceView, section }) {
   };
   const create = (event) => {
     const saveAsDraft = event.nativeEvent.submitter?.value === "draft";
+    if (form.title.trim().length < 2) {
+      event.preventDefault();
+      setError("Tên ca kiểm thử cần ít nhất 2 ký tự, kể cả khi lưu nháp.");
+      return;
+    }
+    if (!saveAsDraft && form.testStyle === "BDD") {
+      if (
+        ![form.feature, form.scenario, form.given, form.when, form.then].every((value) =>
+          value.trim(),
+        )
+      ) {
+        event.preventDefault();
+        setError("Điền đủ Tính năng, Tên kịch bản, Given, When và Then trước khi lưu ca chính.");
+        return;
+      }
+    }
+    if (
+      !saveAsDraft &&
+      form.testStyle !== "BDD" &&
+      form.steps.some((step) => !docText(step.action).trim() || !docText(step.expected).trim())
+    ) {
+      event.preventDefault();
+      setError("Mỗi bước cần có thao tác và kết quả mong đợi trước khi lưu ca chính.");
+      return;
+    }
     if (!saveAsDraft && !form.requirementVersionIds.length && !form.acceptanceCriterionIds.length) {
       event.preventDefault();
       setError("Liên kết ca kiểm thử với ít nhất một yêu cầu trước khi lưu chính.");
