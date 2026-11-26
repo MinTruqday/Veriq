@@ -68,6 +68,8 @@ async def get_test_suite_record(suite_id, user, permission="testsuite.read"):
 
 async def update_test_suite_record(suite_id, payload, user):
     suite = await get_test_suite_record(suite_id, user, "testsuite.update")
+    if suite.get("status") == "APPROVED":
+        raise HTTPException(status_code=409, detail={"code": "TEST_SUITE_APPROVED_IMMUTABLE"})
     if suite.get("status", 'ACTIVE') == 'ARCHIVED':
         raise HTTPException(status_code=409, detail={"code": 'TEST_SUITE_ARCHIVED'})
     changes = payload.model_dump()
@@ -93,13 +95,19 @@ async def clone_test_suite_record(suite_id, user):
         **suite,
         "_id": new_id('TSU'),
         "name": f"{suite['name']} bản sao",
+        "source_suite_id": suite["_id"],
         "status": 'ACTIVE',
         "revision": 1,
         "created_by": user.id,
         "created_at": timestamp,
         "updated_at": timestamp,
     }
-    for field in ("archived_at", "archived_by", "archive_reason"):
+    for field in (
+        "archived_at",
+        "archived_by",
+        "archive_reason",
+        "source_regression_recommendation_id",
+    ):
         cloned.pop(field, None)
     await test_design_repository.insert_suite(cloned)
     await audit(

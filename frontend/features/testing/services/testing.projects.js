@@ -87,6 +87,8 @@ export const projectTestingApi = {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
+  cloneTestCondition: (conditionId) =>
+    testingRequest(`/dieu-kien-kiem-thu/${conditionId}/ban-nhap-moi`, { method: "POST" }),
   submitTestCondition: (conditionId, payload) =>
     testingRequest(`/dieu-kien-kiem-thu/${conditionId}/gui-ra-soat`, {
       method: "POST",

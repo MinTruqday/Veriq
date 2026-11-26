@@ -111,6 +111,54 @@ async def create_condition(project_id, payload, user):
     return value
 
 
+async def clone_approved_condition(condition_id, user):
+    condition = await get_condition_for_user(
+        condition_id, user, "testcondition.create"
+    )
+    if condition.get("status") != "APPROVED":
+        raise HTTPException(
+            status_code=409, detail={"code": "TEST_CONDITION_CLONE_REQUIRES_APPROVED"}
+        )
+    approved = condition.get("approved_snapshot") or condition
+    timestamp = now()
+    value = {
+        "_id": new_id("TCON"),
+        "project_id": condition["project_id"],
+        **{
+            field: approved.get(field)
+            for field in TestConditionCreate.model_fields
+        },
+        "condition_key": await next_key(
+            condition["project_id"], "test_condition", "TCON"
+        ),
+        "source_condition_id": condition["_id"],
+        "source_condition_key": condition.get("condition_key"),
+        "basis_snapshots": approved.get("basis_snapshots", []),
+        "status": "DRAFT",
+        "reviewed_by": [],
+        "approval_history": [],
+        "revision": 1,
+        "created_by": user.id,
+        "created_at": timestamp,
+        "updated_at": timestamp,
+    }
+    try:
+        await test_condition_repository.create(value)
+    except DuplicateKeyError as error:
+        raise HTTPException(
+            status_code=409, detail={"code": "TEST_CONDITION_KEY_EXISTS"}
+        ) from error
+    await audit(
+        user.id,
+        "test_condition_draft_created_from_approved",
+        "TestCondition",
+        value["_id"],
+        condition["project_id"],
+        {"source_condition_id": condition["_id"]},
+    )
+    return value
+
+
 async def update_condition(condition_id, payload, user):
 
     condition = await get_condition_for_user(
@@ -248,6 +296,11 @@ async def resolve_finding(condition_id, finding_id, payload, user):
                 "artifact_type": 'TEST_CONDITION',
             },
         )
+    if condition["status"] not in {'DRAFT', 'IN_REVIEW'}:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "TEST_CONDITION_IMMUTABLE"},
+        )
     found = False
     findings = []
     for finding in condition.get("analysis_findings", []):
@@ -278,7 +331,7 @@ async def resolve_finding(condition_id, finding_id, payload, user):
         condition_id,
         condition["project_id"],
         payload.expected_revision,
-        set(['DRAFT', 'IN_REVIEW', 'APPROVED']),
+        set(['DRAFT', 'IN_REVIEW']),
         {"analysis_findings": findings, "updated_at": now()},
     )
     if not updated:

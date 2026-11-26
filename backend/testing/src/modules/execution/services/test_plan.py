@@ -851,7 +851,9 @@ async def clone_test_plan_record(plan_id, user):
     cloned = {
         **plan,
         "_id": new_id('TP'),
-        "name": f"{plan['name']}{' bản sao'}",
+        "name": f"{plan['name']} · Bản nháp mới",
+        "source_plan_id": plan["_id"],
+        "source_plan_name": plan.get("name", ""),
         "status": 'DRAFT',
         "revision": 1,
         "created_by": user.id,

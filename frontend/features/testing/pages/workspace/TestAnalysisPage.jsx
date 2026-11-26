@@ -268,6 +268,24 @@ export default function TestAnalysisPage({ project }) {
                         <Pencil aria-hidden="true" size={16} />
                       </button>
                     )}
+                    {can("testcondition.create") && selected.status === "APPROVED" && (
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const draft = await testingApi.cloneTestCondition(selected._id);
+                            await load();
+                            setSelected(draft);
+                            setEditing(true);
+                          } catch (reason) {
+                            setError(messageOf(reason));
+                          }
+                        }}
+                      >
+                        Tạo bản nháp mới
+                      </button>
+                    )}
                     {can("testcondition.review") && selected.status === "DRAFT" && (
                       <button
                         className="secondary-button"
@@ -333,6 +351,12 @@ export default function TestAnalysisPage({ project }) {
                 }
               >
                 <div className="grid min-w-0 gap-4 p-5 sm:grid-cols-2">
+                  {selected.source_condition_id && (
+                    <p className="text-sm text-ink-muted sm:col-span-2">
+                      Bản nháp tạo từ{" "}
+                      {selected.source_condition_key || selected.source_condition_id}
+                    </p>
+                  )}
                   <div>
                     <p className="field-label">Mô tả</p>
                     <p className="mt-2 whitespace-pre-wrap text-sm">

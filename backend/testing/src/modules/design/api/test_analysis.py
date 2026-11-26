@@ -18,6 +18,7 @@ from src.modules.design.services.test_analysis import (
     bulk_prioritize_conditions,
     create_analysis_finding,
     create_condition,
+    clone_approved_condition,
     get_condition_for_user,
     list_analysis_findings,
     list_conditions,
@@ -63,6 +64,12 @@ async def create_test_condition(
 async def get_test_condition(condition_id: str, user: CurrentUser = Depends(get_current_user)):
     value = await get_condition_for_user(condition_id, user)
     return envelope(value, revision=value["revision"])
+
+
+@router.post("/dieu-kien-kiem-thu/{condition_id}/ban-nhap-moi", status_code=201)
+async def clone_test_condition(condition_id: str, user: CurrentUser = Depends(get_current_user)):
+    value = await clone_approved_condition(condition_id, user)
+    return envelope(value, revision=1)
 
 
 @router.patch("/dieu-kien-kiem-thu/{condition_id}")

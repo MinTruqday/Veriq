@@ -1078,6 +1078,11 @@ export default function ExecutionPage({ project, section, workspaceView }) {
               </p>
             )}
             <Panel title="Thông tin kế hoạch kiểm thử">
+              {plan?.source_plan_id && (
+                <p className="px-5 pt-5 text-sm text-ink-muted">
+                  Bản nháp tạo từ {plan.source_plan_name || plan.source_plan_id}
+                </p>
+              )}
               <TestPlanEditor
                 key={creating ? project._id : `${plan._id}:${plan.revision}:${editing}`}
                 projectId={project._id}
@@ -1854,14 +1859,17 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                                   onClick={async (event) => {
                                     event.currentTarget.closest("details")?.removeAttribute("open");
                                     try {
-                                      await testingApi.clonePlan(item._id);
+                                      const cloned = await testingApi.clonePlan(item._id);
                                       await load();
+                                      if (cloned?._id) openPlan(cloned._id, "chinh-sua");
                                     } catch (reason) {
                                       setError(messageOf(reason));
                                     }
                                   }}
                                 >
-                                  Nhân bản kế hoạch
+                                  {item.status === "APPROVED"
+                                    ? "Tạo bản nháp mới từ kế hoạch này"
+                                    : "Nhân bản kế hoạch"}
                                 </button>
                               )}
                               {item.status !== "ARCHIVED" && can("testplan.archive") && (
@@ -1945,7 +1953,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                 }
               >
                 <option value="">Mọi trạng thái</option>
-                {["ACTIVE", "ARCHIVED"].map((value) => (
+                {["ACTIVE", "APPROVED", "ARCHIVED"].map((value) => (
                   <option value={value} key={value}>
                     {valueLabel(value)}
                   </option>
@@ -1995,9 +2003,16 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                         </div>
                       )}
                     </dl>
+                    {item.source_suite_id && (
+                      <p className="mt-2 text-xs text-ink-muted">
+                        Tạo từ bộ kiểm thử{" "}
+                        {suites.find((suite) => suite._id === item.source_suite_id)?.name ||
+                          item.source_suite_id}
+                      </p>
+                    )}
                   </div>
                   <div className="flex shrink-0 gap-2">
-                    {can("testsuite.update") && (
+                    {can("testsuite.update") && item.status !== "APPROVED" && (
                       <button
                         className="icon-button h-9 w-9"
                         type="button"
@@ -2013,7 +2028,11 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                         className="icon-button h-9 w-9"
                         type="button"
                         aria-label={`Nhân bản bộ kiểm thử ${item.name}`}
-                        title="Nhân bản bộ kiểm thử"
+                        title={
+                          item.status === "APPROVED"
+                            ? "Tạo bộ kiểm thử mới từ bản đã duyệt"
+                            : "Nhân bản bộ kiểm thử"
+                        }
                         onClick={async () => {
                           try {
                             await testingApi.cloneSuite(item._id);
