@@ -53,7 +53,11 @@ export default function RunExecutionWorkspace({
   const rerunKey = useRef(null);
   const resumeOperation = useRef(null);
   const testCaseVersions = run.test_case_versions || [];
-  const totalCases = (run.test_case_version_ids || []).length;
+  const caseVersionIds = run.test_case_version_ids || [];
+  const totalCases = caseVersionIds.length;
+  const assignmentReady =
+    totalCases > 0 &&
+    caseVersionIds.every((versionId) => run.assignee_id || run.test_case_assignments?.[versionId]);
   const recordedCases = (run.results || []).filter((result) =>
     ["PASS", "FAIL", "BLOCKED", "SKIPPED", "NOT_APPLICABLE"].includes(result.status),
   ).length;
@@ -112,7 +116,7 @@ export default function RunExecutionWorkspace({
                   disabled={!eligibleExecutors.length}
                   onClick={beginAssignmentEdit}
                 >
-                  Chọn thủ công
+                  Phân công người thực hiện
                 </button>
               </>
             )}
@@ -189,20 +193,28 @@ export default function RunExecutionWorkspace({
                 </details>
               )}
             {run.status === "DRAFT" && can("testrun.start") && (
-              <button
-                className="apple-button"
-                type="button"
-                onClick={async () => {
-                  try {
-                    await testingApi.startRun(run._id);
-                    onRunChange(await testingApi.getRun(run._id));
-                  } catch (reason) {
-                    onError(messageOf(reason));
-                  }
-                }}
-              >
-                Bắt đầu
-              </button>
+              <div className="flex flex-col items-end gap-1">
+                <button
+                  className="apple-button"
+                  type="button"
+                  disabled={!assignmentReady}
+                  onClick={async () => {
+                    try {
+                      await testingApi.startRun(run._id);
+                      onRunChange(await testingApi.getRun(run._id));
+                    } catch (reason) {
+                      onError(messageOf(reason));
+                    }
+                  }}
+                >
+                  Bắt đầu
+                </button>
+                {!assignmentReady && (
+                  <p className="max-w-64 text-right text-xs text-ink-muted" role="status">
+                    Phân công người thực hiện cho lần chạy trước khi bắt đầu.
+                  </p>
+                )}
+              </div>
             )}
             {run.status === "IN_PROGRESS" && (
               <>
@@ -627,7 +639,9 @@ export default function RunExecutionWorkspace({
                       {result.status === "FAIL" &&
                         !linkedDefect &&
                         (can("defect.create") ||
-                          (can("defect.read") && can("testrun.execute"))) && (
+                          (can("defect.read") &&
+                            can("defect.trace.manage") &&
+                            can("testrun.execute"))) && (
                           <InlineDefectForm
                             key={result._id}
                             result={result}
@@ -635,7 +649,11 @@ export default function RunExecutionWorkspace({
                             members={members}
                             projectId={projectId}
                             canCreate={can("defect.create")}
-                            canLink={can("defect.read") && can("testrun.execute")}
+                            canLink={
+                              can("defect.read") &&
+                              can("defect.trace.manage") &&
+                              can("testrun.execute")
+                            }
                             onLinked={async () => onRunChange(await testingApi.getRun(run._id))}
                             saving={creatingDefectResultIds.has(result._id)}
                             onCreate={onCreateInlineDefect}
@@ -832,14 +850,20 @@ export default function RunExecutionWorkspace({
                       {pendingFail[result._id] &&
                         !linkedDefect &&
                         (can("defect.create") ||
-                          (can("defect.read") && can("testrun.execute"))) && (
+                          (can("defect.read") &&
+                            can("defect.trace.manage") &&
+                            can("testrun.execute"))) && (
                           <InlineDefectForm
                             result={result}
                             version={item}
                             members={members}
                             projectId={projectId}
                             canCreate={can("defect.create")}
-                            canLink={can("defect.read") && can("testrun.execute")}
+                            canLink={
+                              can("defect.read") &&
+                              can("defect.trace.manage") &&
+                              can("testrun.execute")
+                            }
                             onLinked={async () => onRunChange(await testingApi.getRun(run._id))}
                             saving={creatingDefectResultIds.has(result._id) || savingExecution}
                             onCreate={onCreateInlineDefect}

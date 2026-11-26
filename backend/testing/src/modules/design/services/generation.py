@@ -14,7 +14,7 @@ from src.modules.design.services.test_case_records import active_suite_signature
 from src.core.project_settings import resolve_testcase_duplicate_threshold
 from src.repositories.test_design import test_design_repository
 from src.modules.design.services.test_evidence import requirement_test_evidence_text
-from src.schemas.contracts.design import ScenarioCreate, TestCaseDraftCreate
+from src.schemas.contracts.design import TestCaseDraftCreate
 from src.schemas.test_analysis import GeneratedCase
 
 
@@ -180,7 +180,7 @@ def generated_cases_have_equivalent_actions(left, right):
 
 
 async def generate_requirement_drafts(
-    version, criteria, payload, user, scenario=False, acceptance_criteria_snapshot_ids=None
+    version, criteria, payload, user, acceptance_criteria_snapshot_ids=None
 ):
     if len(criteria) > 99:
         raise HTTPException(
@@ -190,7 +190,7 @@ async def generate_requirement_drafts(
                 "message": "Yêu cầu có quá nhiều tiêu chí chấp nhận để xét đầy đủ trong một lượt  Chưa tạo ca kiểm thử để tránh bỏ sót nguồn",
             },
         )
-    technique_mode = bool(payload.techniques) and not scenario
+    technique_mode = bool(payload.techniques)
     categories = [str(item).strip() for item in payload.categories]
     if any(not item for item in categories) or len(
         {item.casefold() for item in categories}
@@ -221,237 +221,125 @@ async def generate_requirement_drafts(
         for item in criteria
     )
     related_context = None
-    if scenario:
-        cursor = database.value.test_plans.find(
+    existing_case_query = {
+        "project_id": version["project_id"],
+        "requirement_version_ids": version["_id"],
+        "status": {"$nin": ["archived", "ARCHIVED"]},
+    }
+    existing_case_drafts = await database.value.test_case_drafts.find(
+        {
+            **existing_case_query,
+            "status": {"$in": ["DRAFT", "IN_REVIEW", "draft", "in_review"]},
+        },
+        {
+            "_id": 1,
+            "title": 1,
+            "objective_doc": 1,
+            "preconditions_doc": 1,
+            "steps": 1,
+            "expected_result_doc": 1,
+            "status": 1,
+            "revision": 1,
+        },
+    ).sort("updated_at", -1).limit(3).to_list(3)
+    existing_case_versions = await database.value.test_cases.aggregate(
+        [
             {
-                "project_id": version["project_id"],
-                "status": {"$in": ["DRAFT", "APPROVED"]},
-                "requirement_version_ids": version["_id"],
-            },
-            {
-                "_id": 1,
-                "status": 1,
-                "approved_snapshot": 1,
-                "approved_snapshot_hash": 1,
-                "baseline_hash": 1,
-                "objective": 1,
-                "scope_out": 1,
-                "requirement_version_ids": 1,
-                "test_case_version_ids": 1,
-                "test_types": 1,
-                "test_level": 1,
-                "test_techniques": 1,
-                "entry_criteria": 1,
-                "exit_criteria": 1,
-                "risk_register": 1,
-            },
-        ).sort([("status", 1), ("updated_at", -1)]).limit(10)
-        for plan in await cursor.to_list(10):
-            if plan.get("status") == "APPROVED":
-                from src.modules.execution.services.test_plan import verified_approved_plan_snapshot
-
-                try:
-                    snapshot, digest = verified_approved_plan_snapshot(plan, version["project_id"])
-                except HTTPException:
-                    continue
-                related_context = {
-                    "type": "approved_test_plan",
-                    "plan_id": plan["_id"],
-                    "snapshot_hash": digest,
-                    "objective": snapshot.get("objective"),
-                    "requirement_version_ids": snapshot.get("requirement_version_ids", []),
-                    "test_case_version_ids": snapshot.get("test_case_version_ids", [])[:100],
-                    "scope_out": snapshot.get("scope_out", [])[:20],
-                    "test_types": snapshot.get("test_types", []),
-                    "test_level": snapshot.get("test_level"),
-                    "test_techniques": snapshot.get("test_techniques", []),
-                    "entry_criteria": snapshot.get("entry_criteria", []),
-                    "exit_criteria": snapshot.get("exit_criteria", []),
-                    "risk_register": snapshot.get("risk_register", [])[:20],
+                "$match": {
+                    "project_id": version["project_id"],
+                    "status": "ACTIVE",
+                    "current_version_id": {"$ne": None},
                 }
-            else:
-                related_context = {
-                    "type": "current_test_plan_draft",
-                    "plan_id": plan["_id"],
-                    "revision": plan.get("revision"),
-                    "objective": plan.get("objective"),
-                    "requirement_version_ids": list(plan.get("requirement_version_ids") or []),
-                    "test_case_version_ids": list(plan.get("test_case_version_ids") or [])[:100],
-                    "scope_out": list(plan.get("scope_out") or [])[:20],
-                    "test_types": list(plan.get("test_types") or []),
-                    "test_level": plan.get("test_level"),
-                    "test_techniques": list(plan.get("test_techniques") or []),
-                    "entry_criteria": list(plan.get("entry_criteria") or []),
-                    "exit_criteria": list(plan.get("exit_criteria") or []),
-                    "risk_register": list(plan.get("risk_register") or [])[:20],
-                    "status": "DRAFT",
+            },
+            {
+                "$lookup": {
+                    "from": "test_case_versions",
+                    "localField": "current_version_id",
+                    "foreignField": "_id",
+                    "as": "current_version",
                 }
-            break
-        existing_scenarios = await database.value.test_scenarios.find(
-            {
-                "project_id": version["project_id"],
-                "requirement_version_ids": version["_id"],
-                "status": {"$ne": "archived"},
             },
-            {"_id": 1, "title": 1, "category": 1, "objective": 1, "status": 1},
-        ).sort("updated_at", -1).limit(50).to_list(50)
-        if existing_scenarios:
-            related_context = {
-                **(related_context or {}),
-                "existing_scenarios_in_project": [
-                    {
-                        "scenario_id": item["_id"],
-                        "title": item.get("title"),
-                        "category": item.get("category"),
-                        "objective": item.get("objective"),
-                        "status": item.get("status"),
-                    }
-                    for item in existing_scenarios
-                ],
-            }
-    else:
-        scenarios = await database.value.test_scenarios.find(
+            {"$unwind": "$current_version"},
             {
-                "project_id": version["project_id"],
-                "status": {"$in": ["draft", "approved"]},
-                "requirement_version_ids": version["_id"],
+                "$match": {
+                    "current_version.project_id": version["project_id"],
+                    "current_version.requirement_version_ids": version["_id"],
+                }
             },
-            {"_id": 1, "title": 1, "category": 1, "objective": 1, "acceptance_criterion_ids": 1},
-        ).sort("updated_at", -1).limit(8).to_list(8)
-        if scenarios:
-            related_context = {
-                "type": "current_test_scenarios",
-                "items": [
-                    {
-                        "scenario_id": item["_id"],
-                        "title": item.get("title"),
-                        "category": item.get("category"),
-                        "objective": item.get("objective"),
-                        "acceptance_criterion_ids": item.get("acceptance_criterion_ids", []),
-                        "status": item.get("status"),
-                    }
-                for item in scenarios
-                ],
-            }
-        existing_case_query = {
-            "project_id": version["project_id"],
-            "requirement_version_ids": version["_id"],
-            "status": {"$nin": ["archived", "ARCHIVED"]},
-        }
-        existing_case_drafts = await database.value.test_case_drafts.find(
+            {"$replaceRoot": {"newRoot": "$current_version"}},
+            {"$sort": {"_id": -1}},
+            {"$limit": 5},
             {
-                **existing_case_query,
-                "status": {"$in": ["DRAFT", "IN_REVIEW", "draft", "in_review"]},
+                "$project": {
+                    "_id": 1,
+                    "test_case_id": 1,
+                    "title": 1,
+                    "objective_doc": 1,
+                    "preconditions_doc": 1,
+                    "steps": 1,
+                    "expected_result_doc": 1,
+                    "version": 1,
+                }
             },
-            {
-                "_id": 1,
-                "title": 1,
-                "objective_doc": 1,
-                "preconditions_doc": 1,
-                "steps": 1,
-                "expected_result_doc": 1,
-                "status": 1,
-                "revision": 1,
-            },
-        ).sort("updated_at", -1).limit(3).to_list(3)
-        existing_case_versions = await database.value.test_cases.aggregate(
-            [
-                {
-                    "$match": {
-                        "project_id": version["project_id"],
-                        "status": "ACTIVE",
-                        "current_version_id": {"$ne": None},
-                    }
-                },
-                {
-                    "$lookup": {
-                        "from": "test_case_versions",
-                        "localField": "current_version_id",
-                        "foreignField": "_id",
-                        "as": "current_version",
-                    }
-                },
-                {"$unwind": "$current_version"},
-                {
-                    "$match": {
-                        "current_version.project_id": version["project_id"],
-                        "current_version.requirement_version_ids": version["_id"],
-                    }
-                },
-                {"$replaceRoot": {"newRoot": "$current_version"}},
-                {"$sort": {"_id": -1}},
-                {"$limit": 5},
-                {
-                    "$project": {
-                        "_id": 1,
-                        "test_case_id": 1,
-                        "title": 1,
-                        "objective_doc": 1,
-                        "preconditions_doc": 1,
-                        "steps": 1,
-                        "expected_result_doc": 1,
-                        "version": 1,
-                    }
-                },
-            ]
-        ).to_list(5)
-        existing_cases = [
-            {
-                "case_id": str(item.get("_id") or ""),
-                "status": str(item.get("status") or "DRAFT"),
-                "revision": item.get("revision"),
-                "title": str(item.get("title") or "")[:200],
-                "objective": plain_text(item.get("objective_doc") or {})[:180],
-                "preconditions": plain_text(item.get("preconditions_doc") or {})[:120],
-                "steps": [
-                    {
-                        "action": plain_text(step.get("action_doc") or {})[:120],
-                        "expected": plain_text(step.get("expected_doc") or {})[:120],
-                    }
-                    for step in (item.get("steps") or [])[:1]
-                ],
-                "expected_result": plain_text(item.get("expected_result_doc") or {})[:180],
-            }
-            for item in existing_case_drafts
         ]
-        existing_cases.extend(
-            {
-                "case_id": str(item.get("_id") or item.get("test_case_id") or ""),
-                "status": "VERSIONED",
-                "version": item.get("version"),
-                "title": str(item.get("title") or "")[:200],
-                "objective": plain_text(item.get("objective_doc") or {})[:180],
-                "preconditions": plain_text(item.get("preconditions_doc") or {})[:120],
-                "steps": [
-                    {
-                        "action": plain_text(step.get("action_doc") or {})[:120],
-                        "expected": plain_text(step.get("expected_doc") or {})[:120],
-                    }
-                    for step in (item.get("steps") or [])[:1]
-                ],
-                "expected_result": plain_text(item.get("expected_result_doc") or {})[:180],
-            }
-            for item in existing_case_versions
-        )
-        if existing_cases:
-            related_context = {
-                **(related_context or {}),
-                "existing_test_cases_for_duplicate_and_conflict_detection": existing_cases[:8],
-                "existing_items_are_context_not_authoritative_requirement_evidence": True,
-            }
+    ).to_list(5)
+    existing_cases = [
+        {
+            "case_id": str(item.get("_id") or ""),
+            "status": str(item.get("status") or "DRAFT"),
+            "revision": item.get("revision"),
+            "title": str(item.get("title") or "")[:200],
+            "objective": plain_text(item.get("objective_doc") or {})[:180],
+            "preconditions": plain_text(item.get("preconditions_doc") or {})[:120],
+            "steps": [
+                {
+                    "action": plain_text(step.get("action_doc") or {})[:120],
+                    "expected": plain_text(step.get("expected_doc") or {})[:120],
+                }
+                for step in (item.get("steps") or [])[:1]
+            ],
+            "expected_result": plain_text(item.get("expected_result_doc") or {})[:180],
+        }
+        for item in existing_case_drafts
+    ]
+    existing_cases.extend(
+        {
+            "case_id": str(item.get("_id") or item.get("test_case_id") or ""),
+            "status": "VERSIONED",
+            "version": item.get("version"),
+            "title": str(item.get("title") or "")[:200],
+            "objective": plain_text(item.get("objective_doc") or {})[:180],
+            "preconditions": plain_text(item.get("preconditions_doc") or {})[:120],
+            "steps": [
+                {
+                    "action": plain_text(step.get("action_doc") or {})[:120],
+                    "expected": plain_text(step.get("expected_doc") or {})[:120],
+                }
+                for step in (item.get("steps") or [])[:1]
+            ],
+            "expected_result": plain_text(item.get("expected_result_doc") or {})[:180],
+        }
+        for item in existing_case_versions
+    )
+    if existing_cases:
+        related_context = {
+            **(related_context or {}),
+            "existing_test_cases_for_duplicate_and_conflict_detection": existing_cases[:8],
+            "existing_items_are_context_not_authoritative_requirement_evidence": True,
+        }
     source_text_by_ref = {item["artifact_version_id"]: item["text"] for item in evidence}
     instruction = json.dumps(
         {
             "categories": categories,
             "count_per_category": payload.count_per_category,
             "maximum_cases": payload.max_cases or (len(payload.techniques) if technique_mode else (max(1, len(criteria)) if not categories else None)),
-            "selected_design_techniques": payload.techniques if not scenario else [],
+            "selected_design_techniques": payload.techniques,
             "allowed_acceptance_criterion_ids": [item["_id"] for item in criteria],
             "upstream_approved_context": related_context,
             "consistency_rules": [
                 "Treat the exact Requirement version, acceptance criteria, and current related artifacts as distinct sources. Do not assume one source is always correct when they disagree.",
                 "Use the exact Requirement version, acceptance criteria, and current related artifacts supplied in this request.",
-                "If generated content conflicts with a source or existing Scenario and none of the supplied sources establishes which value governs, report the conflict in warnings for the user to resolve; never silently choose a side.",
+                "If generated content conflicts with a source or an existing Test Case and none of the supplied sources establishes which value governs, report the conflict in warnings for the user to resolve; never silently choose a side.",
                 "Cite the exact Requirement version and any selected acceptance-criterion evidence in generated cases. Acceptance criteria may be empty; when empty, derive cases only from behavior explicitly stated in the Requirement content and cite that Requirement version.",
                 "Set risk and priority to unassessed. Do not infer or copy Requirement-level risk or priority onto a Test Case.",
             ],
@@ -459,14 +347,8 @@ async def generate_requirement_drafts(
         },
         ensure_ascii=False,
     )
-    result = (
-        await request_ai_capability(
-            "scenario_generation", version["project_id"], instruction, evidence
-        )
-        if scenario
-        else await request_grounded_test_generation(
-            version["project_id"], instruction, evidence
-        )
+    result = await request_grounded_test_generation(
+        version["project_id"], instruction, evidence
     )
     if result.get("status") != 'SUCCESS' or result.get(
         "degraded_mode"
@@ -506,22 +388,6 @@ async def generate_requirement_drafts(
                 raise ValueError("case count outside selected limit")
             if any(not item.category.strip() for item in generated):
                 raise ValueError("empty test category")
-        elif scenario and categories:
-            requested_counts = Counter(
-                {category: payload.count_per_category for category in categories}
-            )
-            generated_counts = Counter(item.category for item in generated)
-            if (
-                not generated_counts
-                or generated_counts - requested_counts
-                or requested_counts - generated_counts and not result.get("warnings")
-            ):
-                raise ValueError("scenario category count mismatch")
-        elif scenario:
-            if len(generated) > (payload.max_cases or max(1, len(criteria))) or any(
-                not item.category.strip() for item in generated
-            ):
-                raise ValueError("automatic scenario count or category is invalid")
         elif categories:
             requested_counts = Counter(
                 {category: payload.count_per_category for category in categories}
@@ -539,7 +405,7 @@ async def generate_requirement_drafts(
             raise ValueError("automatic test case count or category is invalid")
         criterion_ids = {item["_id"] for item in criteria}
         evidence_ids = {item["artifact_version_id"] for item in evidence}
-        selected_techniques = set(payload.techniques) if not scenario else set()
+        selected_techniques = set(payload.techniques)
         if selected_techniques:
             used = {technique for item in generated for technique in item.techniques}
             if used != selected_techniques:
@@ -590,66 +456,54 @@ async def generate_requirement_drafts(
                 "acceptance_criterion_ids": item.acceptance_criterion_ids,
                 "origin": 'ai_generated',
             }
-            if scenario:
-                drafts.append(
-                    ScenarioCreate(
-                        **common,
-                        priority="unassessed",
-                        risk="unassessed",
-                        category=item.category,
-                        objective=item.objective,
-                    )
+            steps = [
+                {
+                    "id": f"{'step-'}{index}",
+                    "order": index,
+                    "action_doc": text_document(step.action),
+                    "expected_doc": text_document(step.expected),
+                    "test_data": step.test_data,
+                }
+                for index, step in enumerate(item.steps, 1)
+            ]
+            drafts.append(
+                TestCaseDraftCreate(
+                    **common,
+                    priority="unassessed",
+                    type=item.category,
+                    objective_doc=text_document(item.objective),
+                    preconditions_doc=text_document(item.preconditions),
+                    steps=steps,
+                    alternate_flows_doc=text_document(item.alternate_flows),
+                    exception_flows_doc=text_document(item.exception_flows),
+                    source_evidence=evidence,
+                    acceptance_criteria_snapshot_ids=(
+                        list(dict.fromkeys(acceptance_criteria_snapshot_ids))
+                        if acceptance_criteria_snapshot_ids is not None
+                        else None
+                    ),
+                    techniques=item.techniques,
+                    evidence_refs=item.evidence_refs,
+                    evidence_quotes=[quote.model_dump() for quote in item.evidence_quotes],
                 )
-            else:
-                steps = [
-                    {
-                        "id": f"{'step-'}{index}",
-                        "order": index,
-                        "action_doc": text_document(step.action),
-                        "expected_doc": text_document(step.expected),
-                        "test_data": step.test_data,
-                    }
-                    for index, step in enumerate(item.steps, 1)
-                ]
-                drafts.append(
-                    TestCaseDraftCreate(
-                        **common,
-                        priority="unassessed",
-                        type=item.category,
-                        objective_doc=text_document(item.objective),
-                        preconditions_doc=text_document(item.preconditions),
-                        steps=steps,
-                        alternate_flows_doc=text_document(item.alternate_flows),
-                        exception_flows_doc=text_document(item.exception_flows),
-                        source_evidence=evidence,
-                        acceptance_criteria_snapshot_ids=(
-                            list(dict.fromkeys(acceptance_criteria_snapshot_ids))
-                            if acceptance_criteria_snapshot_ids is not None
-                            else None
-                        ),
-                        techniques=item.techniques,
-                        evidence_refs=item.evidence_refs,
-                        evidence_quotes=[quote.model_dump() for quote in item.evidence_quotes],
-                    )
-                )
+            )
     except (ValueError, TypeError, ValidationError) as error:
         raise HTTPException(
             502,
             detail={"code": 'AI_GENERATION_INVALID', "message": "AI chưa tạo được bản nháp hợp lệ", "retryable": True},
         ) from error
-    if not scenario:
-        duplicate_threshold = resolve_testcase_duplicate_threshold(
-            await test_design_repository.find_project_settings(version["project_id"])
-        )
-        drafts, generated, merged_duplicates = merge_duplicate_generated_cases(
-            drafts, generated, duplicate_threshold
-        )
-        result["suggestions"] = [item.model_dump() for item in generated]
-        if merged_duplicates:
-            result["warnings"] = list(dict.fromkeys([
-                *(result.get("warnings") or []),
-                f"Đã gộp {merged_duplicates} ca trùng vào ca kiểm thử tương ứng và giữ đủ liên kết tiêu chí.",
-            ]))
+    duplicate_threshold = resolve_testcase_duplicate_threshold(
+        await test_design_repository.find_project_settings(version["project_id"])
+    )
+    drafts, generated, merged_duplicates = merge_duplicate_generated_cases(
+        drafts, generated, duplicate_threshold
+    )
+    result["suggestions"] = [item.model_dump() for item in generated]
+    if merged_duplicates:
+        result["warnings"] = list(dict.fromkeys([
+            *(result.get("warnings") or []),
+            f"Đã gộp {merged_duplicates} ca trùng vào ca kiểm thử tương ứng và giữ đủ liên kết tiêu chí.",
+        ]))
     requested_categories = Counter({category: payload.count_per_category for category in categories})
     generated_categories = Counter(item.category for item in generated)
     result["unapplied_categories"] = [category for category, requested_count in requested_categories.items() if generated_categories[category] < requested_count]

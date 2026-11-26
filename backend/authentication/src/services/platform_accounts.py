@@ -16,7 +16,7 @@ from src.schemas.platform import (
     SystemRoleUpdate,
     UserCreateRequest,
 )
-from src.services.platform import account_or_404, account_view, protect_last_admin, record_audit
+from src.services.platform import account_or_404, account_view, record_audit
 from src.services.session import SessionService
 
 
@@ -78,17 +78,15 @@ class PlatformAccountService:
             raise HTTPException(
                 status_code=422, detail="Không thể tự khóa hoặc hạ quyền tài khoản quản trị hiện tại"
             )
-        account_before = await account_or_404(user_id)
-        desired_role = payload.system_role.value if payload.system_role is not None else None
-        await protect_last_admin(account_before, desired_role, payload.is_active)
+        await account_or_404(user_id)
         changes = {
             key: value.value if isinstance(value, SystemRole) else value
             for key, value in payload.model_dump(exclude={"reason"}).items()
             if value is not None
         }
         changes["updated_at"] = datetime.now(timezone.utc)
-        account = await IdentityRepository.find_and_update_auth_credential(
-            {"_id": user_id}, {"$set": changes}
+        account = await IdentityRepository.update_account_with_admin_guard(
+            user_id, changes
         )
         if not account:
             raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản")
@@ -107,7 +105,7 @@ class PlatformAccountService:
 
     @staticmethod
     async def detail(user_id: str):
-        account = await account_or_404(user_id)
+        await account_or_404(user_id)
         return {
             **account_view(account),
             "account_status": account.get(
@@ -148,19 +146,16 @@ class PlatformAccountService:
         payload: ActionReason,
         current_user: CurrentUser,
     ):
-        account = await account_or_404(user_id)
+        await account_or_404(user_id)
         active = desired_status == "ACTIVE"
-        await protect_last_admin(account, desired_active=active)
         if user_id == current_user.id and not active:
             raise HTTPException(status_code=422, detail="Không thể tự vô hiệu hóa tài khoản hiện tại")
-        account = await IdentityRepository.find_and_update_auth_credential(
-            {"_id": user_id},
+        account = await IdentityRepository.update_account_with_admin_guard(
+            user_id,
             {
-                "$set": {
-                    "is_active": active,
-                    "account_status": desired_status,
-                    "updated_at": datetime.now(timezone.utc),
-                }
+                "is_active": active,
+                "account_status": desired_status,
+                "updated_at": datetime.now(timezone.utc),
             },
         )
         if not active:
@@ -211,16 +206,13 @@ class PlatformAccountService:
         user_id: str, payload: SystemRoleUpdate, current_user: CurrentUser
     ):
         account = await account_or_404(user_id)
-        await protect_last_admin(account, desired_role=payload.system_role.value)
         if user_id == current_user.id and payload.system_role != SystemRole.ADMIN:
             raise HTTPException(status_code=422, detail="Không thể tự hạ quyền quản trị hiện tại")
-        account = await IdentityRepository.find_and_update_auth_credential(
-            {"_id": user_id},
+        account = await IdentityRepository.update_account_with_admin_guard(
+            user_id,
             {
-                "$set": {
-                    "system_role": payload.system_role.value,
-                    "updated_at": datetime.now(timezone.utc),
-                }
+                "system_role": payload.system_role.value,
+                "updated_at": datetime.now(timezone.utc),
             },
         )
         await IdentityRepository.revoke_all_sessions(user_id)

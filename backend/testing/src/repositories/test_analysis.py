@@ -4,24 +4,6 @@ from src.core.database import database
 
 
 class TestAnalysisRepository:
-    async def find_ai_result(self, project_id, idempotency_key):
-        return await database.value.ai_results.find_one(
-            {"project_id": project_id, "idempotency_key": idempotency_key}
-        )
-
-    async def list_ai_results(self, project_id, limit):
-        return await database.value.ai_results.find(
-            {
-                "project_id": project_id,
-                "result_type": "TEST_CONDITION_CANDIDATES",
-            },
-            {"basis_snapshots": 0, "created_by": 0},
-        ).sort("created_at", -1).limit(limit).to_list(limit)
-
-    async def insert_ai_result(self, value, session=None):
-        await database.value.ai_results.insert_one(value, session=session)
-        return value
-
     async def list_conditions(self, project_id, archived_status, limit):
         return await database.value.test_conditions.find(
             {"project_id": project_id, "status": {"$ne": archived_status}}

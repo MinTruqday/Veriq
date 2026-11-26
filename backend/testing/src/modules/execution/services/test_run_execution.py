@@ -13,6 +13,7 @@ from src.core.common import (
 )
 from src.core.database import database
 from src.repositories.test_run import test_run_repository
+from src.repositories.project import project_repository
 from src.repositories.defect import defect_repository
 from src.repositories.execution_context import execution_context_repository
 from src.modules.execution.services.execution_state import (
@@ -56,10 +57,16 @@ def _verify_idempotency_replay(existing, payload, *, entity, actor_id, actor_fie
             status_code=403,
             detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH", "entity": entity},
         )
-    if existing.get("request_hash") != _idempotency_fingerprint(payload):
+    request_hash = existing.get("request_hash")
+    if request_hash and request_hash != _idempotency_fingerprint(payload):
         raise HTTPException(
             status_code=409,
             detail={"code": "IDEMPOTENCY_KEY_REUSED", "entity": entity},
+        )
+    if not request_hash:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE", "entity": entity},
         )
 
 def _verify_result_replay_actor(result, actor_id):
@@ -91,14 +98,13 @@ async def link_existing_defect_to_result(project_id, result_id, payload, user):
     defect = await get_project_entity("defects", payload.defect_id, user, "defect.read")
     if result.get("project_id") != project_id or defect.get("project_id") != project_id:
         raise HTTPException(status_code=422, detail={"code": "PROJECT_MISMATCH"})
+    await get_project(project_id, user, "defect.trace.manage")
     run = await test_run_repository.find_run(result.get("test_run_id"), project_id)
     if not run or result.get("test_case_version_id") not in run.get("test_case_version_ids", []):
         raise HTTPException(status_code=409, detail={"code": "TEST_NOT_IN_RUN_SNAPSHOT"})
     await require_case_execution_assignment(run, result["test_case_version_id"], user)
     if result.get("status") != "FAIL":
         raise HTTPException(status_code=409, detail={"code": "DEFECT_REQUIRES_FAILED_RESULT"})
-    if payload.defect_id in result.get("linked_defect_ids", []):
-        return result
     async with await database.client.start_session() as session:
         async with session.start_transaction():
             current_defect = await database.value.defects.find_one(
@@ -106,13 +112,78 @@ async def link_existing_defect_to_result(project_id, result_id, payload, user):
             )
             if not current_defect:
                 raise HTTPException(status_code=404, detail={"code": "ENTITY_NOT_FOUND"})
-            updated = await defect_repository.link_failed_result_to_defect(
+            current_result = await defect_repository.find_test_result(
+                result_id, project_id, session=session
+            )
+            if (
+                not current_result
+                or current_result.get("status") != "FAIL"
+                or current_result.get("test_run_id") != run["_id"]
+                or current_result.get("test_case_version_id")
+                != result.get("test_case_version_id")
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "DEFECT_TEST_RESULT_CONTEXT_CHANGED"},
+                )
+            already_linked = payload.defect_id in current_result.get(
+                "linked_defect_ids", []
+            )
+            linked_case_version_id = current_defect.get(
+                "linked_test_case_version_id"
+            )
+            linked_source_result_id = current_defect.get("linked_test_result_id")
+            if linked_case_version_id and linked_case_version_id != result.get(
+                "test_case_version_id"
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "DEFECT_TEST_CASE_CONTEXT_MISMATCH"},
+                )
+            if linked_source_result_id:
+                source_result = await defect_repository.find_test_result(
+                    linked_source_result_id, project_id, session=session
+                )
+                if (
+                    not source_result
+                    or source_result.get("test_case_version_id")
+                    != result.get("test_case_version_id")
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail={"code": "DEFECT_TEST_CASE_CONTEXT_MISMATCH"},
+                    )
+            updated = current_result if already_linked else await defect_repository.link_failed_result_to_defect(
                 result_id, project_id, payload.expected_revision, run["_id"],
                 result["test_case_version_id"], payload.defect_id, now(), session,
             )
             if not updated:
                 raise HTTPException(status_code=409, detail={"code": "DEFECT_TEST_RESULT_CONTEXT_CHANGED"})
-            await test_run_repository.touch_run(run["_id"], project_id, now(), session=session)
+            source_changes = {}
+            if not linked_case_version_id:
+                source_changes["linked_test_case_version_id"] = result[
+                    "test_case_version_id"
+                ]
+            if not linked_source_result_id:
+                source_changes["linked_test_result_id"] = result_id
+            if source_changes:
+                linked_defect = await defect_repository.set_retest_source(
+                    payload.defect_id,
+                    project_id,
+                    current_defect.get("revision", 1),
+                    source_changes,
+                    now(),
+                    session=session,
+                )
+                if not linked_defect:
+                    raise HTTPException(
+                        status_code=409,
+                        detail={"code": "DEFECT_TEST_RESULT_CONTEXT_CHANGED"},
+                    )
+            if not already_linked:
+                await test_run_repository.touch_run(
+                    run["_id"], project_id, now(), session=session
+                )
             await audit(user.id, "test_result_defect_linked", "TestResult", result_id, project_id,
                         {"defect_id": payload.defect_id}, session=session)
     return updated
@@ -126,6 +197,41 @@ async def start_test_run_record(run_id, user):
         return run
     if run["status"] not in ['DRAFT', 'READY']:
         raise HTTPException(status_code=409, detail={"code": 'INVALID_STATE_TRANSITION'})
+    if not run.get("test_case_version_ids"):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "TEST_RUN_SCOPE_EMPTY"},
+        )
+    case_assignments = run.get("test_case_assignments") or {}
+    unassigned_versions = [
+        version_id
+        for version_id in run["test_case_version_ids"]
+        if not case_assignments.get(version_id) and not run.get("assignee_id")
+    ]
+    if unassigned_versions:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "TEST_RUN_ASSIGNMENTS_REQUIRED",
+                "unassigned_count": len(unassigned_versions),
+            },
+        )
+    assigned_users = set(case_assignments.values())
+    if run.get("assignee_id"):
+        assigned_users.add(run["assignee_id"])
+    active_assignees = await project_repository.list_active_members_with_permission(
+        run["project_id"], "testrun.execute", assigned_users
+    )
+    active_assignee_ids = {item.get("user_id") for item in active_assignees}
+    inactive_assignees = assigned_users - active_assignee_ids
+    if inactive_assignees:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "TEST_RUN_ASSIGNEE_UNAVAILABLE",
+                "user_ids": sorted(inactive_assignees),
+            },
+        )
     if not run.get("test_plan_id"):
         raise HTTPException(
             status_code=409,
@@ -154,7 +260,17 @@ async def start_test_run_record(run_id, user):
         environment = await test_run_repository.find_environment(
             run["environment_id"], run["project_id"]
         )
-        if environment and environment.get("availability") != 'AVAILABLE':
+        if not environment:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "TEST_ENVIRONMENT_NOT_FOUND"},
+            )
+        if environment.get("status") == "ARCHIVED":
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "TEST_ENVIRONMENT_ARCHIVED"},
+            )
+        if environment.get("availability", "AVAILABLE") != 'AVAILABLE':
             raise HTTPException(
                 status_code=409,
                 detail={"code": 'TEST_ENVIRONMENT_UNAVAILABLE'},
@@ -353,6 +469,22 @@ async def record_test_result_entry(run_id, test_case_version_id, payload, user):
         }
     async def persist_result(session):
         nonlocal result
+        current_run = await test_run_repository.find_run(
+            run_id, run["project_id"], session=session
+        )
+        if not current_run or current_run.get("status") != "IN_PROGRESS":
+            raise HTTPException(
+                status_code=409, detail={"code": "TEST_RUN_NOT_IN_PROGRESS"}
+            )
+        if current_run.get("execution_paused"):
+            raise HTTPException(status_code=409, detail={"code": "TEST_RUN_PAUSED"})
+        if test_case_version_id not in current_run.get("test_case_version_ids", []):
+            raise HTTPException(
+                status_code=409, detail={"code": "TEST_NOT_IN_RUN_SNAPSHOT"}
+            )
+        await require_case_execution_assignment(
+            current_run, test_case_version_id, user
+        )
         if existing:
             result = await test_run_repository.update_result(
                 {
@@ -377,7 +509,18 @@ async def record_test_result_entry(run_id, test_case_version_id, payload, user):
                 raise HTTPException(status_code=409, detail={"code": 'EXECUTION_CONFLICT'})
         else:
             await test_run_repository.insert_result(result, session=session)
-        await test_run_repository.touch_run(run_id, None, now(), session=session)
+        run_touched = await test_run_repository.touch_run(
+            run_id,
+            run["project_id"],
+            now(),
+            session=session,
+            expected_status="IN_PROGRESS",
+            require_unpaused=True,
+        )
+        if not run_touched:
+            raise HTTPException(
+                status_code=409, detail={"code": "TEST_RUN_NOT_IN_PROGRESS"}
+            )
         await audit(
             user.id,
             'test_result_recorded',
@@ -401,7 +544,15 @@ async def record_test_result_entry(run_id, test_case_version_id, payload, user):
             run_id, test_case_version_id
         )
         if not concurrent_result:
-            raise
+            current_run = await test_run_repository.find_run(run_id, run["project_id"])
+            if not current_run or current_run.get("status") != "IN_PROGRESS":
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "TEST_RUN_NOT_IN_PROGRESS"},
+                ) from error
+            raise HTTPException(
+                status_code=409, detail={"code": "EXECUTION_CONFLICT"}
+            ) from error
         if concurrent_result.get("idempotency_key") == payload.idempotency_key:
             _verify_result_replay_actor(concurrent_result, user.id)
             if not _stored_result_matches_request(concurrent_result, payload):
@@ -503,6 +654,28 @@ async def update_test_execution_record(project_id, execution_id, payload, user):
     try:
         async with await database.client.start_session() as session:
             async with session.start_transaction():
+                current_run = await test_run_repository.find_run(
+                    result["test_run_id"], project_id, session=session
+                )
+                if not current_run or current_run.get("status") != "IN_PROGRESS":
+                    raise HTTPException(
+                        status_code=409,
+                        detail={"code": "TEST_RUN_NOT_IN_PROGRESS"},
+                    )
+                if current_run.get("execution_paused"):
+                    raise HTTPException(
+                        status_code=409, detail={"code": "TEST_RUN_PAUSED"}
+                    )
+                if result["test_case_version_id"] not in current_run.get(
+                    "test_case_version_ids", []
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail={"code": "TEST_NOT_IN_RUN_SNAPSHOT"},
+                    )
+                await require_case_execution_assignment(
+                    current_run, result["test_case_version_id"], user
+                )
                 updated = await test_run_repository.update_result(
                     {"_id": execution_id, "project_id": project_id, "revision": expected_revision},
                     {
@@ -524,7 +697,19 @@ async def update_test_execution_record(project_id, execution_id, payload, user):
                 if not updated:
                     raise HTTPException(status_code=409, detail={"code": 'REVISION_CONFLICT'})
                 await test_run_repository.insert_execution_update(event, session=session)
-                await test_run_repository.touch_run(result["test_run_id"], project_id, now(), session=session)
+                run_touched = await test_run_repository.touch_run(
+                    result["test_run_id"],
+                    project_id,
+                    now(),
+                    session=session,
+                    expected_status="IN_PROGRESS",
+                    require_unpaused=True,
+                )
+                if not run_touched:
+                    raise HTTPException(
+                        status_code=409,
+                        detail={"code": "TEST_RUN_NOT_IN_PROGRESS"},
+                    )
                 await audit(
                     user.id,
                     'test_execution_updated',
@@ -551,6 +736,23 @@ async def update_test_execution_record(project_id, execution_id, payload, user):
             "execution": await test_run_repository.find_result(execution_id),
             "update": event,
         }
+    except PyMongoError as error:
+        if not (
+            error.has_error_label("TransientTransactionError")
+            or getattr(error, "code", None) == 112
+        ):
+            raise
+        current_run = await test_run_repository.find_run(
+            result["test_run_id"], project_id
+        )
+        if not current_run or current_run.get("status") != "IN_PROGRESS":
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "TEST_RUN_NOT_IN_PROGRESS"},
+            ) from error
+        raise HTTPException(
+            status_code=409, detail={"code": "EXECUTION_CONFLICT"}
+        ) from error
     return {"execution": updated, "update": event}
 
 async def correct_test_result_record(result_id, payload, user):
@@ -575,6 +777,14 @@ async def correct_test_result_record(result_id, payload, user):
             "result": await test_run_repository.find_result(result_id),
             "correction": existing,
         }
+    if payload.status == "FAIL" and not plain_text(result.get("actual_result_doc")).strip():
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "FAIL_ACTUAL_RESULT_REQUIRED",
+                "message": "Nhập kết quả thực tế khi ca kiểm thử thất bại.",
+            },
+        )
     await enforce_not_applicable_policy(result["project_id"], payload.status)
     event = {
         "_id": new_id('TRC'),
@@ -594,7 +804,11 @@ async def correct_test_result_record(result_id, payload, user):
             async with session.start_transaction():
                 await test_run_repository.insert_correction(event, session=session)
                 corrected = await test_run_repository.update_result(
-                    {"_id": result_id, "project_id": result["project_id"]},
+                    {
+                        "_id": result_id,
+                        "project_id": result["project_id"],
+                        "revision": result.get("revision", 1),
+                    },
                     {
                         "status": payload.status,
                         "corrected": True,
@@ -681,7 +895,11 @@ async def complete_test_run_record(run_id, user):
             "partial_completion": partial_completion,
             "updated_at": timestamp,
         },
+        expected_revision=run.get("revision", 1),
+        expected_status="IN_PROGRESS",
     )
+    if not updated:
+        raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
     await audit(
         user.id,
         'test_run_completed',
@@ -709,7 +927,11 @@ async def abort_test_run_record(run_id, reason, user):
             "aborted_at": timestamp,
             "updated_at": timestamp,
         },
+        expected_revision=run.get("revision", 1),
+        expected_status=run.get("status"),
     )
+    if not updated:
+        raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
     await audit(
         user.id,
         'test_run_aborted',

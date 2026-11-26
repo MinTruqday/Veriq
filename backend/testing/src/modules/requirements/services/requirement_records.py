@@ -226,10 +226,10 @@ async def list_requirement_records(
         project_id, version_ids, "CONFIRMED", "requirement_version", 50000
     )
     covered_ids = {item["source_id"] for item in confirmed_links}
-    change_sets = await requirement_repository.list_pending_change_targets(
-        project_id, version_ids, ["REVIEWED", "CLOSED", "REJECTED"], 20000
+    pending_impacts = await requirement_repository.list_pending_impact_targets(
+        project_id, version_ids, 20000
     )
-    pending_ids = {item["to_version_id"] for item in change_sets}
+    pending_ids = {item["_id"] for item in pending_impacts}
     for item in items:
         version = item.get("current_version") or {}
         item["owner_id"] = item.get("owner_id") or version.get("owner_id")

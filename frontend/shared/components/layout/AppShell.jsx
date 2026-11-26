@@ -352,12 +352,6 @@ export default function AppShell({ children, requireAuth }) {
           permissions: ["testcase.read"],
         },
         {
-          id: "legacy-test-data",
-          href: projectRoute(projectId, PROJECT_SECTION_SLUGS.testData),
-          permission: "testdata.read",
-          permissions: ["testcase.read"],
-        },
-        {
           id: "legacy-test-analysis",
           href: projectRoute(projectId, PROJECT_SECTION_SLUGS.testAnalysis),
           anyPermission: ["testcondition.read", "testanalysis.read"],

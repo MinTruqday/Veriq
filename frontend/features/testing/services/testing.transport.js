@@ -10,6 +10,9 @@ function responseErrorMessage(response, body, fallback) {
   const detail = body?.error || body?.detail;
   const message = userFacingError(typeof detail === "string" ? detail : detail?.message, "");
   if (message) return message;
+  const code = body?.error?.code || body?.detail?.code;
+  if (code === "TEST_PLAN_APPROVED_SNAPSHOT_INVALID")
+    return "Kế hoạch đã duyệt không khớp với dữ liệu đã chốt. Hãy kiểm tra lại phiên bản kế hoạch trước khi tiếp tục.";
   if (response.status >= 500)
     return `Máy chủ gặp lỗi khi xử lý yêu cầu (HTTP ${response.status}). Vui lòng thử lại.`;
   return fallback;

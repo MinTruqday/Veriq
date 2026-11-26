@@ -9,8 +9,56 @@ import { messageOf } from "../lib/testing";
 const blankEnvironment = {
   name: "",
   base_url: "",
+  environment_type: "OTHER",
+  operating_system: "",
+  browser: "",
+  browser_version: "",
+  device: "",
   availability: "AVAILABLE",
 };
+
+const environmentTypes = [
+  ["WEB", "Web"],
+  ["API", "API"],
+  ["MOBILE", "Di động"],
+  ["DESKTOP", "Máy tính"],
+  ["OTHER", "Khác"],
+];
+
+const environmentTemplates = [
+  {
+    name: "Web · Chrome · Windows",
+    values: { environment_type: "WEB", operating_system: "Windows", browser: "Chrome" },
+  },
+  {
+    name: "Web · Firefox · Windows",
+    values: { environment_type: "WEB", operating_system: "Windows", browser: "Firefox" },
+  },
+  {
+    name: "Web · Safari · macOS",
+    values: { environment_type: "WEB", operating_system: "macOS", browser: "Safari" },
+  },
+  {
+    name: "Mobile · Android",
+    values: { environment_type: "MOBILE", operating_system: "Android" },
+  },
+  {
+    name: "Mobile · iOS",
+    values: { environment_type: "MOBILE", operating_system: "iOS" },
+  },
+  { name: "API · Kiểm thử", values: { environment_type: "API" } },
+];
+
+function environmentSummary(item) {
+  return [
+    environmentTypes.find(([key]) => key === item.environment_type)?.[1],
+    item.operating_system,
+    [item.browser, item.browser_version].filter(Boolean).join(" "),
+    item.device,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
 
 const availabilityLabels = {
   AVAILABLE: "Sẵn sàng",
@@ -58,6 +106,11 @@ export default function EnvironmentManagementPanel({ project }) {
     setValue({
       name: item.name || "",
       base_url: item.base_url || "",
+      environment_type: item.environment_type || "OTHER",
+      operating_system: item.operating_system || "",
+      browser: item.browser || "",
+      browser_version: item.browser_version || "",
+      device: item.device || "",
       availability: item.availability || "AVAILABLE",
     });
     setError("");
@@ -72,6 +125,11 @@ export default function EnvironmentManagementPanel({ project }) {
       const payload = {
         name: value.name.trim(),
         base_url: value.base_url.trim() || null,
+        environment_type: value.environment_type,
+        operating_system: value.operating_system.trim(),
+        browser: value.browser.trim(),
+        browser_version: value.browser_version.trim(),
+        device: value.device.trim(),
         availability: value.availability,
       };
       let saved;
@@ -149,6 +207,9 @@ export default function EnvironmentManagementPanel({ project }) {
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
                       <h3 className="break-words font-semibold text-ink">{item.name}</h3>
+                      {environmentSummary(item) && (
+                        <p className="mt-1 text-sm text-ink-muted">{environmentSummary(item)}</p>
+                      )}
                       <p className="mt-1 text-sm text-ink-muted">{item.base_url || "-"}</p>
                     </div>
                     <span className="status-badge">
@@ -203,6 +264,32 @@ export default function EnvironmentManagementPanel({ project }) {
                   <X aria-hidden="true" className="size-4" />
                 </button>
               </div>
+              <div className="space-y-4">
+                <label className="field-label block">
+                  Mẫu môi trường
+                  <select
+                    className="apple-input mt-2 w-full"
+                    value=""
+                    onChange={(event) => {
+                      const template = environmentTemplates[Number(event.target.value)];
+                      if (!template) return;
+                      setValue((current) => ({
+                        ...current,
+                        ...blankEnvironment,
+                        ...template.values,
+                        name: template.name,
+                      }));
+                    }}
+                  >
+                    <option value="">Chọn mẫu để điền nhanh</option>
+                    {environmentTemplates.map((template, index) => (
+                      <option key={template.name} value={index}>
+                        {template.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
               <div className="grid gap-4 md:grid-cols-2">
                 <label className="field-label">
                   Tên môi trường
@@ -224,6 +311,62 @@ export default function EnvironmentManagementPanel({ project }) {
                     value={value.base_url}
                     onChange={(event) =>
                       setValue((current) => ({ ...current, base_url: event.target.value }))
+                    }
+                  />
+                </label>
+                <label className="field-label">
+                  Loại môi trường
+                  <select
+                    className="apple-input mt-2 w-full"
+                    value={value.environment_type}
+                    onChange={(event) =>
+                      setValue((current) => ({ ...current, environment_type: event.target.value }))
+                    }
+                  >
+                    {environmentTypes.map(([key, label]) => (
+                      <option key={key} value={key}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field-label">
+                  Hệ điều hành
+                  <input
+                    className="apple-input mt-2 w-full"
+                    value={value.operating_system}
+                    onChange={(event) =>
+                      setValue((current) => ({ ...current, operating_system: event.target.value }))
+                    }
+                  />
+                </label>
+                <label className="field-label">
+                  Trình duyệt
+                  <input
+                    className="apple-input mt-2 w-full"
+                    value={value.browser}
+                    onChange={(event) =>
+                      setValue((current) => ({ ...current, browser: event.target.value }))
+                    }
+                  />
+                </label>
+                <label className="field-label">
+                  Phiên bản trình duyệt
+                  <input
+                    className="apple-input mt-2 w-full"
+                    value={value.browser_version}
+                    onChange={(event) =>
+                      setValue((current) => ({ ...current, browser_version: event.target.value }))
+                    }
+                  />
+                </label>
+                <label className="field-label">
+                  Thiết bị
+                  <input
+                    className="apple-input mt-2 w-full"
+                    value={value.device}
+                    onChange={(event) =>
+                      setValue((current) => ({ ...current, device: event.target.value }))
                     }
                   />
                 </label>

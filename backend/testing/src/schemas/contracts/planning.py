@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -17,29 +17,6 @@ class TestPlanSuiteSnapshot(BaseModel):
         if len(self.test_case_version_ids) != len(set(self.test_case_version_ids)):
             raise ValueError("TEST_PLAN_SUITE_SNAPSHOT_VERSIONS_MUST_BE_UNIQUE")
         return self
-
-
-class TestPlanEstimation(BaseModel):
-    method: Literal["expert_judgment", "three_point", "historical", "custom"] = "expert_judgment"
-    planned_effort_hours: float = Field(default=0, ge=0)
-    basis: str = Field(default="", max_length=5000)
-    effort_allocations: list["TestPlanEffortAllocation"] = Field(default_factory=list, max_length=500)
-
-    @model_validator(mode="after")
-    def validate_effort_allocations(self):
-        allocation_ids = [item.user_id for item in self.effort_allocations]
-        if len(allocation_ids) != len(set(allocation_ids)):
-            raise ValueError("TEST_PLAN_EFFORT_ALLOCATION_DUPLICATE_USER")
-        if self.effort_allocations:
-            allocation_total = sum(item.planned_hours for item in self.effort_allocations)
-            if round(allocation_total, 2) != round(self.planned_effort_hours, 2):
-                raise ValueError("TEST_PLAN_EFFORT_ALLOCATION_TOTAL_MUST_MATCH_PLAN")
-        return self
-
-
-class TestPlanEffortAllocation(BaseModel):
-    user_id: str = Field(min_length=1, max_length=200)
-    planned_hours: float = Field(gt=0, le=100000)
 
 
 class TestPlanSchedule(BaseModel):
@@ -75,13 +52,6 @@ class TestPlanRisk(BaseModel):
     owner_id: str | None = Field(default=None, max_length=200)
     status: TestPlanRiskStatus = TestPlanRiskStatus.OPEN
     due_at: str | None = Field(default=None, max_length=80)
-
-
-class TestPlanCommunication(BaseModel):
-    channel: str = Field(default="", max_length=200)
-    status_report_frequency: str = Field(default="", max_length=200)
-    recipients: list[str] = Field(default_factory=list, max_length=500)
-    escalation_roles: list[str] = Field(default_factory=list, max_length=100)
 
 
 class TestPlanCarryOver(BaseModel):
@@ -124,7 +94,6 @@ class TestPlanCreate(BaseModel):
     new_test_period: "TestPlanInlinePeriodCreate | None" = None
     carry_over_items: list[TestPlanCarryOver] = Field(default_factory=list, max_length=5000)
     owner_id: str | None = Field(default=None, max_length=200)
-    scenario_ids: list[str] = Field(default_factory=list, max_length=1000)
     project_id: str
     name: str = Field(min_length=2, max_length=300)
     objective: str = Field(default="", max_length=5000)
@@ -136,13 +105,6 @@ class TestPlanCreate(BaseModel):
     entry_criteria: list[str] = Field(default_factory=list, max_length=200)
     exit_criteria: list[str] = Field(default_factory=list, max_length=200)
     test_types: list[str] = Field(default_factory=list, max_length=100)
-    test_techniques: list[str] = Field(default_factory=list, max_length=100)
-    members: list[str] = Field(default_factory=list, max_length=500)
     test_level: str | None = Field(default=None, min_length=1, max_length=100)
-    assumptions: list[str] = Field(default_factory=list, max_length=200)
-    constraints: list[str] = Field(default_factory=list, max_length=200)
-    dependencies: list[dict[str, Any]] = Field(default_factory=list, max_length=500)
-    estimation: TestPlanEstimation = Field(default_factory=TestPlanEstimation)
     schedule: TestPlanSchedule = Field(default_factory=TestPlanSchedule)
     risk_register: list[TestPlanRisk] = Field(default_factory=list, max_length=500)
-    communication_plan: TestPlanCommunication = Field(default_factory=TestPlanCommunication)

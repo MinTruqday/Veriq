@@ -47,7 +47,6 @@ async def lifespan(app: FastAPI):
     if not (access or {}).get("role_grants_managed_by_admin"):
         await project_access_repository.ensure_read_only_comment_capabilities()
         await project_access_repository.ensure_private_defect_capability()
-        await project_access_repository.ensure_test_review_capabilities()
         await project_access_repository.ensure_workflow_role_capabilities()
     await start_requirement_document_parse_worker()
     await start_defect_search_index_worker()

@@ -6,6 +6,7 @@ from src.core.ai_capabilities import ai_contract_metadata, request_ai_capability
 from src.core.common import get_project, load_user_identities, now
 from src.repositories.analytics import analytics_repository
 from src.schemas.contracts.utility import SearchInput
+from src.modules.execution.services.result_metrics import pass_rate_metrics
 
 
 def percentage(value, total):
@@ -133,15 +134,12 @@ class AnalyticsService:
                 "updated_at": latest_run.get("updated_at"),
             }
         changes_waiting_impact = await analytics_repository.count_records(
-            "requirement_change_sets",
-            {"project_id": project_id, "status": {"$in": ["READY", "REVIEWED"]}},
-        )
-        changes_waiting_impact += await analytics_repository.count_records(
-            "impact_analyses", {"project_id": project_id, "status": "REVIEW_READY"}
+            "requirement_impact_jobs",
+            {"project_id": project_id, "status": {"$in": ["PENDING", "RUNNING"]}},
         )
         coverage = await cls.coverage_snapshot(project_id)
         recent_changes = await analytics_repository.list_records(
-            "requirement_change_sets", {"project_id": project_id}, 10, ("created_at", -1)
+            "requirement_impact_jobs", {"project_id": project_id}, 10, ("created_at", -1)
         )
         requirement_ids = [
             item.get("requirement_id") for item in recent_changes if item.get("requirement_id")
@@ -892,14 +890,13 @@ class AnalyticsService:
             result_counts.get(status, 0)
             for status in ["PASS", "FAIL", "BLOCKED", "SKIPPED", "NOT_APPLICABLE"]
         )
+        pass_metrics = pass_rate_metrics(result_counts.get("PASS", 0), result_counts.get("FAIL", 0))
         return {
             "run_count": len(runs),
             "run_status_counts": run_status_rows,
             "result_counts": result_counts,
             "terminal_result_count": terminal_count,
-            "pass_rate": round(result_counts.get("PASS", 0) / terminal_count, 4)
-            if terminal_count
-            else None,
+            **pass_metrics,
             "scope": {
                 "release": release or None,
                 "release_id": release_id or None,

@@ -35,6 +35,10 @@ class UserBase(BaseModel):
     system_role: SystemRole = SystemRole.USER
     bio: Optional[str] = None
     avatar_url: Optional[str] = None
+    cover_url: Optional[str] = None
+    location: Optional[str] = None
+    website: Optional[str] = None
+    timezone: Optional[str] = Field(default=None, min_length=2, max_length=100)
     social_links: Optional[Dict[str, str]] = Field(default_factory=dict)
     pinned_documents: List[str] = Field(default_factory=list)
     bookmarks: List[str] = Field(default_factory=list)
@@ -100,12 +104,14 @@ class UserResponse(UserBase):
 
 
 class ProfileUpdate(BaseModel):
-    full_name: Optional[str] = None
-    bio: Optional[str] = None
-    avatar_url: Optional[str] = None
-    cover_url: Optional[str] = None
-    location: Optional[str] = None
-    website: Optional[str] = None
+    model_config = ConfigDict(extra="forbid")
+
+    full_name: Optional[str] = Field(default=None, min_length=2, max_length=100)
+    bio: Optional[str] = Field(default=None, max_length=5000)
+    avatar_url: Optional[str] = Field(default=None, max_length=2000)
+    cover_url: Optional[str] = Field(default=None, max_length=2000)
+    location: Optional[str] = Field(default=None, max_length=200)
+    website: Optional[str] = Field(default=None, max_length=2000)
     locale: Optional[str] = Field(default=None, min_length=2, max_length=20)
     timezone: Optional[str] = Field(default=None, min_length=2, max_length=100)
 
@@ -126,6 +132,8 @@ class AccountDeactivate(BaseModel):
 
 
 class SettingsUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     theme: Optional[str] = None
     notifications_enabled: Optional[bool] = None
     privacy_mode: Optional[bool] = None
@@ -149,10 +157,12 @@ class EmailVerificationInput(BaseModel):
 
 
 class NotificationSettingsUpdate(BaseModel):
-    enable_comment_notifications: bool = True
-    enable_mention_notifications: bool = True
-    enable_system_notifications: bool = True
-    enable_email_digest: bool = False
+    model_config = ConfigDict(extra="forbid")
+
+    enable_comment_notifications: Optional[bool] = None
+    enable_mention_notifications: Optional[bool] = None
+    enable_system_notifications: Optional[bool] = None
+    enable_email_digest: Optional[bool] = None
 
 
 class UpdateStatusRequest(BaseModel):

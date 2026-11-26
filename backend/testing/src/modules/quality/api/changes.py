@@ -2,11 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from src.core.auth import CurrentUser, get_current_user
 from src.core.common import envelope, get_project_entity
-from src.schemas.contracts.design import (
-    ProposalAction,
-    ProposalRegenerateInput,
-    RegressionApprovalInput,
-)
+from src.schemas.contracts.design import ProposalAction, ProposalRegenerateInput
 from src.modules.quality.services.maintenance_proposal import (
     get_maintenance_proposal_record,
     list_maintenance_proposal_records,
@@ -15,13 +11,6 @@ from src.modules.quality.services.maintenance_proposal import (
     review_maintenance_proposal_record,
 )
 from src.modules.quality.services.proposal_application import approve_maintenance_proposal
-from src.modules.quality.services.regression_recommendation import (
-    approve_regression_recommendation_record,
-    create_regression_recommendation_record,
-    edit_regression_recommendation_record,
-    get_change_set_regression_record,
-    get_regression_recommendation_record,
-)
 
 router = APIRouter(prefix="/kiem-thu", tags=["Bảo trì thay đổi kiểm thử"])
 
@@ -138,75 +127,3 @@ async def regenerate_proposal(
 ):
     replacement = await regenerate_maintenance_proposal_record(proposal_id, payload, user)
     return envelope(replacement, revision=1)
-
-
-@router.post("/bo-thay-doi/{change_set_id}/de-xuat-hoi-quy", status_code=201)
-async def regression_recommendation(
-    change_set_id: str, user: CurrentUser = Depends(get_current_user)
-):
-    return envelope(await create_regression_recommendation_record(change_set_id, user))
-
-
-@router.get("/bo-thay-doi/{change_set_id}/de-xuat-hoi-quy")
-async def get_change_set_regression_recommendation(
-    change_set_id: str, user: CurrentUser = Depends(get_current_user)
-):
-    return envelope(await get_change_set_regression_record(change_set_id, user))
-
-
-@router.post("/du-an/{project_id}/hoi-quy/sinh", status_code=201)
-async def generate_project_regression(
-    project_id: str, payload: dict, user: CurrentUser = Depends(get_current_user)
-):
-    change_set_id = str(payload.get("change_set_id") or "")
-    change_set = await get_project_entity(
-        "requirement_change_sets", change_set_id, user, "regression.generate"
-    )
-    if change_set["project_id"] != project_id:
-        raise HTTPException(status_code=422, detail={"code": "PROJECT_MISMATCH"})
-    return envelope(await create_regression_recommendation_record(change_set_id, user))
-
-
-@router.get("/de-xuat-hoi-quy/{recommendation_id}")
-async def get_regression_recommendation(
-    recommendation_id: str, user: CurrentUser = Depends(get_current_user)
-):
-    return envelope(await get_regression_recommendation_record(recommendation_id, user))
-
-
-@router.patch("/de-xuat-hoi-quy/{recommendation_id}")
-async def edit_regression_recommendation(
-    recommendation_id: str,
-    payload: RegressionApprovalInput,
-    user: CurrentUser = Depends(get_current_user),
-):
-    updated = await edit_regression_recommendation_record(recommendation_id, payload, user)
-    return envelope(updated, revision=updated["revision"])
-
-
-@router.post("/de-xuat-hoi-quy/{recommendation_id}/phe-duyet", status_code=201)
-async def approve_regression_recommendation(
-    recommendation_id: str,
-    payload: RegressionApprovalInput,
-    user: CurrentUser = Depends(get_current_user),
-):
-    return envelope(
-        await approve_regression_recommendation_record(recommendation_id, payload, user)
-    )
-
-
-@router.post("/du-an/{project_id}/hoi-quy/{recommendation_id}/phe-duyet", status_code=201)
-async def approve_project_regression(
-    project_id: str,
-    recommendation_id: str,
-    payload: RegressionApprovalInput,
-    user: CurrentUser = Depends(get_current_user),
-):
-    recommendation = await get_project_entity(
-        "regression_recommendations", recommendation_id, user, "regression.approve"
-    )
-    if recommendation["project_id"] != project_id:
-        raise HTTPException(status_code=422, detail={"code": "PROJECT_MISMATCH"})
-    return envelope(
-        await approve_regression_recommendation_record(recommendation_id, payload, user)
-    )

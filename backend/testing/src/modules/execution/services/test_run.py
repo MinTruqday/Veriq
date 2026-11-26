@@ -179,6 +179,14 @@ async def create_test_run_record(payload, project_id, user):
     if project_id is not None and payload.project_id != project_id:
         raise HTTPException(status_code=422, detail={"code": 'PROJECT_MISMATCH'})
     await get_project(payload.project_id, user, 'testrun.create')
+    if not payload.test_plan_id:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "TEST_RUN_PLAN_REQUIRED",
+                "message": "Chọn kế hoạch kiểm thử đã duyệt trước khi tạo lần chạy.",
+            },
+        )
     plan = None
     approved_snapshot = None
     approved_snapshot_hash = None
@@ -204,38 +212,34 @@ async def create_test_run_record(payload, project_id, user):
             status_code=422,
             detail={"code": "TEST_PLAN_SNAPSHOT_HASH_REQUIRES_TEST_PLAN"},
         )
+    environment_id = payload.environment_id
+    if "environment_id" not in payload.model_fields_set:
+        environment_id = (approved_snapshot or {}).get("environment_id")
     context = await resolve_execution_context(
         payload.project_id,
         user,
         release_id=payload.release_id,
         build_id=payload.build_id,
-        environment_id=payload.environment_id,
+        environment_id=environment_id,
         release=payload.release,
         build=payload.build,
     )
     version_ids = list(dict.fromkeys(payload.test_case_version_ids))
+    suite_version_ids = []
     if payload.test_suite_ids:
-        if plan:
-            _require_plan_suite_snapshot(approved_snapshot)
-            version_ids.extend(
-                _plan_suite_versions(payload.test_suite_ids, approved_snapshot)
-            )
-        else:
-            suites = await test_run_repository.list_suites(
-                payload.project_id, payload.test_suite_ids, 500
-            )
-            if len(suites) != len(set(payload.test_suite_ids)):
-                raise HTTPException(status_code=422, detail={"code": 'INVALID_TEST_SUITE'})
-            for suite in suites:
-                version_ids.extend(suite.get("test_case_version_ids", []))
-        version_ids = list(dict.fromkeys(version_ids))
+        _require_plan_suite_snapshot(approved_snapshot)
+        suite_version_ids = _plan_suite_versions(
+            payload.test_suite_ids, approved_snapshot
+        )
     if plan:
         _validate_plan_suite_scope(payload.test_suite_ids, approved_snapshot)
         approved_scope = set(approved_snapshot.get("test_case_version_ids", []))
         if not approved_scope:
             raise HTTPException(status_code=409, detail={"code": "TEST_PLAN_SCOPE_EMPTY"})
+        if "test_case_version_ids" not in payload.model_fields_set:
+            version_ids = suite_version_ids or list(approved_scope)
         if not version_ids:
-            version_ids = list(approved_scope)
+            raise HTTPException(status_code=409, detail={"code": "TEST_RUN_SCOPE_EMPTY"})
         if not set(version_ids).issubset(approved_scope):
             raise HTTPException(status_code=422, detail={"code": "TEST_RUN_OUTSIDE_PLAN_SCOPE"})
     await validate_test_versions(payload.project_id, version_ids)
@@ -247,6 +251,9 @@ async def create_test_run_record(payload, project_id, user):
             if not _idempotent_run_matches(existing, payload, version_ids, context, user.id):
                 raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
             return existing
+    executor_members = await project_repository.list_active_members_with_permission(
+        payload.project_id, "testrun.execute", [user.id]
+    )
     timestamp = now()
     run = {
         "_id": new_id('TRUN'),
@@ -255,6 +262,7 @@ async def create_test_run_record(payload, project_id, user):
         **context,
         "test_case_version_ids": version_ids,
         "test_case_assignments": {},
+        "assignee_id": user.id if executor_members else None,
         "status": 'DRAFT',
         "revision": 1,
         "created_by": user.id,
@@ -347,7 +355,8 @@ async def create_test_run_record(payload, project_id, user):
                     payload.project_id,
                     {
                         "test_count": len(version_ids),
-                        "unassigned_count": len(version_ids),
+                        "unassigned_count": 0 if run["assignee_id"] else len(version_ids),
+                        "assignment_source": "CREATOR" if run["assignee_id"] else None,
                     },
                     session=session,
                 )
@@ -595,17 +604,12 @@ async def _update_test_run_record(project_id, run_id, payload, user):
             _require_plan_suite_snapshot(approved_snapshot)
             suite_versions = _plan_suite_versions(selected_suite_ids, approved_snapshot)
         else:
-            suites = await test_run_repository.list_suites(
-                project_id, selected_suite_ids, 500
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "TEST_RUN_PLAN_REQUIRED"},
             )
-            if len(suites) != len(selected_suite_ids):
-                raise HTTPException(status_code=422, detail={"code": 'INVALID_TEST_SUITE'})
-            suite_versions = [
-                version_id
-                for suite in suites
-                for version_id in suite.get("test_case_version_ids", [])
-            ]
-        version_ids = list(dict.fromkeys([*version_ids, *suite_versions]))
+        if "test_case_version_ids" not in changes and selected_suite_ids:
+            version_ids = list(dict.fromkeys(suite_versions))
         changes["test_suite_ids"] = selected_suite_ids
         changes["test_case_version_ids"] = version_ids
     if "test_case_version_ids" in changes:

@@ -87,8 +87,18 @@ async def close_database():
         database.client = None
 
 
+async def migrate_project_lead_fields(db):
+    projects = db.projects.find({"project_owner_user_id": {"$exists": True}})
+    async for project in projects:
+        changes = {"$unset": {"project_owner_user_id": ""}}
+        if not project.get("project_lead_user_id") and project.get("project_owner_user_id"):
+            changes["$set"] = {"project_lead_user_id": project["project_owner_user_id"]}
+        await db.projects.update_one({"_id": project["_id"]}, changes)
+
+
 async def create_indexes():
     db = database.value
+    await migrate_project_lead_fields(db)
     await db.document_summary_jobs.create_index(
         [("project_id", 1), ("requester_id", 1), ("idempotency_key", 1)],
         unique=True,
@@ -98,6 +108,8 @@ async def create_indexes():
         unique=True,
         partialFilterExpression={"source_series_id": {"$type": "string"}},
     )
+    await db.requirement_impact_jobs.create_index([("status", 1), ("created_at", 1)])
+    await db.requirement_impact_jobs.create_index([("project_id", 1), ("status", 1)])
     for collection_name in QUALITY_PROCESS_COLLECTIONS:
         collection = db[collection_name]
         await collection.create_index([("project_id", 1), ("_id", 1)], unique=True)
@@ -179,9 +191,6 @@ async def create_indexes():
     )
     await db.requirement_duplicate_scans.create_index([("project_id", 1), ("created_at", -1)])
     await db.test_scenarios.create_index([("project_id", 1), ("scenario_key", 1)], unique=True)
-    await db.data_sets.create_index([("project_id", 1), ("name", 1)], unique=True)
-    await db.data_set_versions.create_index([("data_set_id", 1), ("version", 1)], unique=True)
-    await db.data_set_versions.create_index([("project_id", 1), ("created_at", -1)])
     await db.test_case_templates.create_index([("project_id", 1), ("name", 1)], unique=True)
     await db.test_case_templates.create_index(
         [("project_id", 1), ("status", 1), ("updated_at", -1)]
@@ -257,7 +266,21 @@ async def create_indexes():
         partialFilterExpression={"source_type": "api_artifact_diff"},
     )
     await db.maintenance_proposals.create_index([("project_id", 1), ("status", 1)])
-    await db.regression_recommendations.create_index([("change_set_id", 1)], unique=True)
+    regression_indexes = await db.regression_recommendations.list_indexes().to_list(length=1000)
+    for index in regression_indexes:
+        if dict(index["key"]) == {"change_set_id": 1} and index.get("unique"):
+            await db.regression_recommendations.drop_index(index["name"])
+    await db.regression_recommendations.create_index(
+        [("change_set_id", 1), ("created_at", -1)]
+    )
+    await ensure_partial_unique_index(
+        db.regression_recommendations,
+        [("change_set_id", 1), ("impact_analysis_id", 1)],
+        {
+            "change_set_id": {"$type": "string"},
+            "impact_analysis_id": {"$type": "string"},
+        },
+    )
     await db.test_plans.create_index([("project_id", 1), ("updated_at", -1)])
     await db.test_conditions.create_index([("project_id", 1), ("condition_key", 1)], unique=True)
     await db.test_conditions.create_index([("project_id", 1), ("status", 1), ("updated_at", -1)])

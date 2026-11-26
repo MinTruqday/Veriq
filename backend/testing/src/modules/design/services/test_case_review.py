@@ -480,9 +480,13 @@ async def save_merged_test_case(draft_id, payload, user):
         changes["owner_id"] = values["owner_id"]
     if "attachments" in changes:
         await get_project(draft["project_id"], user, "attachment.manage")
-    from src.modules.design.services.test_case_records import validate_design_sources, validate_data_set_versions, validate_coverage_items
-    await validate_design_sources(draft["project_id"], values["requirement_version_ids"], values["acceptance_criterion_ids"], values["scenario_id"], values["test_condition_ids"])
-    await validate_data_set_versions(draft["project_id"], values["data_set_version_ids"])
+    from src.modules.design.services.test_case_records import validate_design_sources, validate_coverage_items
+    await validate_design_sources(
+        draft["project_id"],
+        values["requirement_version_ids"],
+        values["acceptance_criterion_ids"],
+        values["test_condition_ids"],
+    )
     await validate_coverage_items(draft["project_id"], values["requirement_version_ids"], values["coverage_item_ids"])
     merged = {**draft, **changes}
     legacy_content = bool(

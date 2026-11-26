@@ -159,9 +159,8 @@ export default function DashboardPage({ project }) {
       coverage?.execution_coverage,
     ].some((metric) => metric != null);
   const hasQualityMetrics =
-    Boolean(dashboard && (can("testcase.read") || can("testrun.read") || can("impact.read"))) ||
-    hasDetailedCoverage;
-  const hasRecentChanges = Boolean(dashboard && can("requirement.read") && can("impact.read"));
+    Boolean(dashboard && (can("testcase.read") || can("testrun.read"))) || hasDetailedCoverage;
+  const hasRecentChanges = Boolean(dashboard && can("requirement.read"));
   return (
     <WorkspacePage title={project.name}>
       {error && (

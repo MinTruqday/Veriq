@@ -267,11 +267,9 @@ async def preview_test_import(
                 owner_id=str(row.get("owner_id") or "").strip() or None if same_project else None,
                 techniques=[item.strip() for item in (row.get("techniques") or "").split(",") if item.strip()],
                 automation_status=row.get("automation_status") or "manual",
-                data_set_version_ids=[item.strip() for item in (row.get("data_set_version_ids") or "").split(",") if item.strip()] if same_project else [],
                 requirement_version_ids=[item.strip() for item in (row.get("requirement_version_ids") or "").split(",") if item.strip()] if same_project else [],
                 acceptance_criterion_ids=[item.strip() for item in (row.get("acceptance_criterion_ids") or "").split(",") if item.strip()] if same_project else [],
                 test_condition_ids=[item.strip() for item in (row.get("test_condition_ids") or "").split(",") if item.strip()] if same_project else [],
-                scenario_id=str(row.get("scenario_id") or "").strip() or None if same_project else None,
                 origin="import",
             )
         except ValidationError:
@@ -603,19 +601,17 @@ async def export_test_cases(
         "tags": ",".join(item.get("tags", [])),
         "owner_id": item.get("owner_id"),
         "techniques": ",".join(item.get("techniques", [])),
-        "data_set_version_ids": ",".join(item.get("data_set_version_ids", [])),
         "requirement_version_ids": ",".join(item.get("requirement_version_ids", [])),
         "acceptance_criterion_ids": ",".join(item.get("acceptance_criterion_ids", [])),
         "test_condition_ids": ",".join(item.get("test_condition_ids", [])),
-        "scenario_id": item.get("scenario_id"),
         "plain_text_projection": item.get("plain_text_projection"),
     } for item in versions]
     fields = [
         "project_id", "test_case_key", "version", "title", "module_name", "type", "priority", "duration_minutes",
         "automation_status", "status", "objective", "preconditions", "steps_json",
         "postconditions", "alternate_flows", "exception_flows", "tags", "owner_id",
-        "techniques", "data_set_version_ids", "requirement_version_ids",
-        "acceptance_criterion_ids", "test_condition_ids", "scenario_id",
+        "techniques", "requirement_version_ids",
+        "acceptance_criterion_ids", "test_condition_ids",
         "plain_text_projection",
     ]
     if format == 'xlsx':

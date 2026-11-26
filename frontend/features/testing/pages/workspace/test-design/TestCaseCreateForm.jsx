@@ -54,11 +54,13 @@ export default function TestCaseCreateForm({
     matchesConditionScope(condition, requirementIds, scopedCriterionIds),
   );
   const testLevelOptions = [
-    ...new Set([...scopedTestConditions.map((item) => item.test_level).filter(Boolean)]),
+    ["COMPONENT", "Thành phần"],
+    ["COMPONENT_INTEGRATION", "Tích hợp thành phần"],
+    ["SYSTEM", "Hệ thống"],
+    ["SYSTEM_INTEGRATION", "Tích hợp hệ thống"],
+    ["ACCEPTANCE", "Chấp nhận"],
   ];
-  const priorityOptions = [
-    ...new Set([form.priority].map((value) => String(value || "").trim()).filter(Boolean)),
-  ];
+  const priorityOptions = ["HIGH", "MEDIUM", "LOW"];
   const retainScopedConditionIds = (conditionIds, scopedRequirements, scopedCriteria) =>
     conditionIds.filter((conditionId) => {
       const condition = testConditions.find((item) => item._id === conditionId);
@@ -69,7 +71,7 @@ export default function TestCaseCreateForm({
     <form id="test-case-create-form" onSubmit={onSubmit} className="test-design-form space-y-4 p-5">
       <div className="space-y-4">
         <label className="field-label">
-          Tên ca kiểm thử
+          Tên ca kiểm thử <span className="text-danger">*</span>
           <input
             className="apple-input mt-2"
             required
@@ -226,6 +228,76 @@ export default function TestCaseCreateForm({
           />
         </div>
       )}
+      <section className="space-y-3 rounded-control border border-border p-4">
+        <h3 className="font-semibold">Liên kết yêu cầu</h3>
+        <p className="text-sm text-ink-muted">
+          Mỗi ca cần gắn với yêu cầu để người duyệt kiểm tra được ca này đang xác nhận điều gì.
+        </p>
+        <MultiSelect
+          showSearch={false}
+          label="Phiên bản yêu cầu liên quan *"
+          searchPlaceholder="Tìm yêu cầu"
+          options={requirements.map((item) => ({
+            value: item.current_version_id,
+            label: `${item.requirement_key} · ${item.current_version?.title || "Không có tiêu đề"}`,
+          }))}
+          value={form.requirementVersionIds}
+          onChange={(requirementVersionIds) => {
+            const allowedCriteria = new Set(
+              requirements
+                .filter((item) => requirementVersionIds.includes(item.current_version_id))
+                .flatMap((item) =>
+                  (item.current_version?.acceptance_criteria || []).map(
+                    (criterion) => criterion._id,
+                  ),
+                ),
+            );
+            const nextAcceptanceCriterionIds = form.acceptanceCriterionIds.filter((id) =>
+              allowedCriteria.has(id),
+            );
+            const nextRequirementIds = new Set(requirementVersionIds);
+            const nextCriterionIds = new Set(
+              nextAcceptanceCriterionIds.length ? nextAcceptanceCriterionIds : [...allowedCriteria],
+            );
+            update({
+              requirementVersionIds,
+              acceptanceCriterionIds: nextAcceptanceCriterionIds,
+              testConditionIds: retainScopedConditionIds(
+                form.testConditionIds,
+                nextRequirementIds,
+                nextCriterionIds,
+              ),
+            });
+          }}
+        />
+        {form.requirementVersionIds.length > 0 && (
+          <MultiSelect
+            showSearch={false}
+            label="Tiêu chí chấp nhận được ca này kiểm thử"
+            searchPlaceholder="Tìm tiêu chí chấp nhận"
+            options={selectedCriteria.map((criterion) => ({
+              value: criterion._id,
+              label: `${criterion.requirement_key} · ${criterion.key || "Tiêu chí"}`,
+              description: criterion.plain_text || docText(criterion.content_doc),
+            }))}
+            value={form.acceptanceCriterionIds}
+            onChange={(acceptanceCriterionIds) =>
+              update({
+                acceptanceCriterionIds,
+                testConditionIds: retainScopedConditionIds(
+                  form.testConditionIds,
+                  requirementIds,
+                  new Set(
+                    acceptanceCriterionIds.length
+                      ? acceptanceCriterionIds
+                      : selectedCriteria.map((criterion) => criterion._id),
+                  ),
+                ),
+              })
+            }
+          />
+        )}
+      </section>
       <details className="rounded-control border border-border p-4">
         <summary className="cursor-pointer font-medium">Tùy chọn</summary>
         <div className="mt-4 grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
@@ -265,6 +337,9 @@ export default function TestCaseCreateForm({
                       onChange={(event) => update({ priority: event.target.value })}
                     >
                       <option value="">-</option>
+                      {form.priority && !priorityOptions.includes(form.priority) && (
+                        <option value={form.priority}>{valueLabel(form.priority)}</option>
+                      )}
                       {priorityOptions.map((value) => (
                         <option key={value} value={value}>
                           {valueLabel(value)}
@@ -280,12 +355,13 @@ export default function TestCaseCreateForm({
                       onChange={(event) => update({ testLevel: event.target.value })}
                     >
                       <option value="">-</option>
-                      {form.testLevel && !testLevelOptions.includes(form.testLevel) && (
-                        <option value={form.testLevel}>{valueLabel(form.testLevel)}</option>
-                      )}
-                      {testLevelOptions.map((option) => (
-                        <option key={option} value={option}>
-                          {valueLabel(option)}
+                      {form.testLevel &&
+                        !testLevelOptions.some(([value]) => value === form.testLevel) && (
+                          <option value={form.testLevel}>{valueLabel(form.testLevel)}</option>
+                        )}
+                      {testLevelOptions.map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
                         </option>
                       ))}
                     </select>
@@ -401,72 +477,6 @@ export default function TestCaseCreateForm({
                 minHeight="min-h-20"
               />
             </div>
-            <MultiSelect
-              showSearch={false}
-              label="Phiên bản yêu cầu liên quan"
-              searchPlaceholder="Tìm yêu cầu"
-              options={requirements.map((item) => ({
-                value: item.current_version_id,
-                label: `${item.requirement_key} · ${item.current_version?.title || "Không có tiêu đề"}`,
-              }))}
-              value={form.requirementVersionIds}
-              onChange={(requirementVersionIds) => {
-                const allowedCriteria = new Set(
-                  requirements
-                    .filter((item) => requirementVersionIds.includes(item.current_version_id))
-                    .flatMap((item) =>
-                      (item.current_version?.acceptance_criteria || []).map(
-                        (criterion) => criterion._id,
-                      ),
-                    ),
-                );
-                const nextAcceptanceCriterionIds = form.acceptanceCriterionIds.filter((id) =>
-                  allowedCriteria.has(id),
-                );
-                const nextRequirementIds = new Set(requirementVersionIds);
-                const nextCriterionIds = new Set(
-                  nextAcceptanceCriterionIds.length
-                    ? nextAcceptanceCriterionIds
-                    : [...allowedCriteria],
-                );
-                update({
-                  requirementVersionIds,
-                  acceptanceCriterionIds: nextAcceptanceCriterionIds,
-                  testConditionIds: retainScopedConditionIds(
-                    form.testConditionIds,
-                    nextRequirementIds,
-                    nextCriterionIds,
-                  ),
-                });
-              }}
-            />
-            {form.requirementVersionIds.length > 0 && (
-              <MultiSelect
-                showSearch={false}
-                label="Tiêu chí chấp nhận được ca này kiểm thử"
-                searchPlaceholder="Tìm tiêu chí chấp nhận"
-                options={selectedCriteria.map((criterion) => ({
-                  value: criterion._id,
-                  label: `${criterion.requirement_key} · ${criterion.key || "Tiêu chí"}`,
-                  description: criterion.plain_text || docText(criterion.content_doc),
-                }))}
-                value={form.acceptanceCriterionIds}
-                onChange={(acceptanceCriterionIds) =>
-                  update({
-                    acceptanceCriterionIds,
-                    testConditionIds: retainScopedConditionIds(
-                      form.testConditionIds,
-                      requirementIds,
-                      new Set(
-                        acceptanceCriterionIds.length
-                          ? acceptanceCriterionIds
-                          : selectedCriteria.map((criterion) => criterion._id),
-                      ),
-                    ),
-                  })
-                }
-              />
-            )}
             {form.requirementVersionIds.length > 0 && (
               <RequirementCoverageSelector
                 requirements={requirements}

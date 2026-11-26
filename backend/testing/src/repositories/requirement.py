@@ -253,16 +253,14 @@ class RequirementRepository:
             {"source_id": 1},
         ).to_list(limit)
 
-    async def list_pending_change_targets(
-        self, project_id, version_ids, completed_statuses, limit=20000
-    ):
-        return await database.value.requirement_change_sets.find(
+    async def list_pending_impact_targets(self, project_id, version_ids, limit=20000):
+        return await database.value.requirement_impact_jobs.find(
             {
                 "project_id": project_id,
-                "to_version_id": {"$in": version_ids},
-                "status": {"$nin": completed_statuses},
+                "_id": {"$in": version_ids},
+                "status": {"$in": ["PENDING", "RUNNING"]},
             },
-            {"to_version_id": 1},
+            {"_id": 1},
         ).to_list(limit)
 
     async def find_duplicate_key(self, project_id, requirement_id, requirement_key):

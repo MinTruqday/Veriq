@@ -22,6 +22,15 @@ class RegressionRecommendationRepository:
             query, sort=[("created_at", -1)]
         )
 
+    async def find_by_impact_analysis(self, change_set_id, impact_analysis_id, project_id):
+        return await database.value.regression_recommendations.find_one(
+            {
+                "change_set_id": change_set_id,
+                "impact_analysis_id": impact_analysis_id,
+                "project_id": project_id,
+            }
+        )
+
     async def find_latest_impact_analysis(self, change_set_id):
         return await database.value.impact_analyses.find_one(
             {"change_set_id": change_set_id}, sort=[("created_at", -1)]
@@ -41,6 +50,24 @@ class RegressionRecommendationRepository:
             query,
             {"$set": changes, "$inc": {"revision": 1}},
             return_document=ReturnDocument.AFTER,
+        )
+
+    async def supersede_pending_recommendation(
+        self, recommendation, replacement_analysis_id, timestamp
+    ):
+        return await self.update_recommendation(
+            {
+                "_id": recommendation["_id"],
+                "project_id": recommendation["project_id"],
+                "status": "PENDING_APPROVAL",
+                "revision": recommendation["revision"],
+            },
+            {
+                "status": "SUPERSEDED",
+                "superseded_by_analysis_id": replacement_analysis_id,
+                "superseded_at": timestamp,
+                "updated_at": timestamp,
+            },
         )
 
     async def find_suite(self, suite_id, project_id):

@@ -34,7 +34,7 @@ async def compare_requirement_versions(requirement_id, from_version_id, to_versi
         "from_version": by_id[from_version_id],
         "to_version": by_id[to_version_id],
         "changes": semantic_changes(before, after),
-        "comparison_algorithm_version": 'semantic_diff',
+        "comparison_algorithm_version": "text_diff",
     }
 
 

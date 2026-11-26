@@ -1,6 +1,7 @@
 "use client";
 import { useDateTimeOptions } from "../../hooks/useDateTimeOptions";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import DataTable from "../../components/DataTable";
 import ProjectNotificationsPanel from "../../components/ProjectNotificationsPanel";
 import ProjectAccessPanel from "../../components/ProjectAccessPanel";
@@ -115,6 +116,7 @@ const settingValueLabels = {
 
 export default function SettingsPage({ project, onProjectChange, workspaceView }) {
   const dateTimeOptions = useDateTimeOptions(project);
+  const searchParams = useSearchParams();
   const formatAnalyticsValue = (value, suffix = "", sampleCount) =>
     analyticsValue(value, suffix, sampleCount, dateTimeOptions.locale);
   const formatDate = (value) => formatDateValue(value, dateTimeOptions);
@@ -130,7 +132,9 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
   const [timezoneError, setTimezoneError] = useState("");
   const [projectSaveNotice, setProjectSaveNotice] = useState("");
   const [savingProjectSettings, setSavingProjectSettings] = useState(false);
-  const [activeSettingsSection, setActiveSettingsSection] = useState("project");
+  const [activeSettingsSection, setActiveSettingsSection] = useState(
+    () => searchParams.get("section") || "project",
+  );
   const loadedProjectId = useRef(project._id);
   const settingsLoadRevision = useRef(0);
   const [name, setName] = useState(project.name);

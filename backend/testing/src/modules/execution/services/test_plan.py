@@ -50,12 +50,19 @@ PLAN_SNAPSHOT_FIELDS = (
     'project_id', 'name', 'objective', 'scope_out',
     'requirement_version_ids', 'test_suite_ids', 'test_case_version_ids',
     'test_suite_snapshots', 'environment', 'environment_id',
-    'entry_criteria', 'exit_criteria', 'test_types', 'members',
+    'entry_criteria', 'exit_criteria', 'test_types',
     'strategy_version_id', 'strategy_id', 'strategy_version', 'strategy_snapshot_hash',
     'test_level',
-    'assumptions', 'constraints', 'dependencies', 'estimation', 'schedule',
-    'risk_register', 'communication_plan',
-    'owner_id', 'scenario_ids',
+    'schedule', 'risk_register', 'owner_id',
+)
+PREVIOUS_PLAN_SNAPSHOT_FIELDS = (
+    'project_id', 'name', 'objective', 'scope_out',
+    'requirement_version_ids', 'test_suite_ids', 'test_case_version_ids',
+    'test_suite_snapshots', 'environment', 'environment_id',
+    'entry_criteria', 'exit_criteria', 'test_types', 'members',
+    'strategy_version_id', 'strategy_id', 'strategy_version', 'strategy_snapshot_hash',
+    'test_level', 'assumptions', 'constraints', 'dependencies', 'estimation', 'schedule',
+    'risk_register', 'communication_plan', 'owner_id', 'scenario_ids',
 )
 
 def plan_snapshot(plan):
@@ -64,7 +71,15 @@ def plan_snapshot(plan):
         snapshot["test_period_id"] = plan["test_period_id"]
         if plan.get("test_period_snapshot"):
             snapshot["test_period_snapshot"] = plan["test_period_snapshot"]
-    for field in ("test_techniques",):
+    for field in (
+        "test_techniques",
+        "members",
+        "assumptions",
+        "constraints",
+        "dependencies",
+        "estimation",
+        "communication_plan",
+    ):
         if field in plan:
             snapshot[field] = plan[field]
     if plan.get("carry_over_items"):
@@ -171,6 +186,29 @@ def _prior_plan_snapshot_hash(snapshot):
     )
     return hashlib.sha256(canonical.encode('utf-8')).hexdigest()
 
+def _previous_plan_snapshot_hash(snapshot):
+    canonical_snapshot = {
+        field: snapshot[field]
+        for field in PREVIOUS_PLAN_SNAPSHOT_FIELDS
+        if field in snapshot
+    }
+    if snapshot.get("test_period_id"):
+        canonical_snapshot["test_period_id"] = snapshot["test_period_id"]
+        if snapshot.get("test_period_snapshot"):
+            canonical_snapshot["test_period_snapshot"] = snapshot["test_period_snapshot"]
+    if "test_techniques" in snapshot:
+        canonical_snapshot["test_techniques"] = snapshot["test_techniques"]
+    if snapshot.get("carry_over_items"):
+        canonical_snapshot["carry_over_items"] = snapshot["carry_over_items"]
+    canonical = json.dumps(
+        canonical_snapshot,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
 def verified_approved_plan_snapshot(plan, project_id):
     """Return the immutable approved scope only when its stored digest matches."""
     if not plan or plan.get("status") != "APPROVED":
@@ -185,6 +223,8 @@ def verified_approved_plan_snapshot(plan, project_id):
         digest = plan_snapshot_hash(snapshot)
         if digest != approved_digest:
             digest = _prior_plan_snapshot_hash(snapshot)
+        if digest != approved_digest:
+            digest = _previous_plan_snapshot_hash(snapshot)
     elif all(
         field in snapshot
         for field in ('device_matrix_id', 'device_profile_keys', 'device_matrix_snapshot')
@@ -220,6 +260,7 @@ def plan_completeness(plan):
     checks = [
         ('TEST_PLAN_OBJECTIVE_REQUIRED', bool(str(plan.get('objective') or '').strip())),
         ('TEST_PLAN_REQUIREMENT_SCOPE_REQUIRED', bool(plan.get('requirement_version_ids'))),
+        ('TEST_PLAN_CASE_SCOPE_REQUIRED', bool(plan.get('test_case_version_ids'))),
     ]
     findings = [
         {"code": code, "blocks_approval": True}
@@ -228,26 +269,31 @@ def plan_completeness(plan):
     ]
     return {"ready_for_approval": not findings, "findings": findings}
 
-async def validate_effort_allocation_members(project_id, estimation, session=None):
-    allocation_ids = {
-        item.user_id for item in (estimation.effort_allocations or [])
-    }
-    if not allocation_ids:
-        return
-    members = await project_repository.list_members(project_id, session=session)
-    active_ids = {
-        item.get("user_id")
-        for item in members
-        if item.get("status") == "ACTIVE"
-    }
-    unknown = sorted(allocation_ids - active_ids)
-    if unknown:
-        raise HTTPException(
-            status_code=422,
-            detail={"code": "TEST_PLAN_EFFORT_MEMBER_NOT_ACTIVE", "user_ids": unknown},
-        )
 
-async def validate_plan_links(project_id, owner_id, scenario_ids):
+def plan_definition_completeness(plan):
+    checks = [
+        ('TEST_PLAN_OBJECTIVE_REQUIRED', bool(str(plan.get('objective') or '').strip())),
+        ('TEST_PLAN_REQUIREMENT_SCOPE_REQUIRED', bool(plan.get('requirement_version_ids'))),
+    ]
+    findings = [
+        {"code": code, "blocks_saving": True}
+        for code, passed in checks
+        if not passed
+    ]
+    return {"ready_for_case_design": not findings, "findings": findings}
+
+
+def plan_incomplete_message(findings):
+    codes = {item.get("code") for item in findings}
+    if "TEST_PLAN_OBJECTIVE_REQUIRED" in codes:
+        return "Nhập mục tiêu của kế hoạch kiểm thử."
+    if "TEST_PLAN_REQUIREMENT_SCOPE_REQUIRED" in codes:
+        return "Chọn ít nhất một phiên bản yêu cầu trong phạm vi."
+    if "TEST_PLAN_CASE_SCOPE_REQUIRED" in codes:
+        return "Liên kết ít nhất một phiên bản ca kiểm thử trước khi gửi duyệt."
+    return "Hoàn tất thông tin phạm vi trước khi tiếp tục."
+
+async def validate_plan_owner(project_id, owner_id):
     if owner_id:
         members = await project_repository.list_members(project_id)
         if not any(
@@ -255,12 +301,6 @@ async def validate_plan_links(project_id, owner_id, scenario_ids):
             for member in members
         ):
             raise HTTPException(status_code=422, detail={"code": "TEST_PLAN_OWNER_NOT_ACTIVE"})
-    scenario_ids = list(dict.fromkeys(scenario_ids or []))
-    if scenario_ids and await database.value.test_scenarios.count_documents(
-        {"project_id": project_id, "_id": {"$in": scenario_ids}, "status": {"$ne": "archived"}}
-    ) != len(scenario_ids):
-        raise HTTPException(status_code=422, detail={"code": "INVALID_TEST_PLAN_SCENARIO_SCOPE"})
-    return scenario_ids
 
 
 async def validate_plan_scope(project_id, requirement_version_ids, test_suite_ids, test_case_version_ids):
@@ -345,8 +385,7 @@ async def create_test_plan_record(payload, project_id, user):
         user,
         environment_id=payload.environment_id,
     )
-    scenario_ids = await validate_plan_links(payload.project_id, payload.owner_id, payload.scenario_ids)
-    await validate_effort_allocation_members(payload.project_id, payload.estimation)
+    await validate_plan_owner(payload.project_id, payload.owner_id)
     selected_carry_over = list(payload.carry_over_items)
     if not selected_carry_over and period:
         selected_carry_over = list(period.get("carry_over_items", []))
@@ -362,16 +401,15 @@ async def create_test_plan_record(payload, project_id, user):
         list(dict.fromkeys([*payload.test_case_version_ids, *(item["test_case_version_id"] for item in carry_over_items)])),
     )
     if not payload.save_as_draft:
-        completeness = plan_completeness(payload.model_dump())
-        if not completeness["ready_for_approval"]:
-            raise HTTPException(status_code=422, detail={"code": "TEST_PLAN_INCOMPLETE", "message": "Nhập mục tiêu và liên kết ít nhất một phiên bản yêu cầu trước khi lưu kế hoạch.", **completeness})
+        completeness = plan_definition_completeness({**payload.model_dump(), **scope})
+        if not completeness["ready_for_case_design"]:
+            raise HTTPException(status_code=422, detail={"code": "TEST_PLAN_INCOMPLETE", "message": plan_incomplete_message(completeness["findings"]), **completeness})
     timestamp = now()
     plan = {
         "_id": new_id('TP'),
         **payload.model_dump(exclude={"save_as_draft", "new_test_period"}),
         "test_period_id": period_id,
         "carry_over_items": carry_over_items,
-        "scenario_ids": scenario_ids,
         "test_level": payload.test_level,
         "test_types": payload.test_types,
         **scope,
@@ -447,7 +485,11 @@ async def create_test_plan_record(payload, project_id, user):
                 payload.project_id,
                 session=session,
             )
-    if not payload.save_as_draft and await can_auto_approve_project_content(payload.project_id, user):
+    if (
+        not payload.save_as_draft
+        and plan_completeness(plan)["ready_for_approval"]
+        and await can_auto_approve_project_content(payload.project_id, user)
+    ):
         from src.schemas.contracts.requirements import ReviewTransitionInput
 
         review = ReviewTransitionInput(expected_revision=plan["revision"], review_note="")
@@ -508,6 +550,7 @@ async def update_test_plan_record(plan_id, payload, user):
             raise HTTPException(status_code=409, detail={"code": "TEST_PERIOD_UNAVAILABLE"})
     changes = payload.model_dump(exclude_unset=True)
     changes.pop("expected_revision", None)
+    save_as_draft = changes.pop("save_as_draft", False)
     if "test_period_id" in changes and changes["test_period_id"]:
         period = await database.value.test_periods.find_one(
             {"_id": changes["test_period_id"], "project_id": plan["project_id"]}
@@ -539,10 +582,6 @@ async def update_test_plan_record(plan_id, payload, user):
             *changes.get("test_case_version_ids", plan.get("test_case_version_ids", [])),
             *(item["test_case_version_id"] for item in changes["carry_over_items"]),
         ]))
-    if "estimation" in changes:
-        await validate_effort_allocation_members(
-            plan["project_id"], TestPlanCreate.model_validate({**plan, **changes}).estimation
-        )
     if "environment_id" in changes:
         environment_context = await resolve_execution_context(
             plan["project_id"],
@@ -567,14 +606,21 @@ async def update_test_plan_record(plan_id, payload, user):
             ])),
         )
         changes.update(scope)
-    if {"owner_id", "scenario_ids"} & changes.keys():
-        scenario_ids = await validate_plan_links(
-            plan["project_id"],
-            changes.get("owner_id", plan.get("owner_id")),
-            changes.get("scenario_ids", plan.get("scenario_ids")),
-        )
-        if "scenario_ids" in changes:
-            changes["scenario_ids"] = scenario_ids
+    if not save_as_draft:
+        completeness = plan_definition_completeness({**plan, **changes})
+        if not completeness["ready_for_case_design"]:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "TEST_PLAN_INCOMPLETE",
+                    "message": plan_incomplete_message(completeness["findings"]),
+                    **completeness,
+                },
+            )
+        if plan.get("status") == "DRAFT":
+            changes["status"] = "READY"
+    if "owner_id" in changes:
+        await validate_plan_owner(plan["project_id"], changes["owner_id"])
     validation_data = {}
     for field in TestPlanCreate.model_fields:
         if field in changes:
@@ -582,8 +628,6 @@ async def update_test_plan_record(plan_id, payload, user):
         elif field in plan:
             validation_data[field] = plan[field]
     TestPlanCreate.model_validate(validation_data)
-    if plan.get("status") == 'READY' and not plan_completeness({**plan, **changes})["ready_for_approval"]:
-        raise HTTPException(status_code=422, detail={"code": "TEST_PLAN_INCOMPLETE", "message": "Nhập mục tiêu và liên kết ít nhất một phiên bản yêu cầu trước khi lưu kế hoạch."})
     changes = content_authorship_changes(plan, user, changes)
 
     async with await database.client.start_session() as session:
@@ -614,6 +658,15 @@ async def update_test_plan_record(plan_id, payload, user):
                 plan["project_id"],
                 session=session,
             )
+    if (
+        updated.get("status") == "READY"
+        and plan_completeness(updated)["ready_for_approval"]
+        and await can_auto_approve_project_content(plan["project_id"], user)
+    ):
+        from src.schemas.contracts.requirements import ReviewTransitionInput
+
+        review = ReviewTransitionInput(expected_revision=updated["revision"], review_note="")
+        return await submit_test_plan_record(plan_id, review, user)
     return updated
 
 async def submit_test_plan_record(plan_id, payload, user):
@@ -621,6 +674,16 @@ async def submit_test_plan_record(plan_id, payload, user):
     plan = await get_test_plan_record(plan_id, user, "testplan.submit_review")
     if plan.get("status") not in ('DRAFT', 'READY'):
         raise HTTPException(status_code=409, detail={"code": 'INVALID_STATE_TRANSITION'})
+    completeness = plan_completeness(plan)
+    if not completeness["ready_for_approval"]:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "TEST_PLAN_INCOMPLETE",
+                "message": plan_incomplete_message(completeness["findings"]),
+                **completeness,
+            },
+        )
 
     async with await database.client.start_session() as session:
         async with session.start_transaction():

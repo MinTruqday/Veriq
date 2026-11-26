@@ -263,11 +263,6 @@ class TestDesignRepository:
             }
         ).to_list(len(criterion_ids))
 
-    async def find_scenario(self, scenario_id, project_id):
-        return await database.value.test_scenarios.find_one(
-            {"_id": scenario_id, "project_id": project_id}
-        )
-
     async def find_project_settings(self, project_id):
         project = await database.value.projects.find_one(
             {"_id": project_id}, {"settings": 1}
@@ -284,11 +279,6 @@ class TestDesignRepository:
         return await database.value.test_conditions.find(
             query, {"_id": 1, "status": 1}
         ).to_list(limit)
-
-    async def count_data_set_versions(self, project_id, version_ids):
-        return await database.value.data_set_versions.count_documents(
-            {"project_id": project_id, "_id": {"$in": version_ids}}
-        )
 
     async def insert_case_draft(self, value, session=None):
         await database.value.test_case_drafts.insert_one(
@@ -395,25 +385,6 @@ class TestDesignRepository:
     async def insert_performance_draft(self, value, session=None):
         await database.value.performance_plan_drafts.insert_one(value, session=session)
         return value
-
-    async def insert_scenario(self, value, session=None):
-        await database.value.test_scenarios.insert_one(value, session=session)
-        return value
-
-    async def insert_scenarios(self, values, session=None):
-        if values:
-            await database.value.test_scenarios.insert_many(values, ordered=True, session=session)
-        return values
-
-    async def list_scenarios(self, query, sort_field, direction, limit):
-        return await database.value.test_scenarios.find(query).sort(
-            sort_field, direction
-        ).to_list(limit)
-
-    async def list_scenario_cases(self, project_id, scenario_id, limit=5000):
-        return await database.value.test_cases.find(
-            {"project_id": project_id, "scenario_id": scenario_id}
-        ).sort("test_case_key", 1).to_list(limit)
 
     async def list_acceptance_criteria(self, requirement_version_id, limit=None):
         query = {"requirement_version_id": requirement_version_id}

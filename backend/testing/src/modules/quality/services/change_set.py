@@ -64,11 +64,11 @@ async def mark_previous_traces_stale(change_set):
         if not before_criteria and not after_criteria:
             continue
         before_by_key = {
-            item.get("key"): (item.get("text"), item.get("source_span"))
+            item.get("key"): item.get("text")
             for item in before_criteria
         }
         after_by_key = {
-            item.get("key"): (item.get("text"), item.get("source_span"))
+            item.get("key"): item.get("text")
             for item in after_criteria
         }
         affected_keys = {

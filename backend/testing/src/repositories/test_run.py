@@ -136,15 +136,29 @@ class TestRunRepository:
         )
         return value
 
-    async def touch_run(self, run_id, project_id, updated_at, session=None):
+    async def touch_run(
+        self,
+        run_id,
+        project_id,
+        updated_at,
+        session=None,
+        *,
+        expected_status=None,
+        require_unpaused=False,
+    ):
         query = {"_id": run_id}
         if project_id is not None:
             query["project_id"] = project_id
-        await database.value.test_runs.update_one(
+        if expected_status is not None:
+            query["status"] = expected_status
+        if require_unpaused:
+            query["execution_paused"] = {"$ne": True}
+        result = await database.value.test_runs.update_one(
             query,
             {"$set": {"updated_at": updated_at}, "$inc": {"revision": 1}},
             **({"session": session} if session is not None else {}),
         )
+        return result.matched_count == 1
 
     async def find_execution_update(self, result_id, idempotency_key, session=None):
         return await database.value.test_execution_updates.find_one(
@@ -191,11 +205,19 @@ class TestRunRepository:
             {"_id": project_id}, {"settings": 1}
         )
 
-    async def update_run(self, run_id, changes):
-        await database.value.test_runs.update_one(
-            {"_id": run_id}, {"$set": changes, "$inc": {"revision": 1}}
+    async def update_run(
+        self, run_id, changes, *, expected_revision=None, expected_status=None
+    ):
+        query = {"_id": run_id}
+        if expected_revision is not None:
+            query["revision"] = expected_revision
+        if expected_status is not None:
+            query["status"] = expected_status
+        return await database.value.test_runs.find_one_and_update(
+            query,
+            {"$set": changes, "$inc": {"revision": 1}},
+            return_document=ReturnDocument.AFTER,
         )
-        return await self.find_run(run_id)
 
     async def iter_active_runs_for_members(
         self, user_ids, session=None, exclude_run_id=None, include_drafts=False

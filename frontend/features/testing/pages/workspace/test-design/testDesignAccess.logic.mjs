@@ -12,7 +12,7 @@ export function canUseAssignedDraft(project, artifact, permission) {
       (membership?.status === "ACTIVE" &&
         membership.user_id &&
         artifact?.owner_id === membership.user_id &&
-        ["testcase.update", "testcase.submit_review", "testscenario.update"].includes(permission)),
+        ["testcase.update", "testcase.submit_review"].includes(permission)),
   );
 }
 

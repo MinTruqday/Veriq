@@ -773,6 +773,31 @@ export function messageOf(reason) {
     TEST_RUN_NOT_FOUND: "Không tìm thấy lượt chạy kiểm thử. Tải lại danh sách rồi thử lại.",
     TEST_RUN_SCOPE_EMPTY:
       "Chọn ít nhất một phiên bản ca kiểm thử hoặc một bộ kiểm thử trước khi tạo lượt chạy.",
+    TEST_RUN_ASSIGNMENTS_REQUIRED:
+      "Phân công người thực hiện cho tất cả ca kiểm thử trước khi bắt đầu lượt chạy.",
+    TEST_RUN_ASSIGNEE_UNAVAILABLE:
+      "Người được phân công không còn quyền thực hiện trong dự án. Cập nhật phân công rồi thử lại.",
+    DEFECT_RETEST_CASE_LINK_REQUIRED:
+      "Lỗi chưa liên kết với ca kiểm thử. Hãy liên kết ca trước khi ghi nhận kết quả kiểm thử lại.",
+    DEFECT_RETEST_BASELINE_UNAVAILABLE:
+      "Không xác định được thời điểm chuyển lỗi sang chờ kiểm thử lại. Cần kiểm tra lịch sử lỗi.",
+    DEFECT_RETEST_RESULT_CHANGED:
+      "Kết quả kiểm thử đã thay đổi hoặc không còn thuộc phạm vi ca của lượt chạy. Tải lại rồi chọn kết quả mới.",
+    DEFECT_RETEST_RESULT_NOT_NEW:
+      "Chỉ dùng kết quả được ghi sau khi lỗi chuyển sang chờ kiểm thử lại.",
+    DEFECT_RETEST_RESULT_ALREADY_USED: "Kết quả này đã được dùng để kiểm thử lại lỗi này.",
+    DEFECT_NOT_READY_FOR_RETEST:
+      "Chỉ có thể kiểm thử lại sau khi lỗi được chuyển sang trạng thái chờ kiểm thử lại.",
+    DEFECT_RETEST_SOURCE_RESULT_UNAVAILABLE:
+      "Không tìm thấy kết quả ban đầu của lỗi. Kiểm tra lại liên kết với ca kiểm thử.",
+    DEFECT_RETEST_SOURCE_VERSION_UNAVAILABLE:
+      "Không xác định được ca kiểm thử ban đầu của lỗi. Kiểm tra lại liên kết.",
+    RETEST_RESULT_MUST_BE_NEW:
+      "Chọn kết quả của một lượt chạy mới, không chọn kết quả đã tạo ra lỗi ban đầu.",
+    RETEST_RESULT_MUST_PASS_OR_FAIL: "Kết quả dùng để kiểm thử lại phải là Đạt hoặc Không đạt.",
+    RETEST_CASE_VERSION_MISMATCH: "Kết quả được chọn không thuộc ca kiểm thử đã liên kết với lỗi.",
+    IDEMPOTENCY_REPLAY_ACTOR_MISMATCH:
+      "Mã thao tác này thuộc về người dùng khác. Tải lại dữ liệu trước khi thử lại.",
     EXECUTION_CONFLICT:
       "Kết quả thực thi đã được cập nhật ở nơi khác. Tải lại lượt chạy trước khi ghi kết quả.",
     API_DEFINITION_INVALID:

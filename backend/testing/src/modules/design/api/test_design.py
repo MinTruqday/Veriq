@@ -7,8 +7,6 @@ from src.core.common import (
     get_project_entity,
 )
 from src.schemas.contracts.design import (
-    ScenarioCreate,
-    ScenarioPatch,
     TestCaseDraftBatchComparisonInput,
     TestCaseCloneInput,
     TestCaseLifecycleInput,
@@ -57,17 +55,6 @@ from src.modules.design.services.test_case_generation import (
     generate_test_case_draft_records,
     recommend_test_design_techniques,
 )
-from src.modules.design.services.test_scenario import (
-    archive_test_scenario_record,
-    clone_test_scenario_record,
-    create_test_scenario_draft_batch,
-    create_test_scenario_record,
-    generate_test_scenario_records,
-    get_test_scenario_record,
-    list_test_scenario_records,
-    update_test_scenario_record,
-    transition_test_scenario_record,
-)
 router = APIRouter(prefix="/kiem-thu", tags=["Thiết kế kiểm thử"])
 
 
@@ -98,98 +85,6 @@ async def accept_test_case_draft_group(project_id: str, payload: TestCaseBatchAc
 
     result = await accept_test_case_group(project_id, payload, user)
     return envelope(result, status="DEGRADED" if result.get("derived_pending_version_ids") else "SUCCESS")
-
-
-@router.post("/du-an/{project_id}/kich-ban-kiem-thu", status_code=201)
-async def create_scenario(
-    project_id: str, payload: ScenarioCreate, user: CurrentUser = Depends(get_current_user)
-):
-    return envelope(await create_test_scenario_record(project_id, payload, user), revision=1)
-
-
-@router.post("/du-an/{project_id}/kich-ban-kiem-thu/ban-nhap/lo", status_code=201)
-async def save_generated_scenario_drafts(
-    project_id: str,
-    payload: list[ScenarioCreate],
-    user: CurrentUser = Depends(get_current_user),
-):
-    return envelope(await create_test_scenario_draft_batch(project_id, payload, user))
-
-
-@router.get("/du-an/{project_id}/kich-ban-kiem-thu")
-async def list_scenarios(
-    project_id: str,
-    q: str = Query(default="", max_length=300),
-    status: str = Query(default="", max_length=30),
-    category: str = Query(default="", max_length=50),
-    risk: str = Query(default="", max_length=30),
-    sort: str = Query(default="-updated_at", max_length=80),
-    limit: int = Query(default=100, ge=1, le=500),
-    user: CurrentUser = Depends(get_current_user),
-):
-    return envelope(
-        await list_test_scenario_records(
-            project_id,
-            user,
-            q=q,
-            status=status,
-            category=category,
-            risk=risk,
-            sort=sort,
-            limit=limit,
-        )
-    )
-
-
-@router.get("/kich-ban-kiem-thu/{scenario_id}")
-async def get_test_scenario(scenario_id: str, user: CurrentUser = Depends(get_current_user)):
-    return envelope(await get_test_scenario_record(scenario_id, user))
-
-
-@router.patch("/kich-ban-kiem-thu/{scenario_id}")
-async def update_scenario(
-    scenario_id: str, payload: ScenarioPatch, user: CurrentUser = Depends(get_current_user)
-):
-    updated = await update_test_scenario_record(scenario_id, payload, user)
-    return envelope(updated, revision=updated["revision"])
-
-
-@router.post("/kich-ban-kiem-thu/{scenario_id}/nhan-ban", status_code=201)
-async def clone_scenario(scenario_id: str, user: CurrentUser = Depends(get_current_user)):
-    return envelope(await clone_test_scenario_record(scenario_id, user), revision=1)
-
-
-@router.post("/kich-ban-kiem-thu/{scenario_id}/gui-ra-soat")
-async def submit_scenario(scenario_id: str, payload: ReviewTransitionInput, user: CurrentUser = Depends(get_current_user)):
-    result = await transition_test_scenario_record(scenario_id, payload, user, 'submit')
-    return envelope(result, revision=result['revision'])
-
-
-@router.post("/kich-ban-kiem-thu/{scenario_id}/phe-duyet")
-async def approve_scenario(scenario_id: str, payload: ReviewTransitionInput, user: CurrentUser = Depends(get_current_user)):
-    result = await transition_test_scenario_record(scenario_id, payload, user, 'approve')
-    return envelope(result, revision=result['revision'])
-
-
-@router.post("/kich-ban-kiem-thu/{scenario_id}/yeu-cau-chinh-sua")
-async def revise_scenario(scenario_id: str, payload: ReviewTransitionInput, user: CurrentUser = Depends(get_current_user)):
-    result = await transition_test_scenario_record(scenario_id, payload, user, 'revise')
-    return envelope(result, revision=result['revision'])
-
-
-@router.post("/kich-ban-kiem-thu/{scenario_id}/luu-tru")
-async def archive_scenario(
-    scenario_id: str, payload: ProjectArchiveInput, user: CurrentUser = Depends(get_current_user)
-):
-    updated = await archive_test_scenario_record(scenario_id, payload, user)
-    return envelope(updated, revision=updated["revision"])
-
-
-@router.post("/phien-ban-yeu-cau/{version_id}/ai/sinh-kich-ban", status_code=201)
-async def generate_scenarios(
-    version_id: str, payload: GenerateInput, user: CurrentUser = Depends(get_current_user)
-):
-    return envelope(await generate_test_scenario_records(version_id, payload, user))
 
 
 @router.post("/du-an/{project_id}/ca-kiem-thu", status_code=201)

@@ -43,8 +43,6 @@ import { docText, formatDate as formatDateValue, messageOf, valueLabel } from ".
 import { useDateTimeOptions } from "../../hooks/useDateTimeOptions";
 import { PROJECT_SECTION_SLUGS, projectRoute } from "../../routes";
 import ApiArtifactsPanel from "./test-design/ApiArtifactsPanel";
-import DataSetsPanel from "./test-design/DataSetsPanel";
-import ScenariosPanel from "./test-design/ScenariosPanel";
 import TestCaseCreateForm from "./test-design/TestCaseCreateForm";
 import RequirementCoverageSelector from "./test-design/RequirementCoverageSelector";
 import TestSetEditorModal from "./test-design/TestSetEditorModal";
@@ -63,9 +61,6 @@ import {
 import TestCaseTransferPanel from "./test-design/TestCaseTransferPanel";
 import { canUseAssignedDraft, testDesignAccess } from "./test-design/testDesignAccess.logic.mjs";
 import {
-  createDataSetForm,
-  createScenarioForm,
-  scenarioPayload,
   createTestCaseForm,
   testDataEntriesToObject,
   normalizeTestCaseVersionForDisplay,
@@ -108,10 +103,12 @@ export default function TestDesignPage({ project, workspaceView, section }) {
   const creatingCase = workspaceView === "cases" && section?.[0] === "tao-moi";
   const searchParams = useSearchParams();
   const linkedCaseId = searchParams.get("case") || "";
+  const returnTestPlanId = searchParams.get("returnTestPlanId") || "";
+  const returnToPlanPath = returnTestPlanId
+    ? `${projectRoute(project._id, PROJECT_SECTION_SLUGS.testPlans)}/${encodeURIComponent(returnTestPlanId)}/chinh-sua`
+    : "";
   const [requirements, setRequirements] = useState([]);
   const [testConditions, setTestConditions] = useState([]);
-  const [scenarios, setScenarios] = useState([]);
-  const [dataSets, setDataSets] = useState([]);
   const [drafts, setDrafts] = useState([]);
   const [tests, setTests] = useState([]);
   const [suites, setSuites] = useState([]);
@@ -130,13 +127,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
     suite_id: "",
     stale_status: "",
     automation_status: "",
-    sort: "-updated_at",
-  });
-  const [scenarioFilters, setScenarioFilters] = useState({
-    q: "",
-    category: "",
-    risk: "",
-    status: "",
     sort: "-updated_at",
   });
   const [aiRuns, setAIRuns] = useState([]);
@@ -179,27 +169,21 @@ export default function TestDesignPage({ project, workspaceView, section }) {
   const draftSavesInFlight = useRef(new Set());
   const loadedDraft = useRef("");
   const [testLint, setTestLint] = useState(null);
-  const [scenarioForm, setScenarioForm] = useState(createScenarioForm);
-  const [dataSetForm, setDataSetForm] = useState(createDataSetForm);
   const [form, setForm] = useState(createTestCaseForm);
   const [error, setError] = useState("");
   const [initialLoading, setInitialLoading] = useState(true);
   const [initialLoadFailed, setInitialLoadFailed] = useState(false);
   const initialDataLoaded = useRef(false);
+  const prefilledPlanRequirements = useRef("");
   const loadedProjectId = useRef(project._id);
   const loadSequence = useRef(0);
   const currentProjectId = useRef(project._id);
   currentProjectId.current = project._id;
-  const [creatingScenario, setCreatingScenario] = useState(false);
-  const [creatingDataSet, setCreatingDataSet] = useState(false);
   const [savingCreation, setSavingCreation] = useState(false);
   const creationInFlight = useRef(new Set());
   const testImportPanelRef = useRef(null);
   const can = (permission) => project.current_permissions?.includes(permission);
   const canDraft = (permission, draft) => canUseAssignedDraft(project, draft, permission);
-  const assignedScenarios = scenarios.filter(
-    (scenario) => scenario.owner_id === currentUserId && scenario.status !== "archived",
-  );
   const canCreateUnassignedCase = can("testcase.create");
   const canCreateCase = canCreateUnassignedCase;
   const permissions = useMemo(
@@ -209,7 +193,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
   const caseTabFromPath = pathname.split("/ca-kiem-thu/")[1]?.split("/")[0];
   const requestedCaseTab =
     {
-      "kich-ban": "scenarios",
       mau: "templates",
       "tu-dong-hoa": "automation",
       api: "api",
@@ -222,13 +205,11 @@ export default function TestDesignPage({ project, workspaceView, section }) {
   const showCases = access.showCases;
   const showAIRuns = isCaseWorkspace && caseTab === "agent-runs";
   const designSectionItems = useMemo(() => testDesignSectionItems(project._id), [project._id]);
-  const showScenarios = isCaseWorkspace && caseTab === "scenarios";
   const showTemplates = isCaseWorkspace && caseTab === "templates";
   const showAutomation = isCaseWorkspace && caseTab === "automation";
   const showApi = isCaseWorkspace && caseTab === "api";
   const showImport = access.showImport;
   const canReadTestCases = access.canReadTestCases;
-  const canReadTestData = project.current_permissions?.includes("testdata.read");
   const load = useCallback(async () => {
     const requestProjectId = project._id;
     if (requestProjectId !== currentProjectId.current) return false;
@@ -239,17 +220,11 @@ export default function TestDesignPage({ project, workspaceView, section }) {
       pendingGroupRequest.current = null;
       setTestImport(null);
       setTestSetDialog(null);
-      setCreatingScenario(false);
-      setCreatingDataSet(false);
       setSavingCreation(false);
       setForm(createTestCaseForm());
-      setScenarioForm(createScenarioForm());
-      setDataSetForm(createDataSetForm());
       setApiImport({ filename: "openapi.json", format: "openapi", content: "" });
       setRequirements([]);
       setTestConditions([]);
-      setScenarios([]);
-      setDataSets([]);
       setDrafts([]);
       setTests([]);
       setSuites([]);
@@ -283,8 +258,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
       const [
         requirementValues,
         testConditionValues,
-        scenarioValues,
-        dataSetValues,
         draftValues,
         testValues,
         suiteValues,
@@ -292,8 +265,7 @@ export default function TestDesignPage({ project, workspaceView, section }) {
         operationValues,
         memberResult,
       ] = await Promise.all([
-        (showCases || showAIRuns || showScenarios || workspaceView === "test-data") &&
-        permissions.includes("requirement.read")
+        (showCases || showAIRuns) && permissions.includes("requirement.read")
           ? testingApi
               .listRequirements(project._id, {
                 page_size: 500,
@@ -301,15 +273,9 @@ export default function TestDesignPage({ project, workspaceView, section }) {
               })
               .then((items) => items.filter((item) => ["READY", "BASELINED"].includes(item.status)))
           : Promise.resolve([]),
-        (showCases || showScenarios) && permissions.includes("testcondition.read")
+        showCases && permissions.includes("testcondition.read")
           ? testingApi.listTestConditions(project._id, { status: "APPROVED", page_size: 200 })
           : Promise.resolve({ items: [] }),
-        (showScenarios || showCases) && permissions.includes("testscenario.read")
-          ? testingApi.listScenarios(project._id, scenarioFilters)
-          : Promise.resolve([]),
-        (showCases || workspaceView === "test-data") && canReadTestData
-          ? testingApi.listDataSets(project._id)
-          : Promise.resolve([]),
         access.canLoadDrafts ? testingApi.listTestDrafts(project._id) : Promise.resolve([]),
         access.canLoadTestCases
           ? testingApi.listTestCasePage(project._id, {
@@ -327,7 +293,7 @@ export default function TestDesignPage({ project, workspaceView, section }) {
         showApi && permissions.includes("apiartifact.read")
           ? testingApi.listApiOperations(project._id)
           : Promise.resolve([]),
-        (showCases || showScenarios) && permissions.includes("project.members.read")
+        showCases && permissions.includes("project.members.read")
           ? testingApi
               .listMembers(project._id)
               .then((items) => ({ items: items || [], unavailable: false }))
@@ -342,8 +308,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
       }
       setRequirements(requirementValues);
       setTestConditions(testConditionValues.items || []);
-      setScenarios(scenarioValues);
-      setDataSets(dataSetValues);
       setDrafts(draftValues);
       setSelectedApprovalDraftIds((current) => {
         const eligible = new Set(
@@ -393,16 +357,13 @@ export default function TestDesignPage({ project, workspaceView, section }) {
   }, [
     access.canLoadDrafts,
     access.canLoadTestCases,
-    canReadTestData,
     initialDataLoaded,
     loadedProjectId,
     permissions,
     project._id,
-    scenarioFilters,
     showAIRuns,
     showApi,
     showCases,
-    showScenarios,
     testFilters,
     testPage,
     testPageSize,
@@ -411,6 +372,22 @@ export default function TestDesignPage({ project, workspaceView, section }) {
   useEffect(() => {
     void load();
   }, [load]);
+  useEffect(() => {
+    const requestedIds = [...new Set(searchParams.getAll("requirementVersionId"))];
+    if (!creatingCase || !requestedIds.length || !requirements.length) return;
+    const validIds = requestedIds.filter((id) =>
+      requirements.some((item) => item.current_version_id === id),
+    );
+    if (!validIds.length) return;
+    const key = `${project._id}:${returnTestPlanId}:${validIds.join("|")}`;
+    if (prefilledPlanRequirements.current === key) return;
+    prefilledPlanRequirements.current = key;
+    setForm((current) =>
+      current.requirementVersionIds.length
+        ? current
+        : { ...current, requirementVersionIds: validIds },
+    );
+  }, [creatingCase, project._id, requirements, returnTestPlanId, searchParams]);
   useEffect(() => {
     if (!linkedCaseId || !showCases || !canReadTestCases) return;
     let active = true;
@@ -505,7 +482,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
       test_level: selectedDraft.test_level || "",
       test_kind: selectedDraft.test_kind || "",
       durationMinutes: selectedDraft.duration_minutes || "",
-      scenarioId: selectedDraft.scenario_id || "",
       requirementVersionIds: selectedDraft.requirement_version_ids || [],
       acceptanceCriterionIds: selectedDraft.acceptance_criterion_ids || [],
       coverageItemIds: selectedDraft.coverage_item_ids || [],
@@ -534,7 +510,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
       ownerId: selectedDraft.owner_id || "",
       automationStatus: selectedDraft.automation_status || "manual",
       attachments: selectedDraft.attachments || [],
-      dataSetVersionIds: selectedDraft.data_set_version_ids || [],
       testConditionIds: selectedDraft.test_condition_ids || [],
     });
     setDraftDirty(false);
@@ -589,6 +564,11 @@ export default function TestDesignPage({ project, workspaceView, section }) {
   };
   const create = (event) => {
     const saveAsDraft = event.nativeEvent.submitter?.value === "draft";
+    if (!saveAsDraft && !form.requirementVersionIds.length && !form.acceptanceCriterionIds.length) {
+      event.preventDefault();
+      setError("Liên kết ca kiểm thử với ít nhất một yêu cầu trước khi lưu chính.");
+      return;
+    }
     return submitCreation(event, async () => {
       await testingApi.createTestDraft(project._id, {
         save_as_draft: saveAsDraft,
@@ -629,7 +609,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
           .filter(Boolean),
         automation_status: form.automationStatus,
         attachments: [],
-        data_set_version_ids: form.dataSetVersionIds,
         test_condition_ids: form.testConditionIds,
         requirement_version_ids: form.requirementVersionIds,
         acceptance_criterion_ids: form.acceptanceCriterionIds,
@@ -650,30 +629,13 @@ export default function TestDesignPage({ project, workspaceView, section }) {
             : null,
       });
       setForm(createTestCaseForm());
-      router.replace(caseListPath);
+      router.replace(
+        returnTestPlanId
+          ? `${caseListPath}?returnTestPlanId=${encodeURIComponent(returnTestPlanId)}`
+          : caseListPath,
+      );
     });
   };
-  const createScenario = (event) =>
-    submitCreation(event, async () => {
-      await testingApi.createScenario(project._id, {
-        ...scenarioPayload(scenarioForm),
-        status: "draft",
-        origin: "manual",
-      });
-      setScenarioForm(createScenarioForm());
-      setCreatingScenario(false);
-    });
-  const createDataSet = (event) =>
-    submitCreation(event, async () => {
-      await testingApi.createDataSet(project._id, {
-        name: dataSetForm.name,
-        variables: dataSetForm.variables || {},
-        secret_refs: dataSetForm.secretRefs || {},
-        source_requirement_version_ids: dataSetForm.sourceRequirementVersionIds || [],
-      });
-      setDataSetForm(createDataSetForm());
-      setCreatingDataSet(false);
-    });
   const createTestSet = async () => {
     setTestSetDialog({ mode: "create", suite: null });
   };
@@ -1052,17 +1014,14 @@ export default function TestDesignPage({ project, workspaceView, section }) {
       ? {
           cases: "Ca kiểm thử",
           "agent-runs": "Hoạt động AI",
-          scenarios: "Kịch bản kiểm thử",
           templates: "Mẫu ca kiểm thử",
           automation: "Mã kiểm thử tự động",
           api: "Tích hợp API",
           import: "Nhập và xuất ca kiểm thử",
         }[caseTab]
-      : workspaceView === "test-data"
-        ? "Dữ liệu kiểm thử"
-        : workspaceView === "test-sets"
-          ? "Bộ kiểm thử"
-          : "Thiết kế kiểm thử";
+      : workspaceView === "test-sets"
+        ? "Bộ kiểm thử"
+        : "Thiết kế kiểm thử";
   if (initialLoading || initialLoadFailed) {
     return (
       <WorkspacePage title={pageTitle} actions={<ProjectCrumb projectId={project._id} />}>
@@ -1094,10 +1053,10 @@ export default function TestDesignPage({ project, workspaceView, section }) {
             <button
               className="secondary-button"
               type="button"
-              onClick={() => router.push(caseListPath)}
+              onClick={() => router.push(returnToPlanPath || caseListPath)}
               disabled={savingCreation}
             >
-              Hủy
+              {returnTestPlanId ? "Quay lại kế hoạch" : "Hủy"}
             </button>
             <button
               className="secondary-button"
@@ -1269,6 +1228,20 @@ export default function TestDesignPage({ project, workspaceView, section }) {
       }
     >
       {error && <ErrorState message={error} />}
+      {!creatingCase && returnToPlanPath && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-border bg-surface p-4">
+          <p className="text-sm text-ink-muted">
+            Ca đã lưu. Duyệt ca nếu cần, sau đó thêm ca đã duyệt vào phạm vi kế hoạch.
+          </p>
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => router.push(returnToPlanPath)}
+          >
+            Quay lại kế hoạch
+          </button>
+        </div>
+      )}
       {linkedCaseId && selectedCaseLoading && <LoadingState label="Đang tải ca kiểm thử" />}
       {!linkedCaseId && (
         <div className="lg:hidden">
@@ -1276,7 +1249,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
             current={
               {
                 cases: "test-cases",
-                "test-data": "test-data",
                 "test-sets": "test-sets",
               }[workspaceView] || "test-cases"
             }
@@ -1549,13 +1521,11 @@ export default function TestDesignPage({ project, workspaceView, section }) {
         <TestCaseTemplatesPanel project={project} />
       )}
       {showAutomation && <AutomationScriptsPanel project={project} />}
-      {((showScenarios && can("ai.generate_scenario") && can("testscenario.create")) ||
-        (showCases && !linkedCaseId && can("ai.generate_testcase") && can("testcase.create"))) && (
+      {showCases && !linkedCaseId && can("ai.generate_testcase") && can("testcase.create") && (
         <ManualTestGenerationPanel
-          key={`${project._id}:${showScenarios ? "scenarios" : "cases"}`}
+          key={`${project._id}:cases`}
           projectId={project._id}
           requirements={requirements}
-          mode={showScenarios ? "scenarios" : "cases"}
           onSaved={load}
         />
       )}
@@ -2874,18 +2844,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
                         onChange={(event) => changeDraftEdit({ preconditions: event.target.value })}
                       />
                     </label>
-                    {draftEdit.dataSetVersionIds.length > 0 && (
-                      <MultiSelect
-                        label="Phiên bản bộ dữ liệu tham số"
-                        options={dataSets.map((item) => ({
-                          value: item.current_version_id,
-                          label: `${item.name} v${item.current_version?.version}`,
-                        }))}
-                        searchPlaceholder="Tìm bộ dữ liệu"
-                        value={draftEdit.dataSetVersionIds}
-                        onChange={(dataSetVersionIds) => changeDraftEdit({ dataSetVersionIds })}
-                      />
-                    )}
                     <MultiSelect
                       showSearch={false}
                       label="Điều kiện kiểm thử đã phê duyệt"
@@ -3195,48 +3153,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
           suite={testSetDialog.suite}
           onClose={() => setTestSetDialog(null)}
           onSubmit={saveTestSet}
-        />
-      )}
-      {showScenarios && (
-        <ScenariosPanel
-          can={can}
-          scenarios={scenarios}
-          filters={scenarioFilters}
-          setFilters={setScenarioFilters}
-          isCreating={creatingScenario}
-          setCreating={setCreatingScenario}
-          saving={savingCreation}
-          form={scenarioForm}
-          setForm={setScenarioForm}
-          testConditions={testConditions}
-          onSubmit={createScenario}
-          requirements={requirements}
-          members={projectMembers}
-          canReview={can("testscenario.review")}
-          canEdit={(scenario) => canDraft("testscenario.update", scenario)}
-          canAssignOwner={can("project.members.read")}
-          canReadTestConditions={permissions.includes("testcondition.read")}
-          ask={ask}
-          reload={load}
-          onError={setError}
-        />
-      )}
-      {workspaceView === "test-data" && (
-        <DataSetsPanel
-          projectId={project._id}
-          requirements={requirements}
-          can={can}
-          canRead={canReadTestData}
-          items={dataSets}
-          isCreating={creatingDataSet}
-          setCreating={setCreatingDataSet}
-          saving={savingCreation}
-          form={dataSetForm}
-          setForm={setDataSetForm}
-          onSubmit={createDataSet}
-          ask={ask}
-          reload={load}
-          onError={setError}
         />
       )}
       {workspaceView === "test-sets" && access.canReadTestSets && (

@@ -6,7 +6,7 @@ from src.repositories.common import common_repository
 
 async def require_defect_editor_assignment(defect, user, allowed_unassigned_permissions=()):
     project = await common_repository.find_project(
-        defect["project_id"], {"settings": 1, "project_owner_user_id": 1}
+        defect["project_id"], {"settings": 1, "project_lead_user_id": 1}
     )
     membership = await common_repository.find_membership(
         defect["project_id"], user.id, status="ACTIVE"

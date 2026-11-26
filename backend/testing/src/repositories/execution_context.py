@@ -160,11 +160,18 @@ class ExecutionContextRepository:
         await database.value.builds.insert_one(value)
         return value
 
-    async def set_current_build(self, project_id, build_id):
-        return await database.value.builds.update_many(
+    async def set_current_build(self, project_id, build_id, session=None):
+        await database.value.builds.update_many(
             {"project_id": project_id, "_id": {"$ne": build_id}},
             {"$set": {"is_current": False}},
+            **({"session": session} if session is not None else {}),
         )
+        result = await database.value.builds.update_one(
+            {"project_id": project_id, "_id": build_id, "status": "ACTIVE"},
+            {"$set": {"is_current": True}},
+            **({"session": session} if session is not None else {}),
+        )
+        return result.matched_count == 1
 
     async def list_active_environments(self, project_id, archived_status, limit=500):
         return await database.value.test_environments.find(

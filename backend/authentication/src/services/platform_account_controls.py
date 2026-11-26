@@ -12,7 +12,7 @@ from src.schemas.platform import (
     BulkUserPreviewRequest,
     UserDeleteRequest,
 )
-from src.services.platform import account_or_404, protect_last_admin, record_audit
+from src.services.platform import account_or_404, record_audit
 from src.services.session import SessionService
 
 class PlatformAccountControlService:
@@ -38,13 +38,11 @@ class PlatformAccountControlService:
             raise HTTPException(
                 status_code=422, detail="Không thể tự xóa tài khoản quản trị hiện tại"
             )
-        await protect_last_admin(account, desired_active=False)
         timestamp = datetime.now(timezone.utc)
         digest = hashlib.sha256(f"{user_id}:{timestamp.isoformat()}".encode()).hexdigest()[:24]
-        await IdentityRepository.update_auth_credential(
-            {"_id": user_id},
+        updated = await IdentityRepository.update_account_with_admin_guard(
+            user_id,
             {
-                "$set": {
                     "email": f"deleted-{digest}@invalid.local",
                     "slug": f"deleted-{digest}",
                     "full_name": "Tài khoản đã xóa",
@@ -55,9 +53,14 @@ class PlatformAccountControlService:
                     "deleted_at": timestamp,
                     "deleted_by": current_user.id,
                     "updated_at": timestamp,
+                    "anonymized_fields": True,
                 },
-                "$unset": {field: "" for field in ("password_hash", "bio", "avatar_url", "social_links", "donation_link")},
-            },
+        )
+        if not updated:
+            raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản")
+        await IdentityRepository.update_auth_credential(
+            {"_id": user_id},
+            {"$unset": {field: "" for field in ("password_hash", "bio", "avatar_url", "social_links", "donation_link")}},
         )
         await IdentityRepository.revoke_all_sessions(user_id)
         await record_audit(
@@ -111,19 +114,12 @@ class PlatformAccountControlService:
         user_ids = [item for item in operation["user_ids"] if item != current_user.id]
         affected = 0
         if operation["action"] == "DISABLE":
-            accounts = await IdentityRepository.find_auth_credentials(
-                {"_id": {"$in": user_ids}}, limit=len(user_ids)
-            )
-            for account in accounts:
-                await protect_last_admin(account, desired_active=False)
-            result = await IdentityRepository.update_auth_credentials(
-                {"_id": {"$in": user_ids}},
+            result = await IdentityRepository.update_accounts_with_admin_guard(
+                user_ids,
                 {
-                    "$set": {
-                        "is_active": False,
-                        "account_status": "DISABLED",
-                        "updated_at": datetime.now(timezone.utc),
-                    }
+                    "is_active": False,
+                    "account_status": "DISABLED",
+                    "updated_at": datetime.now(timezone.utc),
                 },
             )
             affected = result.modified_count

@@ -22,9 +22,6 @@ from src.modules.design.services.test_case_records import (
 from src.core.project_settings import resolve_testcase_duplicate_threshold
 from src.schemas.contracts.design import TestCaseFreezeInput
 
-def trace_is_missing_for_approval(draft, project_settings):
-    return not draft.get("requirement_version_ids")
-
 async def lint_test_case_draft_record(draft_id, user, project_id=None):
     draft = await require_assigned_design_draft('test_case_drafts', draft_id, user, 'testcase.lint')
     if project_id is not None and draft["project_id"] != project_id:
@@ -217,14 +214,6 @@ async def approve_test_case_draft_record(draft_id, payload, user):
         raise HTTPException(status_code=409, detail={"code": "TEST_CASE_STEPS_REQUIRED", "message": "Cần bổ sung hành động và kết quả mong đợi cho từng bước trước khi phê duyệt"})
     findings = lint_test_case(draft)
     project_settings = await test_design_repository.find_project_settings(draft["project_id"])
-    if trace_is_missing_for_approval(draft, project_settings):
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "code": "TEST_CASE_TRACE_REQUIRED",
-                "message": "Liên kết ít nhất một phiên bản Requirement trước khi duyệt ca kiểm thử.",
-            },
-        )
     lint_blocking = project_settings.get(
         'testcase_lint_blocking', True
     )
@@ -543,12 +532,10 @@ def build_test_case_version(draft, test_case_id, version_number, parent_version_
         "techniques": draft.get("techniques", []),
         "automation_status": draft["automation_status"],
         "attachments": draft.get("attachments", []),
-        "data_set_version_ids": draft.get("data_set_version_ids", []),
         "requirement_version_ids": draft["requirement_version_ids"],
         "acceptance_criterion_ids": draft["acceptance_criterion_ids"],
         "coverage_item_ids": draft.get("coverage_item_ids", []),
         "test_condition_ids": draft.get("test_condition_ids", []),
-        "scenario_id": draft.get("scenario_id"),
         "bdd": draft.get("bdd"),
         "ai_proposal_snapshot": draft.get("ai_proposal_snapshot"),
         "origin": draft.get("origin", "manual"),

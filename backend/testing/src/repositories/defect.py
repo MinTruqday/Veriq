@@ -95,6 +95,23 @@ class DefectRepository:
             session=session,
         )
 
+    async def set_retest_source(
+        self, defect_id, project_id, revision, changes, updated_at, session=None
+    ):
+        return await database.value.defects.find_one_and_update(
+            {
+                "_id": defect_id,
+                "project_id": project_id,
+                "revision": revision,
+            },
+            {
+                "$set": {**changes, "updated_at": updated_at},
+                "$inc": {"revision": 1},
+            },
+            return_document=ReturnDocument.AFTER,
+            **({"session": session} if session is not None else {}),
+        )
+
     async def insert_defect(self, value, session=None):
         await database.value.defects.insert_one(
             value, **({"session": session} if session is not None else {})
@@ -200,9 +217,10 @@ class DefectRepository:
             {"defect_id": defect_id, "idempotency_key": idempotency_key}
         )
 
-    async def find_defect(self, defect_id, project_id):
+    async def find_defect(self, defect_id, project_id, session=None):
         return await database.value.defects.find_one(
-            {"_id": defect_id, "project_id": project_id}
+            {"_id": defect_id, "project_id": project_id},
+            **({"session": session} if session is not None else {}),
         )
 
     async def insert_retest(self, value, session=None):
@@ -210,6 +228,39 @@ class DefectRepository:
             value, **({"session": session} if session is not None else {})
         )
         return value
+
+    async def claim_retest_result(
+        self,
+        result_id,
+        project_id,
+        run_id,
+        test_case_version_id,
+        status,
+        revision,
+        ready_after,
+        defect_id,
+        updated_at,
+        session=None,
+    ):
+        return await database.value.test_results.find_one_and_update(
+            {
+                "_id": result_id,
+                "project_id": project_id,
+                "test_run_id": run_id,
+                "test_case_version_id": test_case_version_id,
+                "status": status,
+                "revision": revision,
+                "completed_at": {"$gt": ready_after},
+                "retested_defect_ids": {"$ne": defect_id},
+            },
+            {
+                "$addToSet": {"retested_defect_ids": defect_id},
+                "$set": {"updated_at": updated_at},
+                "$inc": {"revision": 1},
+            },
+            return_document=ReturnDocument.AFTER,
+            **({"session": session} if session is not None else {}),
+        )
 
     async def apply_retest(
         self,

@@ -22,11 +22,13 @@ async def create_test_suite_record(payload, project_id, user):
     if project_id and project_id != payload.project_id:
         raise HTTPException(status_code=422, detail={"code": 'PROJECT_SCOPE_MISMATCH'})
     await get_project(payload.project_id, user, "testsuite.create")
-    await validate_test_versions(payload.project_id, payload.test_case_version_ids)
+    version_ids = list(dict.fromkeys(payload.test_case_version_ids))
+    await validate_test_versions(payload.project_id, version_ids)
     timestamp = now()
     suite = {
         "_id": new_id('TSU'),
         **payload.model_dump(),
+        "test_case_version_ids": version_ids,
         "status": 'ACTIVE',
         "revision": 1,
         "created_by": user.id,
@@ -68,14 +70,17 @@ async def update_test_suite_record(suite_id, payload, user):
     suite = await get_test_suite_record(suite_id, user, "testsuite.update")
     if suite.get("status", 'ACTIVE') == 'ARCHIVED':
         raise HTTPException(status_code=409, detail={"code": 'TEST_SUITE_ARCHIVED'})
+    changes = payload.model_dump()
     if payload.test_case_version_ids is not None:
-        await validate_test_versions(suite["project_id"], payload.test_case_version_ids)
+        version_ids = list(dict.fromkeys(payload.test_case_version_ids))
+        await validate_test_versions(suite["project_id"], version_ids)
+        changes["test_case_version_ids"] = version_ids
     updated = await optimistic_patch(
         "test_suites",
         suite_id,
         suite["project_id"],
         payload.expected_revision,
-        payload.model_dump(),
+        changes,
     )
     await audit(user.id, "test_suite_updated", "TestSuite", suite_id, suite["project_id"])
     return updated

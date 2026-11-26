@@ -116,7 +116,7 @@ async def _analyze(job):
         if error.status_code != 403:
             raise
         can_read_plans = False
-    fields = ("objective", "scope_in", "scope_out", "test_types", "test_techniques", "test_level", "test_approach", "environment", "environment_notes", "test_data_notes", "entry_criteria", "exit_criteria", "schedule", "estimation", "risk_register")
+    fields = ("objective", "scope_in", "scope_out", "test_types", "test_level", "test_approach", "environment", "environment_notes", "test_data_notes", "entry_criteria", "exit_criteria", "schedule", "risk_register")
     if can_read_plans:
         for plan in plans:
             content = json.dumps({key: plan[key] for key in fields if plan.get(key)}, ensure_ascii=False, sort_keys=True, default=str)

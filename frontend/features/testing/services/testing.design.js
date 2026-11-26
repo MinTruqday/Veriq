@@ -377,45 +377,6 @@ export const designTestingApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
-  listScenarios: (id, query = "") => {
-    const value = listQuery(query);
-    return testingRequest(`/du-an/${id}/kich-ban-kiem-thu${value ? `?${value}` : ""}`);
-  },
-  listDataSets: (id, query = "") =>
-    testingRequest(
-      `/du-an/${id}/du-lieu-kiem-thu${query ? `?q=${encodeURIComponent(query)}` : ""}`,
-    ),
-  createDataSet: (id, payload) =>
-    testingRequest(`/du-an/${id}/du-lieu-kiem-thu`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  suggestTestData: (projectId, payload) =>
-    testingStreamRequest(`/du-an/${projectId}/du-lieu-kiem-thu/ai/de-xuat`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  listDataSetVersions: (id) => testingRequest(`/du-lieu-kiem-thu/${id}/phien-ban`),
-  createDataSetVersion: (id, payload) =>
-    testingRequest(`/du-lieu-kiem-thu/${id}/phien-ban`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  bindDataSet: (projectId, dataSetId, payload) =>
-    testingRequest(`/du-an/${projectId}/du-lieu-kiem-thu/${dataSetId}/gan-ca-kiem-thu`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  previewDataSet: (projectId, dataSetId, payload) =>
-    testingRequest(`/du-an/${projectId}/du-lieu-kiem-thu/${dataSetId}/xem-truoc`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  archiveDataSet: (projectId, dataSetId, payload) =>
-    testingRequest(`/du-an/${projectId}/du-lieu-kiem-thu/${dataSetId}/luu-tru`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
   listTestCaseTemplates: (projectId, templateType = "") =>
     testingRequest(
       `/du-an/${projectId}/mau-ca-kiem-thu${templateType ? `?template_type=${encodeURIComponent(templateType)}` : ""}`,
@@ -433,35 +394,6 @@ export const designTestingApi = {
     }),
   archiveTestCaseTemplate: (templateId, payload) =>
     testingRequest(`/mau-ca-kiem-thu/${templateId}/luu-tru`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  createScenario: (id, payload) =>
-    testingRequest(`/du-an/${id}/kich-ban-kiem-thu`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  createGeneratedScenarioDrafts: (id, payload) =>
-    testingRequest(`/du-an/${id}/kich-ban-kiem-thu/ban-nhap/lo`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  getScenario: (id) => testingRequest(`/kich-ban-kiem-thu/${id}`),
-  transitionScenario: (id, action, payload) =>
-    testingRequest(`/kich-ban-kiem-thu/${id}/${action}`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  updateScenario: (id, payload) =>
-    testingRequest(`/kich-ban-kiem-thu/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
-  cloneScenario: (id) => testingRequest(`/kich-ban-kiem-thu/${id}/nhan-ban`, { method: "POST" }),
-  archiveScenario: (id, payload) =>
-    testingRequest(`/kich-ban-kiem-thu/${id}/luu-tru`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  generateScenarios: (versionId, payload) =>
-    testingStreamRequest(`/phien-ban-yeu-cau/${versionId}/ai/sinh-kich-ban`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),
@@ -624,56 +556,6 @@ export const designTestingApi = {
       method: "POST",
       body: JSON.stringify({ reason }),
     }),
-  listChangeSets: (id, query = "") => {
-    const value = listQuery(query);
-    return testingRequest(`/du-an/${id}/bo-thay-doi${value ? `?${value}` : ""}`);
-  },
-  createChangeSet: (requirementId, payload) =>
-    testingRequest(`/yeu-cau/${requirementId}/bo-thay-doi`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  getChangeSet: (id) => testingRequest(`/bo-thay-doi/${id}`),
-  reviewChangeSet: (id, payload) =>
-    testingRequest(`/bo-thay-doi/${id}/ra-soat`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  analyzeImpact: (id) =>
-    testingStreamRequest(`/bo-thay-doi/${id}/phan-tich-anh-huong`, { method: "POST" }),
-  getChangeSetImpact: (id) => testingRequest(`/bo-thay-doi/${id}/phan-tich-anh-huong`),
-  getImpact: (id) => testingRequest(`/phan-tich-anh-huong/${id}`),
-  reviewImpact: (id, payload) =>
-    testingRequest(`/phan-tich-anh-huong/${id}/ra-soat`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  rerunImpact: (id, payload) =>
-    testingStreamRequest(`/phan-tich-anh-huong/${id}/chay-lai`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  createProposals: (id) =>
-    testingRequest(`/phan-tich-anh-huong/${id}/de-xuat-bao-tri`, { method: "POST" }),
-  listProposals: (id, query = { status: "PENDING" }) => {
-    const value = listQuery(typeof query === "string" ? { status: query } : query);
-    return testingRequest(`/du-an/${id}/de-xuat-bao-tri${value ? `?${value}` : ""}`);
-  },
-  acceptProposal: (id, payload, edited = false) =>
-    testingRequest(`/de-xuat-bao-tri/${id}/${edited ? "chap-nhan-co-chinh-sua" : "chap-nhan"}`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  rejectProposal: (id, payload) =>
-    testingRequest(`/de-xuat-bao-tri/${id}/tu-choi`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  regenerateProposal: (id, payload) =>
-    testingRequest(`/de-xuat-bao-tri/${id}/sinh-lai`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
   bulkTags: (projectId, payload) =>
     testingRequest(`/du-an/${projectId}/hang-loat/nhan`, {
       method: "POST",
@@ -713,33 +595,5 @@ export const designTestingApi = {
     testingRequest(`/du-an/${projectId}/hang-loat/luu-tru`, {
       method: "POST",
       body: JSON.stringify({ ...payload, preview: true }),
-    }),
-  bulkGenerateProposals: (projectId, payload) =>
-    testingRequest(`/du-an/${projectId}/hang-loat/de-xuat-anh-huong`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  previewBulkGenerateProposals: (projectId, payload) =>
-    testingRequest(`/du-an/${projectId}/hang-loat/de-xuat-anh-huong`, {
-      method: "POST",
-      body: JSON.stringify({ ...payload, preview: true }),
-    }),
-  bulkApproveProposals: (projectId, payload) =>
-    testingRequest(`/du-an/${projectId}/hang-loat/phe-duyet-de-xuat`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  previewBulkApproveProposals: (projectId, payload) =>
-    testingRequest(`/du-an/${projectId}/hang-loat/phe-duyet-de-xuat`, {
-      method: "POST",
-      body: JSON.stringify({ ...payload, preview: true }),
-    }),
-  regression: (id) =>
-    testingStreamRequest(`/bo-thay-doi/${id}/de-xuat-hoi-quy`, { method: "POST" }),
-  getChangeSetRegression: (id) => testingRequest(`/bo-thay-doi/${id}/de-xuat-hoi-quy`),
-  approveRegression: (id, payload) =>
-    testingRequest(`/de-xuat-hoi-quy/${id}/phe-duyet`, {
-      method: "POST",
-      body: JSON.stringify(payload),
     }),
 };

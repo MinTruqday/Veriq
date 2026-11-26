@@ -361,7 +361,6 @@ async def create_test_version_from_proposal(proposal, patch, user):
  'techniques',
  'automation_status',
  'attachments',
- 'data_set_version_ids',
  'requirement_version_ids',
  'acceptance_criterion_ids'])
     changes = {key: value for key, value in patch.items() if key in allowed}

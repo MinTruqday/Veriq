@@ -6,12 +6,12 @@ export default function TestProgressBoard({ metrics = {} }) {
   const countValue = (value) => value ?? "Chưa có dữ liệu";
   const items = [
     {
-      label: "Tiến độ thực thi",
+      label: "Ca đã có kết quả",
       value: percentValue(metrics.execution_percent, metrics.execution_denominator),
-      detail: `${metrics.executed_test_count ?? "—"} / ${metrics.planned_test_count ?? "—"} kết quả`,
+      detail: `${metrics.executed_test_count ?? "—"} / ${metrics.planned_test_count ?? "—"} ca`,
     },
     {
-      label: "Tỷ lệ đạt",
+      label: "Tỷ lệ đạt trong ca Pass/Fail",
       value: percentValue(metrics.pass_rate, metrics.pass_rate_denominator),
       detail: `${metrics.pass ?? "—"} đạt · ${metrics.fail ?? "—"} không đạt`,
     },

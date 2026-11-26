@@ -1,7 +1,6 @@
 from fastapi import HTTPException
 
 from src.core.common import get_project, get_project_entity, plain_text
-from src.core.database import database
 from src.core.project_settings import resolve_testcase_duplicate_threshold
 from src.repositories.analysis import analysis_repository
 from src.repositories.test_design import test_design_repository
@@ -34,7 +33,6 @@ async def generate_test_case_draft_records(version_id, payload, user):
         criteria,
         payload,
         user,
-        scenario=False,
         acceptance_criteria_snapshot_ids=[item["_id"] for item in all_criteria],
     )
     current_versions = await analysis_repository.list_requirement_versions(
@@ -63,14 +61,6 @@ async def generate_test_case_draft_records(version_id, payload, user):
     suite_signature = active_suite_signature(related, [version_id])
     await require_current_design_source(version, user)
     criterion_ids = {item["_id"] for item in criteria}
-    scenario_candidates = await database.value.test_scenarios.find(
-        {
-            "project_id": version["project_id"],
-            "requirement_version_ids": version_id,
-            "status": {"$in": ["draft", "approved"]},
-        },
-        {"_id": 1, "acceptance_criterion_ids": 1},
-    ).to_list(500)
     from src.modules.design.services.test_case_records import coverage_source_items
     coverage_by_criterion = {
         item["source_id"]: item["coverage_item_id"]
@@ -86,24 +76,6 @@ async def generate_test_case_draft_records(version_id, payload, user):
     )
     items = []
     for index, (draft, generated) in enumerate(zip(drafts, result["suggestions"])):
-        draft_criterion_ids = set(draft.acceptance_criterion_ids or [])
-        candidate_scenarios = [
-            (
-                len(draft_criterion_ids.intersection(item.get("acceptance_criterion_ids") or [])),
-                item,
-            )
-            for item in scenario_candidates
-            if draft_criterion_ids.intersection(item.get("acceptance_criterion_ids") or [])
-        ]
-        if candidate_scenarios:
-            highest_overlap = max(score for score, _ in candidate_scenarios)
-            matching_scenarios = [
-                item for score, item in candidate_scenarios if score == highest_overlap
-            ]
-            if len(matching_scenarios) == 1:
-                draft = draft.model_copy(
-                    update={"scenario_id": matching_scenarios[0]["_id"]}
-                )
         draft = draft.model_copy(update={
             "coverage_item_ids": [
                 coverage_by_criterion[criterion_id]

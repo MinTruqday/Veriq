@@ -23,6 +23,11 @@ async def init_db():
 
 async def setup_indexes():
     db = database.mongodb[settings.AUTHENTICATION_DB_NAME]
+    await db["platform_state"].update_one(
+        {"_id": "active_admin_guard"},
+        {"$setOnInsert": {"revision": 0}},
+        upsert=True,
+    )
     await db["auth_credentials"].create_index("email", unique=True)
     await db["auth_credentials"].create_index(
         "slug", unique=True, partialFilterExpression={"slug": {"$type": "string"}}

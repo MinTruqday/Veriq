@@ -1,13 +1,12 @@
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
-from src.clients.authentication import get_project_creation_policy, load_accounts, resolve_account
+from src.clients.authentication import get_project_creation_policy, load_accounts
 from src.core.auth import (
     access_policy,
     archive_read_permissions,
     project_permissions,
     project_membership_permissions,
-    requires_project_owner,
     responsibility_allows,
     roles_for_membership,
 )
@@ -44,7 +43,7 @@ def _validate_project_dates(planned_start_at, planned_end_at):
             )
 
 
-def project_access(project, membership, grant, user, owner_support_available=False):
+def project_access(project, membership, grant, user):
     policy = access_policy()
     available_project_roles = sorted(policy.get("role_permissions", {}))
     configurable_role_settings = {}
@@ -91,13 +90,8 @@ def project_access(project, membership, grant, user, owner_support_available=Fal
         else None
     )
     grant_permissions = {
-        item
-        for item in grant_permissions
-        if (
-            user.is_system_admin and (not project.get("project_owner_user_id") or owner_support_available)
-            if requires_project_owner(item)
-            else responsibility_allows(item, user.id, project.get("settings"))
-        )
+        item for item in grant_permissions
+        if responsibility_allows(item, user.id, project.get("settings"))
     }
     if project.get("status", "active").lower() == "archived":
         allowed = archive_read_permissions() | {"project.restore"}
@@ -117,7 +111,7 @@ def project_access(project, membership, grant, user, owner_support_available=Fal
         "current_permissions": sorted(role_permissions | grant_permissions),
         "can_self_approve": bool(
             user.is_system_admin
-            or membership.get("user_id") == project.get("project_owner_user_id")
+            or (membership and membership.get("user_id") == project.get("project_lead_user_id"))
         ),
         "access_context": (
             {
@@ -151,12 +145,6 @@ class ProjectService:
         return user.is_system_admin or await get_project_creation_policy() != "ADMIN_ONLY"
 
     @staticmethod
-    async def validate_owner(user_id):
-        account = (await load_accounts([user_id])).get(user_id, {})
-        if account.get("is_active") is not True or account.get("system_role") not in {"USER", "ADMIN"}:
-            raise HTTPException(422, detail={"code": "PROJECT_OWNER_INELIGIBLE"})
-
-    @staticmethod
     async def validate_project_roles(user_id, roles):
         normalized_roles = list(dict.fromkeys(str(role).strip().upper() for role in roles))
         allowed_roles = set(access_policy().get("role_permissions", {}))
@@ -177,14 +165,7 @@ class ProjectService:
             )
         timestamp = now()
         _validate_project_dates(payload.planned_start_at, payload.planned_end_at)
-        owner_id = payload.project_owner_user_id if user.is_system_admin and payload.project_owner_user_id else user.id
-        if not user.is_system_admin and payload.project_owner_user_id not in {None, user.id}:
-            raise HTTPException(422, detail={"code": "PROJECT_OWNER_REQUIRED"})
-        if user.is_system_admin:
-            owner_id = await resolve_account(owner_id)
-        await ProjectService.validate_owner(owner_id)
         project_values = payload.model_dump()
-        project_values["project_owner_user_id"] = owner_id
         project_values["settings"] = validate_project_settings(project_values.get("settings"))
         creator_roles = ["SYSTEM_ADMIN"] if user.is_system_admin else []
         await validate_project_responsibilities(
@@ -195,19 +176,13 @@ class ProjectService:
                     "project_role": creator_roles[0] if creator_roles else None,
                     "project_roles": creator_roles,
                 },
-                owner_id: {
-                    "user_id": owner_id,
-                    "status": "ACTIVE",
-                    "project_role": None,
-                    "project_roles": [],
-                },
             },
-            project_owner_user_id=owner_id,
+            project_lead_user_id=user.id,
         )
         project = {
             "_id": new_id('PRJ'),
             **project_values,
-            "project_lead_user_id": None,
+            "project_lead_user_id": user.id,
             "created_by": user.id,
             "status": 'active',
             "project_completion_percent": 0,
@@ -229,14 +204,6 @@ class ProjectService:
         }
         try:
             memberships = [creator_membership]
-            if owner_id != user.id:
-                memberships.append({
-                    **creator_membership,
-                    "_id": new_id("PM"),
-                    "user_id": owner_id,
-                    "project_role": None,
-                    "project_roles": [],
-                })
             project_created_event = build_audit_event(
                 user.id,
                 'project_created',
@@ -245,7 +212,7 @@ class ProjectService:
                 project["_id"],
                 {
                     "creator_membership_id": creator_membership["_id"],
-                    "project_owner_user_id": owner_id,
+                    "project_lead_user_id": user.id,
                 },
             )
             await project_repository.create_with_memberships(
@@ -273,7 +240,11 @@ class ProjectService:
             user.id, 'ACTIVE', now()
         )
         by_grant = {item["project_id"]: item for item in grants}
-        query = {"_id": {"$in": sorted(set(by_project) | (set(by_grant) if user.is_system_admin else set()))}}
+        query = (
+            {}
+            if user.is_system_admin
+            else {"_id": {"$in": sorted(set(by_project) | set(by_grant))}}
+        )
         if status and status != 'all':
             query["status"] = status
         if query_text:
@@ -282,32 +253,6 @@ class ProjectService:
                 {"key": {"$regex": query_text, "$options": "i"}},
             ]
         projects = await project_repository.list_projects(query, limit)
-        owner_ids = {
-            project["_id"]: project["project_owner_user_id"]
-            for project in projects
-            if project.get("project_owner_user_id")
-        }
-        active_owners = {}
-        owner_accounts = {}
-        if user.is_system_admin and owner_ids:
-            active_owner_members = await project_repository.members.find({
-                "$or": [
-                    {"project_id": project_id, "user_id": owner_id}
-                    for project_id, owner_id in owner_ids.items()
-                ],
-                "status": "ACTIVE",
-            }, {"project_id": 1, "user_id": 1}).to_list(len(owner_ids))
-            active_owners = {item["project_id"]: item["user_id"] for item in active_owner_members}
-            owner_accounts = await load_accounts(list(set(owner_ids.values())))
-        owner_support_projects = {
-            project_id
-            for project_id, owner_id in owner_ids.items()
-            if user.is_system_admin and (
-                active_owners.get(project_id) != owner_id
-                or not (owner_accounts.get(owner_id) or {}).get("is_active")
-                or (owner_accounts.get(owner_id) or {}).get("system_role") != "USER"
-            )
-        }
         lead_ids = [project.get("project_lead_user_id") for project in projects]
         lead_identities = await load_user_identities(item for item in lead_ids if item)
         return [
@@ -317,7 +262,6 @@ class ProjectService:
                     by_project.get(project["_id"]),
                     by_grant.get(project["_id"]),
                     user,
-                    project["_id"] in owner_support_projects,
                 ),
                 "project_lead_label": (
                     (lead_identities.get(project["project_lead_user_id"]) or {}).get("label")
@@ -354,25 +298,13 @@ class ProjectService:
         grant = await project_repository.find_active_grant(
             project_id, user.id, 'ACTIVE', now()
         )
-        owner_support_available = False
-        if user.is_system_admin and grant and project.get("project_owner_user_id"):
-            owner_id = project["project_owner_user_id"]
-            owner_membership = await project_repository.find_member(
-                project_id, owner_id, status="ACTIVE", projection={"_id": 1}
-            )
-            owner_account = (await load_accounts([owner_id])).get(owner_id, {}) if owner_membership else {}
-            owner_support_available = (
-                not owner_membership
-                or not owner_account.get("is_active")
-                or owner_account.get("system_role") != "USER"
-            )
         lead_identity = (
             await load_user_identities([project["project_lead_user_id"]])
             if project.get("project_lead_user_id")
             else {}
         ).get(project.get("project_lead_user_id"), {})
         return {
-            **project_access(project, membership, grant, user, owner_support_available),
+            **project_access(project, membership, grant, user),
             "project_lead_label": lead_identity.get("label") or lead_identity.get("email"),
             "project_completion_percent": int(project.get("project_completion_percent", 0)),
         }
@@ -386,13 +318,6 @@ class ProjectService:
             await validate_project_responsibilities(changes_settings, project_id)
         changes = payload.model_dump(exclude_unset=True)
         changes.pop("expected_revision", None)
-        if "project_owner_user_id" in changes:
-            owner_id = changes["project_owner_user_id"]
-            if not owner_id:
-                raise HTTPException(422, detail={"code": "PROJECT_OWNER_REQUIRED"})
-            await ProjectService.validate_owner(owner_id)
-            if not await project_repository.find_member(project_id, owner_id, status="ACTIVE"):
-                raise HTTPException(422, detail={"code": "PROJECT_OWNER_ACTIVE_MEMBERSHIP_REQUIRED"})
         if payload.settings is not None:
             changes["settings"] = changes_settings
         await ProjectService._validate_project_lead(project_id, changes)
@@ -531,7 +456,7 @@ class ProjectService:
                 if len(roles_for_membership(member)) == 1
                 else None,
                 "project_roles": sorted(roles_for_membership(member)),
-                "is_project_owner": member.get("user_id") == project.get("project_owner_user_id"),
+                "is_project_lead": member.get("user_id") == project.get("project_lead_user_id"),
                 "permissions": sorted(
                     project_membership_permissions(
                         project,
@@ -541,7 +466,7 @@ class ProjectService:
                     )
                 ),
                 "assignable_responsibilities": assignable_responsibilities(
-                    member, project.get("project_owner_user_id")
+                    member, project.get("project_lead_user_id")
                 ),
                 "user": identities.get(member.get("user_id")),
                 "user_label": (identities.get(member.get("user_id")) or {}).get("label") or member.get("user_id"),
@@ -806,8 +731,8 @@ class ProjectService:
         
         
         project = await get_project(project_id, user, 'project.members.manage')
-        if member_user_id == project.get("project_owner_user_id"):
-            raise HTTPException(409, detail={"code": "PROJECT_OWNER_MEMBERSHIP_REQUIRED"})
+        if member_user_id == project.get("project_lead_user_id"):
+            raise HTTPException(409, detail={"code": "PROJECT_LEAD_MEMBERSHIP_REQUIRED"})
         membership = await project_repository.find_member(project_id, member_user_id)
         if not membership:
             raise HTTPException(

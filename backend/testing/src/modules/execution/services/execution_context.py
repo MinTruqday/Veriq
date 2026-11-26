@@ -97,6 +97,8 @@ async def resolve_execution_context(
             release_entity = await get_project_entity(
                 'releases', release_id, user, 'release.read'
             )
+            if release_entity.get("project_id") != project_id:
+                raise HTTPException(status_code=422, detail={"code": 'PROJECT_MISMATCH'})
             if release_entity.get("status") == 'ARCHIVED':
                 raise HTTPException(status_code=422, detail={"code": 'RELEASE_ARCHIVED'})
     if environment_id:
@@ -123,7 +125,6 @@ def clean_secret_fields(item):
     result = dict(item)
     result.pop("secret_refs", None)
     result.pop("secret_ref_names", None)
-    result.pop("environment_type", None)
     result.pop("capabilities", None)
     return result
 
@@ -226,7 +227,7 @@ class ExecutionContextService:
         release = {
             "_id": new_id('REL'),
             "project_id": project_id,
-            **payload.model_dump(),
+            **payload.model_dump(mode="json"),
             "status": 'PLANNED',
             "revision": 1,
             "gate_revision": 0,
@@ -269,6 +270,16 @@ class ExecutionContextService:
                 detail={"code": 'RELEASE_STATE_INVALID'},
             )
 
+        changes = payload.model_dump(exclude_unset=True, mode="json")
+        changes.pop("expected_revision", None)
+        start = changes.get("planned_start_at", release.get("planned_start_at"))
+        end = changes.get("planned_end_at", release.get("planned_end_at"))
+        if start and end and str(start)[:10] > str(end)[:10]:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "RELEASE_END_BEFORE_START"},
+            )
+
         async with await database.client.start_session() as session:
             async with session.start_transaction():
                 updated = await optimistic_patch(
@@ -276,7 +287,7 @@ class ExecutionContextService:
                     release_id,
                     release["project_id"],
                     payload.expected_revision,
-                    payload.model_dump(),
+                    changes,
                     session=session,
                 )
                 await audit(
@@ -427,6 +438,20 @@ class ExecutionContextService:
     async def create_build(project_id, payload, user):
         
         await get_project(project_id, user, 'build.create')
+        if payload.release_id:
+            release = await execution_context_repository.find_release(
+                project_id, payload.release_id
+            )
+            if not release:
+                raise HTTPException(
+                    status_code=422,
+                    detail={"code": "BUILD_RELEASE_NOT_FOUND"},
+                )
+            if release.get("status") in {"CLOSED", "ARCHIVED"}:
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "BUILD_RELEASE_UNAVAILABLE"},
+                )
         timestamp = now()
         build = {
             "_id": new_id('BLD'),
@@ -488,21 +513,27 @@ class ExecutionContextService:
             user,
             'build.manage',
         )
-        updated = await optimistic_patch(
-            'builds',
-            build_id,
-            build["project_id"],
-            payload.expected_revision,
-            {"is_current": True},
-        )
-        await execution_context_repository.set_current_build(build["project_id"], build_id)
-        await audit(
-            user.id,
-            'build_set_current',
-            'Build',
-            build_id,
-            build["project_id"],
-        )
+        async with await database.client.start_session() as session:
+            async with session.start_transaction():
+                await execution_context_repository.set_current_build(
+                    build["project_id"], build_id, session=session
+                )
+                updated = await optimistic_patch(
+                    'builds',
+                    build_id,
+                    build["project_id"],
+                    payload.expected_revision,
+                    {"is_current": True},
+                    session=session,
+                )
+                await audit(
+                    user.id,
+                    'build_set_current',
+                    'Build',
+                    build_id,
+                    build["project_id"],
+                    session=session,
+                )
         return updated
 
     @staticmethod
@@ -565,12 +596,14 @@ class ExecutionContextService:
             user,
             'environment.update',
         )
+        changes = payload.model_dump(exclude_unset=True)
+        changes.pop("expected_revision", None)
         updated = await optimistic_patch(
             'test_environments',
             environment_id,
             environment["project_id"],
             payload.expected_revision,
-            payload.model_dump(),
+            changes,
         )
         await audit(
             user.id,

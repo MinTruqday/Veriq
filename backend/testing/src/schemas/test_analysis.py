@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from src.schemas.contracts.common import (
     AnalysisFindingStatus,
     TestabilityStatus,
+    empty_doc,
     validate_tiptap_document,
 )
 
@@ -127,13 +128,13 @@ class TestConditionCreate(BaseModel):
     condition_key: str | None = Field(default=None, max_length=80, pattern=r"^[A-Z][A-Z0-9_-]+$")
     title: str = Field(min_length=2, max_length=300)
     category: str | None = Field(default=None, max_length=100)
-    description_doc: dict[str, Any]
+    description_doc: dict[str, Any] = Field(default_factory=empty_doc)
     basis_refs: list[TestBasisRef] = Field(min_length=1, max_length=200)
-    coverage_item: str = Field(min_length=1, max_length=500)
-    test_level: str = Field(min_length=1, max_length=100)
-    test_type: str = Field(min_length=1, max_length=100)
-    risk: str = Field(min_length=1, max_length=100)
-    priority: str = Field(min_length=1, max_length=100)
+    coverage_item: str = Field(default="", max_length=500)
+    test_level: str = Field(default="", max_length=100)
+    test_type: str = Field(default="", max_length=100)
+    risk: str = Field(default="", max_length=100)
+    priority: str = Field(default="", max_length=100)
     technique_candidates: list[str] = Field(default_factory=list, max_length=100)
     testability_status: TestabilityStatus = TestabilityStatus.TESTABLE
     analysis_findings: list[AnalysisFinding] = Field(default_factory=list, max_length=200)
@@ -156,26 +157,17 @@ class TestConditionCreate(BaseModel):
         normalized = " ".join(value.split()) if value else ""
         return normalized or None
 
-    @field_validator("risk", "priority")
-    @classmethod
-    def normalize_assessment_label(cls, value):
-        normalized = " ".join(value.split())
-        if not normalized:
-            raise ValueError("Mức rủi ro và ưu tiên không được để trống")
-        return normalized
-
-
 class TestConditionPatch(BaseModel):
     expected_revision: int = Field(ge=1)
     title: str | None = Field(default=None, min_length=2, max_length=300)
     category: str | None = Field(default=None, max_length=100)
     description_doc: dict[str, Any] | None = None
     basis_refs: list[TestBasisRef] | None = Field(default=None, min_length=1, max_length=200)
-    coverage_item: str | None = Field(default=None, min_length=1, max_length=500)
-    test_level: str | None = Field(default=None, min_length=1, max_length=100)
-    test_type: str | None = Field(default=None, min_length=1, max_length=100)
-    risk: str | None = Field(default=None, min_length=1, max_length=100)
-    priority: str | None = Field(default=None, min_length=1, max_length=100)
+    coverage_item: str | None = Field(default=None, max_length=500)
+    test_level: str | None = Field(default=None, max_length=100)
+    test_type: str | None = Field(default=None, max_length=100)
+    risk: str | None = Field(default=None, max_length=100)
+    priority: str | None = Field(default=None, max_length=100)
     technique_candidates: list[str] | None = Field(default=None, max_length=100)
     testability_status: TestabilityStatus | None = None
     analysis_findings: list[AnalysisFinding] | None = Field(default=None, max_length=200)
@@ -191,17 +183,6 @@ class TestConditionPatch(BaseModel):
         normalized = " ".join(value.split()) if value else ""
         return normalized or None
 
-    @field_validator("risk", "priority")
-    @classmethod
-    def normalize_assessment_label(cls, value):
-        if value is None:
-            return value
-        normalized = " ".join(value.split())
-        if not normalized:
-            raise ValueError("Mức rủi ro và ưu tiên không được để trống")
-        return normalized
-
-
 class TestConditionTransition(BaseModel):
     expected_revision: int = Field(ge=1)
     note: str = Field(default="", max_length=5000)
@@ -213,13 +194,6 @@ class FindingResolutionInput(BaseModel):
     resolution_ref: str = Field(min_length=2, max_length=500)
     note: str = Field(min_length=2, max_length=5000)
 
-
-class TestAnalysisAIInput(BaseModel):
-    basis_refs: list[TestBasisRef] = Field(min_length=1, max_length=100)
-    instruction: str = Field(default="", max_length=5000)
-    idempotency_key: str = Field(min_length=8, max_length=200)
-    source_event_id: str | None = Field(default=None, min_length=1, max_length=200)
-    source_event_revision: int | None = Field(default=None, ge=1)
 
 
 class TestAnalysisInput(BaseModel):

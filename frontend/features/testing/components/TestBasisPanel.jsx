@@ -20,7 +20,9 @@ export default function TestBasisPanel({ refs, onChange, requirements }) {
   };
   return (
     <fieldset className="space-y-3 rounded-2xl border border-border p-4">
-      <legend className="px-2 text-sm font-semibold">Cơ sở kiểm thử</legend>
+      <legend className="px-2 text-sm font-semibold">
+        Cơ sở kiểm thử <span className="text-danger">*</span>
+      </legend>
       <select
         className="apple-input"
         aria-label="Thêm phiên bản yêu cầu làm cơ sở kiểm thử"

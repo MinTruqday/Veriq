@@ -3,93 +3,10 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from src.core.sensitive_data import secret_pattern
 from src.schemas.contracts.common import empty_doc, validate_tiptap_document
 
-TestScenarioCategory: TypeAlias = str
 TestCaseType: TypeAlias = str
 AIRunStatus: TypeAlias = Literal["manual", "candidate", "automated"]
-
-class ScenarioCreate(BaseModel):
-    scenario_key: str | None = Field(default=None, max_length=80)
-    title: str = Field(min_length=2, max_length=300)
-    objective: str = Field(default="", max_length=5000)
-    risk: str = Field(min_length=1, max_length=100)
-    priority: str = Field(min_length=1, max_length=100)
-    requirement_version_ids: list[str] = Field(default_factory=list, max_length=200)
-    acceptance_criterion_ids: list[str] = Field(default_factory=list, max_length=500)
-    test_condition_ids: list[str] = Field(default_factory=list, max_length=500)
-    status: Literal["draft", "in_review", "approved", "archived"] = "draft"
-    origin: Literal["manual", "ai_generated", "import"] = "manual"
-    category: TestScenarioCategory = Field(min_length=1, max_length=100)
-    description: str = Field(default="", max_length=10000)
-    actors: list[str] = Field(default_factory=list, max_length=100)
-    preconditions: str = Field(default="", max_length=5000)
-    business_flow: str = Field(default="", max_length=10000)
-    expected_outcome: str = Field(default="", max_length=5000)
-    test_data_notes: str = Field(default="", max_length=5000)
-    test_level: str | None = Field(default=None, max_length=100)
-    test_kind: str = Field(default="", max_length=100)
-    owner_id: str | None = Field(default=None, max_length=200)
-    tags: list[str] = Field(default_factory=list, max_length=100)
-
-    @field_validator("category")
-    @classmethod
-    def normalize_category(cls, value):
-        normalized = value.strip()
-        if not normalized:
-            raise ValueError("Scenario category must not be empty")
-        return normalized
-
-    @field_validator("risk", "priority")
-    @classmethod
-    def normalize_assessment_label(cls, value):
-        normalized = " ".join(value.split())
-        if not normalized:
-            raise ValueError("Mức rủi ro và ưu tiên không được để trống")
-        return normalized
-
-
-class ScenarioPatch(BaseModel):
-    expected_revision: int = Field(ge=1)
-    title: str | None = Field(default=None, min_length=2, max_length=300)
-    objective: str | None = Field(default=None, max_length=5000)
-    risk: str | None = Field(default=None, min_length=1, max_length=100)
-    priority: str | None = Field(default=None, min_length=1, max_length=100)
-    requirement_version_ids: list[str] | None = Field(default=None, max_length=200)
-    acceptance_criterion_ids: list[str] | None = Field(default=None, max_length=500)
-    test_condition_ids: list[str] | None = Field(default=None, max_length=500)
-    category: TestScenarioCategory | None = None
-    description: str | None = Field(default=None, max_length=10000)
-    actors: list[str] | None = Field(default=None, max_length=100)
-    preconditions: str | None = Field(default=None, max_length=5000)
-    business_flow: str | None = Field(default=None, max_length=10000)
-    expected_outcome: str | None = Field(default=None, max_length=5000)
-    test_data_notes: str | None = Field(default=None, max_length=5000)
-    test_level: str | None = Field(default=None, max_length=100)
-    test_kind: str | None = Field(default=None, max_length=100)
-    owner_id: str | None = Field(default=None, max_length=200)
-    tags: list[str] | None = Field(default=None, max_length=100)
-
-    @field_validator("category")
-    @classmethod
-    def normalize_category(cls, value):
-        if value is None:
-            return value
-        normalized = value.strip()
-        if not normalized:
-            raise ValueError("Scenario category must not be empty")
-        return normalized
-
-    @field_validator("risk", "priority")
-    @classmethod
-    def normalize_assessment_label(cls, value):
-        if value is None:
-            return value
-        normalized = " ".join(value.split())
-        if not normalized:
-            raise ValueError("Mức rủi ro và ưu tiên không được để trống")
-        return normalized
 
 
 class TestStep(BaseModel):
@@ -151,7 +68,7 @@ class TestCaseDraftCreate(BaseModel):
     module_name: str = Field(default="", max_length=300)
     test_level: str | None = Field(default=None, max_length=100)
     test_kind: str | None = Field(default=None, max_length=100)
-    priority: str = Field(default="unassessed", min_length=1, max_length=100)
+    priority: str | None = Field(default=None, max_length=100)
     duration_minutes: int | None = Field(default=None, ge=1, le=10080)
     objective_doc: dict[str, Any] = Field(default_factory=empty_doc)
     preconditions_doc: dict[str, Any] = Field(default_factory=empty_doc)
@@ -165,12 +82,10 @@ class TestCaseDraftCreate(BaseModel):
     techniques: list[str] = Field(default_factory=list, max_length=50)
     automation_status: AIRunStatus = "manual"
     attachments: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
-    data_set_version_ids: list[str] = Field(default_factory=list, max_length=100)
     requirement_version_ids: list[str] = Field(default_factory=list, max_length=200)
     acceptance_criterion_ids: list[str] = Field(default_factory=list, max_length=500)
     coverage_item_ids: list[str] = Field(default_factory=list, max_length=500)
     test_condition_ids: list[str] = Field(default_factory=list, max_length=500)
-    scenario_id: str | None = None
     bdd: BddScenario | None = None
     origin: Literal["manual", "ai_generated", "clone", "import", "maintenance"] = "manual"
     source_evidence: list[dict[str, Any]] = Field(default_factory=list, max_length=200)
@@ -253,12 +168,10 @@ class TestCaseDraftPatch(BaseModel):
     techniques: list[str] | None = None
     automation_status: AIRunStatus | None = None
     attachments: list[dict[str, Any]] | None = None
-    data_set_version_ids: list[str] | None = None
     requirement_version_ids: list[str] | None = None
     acceptance_criterion_ids: list[str] | None = None
     coverage_item_ids: list[str] | None = None
     test_condition_ids: list[str] | None = None
-    scenario_id: str | None = None
     bdd: BddScenario | None = None
     duplicate_reason: str | None = Field(default=None, min_length=2, max_length=2000)
 
@@ -340,64 +253,6 @@ class TestCaseVersionDraftInput(BaseModel):
 
 class TestCaseLifecycleInput(BaseModel):
     expected_current_version_id: str = Field(min_length=1, max_length=200)
-    reason: str = Field(min_length=2, max_length=2000)
-
-
-class DataSetCreate(BaseModel):
-    name: str = Field(min_length=2, max_length=300)
-    variables: dict[str, Any] = Field(default_factory=dict)
-    secret_refs: dict[str, str] = Field(default_factory=dict)
-    generation_source: Literal["USER", "AI_ASSISTED"] = "USER"
-    source_requirement_version_ids: list[str] = Field(default_factory=list, max_length=20)
-
-    @model_validator(mode="after")
-    def validate_secret_policy(self):
-        unsafe_keys = [
-            key
-            for key in self.variables
-            if secret_pattern().search(key)
-        ]
-        if unsafe_keys:
-            raise ValueError("Dữ liệu bí mật phải được khai báo bằng secret_refs")
-        invalid_refs = [
-            key for key, value in self.secret_refs.items() if not value.startswith("secret://")
-        ]
-        if invalid_refs:
-            raise ValueError("Secret reference phải bắt đầu bằng secret://")
-        if len(set(self.source_requirement_version_ids)) != len(self.source_requirement_version_ids):
-            raise ValueError("Nguồn yêu cầu không được trùng")
-        return self
-
-
-class DataSetAISuggestionInput(BaseModel):
-    requirement_version_ids: list[str] = Field(min_length=1, max_length=20)
-    instruction: str = Field(default="", max_length=3000)
-
-    @model_validator(mode="after")
-    def unique_requirement_versions(self):
-        if len(set(self.requirement_version_ids)) != len(self.requirement_version_ids):
-            raise ValueError("Không được chọn phiên bản yêu cầu trùng")
-        return self
-
-
-class DataSetVersionCreate(DataSetCreate):
-    expected_current_version_id: str = Field(min_length=1, max_length=200)
-    change_reason: str = Field(min_length=2, max_length=2000)
-
-
-class DataSetBind(BaseModel):
-    test_case_draft_id: str = Field(min_length=1, max_length=200)
-    data_set_version_id: str = Field(min_length=1, max_length=200)
-    expected_revision: int = Field(ge=1)
-
-
-class DataSetPreview(BaseModel):
-    data_set_version_id: str = Field(min_length=1, max_length=200)
-    max_rows: int = Field(default=100, ge=1, le=1000)
-
-
-class DataSetArchive(BaseModel):
-    expected_revision: int = Field(ge=1)
     reason: str = Field(min_length=2, max_length=2000)
 
 

@@ -1,0 +1,29 @@
+# UI coverage matrix
+
+Status vocabulary: TODO, IN PROGRESS, REFACTORED, VERIFIED, BLOCKED, NOT VERIFIED. Coverage below maps active route families found in the current App Router and project navigation. Nested details and permission-specific states are tracked with their owning page; confirm route helpers and links before treating a route as active.
+
+| Module | Screens / route family | Primary components | Main interactions preserved | Refactor | Verification |
+|---|---|---|---|---|---|
+| Public / home | `/` | `HomePage` | Existing entry navigation | REFACTORED | PARTIAL: render and content reviewed; full viewport matrix not verified |
+| Authentication | `/dang-nhap`, `/xac-thuc`, `/xac-minh-thu-dien-tu`, `/quen-mat-khau`, `/dat-lai-mat-khau` | authentication pages, `AuthFrame`, fields | Sign-in, verification and recovery flows | IN PROGRESS | PARTIAL: login render and project access redirect verified; auth flows not exercised |
+| Projects | `/du-an` | `ProjectsPage` | Search, status/date filter, grid/list, invitations, create/restore, pagination | IN PROGRESS | Authenticated browser review confirms API-backed cards, progress/activity fields and grid/list switch; create, restore, invitations and pagination workflows not exercised |
+| Project workspace | `/du-an/[projectId]` | `ProjectWorkspacePage`, `AppShell` | Section navigation and access control | IN PROGRESS | NOT VERIFIED |
+| Dashboard | project root | `DashboardPage`, workspace primitives | Permission-aware metrics, independent workspace shortcuts, action queue, recent run and AI panel | IN PROGRESS | Authenticated browser review confirms workflow stepper, metrics and real sparse-data states; action navigation and role-specific rendering not fully verified |
+| Requirements | `yeu-cau` and nested requirement views | `RequirementsPage`, `requirements/*` | Search/filter, selection, create/edit, versions, import, AI, review, impact, trace | IN PROGRESS | Refined to compact 30/70 list/detail, active row and separate content/impact/trace/history tabs; Docker verification pending; authenticated review BLOCKED |
+| Test analysis | `phan-tich-kiem-thu` | `TestAnalysisPage`, condition editor | Analysis, conditions, AI-supported actions | IN PROGRESS | NOT VERIFIED |
+| Test cases / design | `thiet-ke-kiem-thu`, `ca-kiem-thu` | `TestDesignPage`, case forms, repository navigation | Browse, create/edit, steps, versions, review, coverage | IN PROGRESS | Authenticated review confirms query-backed split list/detail, version-history tab and pagination at desktop width; create/edit/review workflows not exercised |
+| Suites / data / scenarios | `bo-kiem-thu`, `du-lieu-kiem-thu`, nested create/edit | `TestSetEditorPage`, `DataSetsPanel`, `ScenariosPanel`, forms | CRUD, preview, versioning and links | IN PROGRESS | NOT VERIFIED |
+| Plans / periods | `ke-hoach-kiem-thu`, `chu-ky-kiem-thu` | `ExecutionPage`, `TestPeriodsPage`, `TestPlanCatalog` | Scope, assignments, progress, create/close and handover actions | IN PROGRESS | Docker format/lint/production build PASS; frontend healthy, frontend/gateway HTTP 200; authenticated workflow review BLOCKED by unavailable session |
+| Runs / execution | `lan-chay-kiem-thu`, `thuc-thi` | `ExecutionPage`, `RunExecutionWorkspace` | Assign, execute, record results/evidence, resume and defect creation | IN PROGRESS | Authenticated review confirms live run list and completed-run historical detail; active result entry, evidence, resume and defect creation not exercised |
+| Defects | `loi` | `DefectsPage` | List/board, filters, create/detail, lifecycle and retest | IN PROGRESS | Authenticated review confirms board/list controls, current filters and real empty state; transitions and details not exercised |
+| Releases / environments | `ban-phat-hanh`, settings environment views | `ReleasesPage`, settings panels | Create, readiness, activate/close, environment management | IN PROGRESS | NOT VERIFIED |
+| Reports / analytics | `bao-cao`, `giam-sat-kiem-thu` where routed | `ReportsPage`, `SimpleTestReports` | Preview, history, export and metric views | IN PROGRESS | Selected plan summary returned `Không thể hoàn tất yêu cầu`; report charts, save and export remain blocked from review |
+| Changes / traceability / review | `thay-doi`, `truy-vet`, `ra-soat-ai` | `ChangesPage`, `TraceabilityPage`, `ReviewQueuePage` | Compare, impact, trace, review and approval | IN PROGRESS | NOT VERIFIED |
+| Documents / knowledge | `tai-lieu`, `tri-thuc` | `RequirementSourceDocumentsPanel`, `DocumentReaderPage`, `KnowledgePage` | Grid/list browse, upload/import, read, search and AI/index states | IN PROGRESS | Documents: Docker visual review confirms grid/list switch and empty state at a narrow viewport; reviewed project had no documents, so populated-card actions remain unverified. Knowledge NOT VERIFIED |
+| Project settings / audit | `cai-dat`, `nhat-ky-kiem-toan` | `SettingsPage`, settings panels | Members, permissions, notifications, environment and audit | IN PROGRESS | NOT VERIFIED |
+| Platform operations | `/van-hanh` | `OperationsPage`, platform panels | Account administration and platform controls | IN PROGRESS | NOT VERIFIED |
+| Personal account | `/cai-dat` | `AccountPage` | Profile, password, sessions, preferences and logout | IN PROGRESS | Profile page title, panel radius and elevation aligned to existing tokens; authenticated actions and responsive rendering not exercised |
+| Notifications | `/thong-bao` | `AnnouncementsPage` | Filter, mark read and delete | IN PROGRESS | NOT VERIFIED |
+| Legal / fallback | `/dieu-khoan`, not-found and error routes | legal page, App Router error states | Read terms and recover from route errors | TODO | NOT VERIFIED |
+
+This is an initial active-route inventory from source, not a claim that every nested state is covered. Update rows as routes and linked components are confirmed during implementation.

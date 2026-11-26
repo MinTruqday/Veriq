@@ -36,7 +36,7 @@ def _public_retest(retest):
         if key not in {"idempotency_key", "idempotency_request_hash"}
     }
 
-async def _replay_retest(project_id, defect_id, existing, payload, request_hash):
+async def _replay_retest(project_id, defect_id, existing, payload, request_hash, actor_id):
     if (
         existing.get("project_id") != project_id
         or existing.get("defect_id") != defect_id
@@ -50,6 +50,11 @@ async def _replay_retest(project_id, defect_id, existing, payload, request_hash)
         raise HTTPException(
             status_code=409,
             detail={"code": "DEFECT_RETEST_IDEMPOTENCY_RECORD_INCOMPLETE"},
+        )
+    if existing.get("retested_by") != actor_id:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH"},
         )
     existing_hash = existing.get("idempotency_request_hash")
     same_legacy_request = (
@@ -352,6 +357,12 @@ async def retest_defect_record(project_id, defect_id, payload, user):
     defect = await get_project_entity("defects", defect_id, user, "defect.retest")
     if defect["project_id"] != project_id:
         raise HTTPException(status_code=422, detail={"code": "PROJECT_MISMATCH"})
+    request_hash = _retest_request_fingerprint(payload)
+    existing = await defect_repository.find_retest(defect_id, payload.idempotency_key)
+    if existing:
+        return await _replay_retest(
+            project_id, defect_id, existing, payload, request_hash, user.id
+        )
     result = await defect_repository.find_test_result(payload.test_result_id, project_id)
     if not result:
         raise HTTPException(status_code=422, detail={"code": "INVALID_RETEST_RESULT"})
@@ -362,12 +373,6 @@ async def retest_defect_record(project_id, defect_id, payload, user):
     if not run:
         raise HTTPException(status_code=422, detail={"code": "INVALID_RETEST_RUN"})
     await require_case_execution_assignment(run, result.get("test_case_version_id"), user)
-    request_hash = _retest_request_fingerprint(payload)
-    existing = await defect_repository.find_retest(defect_id, payload.idempotency_key)
-    if existing:
-        return await _replay_retest(
-            project_id, defect_id, existing, payload, request_hash
-        )
     if defect["status"] != "READY_FOR_RETEST":
         raise HTTPException(
             status_code=409,
@@ -394,13 +399,23 @@ async def retest_defect_record(project_id, defect_id, payload, user):
     linked_version_id = defect.get("linked_test_case_version_id") or (
         original_result.get("test_case_version_id") if original_result else None
     )
-    if original_result and not linked_version_id:
+    if not linked_version_id:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "DEFECT_RETEST_CASE_LINK_REQUIRED"},
+        )
+    if original_result and not original_result.get("test_case_version_id"):
         raise HTTPException(
             status_code=409,
             detail={"code": "DEFECT_RETEST_SOURCE_VERSION_UNAVAILABLE"},
         )
     if linked_version_id and result.get("test_case_version_id") != linked_version_id:
         raise HTTPException(status_code=422, detail={"code": "RETEST_CASE_VERSION_MISMATCH"})
+    if not defect.get("updated_at"):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "DEFECT_RETEST_BASELINE_UNAVAILABLE"},
+        )
     target_status = {"PASS": "CLOSED", "FAIL": "REOPENED"}[result["status"]]
     event = {
         "_id": new_id("DRT"),
@@ -423,21 +438,78 @@ async def retest_defect_record(project_id, defect_id, payload, user):
     try:
         async with await database.client.start_session() as session:
             async with session.start_transaction():
-                new_is_blocking = defect_blocks_release(
-                    defect, status=target_status
+                current_defect = await defect_repository.find_defect(
+                    defect_id, project_id, session=session
                 )
-                if defect_blocks_release(defect) or new_is_blocking:
+                current_result = await defect_repository.find_test_result(
+                    result["_id"], project_id, session=session
+                )
+                current_run = await defect_repository.find_test_run(
+                    result["test_run_id"], project_id, session=session
+                )
+                if (
+                    not current_defect
+                    or current_defect.get("status") != "READY_FOR_RETEST"
+                    or current_defect.get("revision") != payload.expected_revision
+                ):
+                    raise HTTPException(
+                        status_code=409, detail={"code": "REVISION_CONFLICT"}
+                    )
+                if (
+                    not current_result
+                    or current_result.get("revision") != result.get("revision")
+                    or current_result.get("status") not in {"PASS", "FAIL"}
+                    or not current_run
+                    or current_result.get("test_run_id") != current_run.get("_id")
+                    or current_result.get("test_case_version_id") != linked_version_id
+                    or current_result.get("test_case_version_id")
+                    not in current_run.get("test_case_version_ids", [])
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail={"code": "DEFECT_RETEST_RESULT_CHANGED"},
+                    )
+                await require_case_execution_assignment(
+                    current_run, linked_version_id, user
+                )
+                claimed_result = await defect_repository.claim_retest_result(
+                    current_result["_id"],
+                    project_id,
+                    current_run["_id"],
+                    linked_version_id,
+                    current_result["status"],
+                    current_result.get("revision", 1),
+                    current_defect["updated_at"],
+                    defect_id,
+                    now(),
+                    session=session,
+                )
+                if not claimed_result:
+                    latest_result = await defect_repository.find_test_result(
+                        current_result["_id"], project_id, session=session
+                    )
+                    if latest_result and defect_id in latest_result.get(
+                        "retested_defect_ids", []
+                    ):
+                        code = "DEFECT_RETEST_RESULT_ALREADY_USED"
+                    else:
+                        code = "DEFECT_RETEST_RESULT_NOT_NEW"
+                    raise HTTPException(status_code=409, detail={"code": code})
+                new_is_blocking = defect_blocks_release(
+                    current_defect, status=target_status
+                )
+                if defect_blocks_release(current_defect) or new_is_blocking:
                     await serialize_release_gate(
-                        defect["project_id"],
-                        [defect.get("release_id")],
+                        current_defect["project_id"],
+                        [current_defect.get("release_id")],
                         session,
                         require_open_release_ids=(
-                            [defect.get("release_id")] if new_is_blocking else []
+                            [current_defect.get("release_id")] if new_is_blocking else []
                         ),
                     )
                 await defect_repository.insert_retest(event, session=session)
                 await register_test_result_period_activity(
-                    project_id, defect.get("linked_test_result_id"), session
+                    project_id, current_defect.get("linked_test_result_id"), session
                 )
                 await register_test_result_period_activity(
                     project_id, result.get("_id"), session
@@ -480,6 +552,6 @@ async def retest_defect_record(project_id, defect_id, payload, user):
         if not existing:
             raise
         return await _replay_retest(
-            project_id, defect_id, existing, payload, request_hash
+            project_id, defect_id, existing, payload, request_hash, user.id
         )
     return {"defect": updated, "retest": _public_retest(event)}

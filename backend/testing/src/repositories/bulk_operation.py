@@ -133,26 +133,4 @@ class BulkOperationRepository:
             session=session,
         )
 
-    async def find_impact_analysis(self, analysis_id, project_id):
-        return await database.value.impact_analyses.find_one(
-            {"_id": analysis_id, "project_id": project_id}
-        )
-
-    async def count_proposals(self, analysis_id):
-        return await database.value.maintenance_proposals.count_documents(
-            {"impact_analysis_id": analysis_id}
-        )
-
-    async def find_proposal(self, proposal_id, project_id):
-        return await database.value.maintenance_proposals.find_one(
-            {"_id": proposal_id, "project_id": project_id}
-        )
-
-    async def find_case_version_identity(self, test_case_id, project_id):
-        return await database.value.test_cases.find_one(
-            {"_id": test_case_id, "project_id": project_id},
-            {"current_version_id": 1},
-        )
-
-
 bulk_operation_repository = BulkOperationRepository()

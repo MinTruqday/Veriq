@@ -4,8 +4,6 @@ from src.core.auth import CurrentUser, get_current_user
 from src.core.common import envelope
 from src.schemas.contracts.utility import (
     BulkArchiveInput,
-    BulkProposalApproveInput,
-    BulkProposalGenerateInput,
     BulkReviewRequiredInput,
     BulkSuiteInput,
     BulkTagInput,
@@ -43,21 +41,3 @@ async def bulk_archive(
     project_id: str, payload: BulkArchiveInput, user: CurrentUser = Depends(get_current_user)
 ):
     return envelope(await BulkOperationService.archive(project_id, payload, user))
-
-
-@router.post("/du-an/{project_id}/hang-loat/de-xuat-anh-huong")
-async def bulk_generate_proposals(
-    project_id: str,
-    payload: BulkProposalGenerateInput,
-    user: CurrentUser = Depends(get_current_user),
-):
-    return envelope(await BulkOperationService.generate_proposals(project_id, payload, user))
-
-
-@router.post("/du-an/{project_id}/hang-loat/phe-duyet-de-xuat")
-async def bulk_approve_proposals(
-    project_id: str,
-    payload: BulkProposalApproveInput,
-    user: CurrentUser = Depends(get_current_user),
-):
-    return envelope(await BulkOperationService.approve_proposals(project_id, payload, user))

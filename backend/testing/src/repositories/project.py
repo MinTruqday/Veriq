@@ -85,7 +85,7 @@ class ProjectRepository:
             query["user_id"] = {"$in": list(set(user_ids))}
         memberships = await self.members.find(query, session=session).to_list(5000)
         project = await self.projects.find_one(
-            {"_id": project_id}, {"settings": 1, "project_owner_user_id": 1}, session=session
+            {"_id": project_id}, {"settings": 1, "project_lead_user_id": 1}, session=session
         ) or {}
         accounts = await self._system_admin_accounts(memberships)
         return [
@@ -160,7 +160,7 @@ class ProjectRepository:
             session=session,
         ).to_list(len(requested_ids))
         project = await self.projects.find_one(
-            {"_id": project_id}, {"settings": 1, "project_owner_user_id": 1}, session=session
+            {"_id": project_id}, {"settings": 1, "project_lead_user_id": 1}, session=session
         ) or {}
         membership_by_user = {item["user_id"]: item for item in memberships}
         accounts = await self._system_admin_accounts(memberships)

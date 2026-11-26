@@ -2,14 +2,96 @@ import hashlib
 import hmac
 from datetime import datetime, timedelta, timezone
 
+from fastapi import HTTPException
 from pymongo import ReturnDocument
 
 from src.core.infrastructure.configuration import settings
+from src.core.infrastructure.database import database as database_infrastructure
 from src.core.infrastructure.mongo import mongo
 from src.core.infrastructure.redis import redis
 
 
 class IdentityRepository:
+    @staticmethod
+    async def _apply_account_changes_with_admin_guard(
+        user_ids, changes, single=False, unset_fields=None
+    ):
+        target_ids = list(dict.fromkeys(user_ids))
+        if not target_ids:
+            return None
+        client = database_infrastructure.mongodb
+        db = mongo.get_db()
+
+        async with await client.start_session() as session:
+            async def apply_changes(transaction_session):
+                await db["platform_state"].update_one(
+                    {"_id": "active_admin_guard"},
+                    {"$inc": {"revision": 1}},
+                    upsert=True,
+                    session=transaction_session,
+                )
+                accounts = await db["auth_credentials"].find(
+                    {"_id": {"$in": target_ids}},
+                    {"system_role": 1, "is_active": 1},
+                    session=transaction_session,
+                ).to_list(length=len(target_ids))
+                current_admin_count = await db["auth_credentials"].count_documents(
+                    {"system_role": "ADMIN", "is_active": {"$ne": False}},
+                    session=transaction_session,
+                )
+                removed_admin_count = 0
+                for account in accounts:
+                    was_active_admin = (
+                        account.get("system_role", "USER") == "ADMIN"
+                        and account.get("is_active", True) is not False
+                    )
+                    remains_active_admin = (
+                        changes.get("system_role", account.get("system_role", "USER"))
+                        == "ADMIN"
+                        and changes.get("is_active", account.get("is_active", True))
+                        is not False
+                    )
+                    if was_active_admin and not remains_active_admin:
+                        removed_admin_count += 1
+                if current_admin_count and current_admin_count - removed_admin_count < 1:
+                    raise HTTPException(
+                        status_code=422,
+                        detail="Không thể vô hiệu hóa hoặc hạ quyền quản trị viên cuối cùng",
+                    )
+                update = {"$set": changes}
+                if unset_fields:
+                    update["$unset"] = {field: "" for field in unset_fields}
+                if single:
+                    return await db["auth_credentials"].find_one_and_update(
+                        {"_id": target_ids[0]},
+                        update,
+                        return_document=ReturnDocument.AFTER,
+                        session=transaction_session,
+                    )
+                return await db["auth_credentials"].update_many(
+                    {"_id": {"$in": target_ids}},
+                    update,
+                    session=transaction_session,
+                )
+
+            return await session.with_transaction(apply_changes)
+
+    @staticmethod
+    async def update_account_with_admin_guard(
+        user_id: str, changes: dict, unset_fields: list[str] | None = None
+    ):
+        return await IdentityRepository._apply_account_changes_with_admin_guard(
+            [user_id], changes, single=True, unset_fields=unset_fields
+        )
+
+    @staticmethod
+    async def update_accounts_with_admin_guard(
+        user_ids: list[str], changes: dict, unset_fields: list[str] | None = None
+    ):
+        return await IdentityRepository._apply_account_changes_with_admin_guard(
+            user_ids, changes, unset_fields=unset_fields
+        )
+
     @staticmethod
     def _token_hash(token: str) -> str:
         return hmac.new(
@@ -220,21 +302,23 @@ class IdentityRepository:
 
     @staticmethod
     async def revoke_session(user_id: str, session_id: str):
-        await redis.get_client().srem(f"user_sessions:{user_id}", session_id)
-        return await mongo.update_one(
+        result = await mongo.update_one(
             "sessions",
             {"_id": session_id, "user_id": user_id},
             {"$set": {"revoked_at": datetime.now(timezone.utc)}},
         )
+        await redis.get_client().srem(f"user_sessions:{user_id}", session_id)
+        return result
 
     @staticmethod
     async def revoke_all_sessions(user_id: str):
-        await redis.delete(f"user_sessions:{user_id}")
-        return await mongo.update_many(
+        result = await mongo.update_many(
             "sessions",
             {"user_id": user_id, "revoked_at": None},
             {"$set": {"revoked_at": datetime.now(timezone.utc)}},
         )
+        await redis.delete(f"user_sessions:{user_id}")
+        return result
 
     @staticmethod
     async def revoke_every_session(timestamp: datetime):
@@ -249,11 +333,19 @@ class IdentityRepository:
 
     @staticmethod
     async def revoke_other_sessions(user_id: str, session_id: str, timestamp: datetime):
-        return await mongo.update_many(
+        query = {"user_id": user_id, "_id": {"$ne": session_id}}
+        result = await mongo.update_many(
             "sessions",
-            {"user_id": user_id, "_id": {"$ne": session_id}, "revoked_at": None},
+            {**query, "revoked_at": None},
             {"$set": {"revoked_at": timestamp}},
         )
+        sessions = mongo.get_db()["sessions"].find(query, {"_id": 1})
+        while session_ids := await sessions.to_list(length=1000):
+            await redis.get_client().srem(
+                f"user_sessions:{user_id}",
+                *[str(item["_id"]) for item in session_ids],
+            )
+        return result
 
     @staticmethod
     async def list_active_sessions(user_id: str):
@@ -366,6 +458,31 @@ class IdentityRepository:
                     "email_verified_at": timestamp,
                     "updated_at": timestamp,
                 }
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+
+    @staticmethod
+    async def confirm_pending_email(user_id: str, email: str):
+        timestamp = datetime.now(timezone.utc)
+        return await mongo.get_db()["auth_credentials"].find_one_and_update(
+            {
+                "_id": user_id,
+                "pending_email": email.lower(),
+                "is_active": {"$ne": False},
+            },
+            {
+                "$set": {
+                    "email": email.lower(),
+                    "is_verified": True,
+                    "email_verified": True,
+                    "email_verified_at": timestamp,
+                    "updated_at": timestamp,
+                },
+                "$unset": {
+                    "pending_email": "",
+                    "pending_email_requested_at": "",
+                },
             },
             return_document=ReturnDocument.AFTER,
         )

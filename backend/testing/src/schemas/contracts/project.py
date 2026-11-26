@@ -5,7 +5,6 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class ProjectCreate(BaseModel):
-    project_owner_user_id: str | None = Field(default=None, min_length=1, max_length=320)
     key: str = Field(min_length=2, max_length=30, pattern=r"^[A-Z][A-Z0-9_-]+$")
     name: str = Field(min_length=2, max_length=200)
     description: str = Field(default="", max_length=5000)
@@ -32,7 +31,6 @@ class ProjectCapabilities(BaseModel):
 
 
 class ProjectPatch(BaseModel):
-    project_owner_user_id: str | None = Field(default=None, min_length=1, max_length=320)
     expected_revision: int = Field(ge=1)
     name: str | None = Field(default=None, min_length=2, max_length=200)
     project_lead_user_id: str | None = Field(default=None, min_length=1, max_length=320)

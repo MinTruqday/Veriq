@@ -1,45 +1,38 @@
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import MultiSelect from "@/shared/components/ui/MultiSelect";
 import { testingApi } from "../services/testing.service";
 import { messageOf, valueLabel } from "../lib/testing";
+import { PROJECT_SECTION_SLUGS, projectRoute } from "../routes";
 
 const conditionFields = [
   ["entry_criteria", "Điều kiện bắt đầu"],
   ["exit_criteria", "Tiêu chí hoàn thành"],
 ];
 
-const testTechniqueGroups = [
-  [
-    "Hộp đen",
-    [
-      ["equivalence_partitioning", "Phân vùng tương đương"],
-      ["boundary_value_analysis", "Phân tích giá trị biên"],
-      ["decision_table_testing", "Bảng quyết định"],
-      ["state_transition_testing", "Chuyển đổi trạng thái"],
-    ],
-  ],
-  [
-    "Hộp trắng",
-    [
-      ["statement_testing", "Kiểm thử câu lệnh"],
-      ["branch_testing", "Kiểm thử nhánh"],
-    ],
-  ],
-  [
-    "Dựa trên kinh nghiệm",
-    [
-      ["error_guessing", "Đoán lỗi"],
-      ["exploratory_testing", "Kiểm thử thăm dò"],
-      ["checklist_based_testing", "Kiểm thử dựa trên danh sách kiểm tra"],
-    ],
-  ],
-];
+function environmentOptionLabel(item) {
+  const typeLabels = {
+    WEB: "Web",
+    API: "API",
+    MOBILE: "Di động",
+    DESKTOP: "Máy tính",
+    OTHER: "Khác",
+  };
+  const details = [
+    typeLabels[item.environment_type],
+    item.operating_system,
+    [item.browser, item.browser_version].filter(Boolean).join(" "),
+    item.device,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return details ? `${item.name} · ${details}` : item.name || item.key;
+}
 
 const defaults = {
   name: "",
   test_period_id: "",
   owner_id: "",
-  scenario_ids: [],
   objective: "",
   test_level: "",
   environment_id: "",
@@ -50,20 +43,8 @@ const defaults = {
   entry_criteria: [],
   exit_criteria: [],
   test_types: [],
-  test_techniques: [],
-  members: [],
-  assumptions: [],
-  constraints: [],
-  dependencies: [],
-  estimation: {
-    method: "expert_judgment",
-    planned_effort_hours: 0,
-    basis: "",
-    effort_allocations: [],
-  },
   schedule: { planned_start_at: "", planned_end_at: "" },
   risk_register: [],
-  communication_plan: { channel: "", status_report_frequency: "", recipients: [] },
 };
 
 export default function TestPlanEditor({
@@ -75,6 +56,7 @@ export default function TestPlanEditor({
   members = [],
   environments = [],
   readOnly = false,
+  canCreateCases = false,
   initialRequirementVersionIds = [],
   onSave,
   onCancel,
@@ -100,11 +82,6 @@ export default function TestPlanEditor({
         planned_start_at: localDateTime(initialValue.schedule?.planned_start_at),
         planned_end_at: localDateTime(initialValue.schedule?.planned_end_at),
       },
-      estimation: {
-        ...defaults.estimation,
-        ...(initialValue.estimation || {}),
-        effort_allocations: initialValue.estimation?.effort_allocations || [],
-      },
     };
   });
   const [error, setError] = useState("");
@@ -117,14 +94,53 @@ export default function TestPlanEditor({
   const selectedTestTypes = value.test_types || [];
   const selectedPeriod = testPeriods.find((period) => period._id === value.test_period_id);
   const carryOverItems = selectedPeriod?.carry_over_items || [];
+  const selectedSuiteIds = new Set(value.test_suite_ids || []);
+  const suiteCaseVersionIds = new Set(
+    suites
+      .filter((suite) => selectedSuiteIds.has(suite._id))
+      .flatMap((suite) => suite.test_case_version_ids || []),
+  );
+  const knownCaseIds = new Set(tests.map((test) => test.current_version_id).filter(Boolean));
+  const caseScopeOptions = [
+    ...suites.map((suite) => ({
+      value: `suite:${suite._id}`,
+      label: `Bộ · ${suite.name} (${(suite.test_case_version_ids || []).length} ca)`,
+    })),
+    ...tests
+      .filter(
+        (test) => test.current_version_id && !suiteCaseVersionIds.has(test.current_version_id),
+      )
+      .map((test) => ({
+        value: `case:${test.current_version_id}`,
+        label: `Ca · ${test.test_case_key} ${test.current_version?.title || test.title || ""}`,
+      })),
+    ...(value.test_case_version_ids || [])
+      .filter((versionId) => !knownCaseIds.has(versionId) && !suiteCaseVersionIds.has(versionId))
+      .map((versionId) => ({ value: `case:${versionId}`, label: `Ca · ${versionId}` })),
+  ];
+  const caseScopeSelection = [
+    ...(value.test_suite_ids || []).map((suiteId) => `suite:${suiteId}`),
+    ...(value.test_case_version_ids || [])
+      .filter((versionId) => !suiteCaseVersionIds.has(versionId))
+      .map((versionId) => `case:${versionId}`),
+  ];
+  const createCaseParams = new URLSearchParams();
+  (value.requirement_version_ids || []).forEach((versionId) =>
+    createCaseParams.append("requirementVersionId", versionId),
+  );
+  if (initialValue?._id) createCaseParams.set("returnTestPlanId", initialValue._id);
+  const createCaseHref = `${projectRoute(projectId, PROJECT_SECTION_SLUGS.testCases)}/tao-moi?${createCaseParams.toString()}`;
   const riskRows = value.risk_register?.length
     ? value.risk_register
     : [{ title: "", response: "" }];
   const testTypeOptions = [
     ["functional", "Chức năng"],
     ["non_functional", "Phi chức năng"],
+    ["black_box", "Hộp đen"],
     ["white_box", "Hộp trắng"],
-    ["change_related", "Liên quan đến thay đổi"],
+    ...(selectedTestTypes.includes("change_related")
+      ? [["change_related", "Liên quan đến thay đổi (dữ liệu cũ)"]]
+      : []),
   ];
   const savingRef = useRef(false);
   const setField = (key, next) => setValue((current) => ({ ...current, [key]: next }));
@@ -171,6 +187,11 @@ export default function TestPlanEditor({
         if (readOnly) return;
         if (savingRef.current) return;
         setError("");
+        const saveAsDraft = event.nativeEvent.submitter?.value === "draft";
+        if (String(value.name || "").trim().length < 2) {
+          setError("Tên kế hoạch cần ít nhất 2 ký tự.");
+          return;
+        }
         if (
           (value.risk_register || []).some(
             (risk) => !String(risk.title || "").trim() && String(risk.response || "").trim(),
@@ -179,7 +200,7 @@ export default function TestPlanEditor({
           setError("Nhập nội dung rủi ro cho cách ứng phó đã điền.");
           return;
         }
-        if (event.nativeEvent.submitter?.value !== "draft") {
+        if (!saveAsDraft) {
           if (!String(value.objective || "").trim()) {
             setError("Nhập mục tiêu của kế hoạch.");
             return;
@@ -202,7 +223,6 @@ export default function TestPlanEditor({
                 "test_case_version_ids",
                 "test_types",
                 "test_level",
-                "test_techniques",
                 "owner_id",
                 "schedule",
                 "risk_register",
@@ -223,9 +243,9 @@ export default function TestPlanEditor({
             scope_out: (value.scope_out || []).map((item) => item.trim()).filter(Boolean),
             test_case_version_ids: [...new Set(value.test_case_version_ids || [])],
           };
+          payload.save_as_draft = saveAsDraft;
           if (!initialValue?._id) {
             payload.project_id = projectId;
-            payload.save_as_draft = event.nativeEvent.submitter?.value === "draft";
             if (newPeriodName.trim()) {
               payload.test_period_id = null;
               payload.new_test_period = {
@@ -258,7 +278,7 @@ export default function TestPlanEditor({
           </div>
           <div className="grid min-w-0 gap-4 md:grid-cols-2">
             <label className="field-label md:col-span-2">
-              Tên kế hoạch
+              Tên kế hoạch <span className="text-danger">*</span>
               <input
                 className="apple-input mt-2"
                 value={value.name}
@@ -370,17 +390,20 @@ export default function TestPlanEditor({
               </div>
             )}
             <label className="field-label md:col-span-2">
-              Mục tiêu
+              Mục tiêu <span className="text-danger">*</span>
               <textarea
                 className="apple-input mt-2 min-h-20"
                 value={value.objective}
                 onChange={(event) => setField("objective", event.target.value)}
-                required
               />
             </label>
             <MultiSelect
               className="md:col-span-2"
-              label="Yêu cầu trong phạm vi *"
+              label={
+                <span>
+                  Yêu cầu trong phạm vi <span className="text-danger">*</span>
+                </span>
+              }
               showSearch={false}
               options={requirements.map((item) => ({
                 value: item.current_version_id,
@@ -396,6 +419,47 @@ export default function TestPlanEditor({
               }}
               disabled={readOnly}
             />
+            <div className="md:col-span-2">
+              <MultiSelect
+                label={
+                  <span>
+                    Ca kiểm thử trong phạm vi <span className="text-danger">*</span>
+                  </span>
+                }
+                options={caseScopeOptions}
+                searchPlaceholder="Tìm ca hoặc bộ kiểm thử"
+                value={caseScopeSelection}
+                onChange={(selected) => {
+                  const suitesSelected = selected
+                    .filter((item) => item.startsWith("suite:"))
+                    .map((item) => item.slice("suite:".length));
+                  const casesSelected = selected
+                    .filter((item) => item.startsWith("case:"))
+                    .map((item) => item.slice("case:".length));
+                  setValue((current) => ({
+                    ...current,
+                    test_suite_ids: suitesSelected,
+                    test_case_version_ids: casesSelected,
+                  }));
+                }}
+                disabled={readOnly}
+              />
+              <p className="mt-2 text-sm text-ink-muted">
+                Chọn ca đã được duyệt hoặc bộ ca đã có nội dung. Có thể lưu kế hoạch trước khi có
+                ca, nhưng cần ít nhất một ca trong phạm vi trước khi gửi duyệt.
+              </p>
+              {canCreateCases &&
+                !readOnly &&
+                initialValue?._id &&
+                value.requirement_version_ids?.length > 0 && (
+                  <Link
+                    className="mt-2 inline-flex text-sm font-medium text-brand underline underline-offset-2"
+                    href={createCaseHref}
+                  >
+                    Tạo ca từ các yêu cầu đã chọn
+                  </Link>
+                )}
+            </div>
             <label className="field-label md:col-span-2">
               Ngoài phạm vi (tùy chọn)
               <textarea
@@ -410,6 +474,10 @@ export default function TestPlanEditor({
           <h3 className="text-base font-semibold text-ink">Phân loại kiểm thử (tùy chọn)</h3>
           <fieldset className="space-y-2">
             <legend className="field-label">Loại kiểm thử</legend>
+            <p className="text-sm text-ink-muted">
+              Chọn một hoặc nhiều loại áp dụng cho phạm vi kế hoạch. Kỹ thuật như phân vùng tương
+              đương hoặc giá trị biên được ghi ở ca kiểm thử.
+            </p>
             <div className="space-y-3">
               <div className="flex flex-wrap gap-x-5 gap-y-2">
                 {testTypeOptions.map(([type, label]) => (
@@ -441,43 +509,20 @@ export default function TestPlanEditor({
             >
               <option value="">-</option>
               <option value="component">Thành phần</option>
-              <option value="integration">Tích hợp</option>
+              <option value="component_integration">Tích hợp thành phần</option>
               <option value="system">Hệ thống</option>
+              <option value="system_integration">Tích hợp hệ thống</option>
               <option value="acceptance">Chấp nhận</option>
+              {value.test_level === "integration" && (
+                <option value="integration">Tích hợp (dữ liệu cũ)</option>
+              )}
             </select>
           </label>
-          <fieldset className="space-y-2">
-            <legend className="field-label">Kỹ thuật thiết kế kiểm thử (tùy chọn)</legend>
-            {testTechniqueGroups.map(([group, techniques]) => (
-              <div key={group}>
-                <p className="mb-1 text-sm text-muted">{group}</p>
-                <div className="flex flex-wrap gap-x-5 gap-y-2">
-                  {techniques.map(([technique, label]) => (
-                    <label className="flex items-center gap-2 text-sm" key={technique}>
-                      <input
-                        type="checkbox"
-                        checked={(value.test_techniques || []).includes(technique)}
-                        onChange={(event) =>
-                          setField(
-                            "test_techniques",
-                            event.target.checked
-                              ? [...(value.test_techniques || []), technique]
-                              : (value.test_techniques || []).filter((item) => item !== technique),
-                          )
-                        }
-                      />
-                      {label}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </fieldset>
         </section>
         <section className="order-3 space-y-4 rounded-control border border-border bg-surface p-4">
           <h3 className="text-base font-semibold text-ink">Môi trường kiểm thử</h3>
           <label className="field-label block">
-            Môi trường đã cấu hình (tùy chọn)
+            Môi trường dự kiến (tùy chọn)
             <select
               className="apple-input mt-2"
               value={value.environment_id || ""}
@@ -492,11 +537,28 @@ export default function TestPlanEditor({
               <option value="">-</option>
               {environments.map((item) => (
                 <option key={item._id} value={item._id}>
-                  {item.name || item.key}
+                  {environmentOptionLabel(item)}
                 </option>
               ))}
             </select>
           </label>
+          {environments.length === 0 ? (
+            <p className="text-sm text-ink-muted">
+              Dự án chưa có môi trường để chọn. Có thể thêm môi trường trong{" "}
+              <Link
+                className="font-medium text-brand underline underline-offset-2"
+                href={`${projectRoute(projectId, PROJECT_SECTION_SLUGS.settings)}?section=environments`}
+              >
+                Cài đặt dự án
+              </Link>
+              .
+            </p>
+          ) : (
+            <p className="text-sm text-ink-muted">
+              Môi trường này được dùng làm mặc định khi tạo lần chạy. Có thể đổi môi trường ở từng
+              lần chạy.
+            </p>
+          )}
         </section>
         <section className="order-4 space-y-4 rounded-control border border-border bg-surface p-4">
           <h3 className="text-base font-semibold text-ink">Tiêu chí bắt đầu và kết thúc</h3>
@@ -514,40 +576,10 @@ export default function TestPlanEditor({
           </div>
         </section>
         <details className="order-5 rounded-control border border-border bg-surface p-4">
-          <summary className="cursor-pointer font-medium">Liên kết (tùy chọn)</summary>
-          <div className="mt-4 grid gap-4 md:grid-cols-2">
-            <MultiSelect
-              className="md:col-span-2"
-              label="Phiên bản ca kiểm thử trong phạm vi"
-              showSearch={false}
-              options={[
-                ...tests.map((item) => ({
-                  value: item.current_version_id,
-                  label: `${item.test_case_key} ${item.current_version?.title || item.title || ""}`,
-                })),
-              ]}
-              searchPlaceholder="Tìm ca kiểm thử"
-              value={value.test_case_version_ids}
-              onChange={(selected) => setField("test_case_version_ids", selected)}
-              disabled={readOnly}
-            />
-            <MultiSelect
-              className="md:col-span-2"
-              label="Bộ kiểm thử liên kết"
-              showSearch={false}
-              options={suites.map((item) => ({ value: item._id, label: item.name }))}
-              searchPlaceholder="Tìm bộ kiểm thử"
-              value={value.test_suite_ids}
-              onChange={(selected) => setField("test_suite_ids", selected)}
-              disabled={readOnly}
-            />
-          </div>
-        </details>
-        <details className="order-6 rounded-control border border-border bg-surface p-4">
           <summary className="cursor-pointer font-medium">Nhân sự và thời gian (tùy chọn)</summary>
           <div className="mt-4 grid min-w-0 gap-4 md:grid-cols-2">
             <label className="field-label md:col-span-2">
-              Người phụ trách
+              Người phụ trách kế hoạch
               <select
                 className="apple-input mt-2"
                 value={value.owner_id || ""}
@@ -565,6 +597,9 @@ export default function TestPlanEditor({
                     </option>
                   ))}
               </select>
+              <span className="mt-1 block text-sm font-normal text-ink-muted">
+                Chịu trách nhiệm cập nhật kế hoạch. Người thực hiện được chọn ở từng lần chạy.
+              </span>
             </label>
             <label className="field-label">
               Bắt đầu dự kiến
@@ -590,9 +625,12 @@ export default function TestPlanEditor({
                 }
               />
             </label>
+            <p className="text-sm text-ink-muted md:col-span-2">
+              Đây là thời gian của kế hoạch. Ngày chung của chu kỳ được quản lý riêng.
+            </p>
           </div>
         </details>
-        <details className="order-7 rounded-control border border-border bg-surface p-4">
+        <details className="order-6 rounded-control border border-border bg-surface p-4">
           <summary className="cursor-pointer font-medium">
             Rủi ro và cách ứng phó (tùy chọn)
           </summary>

@@ -13,12 +13,9 @@ from src.core.auth import (
     ai_capability_context,
     archive_read_permissions,
     permission_explicitly_denied,
-    requires_project_approval,
-    requires_project_owner,
     project_permissions,
     project_membership_permissions,
     refresh_access_policy,
-    responsibility_allows,
     roles_for_membership,
 )
 from src.core.human_decisions import require_ai_publication_authority
@@ -134,41 +131,14 @@ async def get_project_permissions(project_id, user_id):
     grant = await common_repository.find_active_grant(
         project_id, user_id, "ACTIVE", now()
     )
-    if not membership and not grant:
+    account = (await load_accounts([user_id])).get(user_id, {})
+    user_is_admin = account.get("system_role") == "ADMIN" and account.get("is_active") is True
+    if not membership and not grant and not user_is_admin:
         return set()
-    settings_value = project.get("settings") or {}
-    user_is_admin = False
-    if grant or "SYSTEM_ADMIN" in roles_for_membership(membership):
-        account = (await load_accounts([user_id])).get(user_id, {})
-        user_is_admin = account.get("system_role") == "ADMIN" and account.get("is_active") is True
-    admin_member = bool(user_is_admin and membership and membership.get("status") == "ACTIVE")
     permissions = project_membership_permissions(project, membership, user_is_admin)
-    if user_is_admin and grant and (not membership or membership.get("status") == "ACTIVE"):
+    if user_is_admin and grant:
         grant_permissions = set(grant.get("permissions", [])) & project_permissions()
-        owner_id = project.get("project_owner_user_id")
-        owner_available = bool(owner_id)
-        if owner_id and user_is_admin:
-            owner_membership = await common_repository.find_membership(
-                project_id, owner_id, status="ACTIVE"
-            )
-            owner_account = (await load_accounts([owner_id])).get(owner_id, {}) if owner_membership else {}
-            owner_available = bool(
-                owner_membership
-                and owner_account.get("is_active")
-                and owner_account.get("system_role") == "USER"
-            )
-        permissions.update(
-            permission
-            for permission in grant_permissions
-            if (
-                not requires_project_owner(permission)
-                or (user_is_admin and not owner_available)
-            )
-            and (
-                admin_member
-                or responsibility_allows(permission, user_id, settings_value)
-            )
-        )
+        permissions.update(grant_permissions)
     if project.get("status", "active").lower() == "archived":
         permissions.intersection_update(archive_read_permissions() | {"project.restore"})
     return permissions
@@ -342,27 +312,9 @@ async def get_project(
         if user.is_system_admin and grant
         else set()
     )
-    owner_permission = requires_project_owner(permission)
-    admin_member = bool(user.is_system_admin and membership and membership.get("status") == "ACTIVE")
-    admin_can_perform = admin_member and not requires_project_approval(permission)
-    owner_support_available = not project.get("project_owner_user_id")
-    if user.is_system_admin and grant and project.get("project_owner_user_id"):
-        owner_id = project["project_owner_user_id"]
-        owner_membership = await common_repository.find_membership(project_id, owner_id, status="ACTIVE")
-        account = (await load_accounts([owner_id])).get(owner_id, {}) if owner_membership else {}
-        owner_support_available = (
-            not owner_membership
-            or not account.get("is_active")
-            or account.get("system_role") != "USER"
-        )
-    grant_permissions = {
-        item for item in grant_permissions
-        if not requires_project_owner(item) or owner_support_available
-    }
     support = bool(user.is_system_admin and grant and permission in grant_permissions)
-    if owner_permission and not support and not admin_can_perform:
-        grant_permissions.discard(permission)
-    if not membership and not support:
+    admin_access = user.is_system_admin
+    if not membership and not support and not admin_access:
         await audit(
             user.id,
             'project_membership_required',
@@ -372,9 +324,9 @@ async def get_project(
             {"permission": permission, "system_role": user.system_role.value},
         )
         raise HTTPException(status_code=403, detail={"code": 'PROJECT_MEMBERSHIP_REQUIRED'})
-    if membership and membership.get("status") != 'ACTIVE' and not support:
+    if membership and membership.get("status") != 'ACTIVE' and not support and not admin_access:
         raise HTTPException(status_code=403, detail={"code": 'PROJECT_MEMBERSHIP_INACTIVE'})
-    if project.get("administrative_status", 'ACTIVE') != 'ACTIVE':
+    if project.get("administrative_status", 'ACTIVE') != 'ACTIVE' and not admin_access:
         raise HTTPException(status_code=423, detail={"code": 'PROJECT_ADMINISTRATIVELY_SUSPENDED'})
     if permission.endswith((".approve", ".submit_review", ".publish", ".confirm", ".decide")) or permission in {
         "proposal.bulk.approve", "release.close",
@@ -385,10 +337,15 @@ async def get_project(
         if membership and membership.get("status") == 'ACTIVE'
         else set()
     )
-    if not owner_permission and not admin_member and permission_explicitly_denied(permission, active_roles, project.get("settings")):
+    project_lead = bool(
+        membership
+        and membership.get("status") == 'ACTIVE'
+        and membership.get("user_id") == project.get("project_lead_user_id")
+    )
+    if not admin_access and not project_lead and permission_explicitly_denied(permission, active_roles, project.get("settings")):
         raise HTTPException(status_code=403, detail={"code": "PROJECT_PERMISSION_DENIED", "permission": permission})
     responsibility = access_policy().get("responsibility_permissions", {}).get(permission)
-    if responsibility and not owner_permission and not admin_member:
+    if responsibility and not admin_access and not project_lead:
         designated = (project.get("settings") or {}).get("responsibilities") or {}
         if designated.get(responsibility) != user.id:
             raise HTTPException(status_code=403, detail={"code": "PROJECT_RESPONSIBILITY_REQUIRED", "responsibility": responsibility})

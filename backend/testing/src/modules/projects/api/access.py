@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from pydantic import BaseModel, Field
 
-from src.core.auth import CurrentUser, access_policy, get_current_user, refresh_access_policy
+from src.core.auth import CurrentUser, access_policy, get_current_user, project_permissions, refresh_access_policy
 from src.core.common import audit, envelope
 from src.core.database import database
 from src.schemas.project_access import ProjectAccessControl
@@ -18,7 +18,15 @@ async def project_role_permissions(user: CurrentUser = Depends(get_current_user)
     if not user.is_system_admin:
         raise HTTPException(status_code=403, detail={"code": "SYSTEM_ADMIN_REQUIRED"})
     policy = access_policy()
-    return envelope({"role_permissions": policy.get("role_permissions", {}), "permissions": policy.get("project_permissions", []), "revision": policy["revision"]})
+    valid_permissions = project_permissions()
+    return envelope({
+        "role_permissions": {
+            role: sorted(set(permissions) & valid_permissions)
+            for role, permissions in policy.get("role_permissions", {}).items()
+        },
+        "permissions": sorted(valid_permissions),
+        "revision": policy["revision"],
+    })
 
 
 class RolePermissionsUpdate(BaseModel):

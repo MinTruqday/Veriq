@@ -17,18 +17,6 @@ ai_capability_context = ContextVar("ai_capability_context", default=None)
 _access_policy_context = ContextVar("project_access_policy", default=None)
 
 
-OWNER_PERMISSIONS = frozenset({
-    "project.archive", "project.restore", "project.audit.read", "project.update",
-    "project.settings.manage", "project.members.manage", "notification.project_rule.manage",
-    "release.close", "requirement_document.confirm_extraction",
-})
-
-def requires_project_owner(permission):
-    # Approval is a project capability and can be granted to the appropriate
-    # project role. Only platform/project administration actions stay owner-only.
-    return permission in OWNER_PERMISSIONS
-
-
 def requires_project_approval(permission):
     return permission.endswith((".approve", ".decide", ".publish")) or permission in {
         "release.close", "requirement_document.confirm_extraction",
@@ -88,16 +76,21 @@ access_policy.cache_clear = clear_access_policy
 
 
 def project_permissions():
-    return set(access_policy().get("project_permissions", []))
+    return {
+        permission
+        for permission in access_policy().get("project_permissions", [])
+        if not permission.startswith(("testdata.", "testscenario."))
+        and permission != "ai.generate_scenario"
+    }
 
 
 def archive_read_permissions():
-    return set(access_policy().get("read_only_permissions", [])) | {"testdata.read"}
+    return set(access_policy().get("read_only_permissions", []))
 
 
 ASSIGNED_DRAFT_PERMISSIONS = frozenset({
     "testcase.create", "testcase.update", "testcase.submit_review",
-    "testcase.lint", "testscenario.update",
+    "testcase.lint",
 })
 ASSIGNED_OWNER_PERMISSIONS = ASSIGNED_DRAFT_PERMISSIONS | frozenset({
     "attachment.manage", "defect.update", "defect.trace.manage",
@@ -210,15 +203,13 @@ def permissions_for_membership(membership: dict | None, settings_value: dict | N
 
 
 def project_membership_permissions(project, membership, user_is_admin=False):
+    if user_is_admin:
+        return project_permissions()
     if not membership or membership.get("status") != "ACTIVE":
         return set()
-    if user_is_admin:
-        permissions = project_permissions()
-    else:
-        permissions = permissions_for_membership(membership, project.get("settings"))
-    if membership.get("user_id") == project.get("project_owner_user_id"):
-        permissions.update(project_permissions())
-    return permissions
+    if membership.get("user_id") == project.get("project_lead_user_id"):
+        return project_permissions()
+    return permissions_for_membership(membership, project.get("settings"))
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/xac-thuc/dang-nhap", auto_error=False)

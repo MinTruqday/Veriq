@@ -1,4 +1,5 @@
 from fastapi import HTTPException
+from pymongo.errors import DuplicateKeyError
 
 from src.core.common import audit, get_project, get_project_entity, new_id, now
 from src.repositories.regression_recommendation import regression_recommendation_repository
@@ -35,13 +36,34 @@ async def create_regression_recommendation_record(change_set_id, user):
     if analysis.get("status") != 'REVIEWED':
         raise HTTPException(status_code=409, detail={"code": 'IMPACT_REVIEW_REQUIRED'})
     await require_current_impact_source(analysis, user, "regression.generate")
+    same_analysis = await regression_recommendation_repository.find_by_impact_analysis(
+        change_set_id, analysis["_id"], change_set["project_id"]
+    )
+    if same_analysis:
+        return same_analysis
     existing = await regression_recommendation_repository.find_by_change_set(
         change_set_id, change_set["project_id"]
     )
-    if existing:
-        if existing.get("impact_analysis_id") != analysis.get("_id"):
-            raise HTTPException(status_code=409, detail={"code": 'IMPACT_SOURCE_CHANGED'})
-        return existing
+    if existing and existing.get("status") == "PENDING_APPROVAL":
+        timestamp = now()
+        superseded = await regression_recommendation_repository.supersede_pending_recommendation(
+            existing, analysis["_id"], timestamp
+        )
+        if not superseded:
+            same_analysis = await regression_recommendation_repository.find_by_impact_analysis(
+                change_set_id, analysis["_id"], change_set["project_id"]
+            )
+            if same_analysis:
+                return same_analysis
+            raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
+        await audit(
+            user.id,
+            "regression_recommendation_superseded",
+            "RegressionRecommendation",
+            existing["_id"],
+            change_set["project_id"],
+            {"replacement_impact_analysis_id": analysis["_id"]},
+        )
     recent_failures = await recent_failure_versions(change_set["project_id"])
     items = []
     for impact in analysis.get("reviewed_affected_test_cases", analysis["affected_test_cases"]):
@@ -87,7 +109,15 @@ async def create_regression_recommendation_record(change_set_id, user):
         "created_at": now(),
         "updated_at": now(),
     }
-    await regression_recommendation_repository.insert_recommendation(recommendation)
+    try:
+        await regression_recommendation_repository.insert_recommendation(recommendation)
+    except DuplicateKeyError:
+        same_analysis = await regression_recommendation_repository.find_by_impact_analysis(
+            change_set_id, analysis["_id"], change_set["project_id"]
+        )
+        if same_analysis:
+            return same_analysis
+        raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
     await audit(
         user.id,
         'regression_recommendation_created',

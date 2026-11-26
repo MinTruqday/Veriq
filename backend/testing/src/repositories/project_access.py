@@ -84,56 +84,6 @@ class ProjectAccessRepository:
                         access_policy.cache_clear()
                         return
 
-    async def ensure_test_review_capabilities(self):
-        from src.core.auth import access_policy
-
-        names = {
-            "testscenario.approve",
-            "testscenario.review",
-        }
-        while True:
-            document = await database.value.project_access_control.find_one({"_id": "active"})
-            access = ProjectAccessControl.model_validate(document)
-            known = {item.name for item in access.capabilities}
-            missing = names - known
-            if not missing:
-                access_policy.cache_clear()
-                return
-            updated = access.model_copy(update={
-                "revision": access.revision + 1,
-                "capabilities": access.capabilities + [
-                    ProjectCapability(name=name)
-                    for name in sorted(missing)
-                ],
-            })
-            async with await database.client.start_session() as session:
-                async with session.start_transaction():
-                    result = await database.value.project_access_control.replace_one(
-                        {"_id": "active", "revision": access.revision},
-                        {**document, **updated.model_dump(), "updated_at": datetime.now(timezone.utc)},
-                        session=session,
-                    )
-                    if result.modified_count:
-                        await database.value.audit_events.update_one(
-                            {"_id": f"MIG-test-review-capabilities-{updated.revision}"},
-                            {"$setOnInsert": {
-                                "actor_id": "SYSTEM_MIGRATION",
-                                "action": "test_review_capabilities_added",
-                                "entity_type": "ProjectAccessControl",
-                                "entity_id": "active",
-                                "project_id": None,
-                                "created_at": datetime.now(timezone.utc),
-                                "details": {
-                                    "capabilities": sorted(missing),
-                                    "previous_revision": access.revision,
-                                },
-                            }},
-                            upsert=True,
-                            session=session,
-                        )
-                        access_policy.cache_clear()
-                        return
-
     async def ensure_private_defect_capability(self):
         from src.core.auth import ROLE_NEUTRAL_PERMISSIONS, access_policy
         from src.schemas.project_access import ProjectCapability

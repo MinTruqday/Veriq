@@ -112,19 +112,12 @@ export const projectTestingApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
-  listTestAnalysisAiResults: (projectId, limit = 100) =>
-    testingRequest(`/du-an/${projectId}/phan-tich-kiem-thu/ai?limit=${limit}`),
   listTestAnalysisBasis: (projectId, filters = {}) => {
     const query = listQuery(filters);
     return testingRequest(
       `/du-an/${projectId}/phan-tich-kiem-thu/co-so${query ? `?${query}` : ""}`,
     );
   },
-  runTestAnalysisAI: (projectId, payload) =>
-    testingRequest(`/du-an/${projectId}/phan-tich-kiem-thu/ai`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
   runDeterministicTestAnalysis: (projectId, payload) =>
     testingRequest(`/du-an/${projectId}/phan-tich-kiem-thu/kiem-tra`, {
       method: "POST",

@@ -67,13 +67,26 @@ def _impact_snapshot(kind, item, reasons, related_case_version_ids=None):
     return snapshot
 
 
-def impact_test_version_ids(current_tests, direct_targets):
+def impact_test_version_ids(current_tests, candidate_targets):
     current_version_ids = {
         item["current_version_id"]
         for item in current_tests
         if item.get("current_version_id")
     }
-    return sorted(current_version_ids | set(direct_targets))
+    return sorted(current_version_ids | set(candidate_targets))
+
+
+def trace_target_sets(links, scenario_links):
+    source_links = [*links, *scenario_links]
+    candidate_targets = {
+        link["target_id"] for link in source_links if link.get("target_id")
+    }
+    confirmed_targets = {
+        link["target_id"]
+        for link in source_links
+        if link.get("status") == "CONFIRMED" and link.get("target_id")
+    }
+    return candidate_targets, confirmed_targets
 
 
 def _impact_source_fingerprint(
@@ -136,15 +149,13 @@ async def _current_impact_source_fingerprint(change_set, analysis):
     scenario_links = _bounded_scope_records(
         scenario_links, "trace_links", scope_limitations
     )
-    direct_targets = {
-        link["target_id"] for link in [*links, *scenario_links] if link.get("target_id")
-    }
+    candidate_targets, _ = trace_target_sets(links, scenario_links)
     current_tests = await impact_analysis_repository.list_current_tests(
         change_set["project_id"], ["ACTIVE", "NEEDS_UPDATE"],
         IMPACT_SCOPE_LIMITS["test_cases"],
     )
     current_tests = _bounded_scope_records(current_tests, "test_cases", scope_limitations)
-    candidate_version_ids = impact_test_version_ids(current_tests, direct_targets)
+    candidate_version_ids = impact_test_version_ids(current_tests, candidate_targets)
     if len(candidate_version_ids) > IMPACT_SCOPE_LIMITS["test_case_versions"]:
         candidate_version_ids = candidate_version_ids[: IMPACT_SCOPE_LIMITS["test_case_versions"]]
     versions = await impact_analysis_repository.list_test_versions(
@@ -292,9 +303,7 @@ async def create_impact_analysis_record(
     scenario_links = _bounded_scope_records(
         scenario_links, "trace_links", scope_limitations
     )
-    direct_targets = {
-        link["target_id"] for link in [*links, *scenario_links] if link.get("target_id")
-    }
+    candidate_targets, confirmed_targets = trace_target_sets(links, scenario_links)
     current_tests = await impact_analysis_repository.list_current_tests(
         change_set["project_id"],
         ['ACTIVE', 'NEEDS_UPDATE'],
@@ -303,7 +312,7 @@ async def create_impact_analysis_record(
     current_tests = _bounded_scope_records(
         current_tests, "test_cases", scope_limitations
     )
-    candidate_version_ids = impact_test_version_ids(current_tests, direct_targets)
+    candidate_version_ids = impact_test_version_ids(current_tests, candidate_targets)
     if len(candidate_version_ids) > IMPACT_SCOPE_LIMITS["test_case_versions"]:
         scope_limitations.append("SCOPE_TRUNCATED_TEST_CASE_VERSION_IDS")
         candidate_version_ids = candidate_version_ids[: IMPACT_SCOPE_LIMITS["test_case_versions"]]
@@ -329,7 +338,7 @@ async def create_impact_analysis_record(
     )
     impacted = []
     for version in versions:
-        direct_trace = version["_id"] in direct_targets
+        direct_trace = version["_id"] in confirmed_targets
         semantic_score = semantic_candidate_score(
             requirement_text, str(version.get("plain_text_projection", ""))
         )
@@ -357,6 +366,14 @@ async def create_impact_analysis_record(
                 "direct_trace": direct_trace,
             }
         )
+        if version["_id"] in candidate_targets and not direct_trace:
+            item["evidence"].append(
+                {
+                    "artifact_type": "stale_trace_candidate",
+                    "direct_trace": False,
+                    "reason": "Liên kết truy vết chưa được xác nhận nên chỉ dùng làm dấu hiệu cần rà soát",
+                }
+            )
         impacted.append(item)
     ai_result = await request_impact_classification(change_set["project_id"], change_set, versions)
     ai_applied_version_ids = apply_ai_impact_suggestions(impacted, ai_result)
@@ -364,7 +381,7 @@ async def create_impact_analysis_record(
         item
         for item in impacted
         if item["classification"] != 'STILL_VALID'
-        or item["test_case_version_id"] in direct_targets
+        or item["test_case_version_id"] in confirmed_targets
     ]
     new_test_requirements = ai_new_test_requirements(ai_result, change_set["to_version_id"])
     affected_case_version_ids = list(
@@ -458,7 +475,7 @@ async def create_impact_analysis_record(
                 )
             )
     impact_limitations = list(dict.fromkeys(scope_limitations))
-    if not links and not scenario_links:
+    if not confirmed_targets:
         impact_limitations.append("NO_CONFIRMED_TRACE_LINKS_FOUND")
     if any(item.get("status") == "STALE" for item in [*links, *scenario_links]):
         impact_limitations.append("STALE_TRACE_LINKS_REQUIRE_REVIEW")

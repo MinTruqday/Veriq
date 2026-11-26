@@ -261,12 +261,15 @@ export default function SimpleTestReports({ project }) {
                   <Metric label="Đạt" value={displayed.counts?.PASS || 0} />
                   <Metric label="Thất bại" value={displayed.counts?.FAIL || 0} />
                   <Metric
-                    label="Tỷ lệ đạt"
+                    label="Tỷ lệ đạt trong ca Pass/Fail"
                     value={
                       displayed.pass_rate == null ? "Chưa có dữ liệu" : `${displayed.pass_rate}%`
                     }
                   />
                 </div>
+                <p className="text-xs text-ink-muted">
+                  Tính trên {displayed.pass_rate_denominator ?? 0} ca có kết luận Pass hoặc Fail.
+                </p>
                 <div className="flex flex-wrap gap-2 text-sm">
                   {Object.entries(labels).map(([status, label]) => (
                     <span className="rounded-full border border-border px-3 py-1" key={status}>

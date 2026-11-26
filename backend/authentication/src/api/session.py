@@ -50,7 +50,7 @@ async def change_email(payload: EmailChange, current_user: CurrentUser = Depends
         data=await AccountService.change_email(
             current_user, payload.current_password, str(payload.new_email)
         ),
-        message="Đổi email hoàn tất, vui lòng đăng nhập lại",
+        message="Đã gửi yêu cầu xác minh địa chỉ thư điện tử mới",
     )
 
 
@@ -78,7 +78,7 @@ async def verify_email(payload: EmailVerificationInput, request: Request):
     client_ip = request.client.host if request.client else "unknown"
     return APIResponse(
         data=await SessionService.verify_email(payload.token, client_ip),
-        message="Xác minh địa chỉ thư điện tử hoàn tất",
+        message="Xác minh địa chỉ thư điện tử hoàn tất; vui lòng đăng nhập lại nếu vừa đổi email",
     )
 
 
@@ -95,7 +95,7 @@ async def update_settings(
     payload: SettingsUpdate, current_user: CurrentUser = Depends(get_current_user)
 ):
     return APIResponse(
-        data=await AccountService.update_preferences(current_user, payload.model_dump()),
+        data=await AccountService.update_preferences(current_user, payload.model_dump(exclude_unset=True)),
         message="Cập nhật cài đặt cá nhân hoàn tất",
     )
 
@@ -105,7 +105,7 @@ async def update_notifications(
     payload: NotificationSettingsUpdate, current_user: CurrentUser = Depends(get_current_user)
 ):
     return APIResponse(
-        data=await AccountService.update_notifications(current_user, payload.model_dump()),
+        data=await AccountService.update_notifications(current_user, payload.model_dump(exclude_unset=True)),
         message="Cập nhật thông báo cá nhân hoàn tất",
     )
 

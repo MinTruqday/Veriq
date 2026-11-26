@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -9,10 +10,20 @@ class ReleaseCreate(BaseModel):
     name: str = Field(min_length=2, max_length=300)
     version: str = Field(min_length=1, max_length=120)
     notes: str = Field(default="", max_length=5000)
-    planned_start_at: str | None = Field(default=None, max_length=80)
-    planned_end_at: str | None = Field(default=None, max_length=80)
+    planned_start_at: date | None = None
+    planned_end_at: date | None = None
     scope_in: list[str] = Field(default_factory=list, max_length=500)
     scope_out: list[str] = Field(default_factory=list, max_length=500)
+
+    @model_validator(mode="after")
+    def validate_planned_dates(self):
+        if (
+            self.planned_start_at
+            and self.planned_end_at
+            and self.planned_start_at > self.planned_end_at
+        ):
+            raise ValueError("RELEASE_END_BEFORE_START")
+        return self
 
 
 class ReleasePatch(BaseModel):
@@ -20,8 +31,8 @@ class ReleasePatch(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=300)
     version: str | None = Field(default=None, min_length=1, max_length=120)
     notes: str | None = Field(default=None, max_length=5000)
-    planned_start_at: str | None = Field(default=None, max_length=80)
-    planned_end_at: str | None = Field(default=None, max_length=80)
+    planned_start_at: date | None = None
+    planned_end_at: date | None = None
     scope_in: list[str] | None = Field(default=None, max_length=500)
     scope_out: list[str] | None = Field(default=None, max_length=500)
 
@@ -49,6 +60,11 @@ class BuildPatch(BaseModel):
 class EnvironmentCreate(BaseModel):
     name: str = Field(min_length=2, max_length=200)
     base_url: str | None = Field(default=None, max_length=2000)
+    environment_type: Literal["WEB", "API", "MOBILE", "DESKTOP", "OTHER"] = "OTHER"
+    operating_system: str = Field(default="", max_length=200)
+    browser: str = Field(default="", max_length=120)
+    browser_version: str = Field(default="", max_length=120)
+    device: str = Field(default="", max_length=200)
     availability: Literal["AVAILABLE", "UNAVAILABLE", "MAINTENANCE"] = "AVAILABLE"
 
 
@@ -56,6 +72,11 @@ class EnvironmentPatch(BaseModel):
     expected_revision: int = Field(ge=1)
     name: str | None = Field(default=None, min_length=2, max_length=200)
     base_url: str | None = Field(default=None, max_length=2000)
+    environment_type: Literal["WEB", "API", "MOBILE", "DESKTOP", "OTHER"] | None = None
+    operating_system: str | None = Field(default=None, max_length=200)
+    browser: str | None = Field(default=None, max_length=120)
+    browser_version: str | None = Field(default=None, max_length=120)
+    device: str | None = Field(default=None, max_length=200)
     availability: Literal["AVAILABLE", "UNAVAILABLE", "MAINTENANCE"] | None = None
 
 

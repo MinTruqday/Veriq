@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException
 from loguru import logger
+from pymongo.errors import DuplicateKeyError
 
 from src.core.infrastructure.configuration import settings
 from src.core.security.access import create_access_token, get_password_hash, verify_password
@@ -84,7 +85,9 @@ class SessionService:
         }
 
     @staticmethod
-    async def issue_email_verification(user_id: str, email: str, client_ip: str):
+    async def issue_email_verification(
+        user_id: str, email: str, client_ip: str, purpose="account_activation"
+    ):
         token = secrets.token_urlsafe(32)
         timestamp = datetime.now(timezone.utc)
         await IdentityRepository.create_email_verification_token(
@@ -92,6 +95,7 @@ class SessionService:
                 "_id": secrets.token_hex(16),
                 "user_id": user_id,
                 "email": email,
+                "purpose": purpose,
                 "token": token,
                 "used": False,
                 "expires_at": timestamp
@@ -128,24 +132,42 @@ class SessionService:
             raise HTTPException(
                 status_code=400, detail="Mã xác minh thư điện tử không hợp lệ hoặc đã hết hạn"
             )
-        account = await IdentityRepository.mark_email_verified(
-            str(token_doc["user_id"]), token_doc["email"]
-        )
+        purpose = token_doc.get("purpose", "account_activation")
+        if purpose == "email_change":
+            try:
+                account = await IdentityRepository.confirm_pending_email(
+                    str(token_doc["user_id"]), token_doc["email"]
+                )
+            except DuplicateKeyError as error:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Địa chỉ thư điện tử đã được tài khoản khác sử dụng",
+                ) from error
+        else:
+            account = await IdentityRepository.mark_email_verified(
+                str(token_doc["user_id"]), token_doc["email"]
+            )
         if not account:
             raise HTTPException(
                 status_code=409,
                 detail="Địa chỉ thư điện tử của tài khoản đã thay đổi hoặc tài khoản không khả dụng",
             )
+        if purpose == "email_change":
+            await IdentityRepository.revoke_all_sessions(str(token_doc["user_id"]))
         await IdentityRepository.insert_audit_log(
             {
-                "action": "EMAIL_VERIFIED",
+                "action": "EMAIL_CHANGED" if purpose == "email_change" else "EMAIL_VERIFIED",
                 "actor_email": token_doc["email"],
                 "target_user_id": str(token_doc["user_id"]),
                 "ip": client_ip,
                 "timestamp": datetime.now(timezone.utc),
             }
         )
-        return {"verified": True, "email": token_doc["email"]}
+        return {
+            "verified": True,
+            "email": token_doc["email"],
+            "reauth_required": purpose == "email_change",
+        }
 
     @staticmethod
     async def login_user(username: str, password: str, client_ip: str):

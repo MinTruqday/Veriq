@@ -79,16 +79,3 @@ class BulkArchiveInput(BaseModel):
     reason: str = Field(min_length=2, max_length=2000)
     preview: bool = False
     idempotency_key: str | None = Field(default=None, min_length=8, max_length=200)
-
-
-class BulkProposalGenerateInput(BaseModel):
-    impact_analysis_ids: list[str] = Field(min_length=1, max_length=5000)
-    preview: bool = False
-    idempotency_key: str | None = Field(default=None, min_length=8, max_length=200)
-
-
-class BulkProposalApproveInput(BaseModel):
-    proposal_ids: list[str] = Field(min_length=1, max_length=5000)
-    review_note: str = Field(min_length=2, max_length=2000)
-    preview: bool = False
-    idempotency_key: str | None = Field(default=None, min_length=8, max_length=200)

@@ -1,8 +1,11 @@
+from datetime import datetime, timezone
+
 from fastapi import HTTPException
 from pymongo import ReturnDocument
 
 from src.core.common import audit, get_project, get_project_entity, new_id, now, optimistic_patch
 from src.core.database import database
+from src.modules.execution.services.result_metrics import result_timestamp
 
 
 async def list_test_period_records(project_id, user):
@@ -170,8 +173,8 @@ async def get_test_period_summary(period_id, user):
     ).to_list(50000) if runs else []
     results.sort(
         key=lambda item: (
-            run_by_id.get(item.get("test_run_id"), {}).get("created_at") or now(),
-            item.get("updated_at") or item.get("created_at") or now(),
+            result_timestamp(item) or datetime.min.replace(tzinfo=timezone.utc),
+            str(item.get("_id") or ""),
         ),
         reverse=True,
     )

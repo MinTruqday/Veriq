@@ -1,9 +1,8 @@
-from datetime import datetime, timezone
-
 from fastapi import HTTPException
 
 from src.core.common import get_project
 from src.modules.execution.services.test_plan import verified_approved_plan_snapshot
+from src.modules.execution.services.result_metrics import pass_rate_metrics, result_timestamp
 from src.repositories.test_plan_progress import test_plan_progress_repository
 
 OPEN_DEFECT_STATUSES = {
@@ -14,17 +13,13 @@ OPEN_DEFECT_STATUSES = {
     "REOPENED",
 }
 
-
-def _timestamp(value):
-    if isinstance(value, datetime):
-        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
-    if not value:
-        return None
-    try:
-        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
-    except ValueError:
-        return None
+RECORDED_RESULT_STATUSES = {
+    "PASS",
+    "FAIL",
+    "BLOCKED",
+    "SKIPPED",
+    "NOT_APPLICABLE",
+}
 
 
 def _latest_results(plan, runs, results):
@@ -47,9 +42,7 @@ def _latest_results(plan, runs, results):
         case_id = result.get("test_case_version_id")
         if case_id not in scope:
             continue
-        timestamp = _timestamp(
-            result.get("completed_at") or result.get("updated_at") or result.get("created_at")
-        )
+        timestamp = result_timestamp(result)
         rank = (
             timestamp.timestamp() if timestamp else 0,
             str(result.get("_id") or ""),
@@ -83,7 +76,7 @@ async def get_live_plan_progress(project_id, plan_id, user):
             "NOT_APPLICABLE",
         )
     }
-    executed = sum(statuses[status] for status in ("PASS", "FAIL", "BLOCKED"))
+    result_recorded = sum(statuses[status] for status in RECORDED_RESULT_STATUSES)
     if len(runs) >= 10000 or len(results) >= 50000:
         raise HTTPException(status_code=409, detail={"code": "PLAN_PROGRESS_SCOPE_TOO_LARGE"})
     result_ids = {item["_id"] for item in results}
@@ -107,12 +100,13 @@ async def get_live_plan_progress(project_id, plan_id, user):
         in {"critical", "high", "nghiêm trọng", "cao"}
         for defect in linked_open
     )
-    decisive = sum(statuses[status] for status in ("PASS", "FAIL", "BLOCKED"))
     return {
         "total": len(latest),
-        "executed": executed,
-        "execution_percent": round(executed * 100 / len(latest), 2) if latest else None,
-        "pass_rate": round(statuses["PASS"] * 100 / decisive, 2) if decisive else None,
+        "result_recorded": result_recorded,
+        "result_recorded_percent": (
+            round(result_recorded * 100 / len(latest), 2) if latest else None
+        ),
+        **pass_rate_metrics(statuses["PASS"], statuses["FAIL"]),
         "statuses": statuses,
         "open_critical_high": critical_high,
     }

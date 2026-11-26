@@ -27,7 +27,7 @@ from src.modules.design.services.linters import duplicate_score
 from src.modules.design.services.test_evidence import requirement_test_evidence_text
 from src.schemas.contracts.design import TestCaseDraftCreate
 from src.core.human_decisions import can_auto_approve_project_content, content_authorship_changes
-from src.modules.design.services.design_authorization import require_assigned_design_draft, require_test_case_creation_scope
+from src.modules.design.services.design_authorization import require_assigned_design_draft
 
 
 def _coverage_item_id(requirement_version_id, source_type, source_id, quote):
@@ -176,7 +176,6 @@ def project_test_index_metadata(value):
         "requirement_version_ids": value.get("requirement_version_ids", []),
         "acceptance_criterion_ids": value.get("acceptance_criterion_ids", []),
         "coverage_item_ids": value.get("coverage_item_ids", []),
-        "data_set_version_ids": value.get("data_set_version_ids", []),
     }
 
 def active_suite_signature(cases, requirement_version_ids):
@@ -259,7 +258,6 @@ async def validate_design_sources(
     project_id,
     requirement_version_ids,
     acceptance_criterion_ids,
-    scenario_id=None,
     test_condition_ids=None,
 ):
     
@@ -281,14 +279,6 @@ async def validate_design_sources(
         if count != len(criterion_ids):
             raise HTTPException(
                 status_code=422, detail={"code": 'CROSS_PROJECT_OR_MISSING_ACCEPTANCE_CRITERION'}
-            )
-    if scenario_id:
-        scenario = await test_design_repository.find_scenario(
-            scenario_id, project_id
-        )
-        if not scenario:
-            raise HTTPException(
-                status_code=422, detail={"code": 'CROSS_PROJECT_OR_MISSING_TEST_SCENARIO'}
             )
     condition_ids = list(dict.fromkeys(test_condition_ids or []))
     if condition_ids:
@@ -325,19 +315,6 @@ async def validate_design_sources(
                     "condition_ids": unapproved_ids,
                 },
             )
-
-async def validate_data_set_versions(project_id, data_set_version_ids):
-    
-    version_ids = list(dict.fromkeys(data_set_version_ids or []))
-    if not version_ids:
-        return
-    count = await test_design_repository.count_data_set_versions(
-        project_id, version_ids
-    )
-    if count != len(version_ids):
-        raise HTTPException(
-            status_code=422, detail={"code": 'CROSS_PROJECT_OR_MISSING_DATA_SET_VERSION'}
-        )
 
 async def validate_test_case_owner(project_id, owner_id):
     owner = str(owner_id or "").strip()
@@ -483,8 +460,16 @@ async def create_test_case_draft_record(
     draft_id=None,
 ):
     
-    payload = await require_test_case_creation_scope(project_id, payload, user)
+    await get_project(project_id, user, "testcase.create")
     if not payload.save_as_draft:
+        if not payload.requirement_version_ids and not payload.acceptance_criterion_ids:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "TEST_CASE_TRACE_LINK_REQUIRED",
+                    "message": "Liên kết ca kiểm thử với ít nhất một yêu cầu trước khi lưu chính.",
+                },
+            )
         from src.modules.design.services.linters import has_verifiable_steps
         if not has_verifiable_steps(payload.model_dump()):
             raise HTTPException(status_code=422, detail={"code": "TEST_CASE_STEPS_REQUIRED", "message": "Nhập thao tác và kết quả mong đợi cho từng bước trước khi lưu ca kiểm thử."})
@@ -528,10 +513,8 @@ async def create_test_case_draft_record(
         project_id,
         payload.requirement_version_ids,
         payload.acceptance_criterion_ids,
-        payload.scenario_id,
         payload.test_condition_ids,
     )
-    await validate_data_set_versions(project_id, payload.data_set_version_ids)
     await validate_coverage_items(
         project_id, payload.requirement_version_ids, payload.coverage_item_ids
     )
@@ -655,7 +638,6 @@ async def create_test_case_draft_record(
         draft["review_acceptance_criteria_snapshot_ids"] = payload.acceptance_criteria_snapshot_ids
 
     async def persist(active_session):
-        await require_test_case_creation_scope(project_id, payload, user)
         await test_design_repository.insert_case_draft(draft, session=active_session)
         await audit(
             user.id,
@@ -868,7 +850,6 @@ async def update_test_case_draft_record(draft_id, payload, user, project_id=None
         payload.acceptance_criterion_ids
         if payload.acceptance_criterion_ids is not None
         else draft.get("acceptance_criterion_ids", []),
-        payload.scenario_id if payload.scenario_id is not None else draft.get("scenario_id"),
         payload.test_condition_ids
         if payload.test_condition_ids is not None
         else draft.get("test_condition_ids", []),
@@ -881,12 +862,6 @@ async def update_test_case_draft_record(draft_id, payload, user, project_id=None
         payload.coverage_item_ids
         if payload.coverage_item_ids is not None
         else draft.get("coverage_item_ids", []),
-    )
-    await validate_data_set_versions(
-        draft["project_id"],
-        payload.data_set_version_ids
-        if payload.data_set_version_ids is not None
-        else draft.get("data_set_version_ids", []),
     )
     changes = payload.model_dump(exclude_unset=True)
     changes.pop("expected_revision", None)
@@ -905,7 +880,7 @@ async def update_test_case_draft_record(draft_id, payload, user, project_id=None
             "expected_result_doc", "postconditions_doc",
             "main_flow_doc", "alternate_flows_doc", "exception_flows_doc", "techniques",
             "requirement_version_ids", "acceptance_criterion_ids",
-            "coverage_item_ids", "data_set_version_ids", "test_condition_ids",
+            "coverage_item_ids", "test_condition_ids",
         )
     ):
         changes["evidence_refs"] = []

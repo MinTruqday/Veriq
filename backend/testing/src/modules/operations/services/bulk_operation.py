@@ -6,12 +6,8 @@ from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from src.core.common import audit, get_project, new_id, now
-from src.core.project_settings import resolve_project_settings
 from src.core.database import database
-from src.schemas.contracts.design import ProposalAction
 from src.repositories.bulk_operation import bulk_operation_repository
-from src.modules.quality.services.maintenance_proposal import create_maintenance_proposal_records
-from src.modules.quality.services.proposal_application import apply_maintenance_proposal
 
 
 def _request_hash(operation_type, project_id, payload):
@@ -176,15 +172,6 @@ class BulkOperationService:
             _verify_replay(existing, operation_type, project_id, payload, user)
         return existing["response"] if existing else None
 
-    @staticmethod
-    async def fresh_proposal(proposal):
-        if proposal.get("proposal_type") not in ['UPDATE_TEST_CASE', 'MARK_OBSOLETE']:
-            return True
-        target = await bulk_operation_repository.find_case_version_identity(
-            proposal.get("target_artifact_id"), proposal["project_id"]
-        )
-        return bool(target and target.get("current_version_id") == proposal.get("base_version_id"))
-
     @classmethod
     @_transactional_bulk('BULK_TAGS')
     async def tags(cls, project_id, payload, user, session=None):
@@ -244,7 +231,6 @@ class BulkOperationService:
             details={"artifact_type": payload.artifact_type, "add_tags": sorted(add_tags), "remove_tags": sorted(remove_tags)},
             session=session,
         )
-
     @classmethod
     @_transactional_bulk('BULK_ADD_TO_SUITE')
     async def add_to_suite(cls, project_id, payload, user, session=None):
@@ -420,132 +406,4 @@ class BulkOperationService:
             results=results,
             details={"artifact_type": payload.artifact_type, "reason": payload.reason},
             session=session,
-        )
-
-    @classmethod
-    async def generate_proposals(cls, project_id, payload, user):
-        await get_project(project_id, user, 'proposal.bulk.generate')
-        idempotency_key = operation_key(payload)
-        replay = await cls.replay(project_id, idempotency_key, 'BULK_GENERATE_PROPOSALS', payload, user)
-        if replay:
-            return replay
-        succeeded = []
-        failed = []
-        results = []
-        for analysis_id in dict.fromkeys(payload.impact_analysis_ids):
-            analysis = await bulk_operation_repository.find_impact_analysis(
-                analysis_id, project_id
-            )
-            if not analysis:
-                failed.append({"id": analysis_id, "code": 'ENTITY_NOT_FOUND'})
-                results.append(item_result(analysis_id, 'FAILED', 'ENTITY_NOT_FOUND'))
-                continue
-            if payload.preview:
-                succeeded.append(analysis_id)
-                results.append(item_result(
-                    analysis_id,
-                    'PREVIEW',
-                    analysis_status=analysis.get("status"),
-                    proposal_count=await bulk_operation_repository.count_proposals(analysis_id),
-                ))
-                continue
-            try:
-                await create_maintenance_proposal_records(analysis_id, user)
-                succeeded.append(analysis_id)
-                results.append(item_result(analysis_id, 'SUCCEEDED'))
-            except HTTPException as error:
-                detail = error.detail if isinstance(error.detail, dict) else {}
-                code = detail.get("code", 'REQUEST_FAILED')
-                failed.append({"id": analysis_id, "code": code})
-                results.append(item_result(analysis_id, 'FAILED', code))
-        return await cls.finish(
-            project_id,
-            'BULK_GENERATE_PROPOSALS',
-            succeeded,
-            failed,
-            user,
-            idempotency_key=idempotency_key,
-            request_payload=payload,
-            preview=payload.preview,
-            results=results,
-        )
-
-    @classmethod
-    async def approve_proposals(cls, project_id, payload, user):
-        project = await get_project(project_id, user, 'proposal.bulk.approve')
-        idempotency_key = operation_key(payload)
-        replay = await cls.replay(project_id, idempotency_key, 'BULK_APPROVE_PROPOSALS', payload, user)
-        if replay:
-            return replay
-        threshold = float(
-            resolve_project_settings(project.get("settings"))[
-                "impact_confidence_threshold"
-            ]
-        )
-        succeeded = []
-        failed = []
-        results = []
-        for proposal_id in dict.fromkeys(payload.proposal_ids):
-            proposal = await bulk_operation_repository.find_proposal(proposal_id, project_id)
-            code = None
-            if not proposal:
-                code = 'ENTITY_NOT_FOUND'
-            elif proposal.get("status") in {"ACCEPTED", "EDITED_ACCEPTED"} and proposal.get(
-                "applied_artifact_id"
-            ):
-                succeeded.append(proposal_id)
-                results.append(
-                    item_result(
-                        proposal_id,
-                        'SUCCEEDED',
-                        target_artifact_id=proposal.get("target_artifact_id"),
-                    )
-                )
-                continue
-            elif proposal.get("status") != 'PENDING':
-                code = 'INVALID_STATE_TRANSITION'
-            elif not proposal.get("last_reviewed_by"):
-                code = 'PROPOSAL_REVIEW_REQUIRED'
-            elif float(proposal.get("confidence", 0)) < threshold:
-                code = 'POLICY_THRESHOLD_NOT_MET'
-            elif not await cls.fresh_proposal(proposal):
-                code = 'STALE_PROPOSAL'
-            if code:
-                failed.append({"id": proposal_id, "code": code})
-                details = {"target_artifact_id": (proposal or {}).get("target_artifact_id")}
-                if code == 'POLICY_THRESHOLD_NOT_MET':
-                    details.update({"confidence": proposal.get("confidence", 0), "threshold": threshold})
-                if code == 'STALE_PROPOSAL':
-                    details["base_version_id"] = proposal.get("base_version_id")
-                results.append(item_result(proposal_id, 'FAILED', code, **details))
-                continue
-            if payload.preview:
-                succeeded.append(proposal_id)
-                results.append(item_result(proposal_id, 'PREVIEW', target_artifact_id=proposal.get("target_artifact_id"), base_version_id=proposal.get("base_version_id")))
-                continue
-            try:
-                await apply_maintenance_proposal(
-                    proposal_id,
-                    ProposalAction(expected_revision=proposal["revision"], review_note=payload.review_note),
-                    user,
-                    'ACCEPTED',
-                )
-                succeeded.append(proposal_id)
-                results.append(item_result(proposal_id, 'SUCCEEDED', target_artifact_id=proposal.get("target_artifact_id")))
-            except HTTPException as error:
-                detail = error.detail if isinstance(error.detail, dict) else {}
-                code = detail.get("code", 'REQUEST_FAILED')
-                failed.append({"id": proposal_id, "code": code})
-                results.append(item_result(proposal_id, 'FAILED', code, target_artifact_id=proposal.get("target_artifact_id")))
-        return await cls.finish(
-            project_id,
-            'BULK_APPROVE_PROPOSALS',
-            succeeded,
-            failed,
-            user,
-            idempotency_key=idempotency_key,
-            request_payload=payload,
-            preview=payload.preview,
-            results=results,
-            details={"review_note": payload.review_note, "confidence_threshold": threshold},
         )

@@ -14,6 +14,7 @@ from src.core.common import envelope, get_project, get_project_permissions, now
 from src.core.database import database
 from src.modules.execution.services.report_document import convert_report_pdf, export_report_docx, legacy_report_document
 from src.modules.execution.services.test_plan import verified_approved_plan_snapshot
+from src.modules.execution.services.result_metrics import pass_rate_metrics
 
 router = APIRouter(prefix="/kiem-thu", tags=["Báo cáo kiểm thử"])
 
@@ -222,7 +223,7 @@ async def build_report(project_id, payload, user, write=True):
             "scope_in": requirement_scope or snapshot.get("scope_in") or [], "scope_out": snapshot.get("scope_out") or [],
             "exit_criteria": snapshot.get("exit_criteria") or [], "environments": environments, "builds": builds,
             "counts": counts, "case_results": case_results, "total": len(scope), "defects": defects, "plan_snapshot_hash": plan_snapshot_hash, "excluded_run_count": excluded_run_count,
-            "pass_rate": round(100 * counts["PASS"] / (counts["PASS"] + counts["FAIL"]), 2) if counts["PASS"] + counts["FAIL"] else None,
+            **pass_rate_metrics(counts["PASS"], counts["FAIL"]),
             "captured_at": now(), "created_by": user.id}
 
 
@@ -289,7 +290,7 @@ async def export_live_report(
         ("Mục tiêu", report["objective"] or "-"),
         ("Phạm vi kiểm thử", "\n".join(report["scope_in"]) or "-"),
         ("Kết quả", f'Tổng: {report["total"]}; Đạt: {counts["PASS"]}; Thất bại: {counts["FAIL"]}; Bị chặn: {counts["BLOCKED"]}; Bỏ qua: {counts["SKIPPED"]}; Không áp dụng: {counts["NOT_APPLICABLE"]}; Chưa ghi nhận: {counts["NOT_RUN"]}'),
-        ("Tỷ lệ đạt", f'{report["pass_rate"]}%' if report.get("pass_rate") is not None else "Chưa đủ dữ liệu"),
+        ("Tỷ lệ đạt trong ca Pass/Fail", f'{report["pass_rate"]}%' if report.get("pass_rate") is not None else "Chưa đủ dữ liệu"),
         ("Cách tính", "Kết quả mới nhất của mỗi ca kể từ khi kế hoạch được duyệt; không cộng các lần chạy lại."),
     ]
     if report.get("period_name"):
@@ -392,7 +393,8 @@ async def export(project_id: str, report_id: str, format: Literal["pdf", "docx"]
     if report.get("exit_criteria") and report["type"] == "COMPLETION":
         rows.append(("Tiêu chí kết thúc", "\n".join(report["exit_criteria"])))
     rows.extend([("Kết quả", f'Tổng: {report["total"]}; Đạt: {counts["PASS"]}; Thất bại: {counts["FAIL"]}; Bị chặn: {counts["BLOCKED"]}; Bỏ qua: {counts["SKIPPED"]}; Không áp dụng: {counts["NOT_APPLICABLE"]}; Chưa ghi nhận trong kỳ: {counts["NOT_RUN"]}'),
-            ("Tỷ lệ đạt (Đạt / (Đạt + Thất bại))", f'{report["pass_rate"]}%' if report.get("pass_rate") is not None else "Chưa đủ dữ liệu"),
+            ("Tỷ lệ đạt trong ca Pass/Fail", f'{report["pass_rate"]}%' if report.get("pass_rate") is not None else "Chưa đủ dữ liệu"),
+            ("Số ca dùng để tính tỷ lệ đạt", str(report.get("pass_rate_denominator", 0))),
             ("Cách tính", "Kết quả đã ghi nhận mới nhất của mỗi ca trong kỳ báo cáo; không cộng các lần chạy lại.")])
     if report.get("defects") is not None and "defect.read" in permissions:
         rows.append(("Lỗi liên kết", f'{report["defects"]["total"]} lỗi, {report["defects"]["open"]} lỗi đang mở tại thời điểm lập báo cáo'))

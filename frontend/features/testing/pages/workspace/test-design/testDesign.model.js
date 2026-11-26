@@ -13,7 +13,6 @@ export function createTestCaseForm() {
     testLevel: "",
     testKind: "",
     ownerId: "",
-    scenarioId: "",
     requirementVersionIds: [],
     acceptanceCriterionIds: [],
     coverageItemIds: [],
@@ -34,7 +33,6 @@ export function createTestCaseForm() {
     tags: "",
     techniques: "",
     automationStatus: "manual",
-    dataSetVersionIds: [],
     testConditionIds: [],
     testStyle: "MANUAL",
     feature: "",
@@ -80,85 +78,6 @@ export function normalizeTestCaseVersionForDisplay(version) {
     }
   }
   return { ...version, steps };
-}
-
-export function createScenarioForm() {
-  return {
-    title: "",
-    objective: "",
-    category: "",
-    testConditionIds: [],
-    requirementVersionIds: [],
-    acceptanceCriterionIds: [],
-    risk: "",
-    priority: "",
-    description: "",
-    actors: "",
-    preconditions: "",
-    business_flow: "",
-    expected_outcome: "",
-    test_data_notes: "",
-    test_level: "",
-    test_kind: "",
-    owner_id: "",
-    tags: "",
-  };
-}
-
-export function scenarioPayload(form) {
-  return {
-    ...Object.fromEntries(
-      [
-        "title",
-        "objective",
-        "category",
-        "risk",
-        "priority",
-        "description",
-        "preconditions",
-        "business_flow",
-        "expected_outcome",
-        "test_data_notes",
-        "test_kind",
-      ].map((key) => [key, form[key]]),
-    ),
-    actors: form.actors
-      .split("\n")
-      .map((item) => item.trim())
-      .filter(Boolean),
-    tags: form.tags
-      .split(",")
-      .map((item) => item.trim())
-      .filter(Boolean),
-    test_level: form.test_level || "",
-    owner_id: form.owner_id || "",
-    requirement_version_ids: form.requirementVersionIds,
-    acceptance_criterion_ids: form.acceptanceCriterionIds,
-    test_condition_ids: form.testConditionIds,
-  };
-}
-
-export function scenarioFormFromRecord(item) {
-  return {
-    ...createScenarioForm(),
-    ...item,
-    actors: (item.actors || []).join("\n"),
-    tags: (item.tags || []).join(", "),
-    requirementVersionIds: item.requirement_version_ids || [],
-    acceptanceCriterionIds: item.acceptance_criterion_ids || [],
-    testConditionIds: item.test_condition_ids || [],
-    test_level: item.test_level || "",
-    owner_id: item.owner_id || "",
-  };
-}
-
-export function createDataSetForm() {
-  return {
-    name: "",
-    variables: {},
-    secretRefs: {},
-    sourceRequirementVersionIds: [],
-  };
 }
 
 export function buildTestCaseDraftChanges(snapshot, draft) {
@@ -243,11 +162,9 @@ export function buildTestCaseDraftChanges(snapshot, draft) {
     owner_id: snapshot.ownerId?.trim(),
     automation_status: snapshot.automationStatus,
     attachments: snapshot.attachments,
-    data_set_version_ids: snapshot.dataSetVersionIds,
     test_condition_ids: snapshot.testConditionIds,
     requirement_version_ids: snapshot.requirementVersionIds,
     acceptance_criterion_ids: snapshot.acceptanceCriterionIds,
-    scenario_id: snapshot.scenarioId || null,
     coverage_item_ids: snapshot.coverageItemIds,
     bdd: snapshot.bdd,
   };
@@ -261,9 +178,7 @@ export function buildTestCaseDraftChanges(snapshot, draft) {
           ? {}
           : field === "owner_id" || field === "bdd"
             ? ""
-            : field === "scenario_id"
-              ? null
-              : "manual";
+            : "manual";
     }
     if (field === "owner_id") previous = previous || "";
     if (field === "bdd") previous = previous || null;

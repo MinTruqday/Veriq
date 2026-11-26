@@ -5,7 +5,7 @@ from fastapi import HTTPException
 
 from src.core.security.access import get_password_hash, verify_password
 from src.repositories.identity import IdentityRepository
-from src.schemas.identity import SystemRole
+from src.schemas.identity import SystemRole, UserResponse
 from src.services.session import SessionService
 
 
@@ -52,10 +52,7 @@ class AccountService:
         await AccountService._audit(
             current_user, "ACCOUNT_PROFILE_UPDATED", changes=sorted(changes)
         )
-        account["_id"] = str(account["_id"])
-        account.pop("password_hash", None)
-        account.pop("passkeys", None)
-        return account
+        return UserResponse.model_validate(account).model_dump(by_alias=True)
 
     @staticmethod
     async def change_email(current_user: Any, current_password: str, requested_email: str):
@@ -72,27 +69,37 @@ class AccountService:
             {"_id": current_user.id},
             {
                 "$set": {
-                    "email": new_email,
-                    "is_verified": False,
-                    "email_verified": False,
+                    "pending_email": new_email,
+                    "pending_email_requested_at": datetime.now(timezone.utc),
                     "updated_at": datetime.now(timezone.utc),
                 }
             },
         )
         await SessionService.issue_email_verification(
-            current_user.id, new_email, "authenticated"
+            current_user.id, new_email, "authenticated", purpose="email_change"
         )
-        await IdentityRepository.revoke_all_sessions(current_user.id)
         await AccountService._audit(
-            current_user, "ACCOUNT_EMAIL_CHANGED", new_email=new_email
+            current_user, "ACCOUNT_EMAIL_CHANGE_REQUESTED", new_email=new_email
         )
-        return {"email": new_email, "reauth_required": True}
+        return {
+            "email": current_user.email,
+            "pending_email": new_email,
+            "verification_required": True,
+            "reauth_required": False,
+        }
 
     @staticmethod
     async def resend_verification(current_user: Any, client_ip: str):
         account = await IdentityRepository.get_auth_credential_by_id(current_user.id)
         if not account:
             raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản")
+        if account.get("pending_email"):
+            return await SessionService.issue_email_verification(
+                current_user.id,
+                account["pending_email"],
+                client_ip,
+                purpose="email_change",
+            )
         if account.get("is_verified") or account.get("email_verified"):
             return {"verified": True}
         return await SessionService.issue_email_verification(
@@ -107,6 +114,8 @@ class AccountService:
     @staticmethod
     async def update_preferences(current_user: Any, values: dict):
         changes = {key: value for key, value in values.items() if value is not None}
+        if not changes:
+            raise HTTPException(status_code=422, detail="Không có dữ liệu cần cập nhật")
         await IdentityRepository.update_auth_credential(
             {"_id": current_user.id},
             {"$set": {f"preferences.{key}": value for key, value in changes.items()}},
@@ -118,25 +127,26 @@ class AccountService:
 
     @staticmethod
     async def update_notifications(current_user: Any, values: dict):
+        changes = {key: value for key, value in values.items() if value is not None}
+        if not changes:
+            raise HTTPException(status_code=422, detail="Không có dữ liệu cần cập nhật")
         await IdentityRepository.update_auth_credential(
             {"_id": current_user.id},
-            {"$set": {f"notification_settings.{key}": value for key, value in values.items()}},
+            {"$set": {f"notification_settings.{key}": value for key, value in changes.items()}},
         )
         await AccountService._audit(
-            current_user, "ACCOUNT_NOTIFICATIONS_UPDATED", changes=sorted(values)
+            current_user, "ACCOUNT_NOTIFICATIONS_UPDATED", changes=sorted(changes)
         )
-        return values
+        return changes
 
     @staticmethod
     async def deactivate(current_user: Any, current_password: str):
         await AccountService._verified_account(current_user, current_password)
-        await IdentityRepository.update_auth_credential(
-            {"_id": current_user.id},
+        await IdentityRepository.update_account_with_admin_guard(
+            current_user.id,
             {
-                "$set": {
-                    "is_active": False,
-                    "updated_at": datetime.now(timezone.utc),
-                }
+                "is_active": False,
+                "updated_at": datetime.now(timezone.utc),
             },
         )
         await IdentityRepository.revoke_all_sessions(current_user.id)
