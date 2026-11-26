@@ -55,6 +55,13 @@ from src.schemas.inference_test_design import (
     TestConditionSuggestionOutput,
     TestConditionSuggestionsOutput,
 )
+from src.schemas.inference_test_plan import (
+    TestPlanFieldEvidenceOutput,
+    TestPlanGenerationOutput,
+    TestPlanRiskSuggestionOutput,
+    TestPlanSuggestionOutput,
+    TestPlanEvidenceQuoteOutput,
+)
 
 __all__ = [
     "AutomationScriptOutput",
@@ -94,6 +101,11 @@ __all__ = [
     "TechniqueRecommendationsOutput",
     "TestConditionSuggestionOutput",
     "TestConditionSuggestionsOutput",
+    "TestPlanEvidenceQuoteOutput",
+    "TestPlanFieldEvidenceOutput",
+    "TestPlanGenerationOutput",
+    "TestPlanRiskSuggestionOutput",
+    "TestPlanSuggestionOutput",
     "TestingAIDegradedMode",
     "TestingCapabilityRequest",
     "TestingCapabilityResult",

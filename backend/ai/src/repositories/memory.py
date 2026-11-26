@@ -21,17 +21,4 @@ class MemoryRepository:
             {"run_id": run_id}, {"$setOnInsert": value}, upsert=True
         )
 
-    async def save_run(self, payload):
-        await self._database.agent_runs.replace_one({"_id": payload["_id"]}, payload, upsert=True)
-
-    async def find_run(self, run_id, project_id=None):
-        query = {"_id": run_id}
-        if project_id:
-            query["project_id"] = project_id
-        return await self._database.agent_runs.find_one(query)
-
-    async def count_runs(self, statuses):
-        return await self._database.agent_runs.count_documents({"status": {"$in": statuses}})
-
-
 memory_repository = MemoryRepository()

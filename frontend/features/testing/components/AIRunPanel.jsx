@@ -8,6 +8,7 @@ import {
   agentAuthorizationGuidance,
   canResumeAIRun,
   agentCheckpointView,
+  aiRunProgress,
   aiRunErrorMessage,
   latestAgentUncertainties,
   agentSourceExtractionGaps,
@@ -30,6 +31,7 @@ const documentWorkflowStageLabels = {
 const documentWorkflowStatusLabels = {
   COMPLETED: "Đã hoàn tất",
   DRAFT_CREATED: "Đã tạo bản nháp",
+  PROPOSED: "Có đề xuất để xem",
   PARTIAL_OR_BLOCKED: "Mới hoàn tất một phần hoặc đang bị chặn",
   BLOCKED: "Đang bị chặn",
   NOT_STARTED: "Chưa thực hiện",
@@ -56,7 +58,6 @@ function documentWorkflowResult(run) {
 function documentWorkflowStageHref(projectId, stage) {
   const base = `/du-an/${encodeURIComponent(projectId)}`;
   if (stage === "requirements") return `${base}/yeu-cau`;
-  if (stage === "test_plan") return `${base}/ke-hoach-kiem-thu`;
   if (stage === "test_scenarios") return `${base}/ca-kiem-thu/kich-ban`;
   if (stage === "test_cases") return `${base}/ca-kiem-thu`;
   return "";
@@ -671,6 +672,7 @@ export default function AIRunPanel({
   const canResumeRun = canControlRun && canResumeAIRun(run, checkpoints, currentUserId);
   const canShowRunControls = (busyRun && canControlRun) || canResumeRun;
   const uncertainties = latestAgentUncertainties(checkpoints);
+  const runProgress = aiRunProgress(run, checkpoints);
   const sourceExtractionGaps = agentSourceExtractionGaps(run);
   const authorizationGuidance = agentAuthorizationGuidance(run);
   const showCompactEmptyState = compact && !loading && !error && visibleRuns.length === 0;
@@ -912,6 +914,36 @@ export default function AIRunPanel({
                   </button>
                 </div>
               )}
+              <section
+                aria-label="Tiến độ xử lý AI"
+                className="grid gap-2 rounded-control border border-border bg-surface p-4"
+                role="status"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span
+                    className={`font-semibold ${runProgress.tone === "danger" ? "text-danger" : runProgress.tone === "success" ? "text-green-700" : "text-warning"}`}
+                  >
+                    {runProgress.label}
+                  </span>
+                  <span className="tabular-nums font-semibold text-ink">
+                    {runProgress.percent}%
+                  </span>
+                </div>
+                <div
+                  aria-label={`Tiến độ ${runProgress.label.toLowerCase()}`}
+                  aria-valuemax={100}
+                  aria-valuemin={0}
+                  aria-valuenow={runProgress.percent}
+                  aria-valuetext={`${runProgress.label} ${runProgress.percent}%`}
+                  className="h-2 overflow-hidden rounded-full bg-surface-quiet"
+                  role="progressbar"
+                >
+                  <div
+                    className={`h-full rounded-full transition-[width] duration-500 ease-out ${runProgress.tone === "danger" ? "bg-danger" : runProgress.tone === "success" ? "bg-green-600" : "bg-warning"}`}
+                    style={{ width: `${runProgress.percent}%` }}
+                  />
+                </div>
+              </section>
               {Array.isArray(run.target_artifact_ids) && (
                 <section
                   aria-label="Phạm vi của lượt AI đang xem"
@@ -1084,9 +1116,20 @@ export default function AIRunPanel({
                       (stage, index, stages) => {
                         const Icon = stage.Icon;
                         const draftIds = Array.isArray(stage.draft_ids) ? stage.draft_ids : [];
-                        const blockers = Array.isArray(stage.warnings)
-                          ? stage.warnings.filter(Boolean).slice(0, 5)
+                        const blockers = [
+                          ...(Array.isArray(stage.warnings) ? stage.warnings : []),
+                          ...(Array.isArray(stage.source_warnings) ? stage.source_warnings : []),
+                        ]
+                          .filter(Boolean)
+                          .slice(0, 5);
+                        const unresolvedQuestions = Array.isArray(stage.unresolved_questions)
+                          ? stage.unresolved_questions.filter(Boolean).slice(0, 10)
                           : [];
+                        const fieldEvidence = Array.isArray(stage.field_evidence)
+                          ? stage.field_evidence.slice(0, 12)
+                          : [];
+                        const planSuggestion =
+                          stage.key === "test_plan" && stage.suggestion ? stage.suggestion : null;
                         const stageStatus =
                           documentWorkflowStatusLabels[stage.status] ||
                           (stage.status ? valueLabel(stage.status) : "Chưa có trạng thái");
@@ -1129,6 +1172,58 @@ export default function AIRunPanel({
                               {stage.detail && (
                                 <p className="break-words text-xs text-ink-muted">{stage.detail}</p>
                               )}
+                              {planSuggestion && (
+                                <div className="mt-2 grid gap-2 rounded-control border border-border bg-surface p-3 text-sm">
+                                  <p className="font-medium text-ink">
+                                    Đề xuất Test Plan · Chưa lưu
+                                  </p>
+                                  {planSuggestion.objective && (
+                                    <p>
+                                      <span className="font-medium">Mục tiêu:</span>{" "}
+                                      {planSuggestion.objective}
+                                    </p>
+                                  )}
+                                  {[
+                                    ["scope_out", "Ngoài phạm vi"],
+                                    ["entry_criteria", "Điều kiện bắt đầu"],
+                                    ["exit_criteria", "Tiêu chí hoàn thành"],
+                                    ["test_types", "Loại kiểm thử"],
+                                  ].map(([field, label]) => {
+                                    const values = Array.isArray(planSuggestion[field])
+                                      ? planSuggestion[field].filter(Boolean)
+                                      : [];
+                                    if (!values.length) return null;
+                                    return (
+                                      <p key={field}>
+                                        <span className="font-medium">{label}:</span>{" "}
+                                        {values.join("; ")}
+                                      </p>
+                                    );
+                                  })}
+                                  {planSuggestion.test_level && (
+                                    <p>
+                                      <span className="font-medium">Cấp kiểm thử:</span>{" "}
+                                      {valueLabel(planSuggestion.test_level)}
+                                    </p>
+                                  )}
+                                  {Array.isArray(planSuggestion.risks) &&
+                                    planSuggestion.risks.length > 0 && (
+                                      <div>
+                                        <p className="font-medium">Rủi ro có căn cứ</p>
+                                        <ul className="mt-1 grid gap-1 text-ink-muted">
+                                          {planSuggestion.risks.map((risk, riskIndex) => (
+                                            <li key={`${stage.key}-risk-${riskIndex}`}>
+                                              <span className="font-medium text-ink">
+                                                {risk.title}
+                                              </span>
+                                              {risk.description ? `: ${risk.description}` : ""}
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+                                </div>
+                              )}
                               {stage.evaluation?.reason && (
                                 <p className="text-xs text-ink-muted">{stage.evaluation.reason}</p>
                               )}
@@ -1150,6 +1245,44 @@ export default function AIRunPanel({
                                     </li>
                                   ))}
                                 </ul>
+                              )}
+                              {unresolvedQuestions.length > 0 && (
+                                <div className="grid gap-1 text-xs">
+                                  <p className="font-medium text-ink">Cần làm rõ</p>
+                                  <ul className="grid gap-1 text-ink-muted">
+                                    {unresolvedQuestions.map((question, questionIndex) => (
+                                      <li key={`${stage.key}-question-${questionIndex}`}>
+                                        {question}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              {fieldEvidence.length > 0 && (
+                                <details className="text-xs">
+                                  <summary className="cursor-pointer font-medium text-ink">
+                                    Căn cứ cho đề xuất Test Plan
+                                  </summary>
+                                  <ul className="mt-2 grid gap-2 text-ink-muted">
+                                    {fieldEvidence.map((item, evidenceIndex) => (
+                                      <li key={`${stage.key}-evidence-${evidenceIndex}`}>
+                                        <span className="font-medium text-ink">
+                                          {valueLabel(item.field)}: {item.value}
+                                        </span>
+                                        {(item.evidence_quotes || [])
+                                          .slice(0, 2)
+                                          .map((quote, quoteIndex) => (
+                                            <p
+                                              className="mt-1 border-l-2 border-border pl-2"
+                                              key={`${stage.key}-quote-${evidenceIndex}-${quoteIndex}`}
+                                            >
+                                              “{String(quote.quote || "").slice(0, 500)}”
+                                            </p>
+                                          ))}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </details>
                               )}
                               {stage.key === "requirements" &&
                                 documentWorkflow.requirement_ids?.length > 0 && (

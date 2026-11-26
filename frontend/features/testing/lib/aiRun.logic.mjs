@@ -2,6 +2,79 @@ import { formatDateTime } from "../../../shared/lib/dateTime.mjs";
 
 const RETRYABLE_STATUSES = new Set(["FAILED", "DEGRADED"]);
 
+const failedAIRunStatuses = new Set(["FAILED", "DEGRADED", "CANCELLED"]);
+
+const checkpointProgress = {
+  QUEUED: 0,
+  WORKER_STARTED: 5,
+  OBSERVED: 15,
+  FACTS_EXTRACTED: 25,
+  UNCERTAINTY_ASSESSED: 35,
+  PLAN_CREATED: 45,
+  FINALIZED: 90,
+  ACTIONS_VERIFIED: 95,
+  GRAPH_COMPLETED: 98,
+};
+
+function uniqueTaskIds(items) {
+  return new Set(
+    (Array.isArray(items) ? items : [])
+      .map((item) => item?.task_id)
+      .filter((taskId) => typeof taskId === "string" && taskId),
+  );
+}
+
+function checkpointPercent(checkpoint) {
+  if (!checkpoint) return 0;
+  const phase = checkpoint.phase;
+  if (phase === "ACTION_STARTED" || phase === "ACTIONS_EXECUTED") {
+    const runState = checkpoint.state_snapshot?.run || {};
+    const plannedIds = uniqueTaskIds(runState.execution_plan);
+    const completedIds = uniqueTaskIds(runState.completed_tasks);
+    const completedCount = plannedIds.size
+      ? [...completedIds].filter((taskId) => plannedIds.has(taskId)).length
+      : Number(checkpoint.detail?.completed_task_count || 0);
+    const plannedCount = plannedIds.size || Number(checkpoint.detail?.planned_task_count || 0);
+    const ratio = plannedCount > 0 ? Math.min(1, completedCount / plannedCount) : 0;
+    return Math.round(45 + ratio * 40);
+  }
+  return checkpointProgress[phase] ?? 0;
+}
+
+export function aiRunProgress(run, checkpoints) {
+  const latest = Array.isArray(checkpoints) ? checkpoints.at(-1) : null;
+  const latestWithSnapshot = Array.isArray(checkpoints)
+    ? [...checkpoints].reverse().find((checkpoint) => checkpoint?.state_snapshot)
+    : null;
+  const progressCheckpoint = latestWithSnapshot || latest;
+  const status = run?.status;
+  const failed = failedAIRunStatuses.has(status);
+  const completed = status === "COMPLETED";
+  const phase = progressCheckpoint?.phase;
+  const processingPhases = new Set([
+    "ACTION_STARTED",
+    "ACTIONS_EXECUTED",
+    "FINALIZED",
+    "ACTIONS_VERIFIED",
+    "GRAPH_COMPLETED",
+  ]);
+  const label = completed
+    ? "Hoàn thành"
+    : failed
+      ? "Thất bại"
+      : processingPhases.has(phase) || status === "VERIFYING"
+        ? "Đang xử lý"
+        : "Chuẩn bị";
+  const percent = completed
+    ? 100
+    : Math.max(0, Math.min(99, checkpointPercent(progressCheckpoint)));
+  return {
+    label,
+    percent,
+    tone: completed ? "success" : failed ? "danger" : "warning",
+  };
+}
+
 const checkpointPhaseLabels = {
   QUEUED: "Đang chờ xử lý",
   WORKER_STARTED: "Đã bắt đầu xử lý lượt chạy",

@@ -10,7 +10,6 @@ from src.agents.runner.ai_run_graph import run_ai_run_graph
 from src.agents.runner.agent_validation import tool_call_records_for_observations
 from src.core.infrastructure.mq import mq
 from src.memory.long_term import long_term_memory
-from src.memory.short_term import run_store
 from src.repositories.ai_runs import ai_run_repository
 from src.runtime.limits import limits
 from src.runtime.queue_names import AI_RUN_QUEUE
@@ -1094,7 +1093,6 @@ class AIRunWorker:
                 agentops.record_session_end(completed.run_id, "failed")
                 return
             try:
-                await run_store.save(completed)
                 if terminal_status == AIRunStatus.COMPLETED:
                     await long_term_memory.record_verified(completed)
             except Exception:

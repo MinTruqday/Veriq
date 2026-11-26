@@ -17,6 +17,9 @@ from src.modules.execution.services.test_plan import (
     update_test_plan_record,
     validate_test_plan_record,
 )
+from src.modules.execution.services.test_plan_generation import (
+    generate_test_plan_suggestion,
+)
 from src.modules.execution.services.test_run import (
     abort_test_run_record,
     assign_test_run_record,
@@ -82,7 +85,7 @@ from src.schemas.contracts.execution import (
     TestSuiteCreate,
     TestSuitePatch,
 )
-from src.schemas.contracts.planning import TestPlanCreate
+from src.schemas.contracts.planning import TestPlanCreate, TestPlanSuggestionInput
 from src.schemas.contracts.project import ProjectArchiveInput
 from src.schemas.contracts.requirements import ReviewTransitionInput
 
@@ -98,6 +101,15 @@ async def create_test_plan(
 ):
     plan = await create_test_plan_record(payload, project_id, user)
     return envelope(plan, revision=1)
+
+
+@router.post("/du-an/{project_id}/ke-hoach-kiem-thu/ai/de-xuat")
+async def suggest_test_plan(
+    project_id: str,
+    payload: TestPlanSuggestionInput,
+    user: CurrentUser = Depends(get_current_user),
+):
+    return envelope(await generate_test_plan_suggestion(project_id, payload, user))
 
 
 @router.get("/du-an/{project_id}/ke-hoach-kiem-thu")

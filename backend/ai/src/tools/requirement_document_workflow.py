@@ -1007,7 +1007,7 @@ async def process_ingested_requirement_document(
 
     document_run_id = str(configurable.get("ai_run_id") or "")
     workflow_stages = {
-        "test_plan": {"status": "NOT_STARTED", "draft_ids": []},
+        "test_plan": {"status": "NOT_STARTED"},
         "test_scenarios": {"status": "NOT_STARTED", "draft_ids": []},
         "test_cases": {"status": "NOT_STARTED", "draft_ids": []},
         "test_run": {"status": "REQUIRES_REAL_EXECUTION"},
@@ -1029,7 +1029,7 @@ async def process_ingested_requirement_document(
         for item in design_requirements
         if item["version"].get("status") == "BASELINED"
     ]
-    if design_version_ids and "testplan.create" in permissions:
+    if design_version_ids and {"testplan.read", "ai.ask_project"} <= permissions:
         try:
             await validate_source_access()
             plan_suggestion = await require_operation(
@@ -1039,71 +1039,41 @@ async def process_ingested_requirement_document(
                 {
                     "requirement_version_ids": design_version_ids,
                     "instruction": (
-                        "Create a traceable draft Test Plan from the exact imported Requirement versions "
-                        "and their acceptance criteria. Do not invent schedules, team assignments, environments, "
-                        "release data, or unsupported scope. Keep conflicting source values unresolved."
+                        "Return a traceable Test Plan proposal for review only from the exact imported Requirement "
+                        "versions and their acceptance criteria. Do not create or save a Test Plan. Do not invent "
+                        "schedules, team assignments, environments, release data, or unsupported scope. Keep "
+                        "conflicting source values unresolved."
                     ),
-                    "current_test_plan": {},
                 },
                 timeout=settings.MODEL_TIMEOUT_SECONDS,
             )
             proposal = plan_suggestion.get("suggestion") or {}
-            plan_fields = (
-                "objective", "scope_in", "scope_out", "entry_criteria", "exit_criteria",
-                "test_types", "environment", "test_level", "test_approach", "assumptions",
-                "constraints", "quality_targets", "communication_plan",
-            )
-            plan_payload = {
-                "project_id": project_id,
-                "name": str(source_documents[document_id].get("title") or source_documents[document_id].get("filename") or "Test Plan")[:300],
-                "requirement_version_ids": design_version_ids,
-                "risk_register": [
-                    {"risk_id": f"RISK-{index}", "title": risk[:500], "description": risk}
-                    for index, risk in enumerate(proposal.get("risks") or [], 1)
-                    if isinstance(risk, str) and risk.strip()
-                ],
-                **{
-                    field: proposal[field]
-                    for field in plan_fields
-                    if field in proposal
-                    and proposal[field] is not None
-                    and not (
-                        isinstance(proposal[field], str)
-                        and not proposal[field].strip()
-                    )
-                },
-            }
-            created_plan = await authorized_source_operation(
-                "POST", f"/du-an/{project_id}/ke-hoach-kiem-thu", plan_payload
-            )
-            if created_plan.get("project_id") != project_id or not created_plan.get("_id") or created_plan.get("status") != "DRAFT":
-                raise RuntimeError("TEST_PLAN_DRAFT_READBACK_INVALID")
             workflow_stages["test_plan"] = {
-                "status": "DRAFT_CREATED",
-                "draft_ids": [created_plan["_id"]],
-                "source_warnings": proposal.get("warnings", [])[:20],
+                "status": "PROPOSED",
+                "suggestion": proposal,
+                "source_warnings": (plan_suggestion.get("warnings") or proposal.get("warnings") or [])[:20],
+                "unresolved_questions": plan_suggestion.get("unresolved_questions", [])[:30],
+                "evidence_refs": plan_suggestion.get("evidence_refs", [])[:100],
+                "field_evidence": plan_suggestion.get("field_evidence", [])[:100],
             }
         except (ToolOperationError, RuntimeError, httpx.TimeoutException, httpx.NetworkError) as error:
             workflow_stages["test_plan"] = {
                 "status": "BLOCKED",
-                "reason_code": getattr(error, "reason_code", str(error) or "TEST_PLAN_DRAFT_FAILED"),
-                "draft_ids": [],
+                "reason_code": getattr(error, "reason_code", str(error) or "TEST_PLAN_SUGGESTION_FAILED"),
             }
             unresolved.append({
-                "reason": "DOCUMENT_WORKFLOW_TEST_PLAN_DRAFT_FAILED",
+                "reason": "DOCUMENT_WORKFLOW_TEST_PLAN_SUGGESTION_FAILED",
                 "details": workflow_stages["test_plan"],
             })
     elif design_version_ids:
         workflow_stages["test_plan"] = {
             "status": "BLOCKED",
-            "reason_code": "TEST_PLAN_CREATE_PERMISSION_MISSING",
-            "draft_ids": [],
+            "reason_code": "TEST_PLAN_SUGGESTION_PERMISSION_MISSING",
         }
     elif review_required_version_ids:
         workflow_stages["test_plan"] = {
             "status": "AWAITING_REQUIREMENT_REVIEW",
             "requirement_version_ids": review_required_version_ids,
-            "draft_ids": [],
         }
 
     if design_version_ids and "ai.generate_scenario" in permissions and "testscenario.create" in permissions:

@@ -22,13 +22,7 @@ Prompt text and prompt-building logic belong to the capability module that owns 
 
 | Module | Owned prompt or function | Main caller | Responsibility |
 | --- | --- | --- | --- |
-| `testing_identity.py` | `TESTING_IDENTITY` | `testing_contract.py` | Define the testing agent's role and objective. |
-| `testing_analysis.py` | `TESTING_ANALYSIS_PROTOCOL` | `testing_contract.py` | Define internal analysis and consistency checks. |
-| `testing_language.py` | `TESTING_LANGUAGE_POLICY` | `testing_contract.py` | Set user-output language behavior and preserve technical identifiers. |
-| `testing_evidence.py` | `TESTING_EVIDENCE_CONTRACT` | `testing_contract.py` | Define evidence, quotation, and inference boundaries. |
-| `testing_governance.py` | `TESTING_GOVERNANCE` | `testing_contract.py` | Separate recommendations from authorized workflows; permissions and audit remain enforced by backend services. |
-| `testing_examples.py` | `TESTING_FEW_SHOT_EXAMPLES` | `testing_contract.py` | Provide examples of valid and invalid testing behavior. |
-| `testing_contract.py` | `STRUCTURED_TESTING_TEMPLATE` | `testing.py` | Compose shared prompt sections without owning capability-specific business rules. |
+| `testing_contract.py` | `STRUCTURED_TESTING_TEMPLATE` and shared sections | `testing.py` | Define the common identity, language, evidence, governance, analysis, and output format for structured testing capabilities. |
 | `testing.py` | Prompt builder and contract validation | `services/inference.py` | Map capabilities to prompts and schemas and fingerprint the contract and actual messages. |
 | `test_case_grounding.py` | Generated-case grounding review | `services/inference.py` | Review citations and source support for generated Test Cases. |
 

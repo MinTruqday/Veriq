@@ -16,6 +16,7 @@ from src.prompts.requirement_templates import (
 )
 from src.prompts.test_case_grounding import build_generated_cases_grounding_prompt
 from src.prompts.test_design import TEST_DESIGN_CAPABILITY_CONTRACTS
+from src.prompts.test_plan_generation import TEST_PLAN_GENERATION_CONTRACT
 from src.prompts.testing_contract import STRUCTURED_TESTING_TEMPLATE
 
 
@@ -27,6 +28,7 @@ def _capability_contracts():
         "impact_analysis": IMPACT_ANALYSIS_CONTRACT,
         "change_simulation_report": IMPACT_ANALYSIS_CONTRACT,
         "project_question": PROJECT_QUESTION_CONTRACT,
+        "test_plan_generation": TEST_PLAN_GENERATION_CONTRACT,
         **TEST_DESIGN_CAPABILITY_CONTRACTS,
         **QUALITY_CAPABILITY_CONTRACTS,
     }

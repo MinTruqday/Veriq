@@ -40,6 +40,21 @@ class TestPlanSchedule(BaseModel):
         return self
 
 
+class TestPlanSuggestionInput(BaseModel):
+    requirement_version_ids: list[str] = Field(min_length=1, max_length=100)
+    instruction: str = Field(default="", max_length=5000)
+
+    @field_validator("requirement_version_ids")
+    @classmethod
+    def unique_requirement_versions(cls, values):
+        normalized = [str(value).strip() for value in values]
+        if any(not value for value in normalized):
+            raise ValueError("TEST_PLAN_REQUIREMENT_VERSION_ID_REQUIRED")
+        if len(normalized) != len(set(normalized)):
+            raise ValueError("TEST_PLAN_REQUIREMENT_VERSION_IDS_MUST_BE_UNIQUE")
+        return normalized
+
+
 class TestPlanRisk(BaseModel):
     category: Literal["PRODUCT", "PROJECT"] | None = None
     risk_id: str = Field(min_length=1, max_length=200)

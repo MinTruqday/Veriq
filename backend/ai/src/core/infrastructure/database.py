@@ -72,11 +72,6 @@ async def setup_indexes():
                 IndexModel([("user_id", ASCENDING), ("updated_at", DESCENDING)]),
                 IndexModel([("user_id", ASCENDING), ("status", ASCENDING)]),
             ],
-            "agent_runs": [
-                IndexModel([("project_id", ASCENDING), ("updated_at", DESCENDING)]),
-                IndexModel([("user_id", ASCENDING), ("updated_at", DESCENDING)]),
-                IndexModel([("status", ASCENDING), ("updated_at", DESCENDING)]),
-            ],
             "ai_runs": [
                 IndexModel([("project_id", ASCENDING), ("updated_at", DESCENDING)]),
                 IndexModel([("requester_user_id", ASCENDING), ("updated_at", DESCENDING)]),
