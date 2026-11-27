@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CalendarDays, Plus, RefreshCw, RotateCcw, Search } from "lucide-react";
+import { CalendarDays, Grid2X2, List, Plus, RefreshCw, RotateCcw, Search } from "lucide-react";
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
@@ -75,6 +75,7 @@ export default function ProjectsPage() {
   const [query, setQuery] = useState("");
   const [scheduleDate, setScheduleDate] = useState("");
   const [projectPage, setProjectPage] = useState(1);
+  const [projectView, setProjectView] = useState("grid");
   const [status, setStatus] = useState("active");
   const [invitationError, setInvitationError] = useState("");
   const [invitationActionError, setInvitationActionError] = useState("");
@@ -266,104 +267,130 @@ export default function ProjectsPage() {
         <ModalHeader>
           <ModalTitle>Tạo dự án</ModalTitle>
         </ModalHeader>
-        <form onSubmit={submit} className="grid gap-5 p-5 md:grid-cols-2">
+        <form onSubmit={submit} className="space-y-6 p-5">
           {createError && (
-            <div className="md:col-span-2">
+            <div>
               <ErrorState message={createError} />
             </div>
           )}
-          <label className="field-label block min-w-0">
-            Mã dự án
-            <input
-              className="apple-input mt-2 w-full"
-              required
-              minLength={2}
-              maxLength={30}
-              pattern="[A-Za-z][A-Za-z0-9_\-]+"
-              value={form.key}
-              onChange={(event) => setForm({ ...form, key: event.target.value })}
-              placeholder="THANHTOAN"
-            />
-          </label>
-          <label className="field-label block min-w-0">
-            Tên dự án
-            <input
-              className="apple-input mt-2 w-full"
-              required
-              minLength={2}
-              maxLength={200}
-              value={form.name}
-              onChange={(event) => setForm({ ...form, name: event.target.value })}
-              placeholder="Tên dự án"
-            />
-          </label>
-          <label className="field-label block min-w-0">
-            Loại dự án
-            <input
-              className="apple-input mt-2 w-full"
-              required
-              minLength={1}
-              maxLength={100}
-              value={form.project_type}
-              onChange={(event) => setForm({ ...form, project_type: event.target.value })}
-              placeholder="Nhập loại dự án"
-            />
-          </label>
-          {user?.system_role === "ADMIN" && (
-            <label className="field-label block min-w-0">
-              Chủ dự án
-              <input
-                className="apple-input mt-2"
-                value={form.project_owner_user_id || ""}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, project_owner_user_id: event.target.value }))
-                }
-                placeholder="Để trống để tạm giao cho bạn"
-              />
-            </label>
-          )}
-          <label className="field-label block min-w-0 md:col-span-2">
-            Mô tả
-            <textarea
-              className="apple-input mt-2 min-h-24 w-full resize-y"
-              maxLength={5000}
-              value={form.description}
-              onChange={(event) => setForm({ ...form, description: event.target.value })}
-            />
-          </label>
-          <label className="field-label block min-w-0">
-            Ngày bắt đầu dự kiến
-            <input
-              className="apple-input mt-2 w-full"
-              type="date"
-              value={form.planned_start_at}
-              onChange={(event) => setForm({ ...form, planned_start_at: event.target.value })}
-            />
-          </label>
-          <label className="field-label block min-w-0">
-            Ngày kết thúc dự kiến
-            <input
-              className="apple-input mt-2 w-full"
-              type="date"
-              min={minimumPlannedEndAt}
-              value={form.planned_end_at}
-              aria-invalid={Boolean(plannedDateRangeInvalid)}
-              aria-describedby="project-date-range-help"
-              onChange={(event) => setForm({ ...form, planned_end_at: event.target.value })}
-            />
-            <span
-              className={`mt-1 block text-xs ${
-                plannedDateRangeInvalid ? "text-danger" : "text-ink-muted"
-              }`}
-              id="project-date-range-help"
-              role={plannedDateRangeInvalid ? "alert" : undefined}
-            >
-              {plannedDateRangeInvalid
-                ? "Ngày kết thúc phải sau ngày bắt đầu."
-                : "Có thể để trống nếu chưa xác định thời hạn."}
-            </span>
-          </label>
-          <div className="action-dialog-footer flex justify-end gap-3 md:col-span-2">
+          <section aria-labelledby="project-create-basics" className="space-y-4">
+            <div>
+              <h3 id="project-create-basics" className="text-sm font-semibold text-ink">
+                Thông tin cơ bản
+              </h3>
+              <p className="mt-1 text-xs text-ink-muted">
+                Nhập mã, tên và loại dự án để tạo workspace.
+              </p>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="field-label block min-w-0">
+                Mã dự án
+                <input
+                  className="apple-input mt-2 w-full"
+                  required
+                  minLength={2}
+                  maxLength={30}
+                  pattern="[A-Za-z][A-Za-z0-9_\-]+"
+                  value={form.key}
+                  onChange={(event) => setForm({ ...form, key: event.target.value })}
+                  placeholder="THANHTOAN"
+                />
+              </label>
+              <label className="field-label block min-w-0">
+                Tên dự án
+                <input
+                  className="apple-input mt-2 w-full"
+                  required
+                  minLength={2}
+                  maxLength={200}
+                  value={form.name}
+                  onChange={(event) => setForm({ ...form, name: event.target.value })}
+                  placeholder="Tên dự án"
+                />
+              </label>
+              <label className="field-label block min-w-0">
+                Loại dự án
+                <input
+                  className="apple-input mt-2 w-full"
+                  required
+                  minLength={1}
+                  maxLength={100}
+                  value={form.project_type}
+                  onChange={(event) => setForm({ ...form, project_type: event.target.value })}
+                  placeholder="Nhập loại dự án"
+                />
+              </label>
+              {user?.system_role === "ADMIN" && (
+                <label className="field-label block min-w-0">
+                  Chủ dự án
+                  <input
+                    className="apple-input mt-2 w-full"
+                    value={form.project_owner_user_id || ""}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        project_owner_user_id: event.target.value,
+                      }))
+                    }
+                    placeholder="Để trống để tạm giao cho bạn"
+                  />
+                </label>
+              )}
+              <label className="field-label block min-w-0 md:col-span-2">
+                Mô tả
+                <textarea
+                  className="apple-input mt-2 min-h-24 w-full resize-y"
+                  maxLength={5000}
+                  value={form.description}
+                  onChange={(event) => setForm({ ...form, description: event.target.value })}
+                />
+              </label>
+            </div>
+          </section>
+          <section
+            aria-labelledby="project-create-schedule"
+            className="space-y-4 border-t border-border pt-5"
+          >
+            <div>
+              <h3 id="project-create-schedule" className="text-sm font-semibold text-ink">
+                Thời gian dự kiến
+              </h3>
+              <p className="mt-1 text-xs text-ink-muted">Có thể để trống khi lịch chưa xác định.</p>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="field-label block min-w-0">
+                Ngày bắt đầu dự kiến
+                <input
+                  className="apple-input mt-2 w-full"
+                  type="date"
+                  value={form.planned_start_at}
+                  onChange={(event) => setForm({ ...form, planned_start_at: event.target.value })}
+                />
+              </label>
+              <label className="field-label block min-w-0">
+                Ngày kết thúc dự kiến
+                <input
+                  className="apple-input mt-2 w-full"
+                  type="date"
+                  min={minimumPlannedEndAt}
+                  value={form.planned_end_at}
+                  aria-invalid={Boolean(plannedDateRangeInvalid)}
+                  aria-describedby={plannedDateRangeInvalid ? "project-date-range-help" : undefined}
+                  onChange={(event) => setForm({ ...form, planned_end_at: event.target.value })}
+                />
+                {plannedDateRangeInvalid && (
+                  <span
+                    className="mt-1 block text-xs text-danger"
+                    id="project-date-range-help"
+                    role="alert"
+                  >
+                    Ngày kết thúc phải sau ngày bắt đầu.
+                  </span>
+                )}
+              </label>
+            </div>
+          </section>
+          <div className="action-dialog-footer flex justify-end gap-3 border-t border-border pt-5">
             <button
               className="secondary-button"
               type="button"
@@ -448,7 +475,7 @@ export default function ProjectsPage() {
       )}
       <Panel title="Danh sách dự án">
         <form
-          className="grid min-w-0 grid-cols-1 gap-3 border-b border-border p-4 md:grid-cols-2 xl:grid-cols-[minmax(300px,1fr)_minmax(170px,220px)_minmax(170px,210px)] xl:items-center"
+          className="grid min-w-0 grid-cols-1 gap-3 border-b border-border p-4 md:grid-cols-2 xl:grid-cols-[minmax(300px,1fr)_minmax(170px,220px)_minmax(170px,210px)_auto] xl:items-center"
           onSubmit={(event) => {
             event.preventDefault();
             setProjectPage(1);
@@ -508,6 +535,28 @@ export default function ProjectsPage() {
               }}
             />
           </label>
+          <div aria-label="Chế độ hiển thị dự án" className="flex items-center gap-1" role="group">
+            <button
+              aria-label="Xem dạng lưới"
+              aria-pressed={projectView === "grid"}
+              className={`icon-button h-10 w-10 ${projectView === "grid" ? "bg-brand/10 text-brand" : ""}`}
+              onClick={() => setProjectView("grid")}
+              title="Dạng lưới"
+              type="button"
+            >
+              <Grid2X2 aria-hidden="true" size={16} />
+            </button>
+            <button
+              aria-label="Xem dạng danh sách"
+              aria-pressed={projectView === "list"}
+              className={`icon-button h-10 w-10 ${projectView === "list" ? "bg-brand/10 text-brand" : ""}`}
+              onClick={() => setProjectView("list")}
+              title="Dạng danh sách"
+              type="button"
+            >
+              <List aria-hidden="true" size={16} />
+            </button>
+          </div>
         </form>
         {loading ? (
           <div className="p-5">
@@ -524,17 +573,13 @@ export default function ProjectsPage() {
                   : "Chưa có dự án"}
           </EmptyState>
         ) : (
-          <div className="divide-y divide-border">
-            <div
-              aria-hidden="true"
-              className="hidden gap-x-5 bg-surface-quiet/60 px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-ink-muted xl:grid xl:grid-cols-[100px_minmax(180px,1.3fr)_minmax(125px,0.9fr)_minmax(140px,1fr)_minmax(120px,0.9fr)]"
-            >
-              <span>Mã dự án</span>
-              <span>Dự án</span>
-              <span>Thời gian</span>
-              <span>Tiến độ</span>
-              <span>Trạng thái, cập nhật</span>
-            </div>
+          <div
+            className={
+              projectView === "grid"
+                ? "grid gap-4 p-4 md:grid-cols-2 2xl:grid-cols-3"
+                : "divide-y divide-border"
+            }
+          >
             {visibleProjects.map((item) => {
               const completionPercent = Number.isFinite(item.project_completion_percent)
                 ? item.project_completion_percent
@@ -549,40 +594,80 @@ export default function ProjectsPage() {
               return (
                 <article
                   key={item._id}
-                  className="grid min-w-0 gap-x-5 gap-y-3 p-5 transition hover:bg-surface-quiet lg:grid-cols-2 lg:items-center xl:grid-cols-[100px_minmax(180px,1.3fr)_minmax(125px,0.9fr)_minmax(140px,1fr)_minmax(120px,0.9fr)]"
+                  className={`min-w-0 transition hover:bg-surface-quiet/50 ${projectView === "grid" ? "flex flex-col rounded-panel border border-border bg-surface p-4 hover:border-brand/40" : "grid gap-x-5 gap-y-3 p-4 sm:px-5 lg:grid-cols-[minmax(7rem,.7fr)_minmax(15rem,1.6fr)_minmax(10rem,1fr)_minmax(9rem,.9fr)_minmax(10rem,1fr)] lg:items-center"}`}
+                  onClick={(event) => {
+                    if (
+                      projectView === "grid" &&
+                      !event.target.closest("a, button, input, select, textarea")
+                    ) {
+                      window.location.assign(`/du-an/${item._id}`);
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    if (
+                      projectView === "grid" &&
+                      event.target === event.currentTarget &&
+                      (event.key === "Enter" || event.key === " ")
+                    ) {
+                      event.preventDefault();
+                      window.location.assign(`/du-an/${item._id}`);
+                    }
+                  }}
+                  role={projectView === "grid" ? "link" : undefined}
+                  tabIndex={projectView === "grid" ? 0 : undefined}
                 >
-                  <div className="min-w-0">
-                    <span
-                      className="block truncate font-mono text-[12px] font-semibold text-brand"
-                      title={item.key}
-                    >
-                      {item.key}
-                    </span>
-                  </div>
-                  <div className="min-w-0">
-                    <Link href={`/du-an/${item._id}`} className="min-w-0">
+                  <header className="flex min-w-0 items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <span
+                        aria-hidden="true"
+                        className="mr-2 inline-flex size-8 items-center justify-center rounded-control bg-brand/10 text-xs font-semibold text-brand"
+                      >
+                        {(item.name || item.key || "D").slice(0, 2).toUpperCase()}
+                      </span>
+                      <span
+                        className="inline-flex rounded-full bg-brand/10 px-2.5 py-1 font-mono text-[11px] font-semibold text-brand"
+                        title={item.key}
+                      >
+                        {item.key}
+                      </span>
+                    </div>
+                    <StatusPill
+                      value={item.status ? valueLabel(item.status) : "Chưa có thông tin"}
+                    />
+                  </header>
+                  <div className={`${projectView === "grid" ? "mt-3" : "lg:min-w-0"} min-w-0`}>
+                    {projectView === "grid" ? (
                       <strong
-                        className="line-clamp-2 break-words text-[14px] font-semibold leading-5 [overflow-wrap:anywhere]"
+                        className="line-clamp-2 break-words text-base font-semibold leading-6 [overflow-wrap:anywhere]"
                         title={item.name}
                       >
                         {item.name}
                       </strong>
-                      {item.description && (
-                        <small className="mt-1 line-clamp-2 text-ink-muted">
-                          {item.description}
-                        </small>
-                      )}
-                      {item.project_type && (
-                        <small className="mt-1 block text-[12px] text-ink-muted">
-                          {valueLabel(item.project_type)}
-                        </small>
-                      )}
+                    ) : (
+                      <Link href={`/du-an/${item._id}`} className="group block min-w-0">
+                        <strong
+                          className="line-clamp-2 break-words text-base font-semibold leading-6 [overflow-wrap:anywhere] group-hover:text-brand"
+                          title={item.name}
+                        >
+                          {item.name}
+                        </strong>
+                      </Link>
+                    )}
+                    {item.description && (
+                      <small className="mt-1 line-clamp-2 text-ink-muted">{item.description}</small>
+                    )}
+                    {item.project_type && (
                       <small className="mt-1 block text-[12px] text-ink-muted">
-                        Trưởng dự án: {item.project_lead_label || "Chưa phân công"}
+                        {valueLabel(item.project_type)}
                       </small>
-                    </Link>
+                    )}
+                    <small className="mt-2 block text-[12px] text-ink-muted">
+                      Trưởng dự án: {item.project_lead_label || "Chưa phân công"}
+                    </small>
                   </div>
-                  <div className="flex min-w-0 items-start gap-2 text-[12px]">
+                  <div
+                    className={`${projectView === "grid" ? "mt-4" : "lg:mt-0"} flex min-w-0 items-start gap-2 text-[12px] text-ink-muted`}
+                  >
                     <CalendarDays
                       aria-hidden="true"
                       className="mt-0.5 shrink-0 text-ink-muted"
@@ -592,7 +677,9 @@ export default function ProjectsPage() {
                       {schedule || "Chưa có lịch"}
                     </span>
                   </div>
-                  <div className="min-w-0 space-y-2 text-[12px]">
+                  <div
+                    className={`${projectView === "grid" ? "mt-4" : "lg:mt-0"} min-w-0 space-y-2 text-[12px]`}
+                  >
                     {completionPercent == null ? (
                       <span className="text-ink-muted">Chưa có tiến độ</span>
                     ) : (
@@ -617,12 +704,11 @@ export default function ProjectsPage() {
                       </div>
                     )}
                   </div>
-                  <div className="flex min-w-0 flex-col items-start gap-1.5">
-                    <StatusPill
-                      value={item.status ? valueLabel(item.status) : "Chưa có thông tin"}
-                    />
+                  <footer
+                    className={`${projectView === "grid" ? "mt-4 border-t border-border pt-3" : "lg:mt-0"} flex min-w-0 items-end justify-between gap-3`}
+                  >
                     <p
-                      className="text-[11px] text-ink-muted 2xl:text-right"
+                      className="min-w-0 text-[11px] text-ink-muted"
                       title={`${activityLabel}${activityDate ? ` ${formatProjectUpdatedAt(activityDate, user?.timezone, user?.locale)}` : ""}`}
                     >
                       {activityDate
@@ -666,7 +752,7 @@ export default function ProjectsPage() {
                           <RotateCcw aria-hidden="true" size={16} />
                         </button>
                       )}
-                  </div>
+                  </footer>
                 </article>
               );
             })}

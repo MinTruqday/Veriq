@@ -1,0 +1,323 @@
+{
+  "id": "test_plan",
+  "name": "03 - Lập, rà soát và phê duyệt kế hoạch kiểm thử",
+  "file_name": "BPMN_Testing_03_Lap_va_phe_duyet_ke_hoach_kiem_thu_v1.drawio",
+  "scope": "Gợi ý AI là nhánh tùy chọn. Kế hoạch được duyệt gắn với snapshot phạm vi; lượt chạy về sau kiểm tra snapshot này.",
+  "lanes": [
+    {
+      "id": "planner",
+      "name": "Người lập kế hoạch",
+      "fill": "#E8F3FF",
+      "stroke": "#4A90C2"
+    },
+    {
+      "id": "system",
+      "name": "Veriq",
+      "fill": "#EFE8FF",
+      "stroke": "#7956A8"
+    },
+    {
+      "id": "reviewer",
+      "name": "Người có quyền phê duyệt",
+      "fill": "#FFF4DF",
+      "stroke": "#C58A28"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "start",
+      "label": "Bắt đầu lập kế hoạch kiểm thử",
+      "type": "start",
+      "lane": "planner",
+      "col": 0,
+      "row": 0
+    },
+    {
+      "id": "choose_ai",
+      "label": "Dùng gợi ý AI để hỗ trợ lập kế hoạch?",
+      "type": "gateway",
+      "lane": "planner",
+      "col": 1,
+      "row": 0
+    },
+    {
+      "id": "suggest",
+      "label": "Tạo gợi ý kế hoạch bằng AI",
+      "type": "service_task",
+      "lane": "system",
+      "col": 2,
+      "row": 0,
+      "task_type": "service"
+    },
+    {
+      "id": "manual",
+      "label": "Nhập phạm vi kế hoạch",
+      "type": "user_task",
+      "lane": "planner",
+      "col": 2,
+      "row": 1,
+      "task_type": "user"
+    },
+    {
+      "id": "edit",
+      "label": "Hoàn thiện phạm vi, môi trường và bộ kiểm thử",
+      "type": "user_task",
+      "lane": "planner",
+      "col": 3,
+      "row": 0,
+      "task_type": "user"
+    },
+    {
+      "id": "validate",
+      "label": "Kiểm tra phạm vi và tính đầy đủ của kế hoạch",
+      "type": "service_task",
+      "lane": "system",
+      "col": 4,
+      "row": 0,
+      "task_type": "service"
+    },
+    {
+      "id": "complete",
+      "label": "Kế hoạch đủ điều kiện gửi rà soát?",
+      "type": "gateway",
+      "lane": "system",
+      "col": 5,
+      "row": 0
+    },
+    {
+      "id": "invalid",
+      "label": "Kế hoạch chưa hợp lệ hoặc chưa đầy đủ",
+      "type": "error_end",
+      "lane": "system",
+      "col": 6,
+      "row": 1
+    },
+    {
+      "id": "submit",
+      "label": "Gửi kế hoạch để rà soát",
+      "type": "user_task",
+      "lane": "planner",
+      "col": 6,
+      "row": 0,
+      "task_type": "user"
+    },
+    {
+      "id": "review",
+      "label": "Rà soát kế hoạch",
+      "type": "user_task",
+      "lane": "reviewer",
+      "col": 7,
+      "row": 0,
+      "task_type": "user"
+    },
+    {
+      "id": "approved",
+      "label": "Phê duyệt kế hoạch?",
+      "type": "gateway",
+      "lane": "reviewer",
+      "col": 8,
+      "row": 0
+    },
+    {
+      "id": "revise",
+      "label": "Chỉnh sửa theo yêu cầu rà soát",
+      "type": "user_task",
+      "lane": "planner",
+      "col": 9,
+      "row": 1,
+      "task_type": "user"
+    },
+    {
+      "id": "snapshot",
+      "label": "Kiểm tra phạm vi đã duyệt và tạo snapshot",
+      "type": "service_task",
+      "lane": "system",
+      "col": 9,
+      "row": 0,
+      "task_type": "service"
+    },
+    {
+      "id": "snapshot_ok",
+      "label": "Snapshot kế hoạch hợp lệ?",
+      "type": "gateway",
+      "lane": "system",
+      "col": 10,
+      "row": 0
+    },
+    {
+      "id": "conflict",
+      "label": "Không thể phê duyệt do phạm vi hoặc phiên bản thay đổi",
+      "type": "error_end",
+      "lane": "system",
+      "col": 11,
+      "row": 1
+    },
+    {
+      "id": "done",
+      "label": "Kế hoạch kiểm thử đã được phê duyệt",
+      "type": "end",
+      "lane": "system",
+      "col": 11,
+      "row": 0
+    },
+    {
+      "id": "process_data",
+      "label": "Kế hoạch và snapshot đã duyệt",
+      "type": "data_store",
+      "lane": "system",
+      "col": 9,
+      "row": 1
+    },
+    {
+      "id": "auto_approval",
+      "label": "Được tự phê duyệt và không lưu nháp?",
+      "type": "gateway",
+      "lane": "system",
+      "col": 6,
+      "row": 0
+    }
+  ],
+  "edges": [
+    {
+      "id": "e01",
+      "from": "start",
+      "to": "choose_ai",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e02",
+      "from": "choose_ai",
+      "to": "suggest",
+      "type": "sequence",
+      "label": "Có"
+    },
+    {
+      "id": "e03",
+      "from": "choose_ai",
+      "to": "manual",
+      "type": "sequence",
+      "label": "Không"
+    },
+    {
+      "id": "e04",
+      "from": "suggest",
+      "to": "edit",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e05",
+      "from": "manual",
+      "to": "edit",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e06",
+      "from": "edit",
+      "to": "validate",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e07",
+      "from": "validate",
+      "to": "complete",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e08",
+      "from": "complete",
+      "to": "auto_approval",
+      "type": "sequence",
+      "label": "Đạt"
+    },
+    {
+      "id": "e08a",
+      "from": "auto_approval",
+      "to": "snapshot",
+      "type": "sequence",
+      "label": "Có"
+    },
+    {
+      "id": "e08b",
+      "from": "auto_approval",
+      "to": "submit",
+      "type": "sequence",
+      "label": "Không"
+    },
+    {
+      "id": "e10",
+      "from": "submit",
+      "to": "review",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e11",
+      "from": "review",
+      "to": "approved",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e12",
+      "from": "approved",
+      "to": "snapshot",
+      "type": "sequence",
+      "label": "Phê duyệt"
+    },
+    {
+      "id": "e13",
+      "from": "approved",
+      "to": "revise",
+      "type": "sequence",
+      "label": "Yêu cầu chỉnh sửa"
+    },
+    {
+      "id": "e14",
+      "from": "revise",
+      "to": "submit",
+      "type": "sequence",
+      "label": "Gửi rà soát lại",
+      "route": "loop_below"
+    },
+    {
+      "id": "e15",
+      "from": "snapshot",
+      "to": "snapshot_ok",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e16",
+      "from": "snapshot_ok",
+      "to": "done",
+      "type": "sequence",
+      "label": "Hợp lệ"
+    },
+    {
+      "id": "e17",
+      "from": "snapshot_ok",
+      "to": "conflict",
+      "type": "sequence",
+      "label": "Không hợp lệ"
+    },
+    {
+      "id": "data_assoc",
+      "from": "snapshot",
+      "to": "process_data",
+      "type": "association",
+      "label": ""
+    },
+    {
+      "id": "e09",
+      "from": "complete",
+      "to": "invalid",
+      "type": "sequence",
+      "label": "Chưa đạt"
+    }
+  ]
+}

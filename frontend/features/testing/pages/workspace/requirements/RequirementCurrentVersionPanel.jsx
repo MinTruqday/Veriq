@@ -5,6 +5,46 @@ import DocumentEditor from "../../../editor/DocumentEditor";
 import RequirementLines from "./RequirementLines";
 import { messageOf, valueLabel } from "../../../lib/testing";
 import { testingApi } from "../../../services/testing.service";
+import { PROJECT_SECTION_SLUGS, projectRoute } from "../../../routes";
+
+function numberedDocumentItems(items, prefix, getText) {
+  return items
+    .map((value, index) => {
+      const text = getText(value);
+      const match = String(text || "").match(new RegExp(`^\\s*${prefix}\\s*-\\s*(\\d+)`, "i"));
+      return { value, index, sequence: match ? Number(match[1]) : null };
+    })
+    .sort((left, right) => {
+      if (left.sequence === null && right.sequence !== null) return 1;
+      if (right.sequence === null && left.sequence !== null) return -1;
+      if (left.sequence !== null && right.sequence !== null && left.sequence !== right.sequence) {
+        return left.sequence - right.sequence;
+      }
+      return left.index - right.index;
+    });
+}
+
+function businessRuleContent(value) {
+  return String(value || "")
+    .replace(/^\s*[-–—•]\s*/, "")
+    .replace(/^\s*BR\s*[-–—]\s*\d+\s*[-:.)]?\s*/i, "")
+    .replace(/^\s*[-–—:.)]+\s*/, "");
+}
+
+function acceptanceCriterionContent(value) {
+  return String(value || "")
+    .replace(/^\s*[-–—•]\s*/, "")
+    .replace(/^\s*AC\s*[-–—]\s*\d+\s*[-:.)]?\s*/i, "")
+    .replace(/^\s*[-–—:.)]+\s*/, "");
+}
+
+function sourceLocationLabel(reference) {
+  return reference.source_start !== undefined
+    ? `Vị trí ${reference.source_start}–${reference.source_end}`
+    : reference.candidate_index !== undefined
+      ? `Mục ${reference.candidate_index + 1}`
+      : "Không có vị trí cụ thể";
+}
 
 export default function RequirementCurrentVersionPanel({
   projectId,
@@ -12,8 +52,11 @@ export default function RequirementCurrentVersionPanel({
   currentUserId,
   canSelfApprove = false,
   selected,
+  sourceDocuments = [],
+  onOpenTrace,
   focusAcceptanceCriterionId,
   draft,
+  members = [],
   customFields,
   saveState,
   can,
@@ -29,6 +72,29 @@ export default function RequirementCurrentVersionPanel({
     currentUserId &&
       (current.created_by === currentUserId ||
         (current.content_author_ids || []).includes(currentUserId)),
+  );
+  const ownerId = draft?.ownerId || selected.owner_id || current.owner_id || "";
+  const owner = members.find((member) => member.user_id === ownerId);
+  const acceptanceCriteria = current.acceptance_criteria || [];
+  const businessRules = current.business_rules || [];
+  const orderedAcceptanceCriteria = numberedDocumentItems(
+    acceptanceCriteria,
+    "AC",
+    (criterion) => criterion.key,
+  );
+  const orderedBusinessRules = numberedDocumentItems(businessRules, "BR", (rule) => rule);
+  const sourceReferenceGroups = Array.from(
+    (current.source_refs || []).reduce((groups, reference, index) => {
+      const documentId = reference.requirement_document_id || `missing-${index}`;
+      const group = groups.get(documentId) || { documentId, references: [] };
+      group.references.push(reference);
+      groups.set(documentId, group);
+      return groups;
+    }, new Map()),
+    ([documentId, group]) => ({
+      ...group,
+      source: sourceDocuments.find((document) => document._id === documentId),
+    }),
   );
   useEffect(() => {
     if (!focusAcceptanceCriterionId || !current?._id) return;
@@ -332,6 +398,49 @@ export default function RequirementCurrentVersionPanel({
         </div>
       }
     >
+      <div className="grid gap-4 border-b border-border bg-surface-quiet/40 p-4 sm:grid-cols-3">
+        <div>
+          <p className="field-label">Trạng thái</p>
+          <div className="mt-1.5">
+            {current.status === "READY" ? (
+              <span className="text-sm">Đã lưu, chưa duyệt</span>
+            ) : (
+              <StatusPill value={current.status} />
+            )}
+          </div>
+        </div>
+        <div>
+          <p className="field-label">Phiên bản</p>
+          <p className="mt-1.5 text-sm font-semibold">v{current.version}</p>
+        </div>
+        {current.status === "DRAFT" && draft && can("requirement.update") ? (
+          <label className="field-label grid gap-1.5">
+            Người phụ trách
+            <select
+              aria-label="Người phụ trách yêu cầu"
+              className="apple-input w-full"
+              value={draft.ownerId || ""}
+              onChange={(event) => onDraftChange({ ownerId: event.target.value })}
+            >
+              <option value="">Chưa phân công</option>
+              {members.map((member) => (
+                <option key={member.user_id} value={member.user_id}>
+                  {member.user_label || member.user?.email || "Thành viên dự án"}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <div>
+            <p className="field-label">Người phụ trách</p>
+            <p className="mt-1.5 text-sm">
+              {owner?.user_label ||
+                owner?.user?.email ||
+                (ownerId ? "Thành viên dự án" : "Chưa phân công")}
+            </p>
+          </div>
+        )}
+      </div>
       <div className="grid gap-5 p-5 md:grid-cols-3">
         {focusAcceptanceCriterionId && (
           <section
@@ -344,9 +453,7 @@ export default function RequirementCurrentVersionPanel({
               .map((criterion) => (
                 <div
                   className="mt-2 rounded-control border border-violet-300 bg-white p-3"
-                  id={`acceptance-criterion-${criterion._id}`}
                   key={criterion._id}
-                  tabIndex={-1}
                 >
                   <p className="text-xs font-medium text-ink-muted">
                     {criterion.key || "Tiêu chí chấp nhận"}
@@ -366,20 +473,6 @@ export default function RequirementCurrentVersionPanel({
             )}
           </section>
         )}
-        <div>
-          <p className="field-label">Trạng thái</p>
-          <div className="mt-2">
-            {current.status === "READY" ? (
-              <span className="text-sm">Đã lưu, chưa duyệt</span>
-            ) : (
-              <StatusPill value={current.status} />
-            )}
-          </div>
-        </div>
-        <div>
-          <p className="field-label">Phiên bản</p>
-          <p className="mt-2 font-semibold">v{current.version}</p>
-        </div>
         {!(current.status === "DRAFT" && draft && can("requirement.update")) && (
           <details className="rounded-control border border-border p-3 md:col-span-3">
             <summary className="cursor-pointer text-sm font-medium">Tùy chọn</summary>
@@ -415,11 +508,13 @@ export default function RequirementCurrentVersionPanel({
             </div>
             <RequirementLines
               label="Tiêu chí chấp nhận (tùy chọn)"
+              identifierPrefix="AC"
               value={draft.acceptance}
               onChange={(acceptance) => onDraftChange({ acceptance })}
             />
             <RequirementLines
               label="Quy tắc nghiệp vụ (tùy chọn)"
+              identifierPrefix="BR"
               value={draft.businessRules}
               onChange={(businessRules) => onDraftChange({ businessRules })}
             />
@@ -608,6 +703,127 @@ export default function RequirementCurrentVersionPanel({
               label="Nội dung yêu cầu"
               readOnly
             />
+            <div className="mt-5 grid gap-4 lg:grid-cols-2">
+              <section
+                className="rounded-control border border-border p-4"
+                aria-label="Tiêu chí chấp nhận"
+              >
+                <h3 className="text-sm font-semibold">Tiêu chí chấp nhận</h3>
+                {acceptanceCriteria.length ? (
+                  <ol className="mt-3 space-y-2">
+                    {orderedAcceptanceCriteria.map(({ value: criterion, index }) => (
+                      <li
+                        className="flex gap-3 rounded-control border border-border bg-surface p-3"
+                        id={`acceptance-criterion-${criterion._id}`}
+                        key={criterion._id || criterion.key || index}
+                      >
+                        <span className="shrink-0 font-mono text-xs font-semibold text-brand">
+                          {criterion.key || `AC-${String(index + 1).padStart(2, "0")}`}
+                        </span>
+                        <span className="whitespace-pre-wrap text-sm">
+                          {acceptanceCriterionContent(criterion.plain_text) ||
+                            "Không có nội dung văn bản để hiển thị."}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <p className="mt-2 text-sm text-ink-muted">Chưa có tiêu chí chấp nhận.</p>
+                )}
+              </section>
+              <section
+                className="rounded-control border border-border p-4"
+                aria-label="Quy tắc nghiệp vụ"
+              >
+                <h3 className="text-sm font-semibold">Quy tắc nghiệp vụ</h3>
+                {businessRules.length ? (
+                  <ol className="mt-3 space-y-2">
+                    {orderedBusinessRules.map(({ value: rule, index, sequence }) => (
+                      <li
+                        className="flex gap-3 rounded-control border border-border bg-surface p-3"
+                        key={`${index}-${rule}`}
+                      >
+                        <span className="shrink-0 font-mono text-xs font-semibold text-brand">
+                          BR-{String(sequence ?? index + 1).padStart(2, "0")}
+                        </span>
+                        <span className="whitespace-pre-wrap text-sm">
+                          {businessRuleContent(rule)}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <p className="mt-2 text-sm text-ink-muted">Chưa có quy tắc nghiệp vụ.</p>
+                )}
+              </section>
+            </div>
+            <section
+              className="mt-4 rounded-control border border-border p-4"
+              aria-label="Tài liệu nguồn"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold">Tài liệu nguồn</h3>
+                  <p className="mt-1 text-xs text-ink-muted">
+                    Nguồn trích dẫn đã lưu cùng phiên bản yêu cầu.
+                  </p>
+                </div>
+                {current.source_refs?.length > 0 && (
+                  <button className="text-link text-xs" type="button" onClick={onOpenTrace}>
+                    Xem chi tiết nguồn
+                  </button>
+                )}
+              </div>
+              {current.source_refs?.length ? (
+                <ul className="mt-3 divide-y divide-border rounded-control border border-border">
+                  {sourceReferenceGroups.map(({ documentId, references, source }) => {
+                    const referenceGroupLabel = `${references.length} trích dẫn`;
+                    return (
+                      <li className="min-w-0 p-3" key={documentId}>
+                        <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="break-words text-sm font-medium">
+                              {source?.title ||
+                                source?.filename ||
+                                "Tài liệu nguồn không còn khả dụng"}
+                            </p>
+                            <p className="mt-1 text-xs text-ink-muted">{referenceGroupLabel}</p>
+                          </div>
+                          {source?._id && (
+                            <Link
+                              className="secondary-button shrink-0"
+                              href={projectRoute(
+                                projectId,
+                                PROJECT_SECTION_SLUGS.documentReader,
+                                source._id,
+                              )}
+                            >
+                              Mở tài liệu
+                            </Link>
+                          )}
+                        </div>
+                        <details className="mt-2">
+                          <summary className="cursor-pointer text-xs font-medium text-ink-muted">
+                            Xem vị trí trích dẫn
+                          </summary>
+                          <ul className="mt-2 grid gap-2 border-l border-border pl-3 text-xs text-ink-muted">
+                            {references.map((reference, index) => (
+                              <li className="break-words" key={`${documentId}-${index}`}>
+                                {sourceLocationLabel(reference)}
+                              </li>
+                            ))}
+                          </ul>
+                        </details>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p className="mt-3 rounded-control bg-surface-quiet/50 p-3 text-sm text-ink-muted">
+                  Yêu cầu này chưa có tài liệu nguồn được liên kết.
+                </p>
+              )}
+            </section>
             {(Object.keys(current.details || {}).length > 0 ||
               Object.keys(current.custom_values || {}).length > 0) && (
               <div className="mt-4 grid gap-3 md:grid-cols-2">

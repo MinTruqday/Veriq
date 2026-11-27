@@ -30,6 +30,7 @@ export default function AccountPage() {
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const [sessionsError, setSessionsError] = useState("");
   const [sessionPage, setSessionPage] = useState(1);
+  const [activeSection, setActiveSection] = useState("profile");
   const sessionPageSize = 10;
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
@@ -176,9 +177,9 @@ export default function AccountPage() {
       ? "Múi giờ đã lưu không hợp lệ. Thời gian phiên đăng nhập tạm hiển thị theo thiết bị; hãy chọn múi giờ trong danh sách."
       : "");
   return (
-    <div className="mx-auto w-full max-w-[980px] min-w-0 space-y-6 py-5 sm:py-6 xl:py-8">
+    <div className="mx-auto w-full max-w-[1180px] min-w-0 space-y-6 py-5 sm:py-6 xl:py-8">
       <header className="border-b border-border pb-6">
-        <h1 className="text-[32px] font-semibold tracking-[-0.04em]">Tài khoản và bảo mật</h1>
+        <h1 className="text-2xl font-semibold tracking-[-0.03em]">Tài khoản và bảo mật</h1>
       </header>
       {status && (
         <p role="status" className="rounded-control bg-brand-soft p-3 text-brand">
@@ -190,207 +191,255 @@ export default function AccountPage() {
           {error}
         </p>
       )}
-      <section className="overflow-hidden rounded-2xl border border-border bg-surface shadow-[0_8px_24px_rgba(48,47,42,0.04)]">
-        <div className="border-b border-border bg-surface-raised px-5 py-4">
-          <h2 className="font-semibold">Thông tin cá nhân</h2>
-        </div>
-        <form className="grid gap-5 p-5 sm:grid-cols-2" onSubmit={submitProfile}>
-          <label className="field-label">
-            Tên hiển thị
-            <input
-              className="apple-input mt-2 w-full"
-              value={profile.full_name}
-              onChange={(event) => setProfile({ ...profile, full_name: event.target.value })}
-              required
-            />
-          </label>
-          <div>
-            <span className="field-label">Email</span>
-            <p className="mt-2 font-semibold">{user?.email}</p>
-          </div>
-          <div>
-            <span className="field-label">Vai trò hệ thống</span>
-            <p className="mt-2 font-semibold">
-              {user?.system_role === "ADMIN" ? "Quản trị viên" : "Người dùng"}
-            </p>
-          </div>
-          <label className="field-label">
-            Ngôn ngữ
-            <input
-              className="apple-input mt-2 w-full"
-              value={profile.locale}
-              aria-invalid={!localeIsValid || Boolean(localeError)}
-              aria-describedby={localeError ? "account-locale-error" : undefined}
-              onChange={(event) => {
-                setProfile({ ...profile, locale: event.target.value });
-                setLocaleError("");
-              }}
-            />
-            {localeError && (
-              <span
-                className="mt-2 block text-sm text-danger"
-                id="account-locale-error"
-                role="alert"
-              >
-                {localeError}
-              </span>
-            )}
-          </label>
-          <label className="field-label">
-            Múi giờ
-            <select
-              className="apple-input mt-2 w-full"
-              aria-invalid={!timezoneIsValid || Boolean(timezoneError)}
-              aria-describedby={timezoneMessage ? "account-timezone-error" : undefined}
-              value={profile.timezone}
-              onChange={(event) => {
-                setProfile({ ...profile, timezone: event.target.value });
-                setTimezoneError("");
-              }}
-            >
-              {userTimeZoneOptions.map((option) => (
-                <option key={option.value} value={option.value} disabled={!option.valid}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            {timezoneMessage && (
-              <span
-                id="account-timezone-error"
-                className={`mt-2 block text-sm ${timezoneError ? "text-danger" : "text-warning"}`}
-                role={timezoneError ? "alert" : "status"}
-              >
-                {timezoneMessage}
-              </span>
-            )}
-          </label>
-          <div className="sm:col-span-2">
-            <button className="apple-button" type="submit" disabled={savingProfile}>
-              {savingProfile ? "Đang lưu" : "Lưu thông tin"}
-            </button>
-          </div>
-        </form>
-      </section>
-      <section className="rounded-2xl border border-border bg-surface p-5">
-        <h2 className="font-semibold">Đổi mật khẩu</h2>
-        <p className="mt-1 text-sm text-ink-muted">Mật khẩu mới cần có ít nhất 12 ký tự.</p>
-        <form className="mt-4 grid gap-4 sm:grid-cols-2" onSubmit={submitPassword}>
-          <PasswordField
-            id="account-current-password"
-            name="current_password"
-            label="Mật khẩu hiện tại"
-            autoComplete="current-password"
-            value={password.current_password}
-            onChange={(event) => setPassword({ ...password, current_password: event.target.value })}
-            required
-          />
-          <PasswordField
-            id="account-new-password"
-            name="new_password"
-            label="Mật khẩu mới"
-            autoComplete="new-password"
-            value={password.new_password}
-            onChange={(event) => setPassword({ ...password, new_password: event.target.value })}
-            minLength={12}
-            required
-          />
-          <div className="sm:col-span-2">
-            <button className="secondary-button" type="submit" disabled={savingPassword}>
-              {savingPassword ? "Đang cập nhật" : "Đổi mật khẩu"}
-            </button>
-          </div>
-        </form>
-      </section>
-      <section className="rounded-2xl border border-border bg-surface p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="font-semibold">Phiên đăng nhập</h2>
-            <p className="mt-1 text-sm text-ink-muted">
-              Xem và thu hồi các phiên bạn không nhận ra.
-            </p>
-          </div>
-          <button
-            className="secondary-button"
-            type="button"
-            disabled={
-              Boolean(sessionAction) ||
-              sessionsLoading ||
-              visibleSessions.every((session) => session.is_current)
-            }
-            onClick={closeOtherSessions}
-          >
-            {sessionAction === "close-others" ? "Đang đóng phiên" : "Đóng các phiên khác"}
-          </button>
-        </div>
-        <div className="mt-4 divide-y divide-border border-y border-border">
-          {sessionsLoading || (userId && sessionsOwnerId !== userId) ? (
-            <p className="py-4 text-sm text-ink-muted" role="status">
-              Đang tải danh sách phiên đăng nhập
-            </p>
-          ) : sessionsError ? (
-            <div className="flex flex-wrap items-center justify-between gap-3 py-4">
-              <p className="text-sm text-danger" role="alert">
-                {sessionsError}
-              </p>
-              <button
-                className="icon-button h-9 w-9"
-                type="button"
-                aria-label="Tải lại phiên đăng nhập"
-                title="Tải lại phiên đăng nhập"
-                onClick={loadSessions}
-              >
-                <RefreshCw aria-hidden="true" size={16} />
-              </button>
-            </div>
-          ) : visibleSessions.length ? (
-            visibleSessions
-              .slice((sessionPage - 1) * sessionPageSize, sessionPage * sessionPageSize)
-              .map((session) => (
-                <div
-                  className="flex flex-wrap items-center justify-between gap-3 py-3"
-                  key={session._id}
+      <div className="grid min-w-0 gap-5 xl:grid-cols-[15rem_minmax(0,1fr)]">
+        <nav
+          aria-label="Nhóm cài đặt tài khoản"
+          className="min-w-0 rounded-panel border border-border p-2 xl:sticky xl:top-20 xl:h-fit"
+        >
+          <p className="sr-only px-3 py-2 text-xs font-semibold uppercase tracking-wide text-ink-faint xl:not-sr-only">
+            Tài khoản
+          </p>
+          <ul className="-mx-1 flex min-w-0 gap-1 overflow-x-auto px-1 pb-1 xl:mx-0 xl:grid xl:overflow-visible xl:px-0 xl:pb-0">
+            {[
+              ["profile", "Hồ sơ cá nhân"],
+              ["security", "Mật khẩu và bảo mật"],
+              ["sessions", "Phiên đăng nhập"],
+              ["notifications", "Thông báo"],
+            ].map(([section, label]) => (
+              <li className="shrink-0 xl:shrink" key={section}>
+                <button
+                  aria-current={activeSection === section ? "page" : undefined}
+                  className={`w-full whitespace-nowrap rounded-control px-3 py-2.5 text-left text-[13px] font-medium transition ${
+                    activeSection === section
+                      ? "bg-brand-soft text-brand"
+                      : "text-ink-muted hover:bg-surface-quiet hover:text-ink"
+                  }`}
+                  onClick={() => setActiveSection(section)}
+                  type="button"
                 >
-                  <div>
-                    <p className="text-sm font-medium">
-                      {session.is_current ? "Phiên hiện tại" : "Phiên đăng nhập khác"}
-                    </p>
-                    <p className="text-xs text-ink-muted">
-                      {session.created_at
-                        ? new Date(session.created_at).toLocaleString(safeLocale(user?.locale), {
-                            day: "2-digit",
-                            month: "2-digit",
-                            year: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            timeZone: timezoneIsValid ? profile.timezone : undefined,
-                          })
-                        : "Không rõ thời điểm"}
-                    </p>
-                  </div>
-                  {!session.is_current && (
-                    <button
-                      className="text-sm text-danger"
-                      type="button"
-                      disabled={Boolean(sessionAction)}
-                      onClick={() => revokeSession(session._id)}
-                    >
-                      {sessionAction === session._id ? "Đang thu hồi" : "Thu hồi"}
-                    </button>
-                  )}
+                  {label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </nav>
+        <div className="min-w-0">
+          {activeSection === "profile" && (
+            <section className="overflow-hidden rounded-panel border border-border bg-surface">
+              <div className="border-b border-border bg-surface-raised px-5 py-4">
+                <h2 className="font-semibold">Thông tin cá nhân</h2>
+              </div>
+              <form className="grid gap-5 p-5 sm:grid-cols-2" onSubmit={submitProfile}>
+                <label className="field-label">
+                  Tên hiển thị
+                  <input
+                    className="apple-input mt-2 w-full"
+                    value={profile.full_name}
+                    onChange={(event) => setProfile({ ...profile, full_name: event.target.value })}
+                    required
+                  />
+                </label>
+                <div>
+                  <span className="field-label">Email</span>
+                  <p className="mt-2 font-semibold">{user?.email}</p>
                 </div>
-              ))
-          ) : (
-            <p className="py-4 text-sm text-ink-muted">Chưa có phiên đăng nhập</p>
+                <div>
+                  <span className="field-label">Vai trò hệ thống</span>
+                  <p className="mt-2 font-semibold">
+                    {user?.system_role === "ADMIN" ? "Quản trị viên" : "Người dùng"}
+                  </p>
+                </div>
+                <label className="field-label">
+                  Ngôn ngữ
+                  <input
+                    className="apple-input mt-2 w-full"
+                    value={profile.locale}
+                    aria-invalid={!localeIsValid || Boolean(localeError)}
+                    aria-describedby={localeError ? "account-locale-error" : undefined}
+                    onChange={(event) => {
+                      setProfile({ ...profile, locale: event.target.value });
+                      setLocaleError("");
+                    }}
+                  />
+                  {localeError && (
+                    <span
+                      className="mt-2 block text-sm text-danger"
+                      id="account-locale-error"
+                      role="alert"
+                    >
+                      {localeError}
+                    </span>
+                  )}
+                </label>
+                <label className="field-label">
+                  Múi giờ
+                  <select
+                    className="apple-input mt-2 w-full"
+                    aria-invalid={!timezoneIsValid || Boolean(timezoneError)}
+                    aria-describedby={timezoneMessage ? "account-timezone-error" : undefined}
+                    value={profile.timezone}
+                    onChange={(event) => {
+                      setProfile({ ...profile, timezone: event.target.value });
+                      setTimezoneError("");
+                    }}
+                  >
+                    {userTimeZoneOptions.map((option) => (
+                      <option key={option.value} value={option.value} disabled={!option.valid}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  {timezoneMessage && (
+                    <span
+                      id="account-timezone-error"
+                      className={`mt-2 block text-sm ${timezoneError ? "text-danger" : "text-warning"}`}
+                      role={timezoneError ? "alert" : "status"}
+                    >
+                      {timezoneMessage}
+                    </span>
+                  )}
+                </label>
+                <div className="sm:col-span-2">
+                  <button className="apple-button" type="submit" disabled={savingProfile}>
+                    {savingProfile ? "Đang lưu" : "Lưu thông tin"}
+                  </button>
+                </div>
+              </form>
+            </section>
           )}
+          {activeSection === "security" && (
+            <section className="rounded-panel border border-border bg-surface p-5">
+              <h2 className="font-semibold">Đổi mật khẩu</h2>
+              <p className="mt-1 text-sm text-ink-muted">Mật khẩu mới cần có ít nhất 12 ký tự.</p>
+              <form className="mt-4 grid gap-4 sm:grid-cols-2" onSubmit={submitPassword}>
+                <PasswordField
+                  id="account-current-password"
+                  name="current_password"
+                  label="Mật khẩu hiện tại"
+                  autoComplete="current-password"
+                  value={password.current_password}
+                  onChange={(event) =>
+                    setPassword({ ...password, current_password: event.target.value })
+                  }
+                  required
+                />
+                <PasswordField
+                  id="account-new-password"
+                  name="new_password"
+                  label="Mật khẩu mới"
+                  autoComplete="new-password"
+                  value={password.new_password}
+                  onChange={(event) =>
+                    setPassword({ ...password, new_password: event.target.value })
+                  }
+                  minLength={12}
+                  required
+                />
+                <div className="sm:col-span-2">
+                  <button className="secondary-button" type="submit" disabled={savingPassword}>
+                    {savingPassword ? "Đang cập nhật" : "Đổi mật khẩu"}
+                  </button>
+                </div>
+              </form>
+            </section>
+          )}
+          {activeSection === "sessions" && (
+            <section className="rounded-panel border border-border bg-surface p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="font-semibold">Phiên đăng nhập</h2>
+                  <p className="mt-1 text-sm text-ink-muted">
+                    Xem và thu hồi các phiên bạn không nhận ra.
+                  </p>
+                </div>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={
+                    Boolean(sessionAction) ||
+                    sessionsLoading ||
+                    visibleSessions.every((session) => session.is_current)
+                  }
+                  onClick={closeOtherSessions}
+                >
+                  {sessionAction === "close-others" ? "Đang đóng phiên" : "Đóng các phiên khác"}
+                </button>
+              </div>
+              <div className="mt-4 divide-y divide-border border-y border-border">
+                {sessionsLoading || (userId && sessionsOwnerId !== userId) ? (
+                  <p className="py-4 text-sm text-ink-muted" role="status">
+                    Đang tải danh sách phiên đăng nhập
+                  </p>
+                ) : sessionsError ? (
+                  <div className="flex flex-wrap items-center justify-between gap-3 py-4">
+                    <p className="text-sm text-danger" role="alert">
+                      {sessionsError}
+                    </p>
+                    <button
+                      className="icon-button h-9 w-9"
+                      type="button"
+                      aria-label="Tải lại phiên đăng nhập"
+                      title="Tải lại phiên đăng nhập"
+                      onClick={loadSessions}
+                    >
+                      <RefreshCw aria-hidden="true" size={16} />
+                    </button>
+                  </div>
+                ) : visibleSessions.length ? (
+                  visibleSessions
+                    .slice((sessionPage - 1) * sessionPageSize, sessionPage * sessionPageSize)
+                    .map((session) => (
+                      <div
+                        className="flex flex-wrap items-center justify-between gap-3 py-3"
+                        key={session._id}
+                      >
+                        <div>
+                          <p className="text-sm font-medium">
+                            {session.is_current ? "Phiên hiện tại" : "Phiên đăng nhập khác"}
+                          </p>
+                          <p className="text-xs text-ink-muted">
+                            {session.created_at
+                              ? new Date(session.created_at).toLocaleString(
+                                  safeLocale(user?.locale),
+                                  {
+                                    day: "2-digit",
+                                    month: "2-digit",
+                                    year: "numeric",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                    timeZone: timezoneIsValid ? profile.timezone : undefined,
+                                  },
+                                )
+                              : "Không rõ thời điểm"}
+                          </p>
+                        </div>
+                        {!session.is_current && (
+                          <button
+                            className="text-sm text-danger"
+                            type="button"
+                            disabled={Boolean(sessionAction)}
+                            onClick={() => revokeSession(session._id)}
+                          >
+                            {sessionAction === session._id ? "Đang thu hồi" : "Thu hồi"}
+                          </button>
+                        )}
+                      </div>
+                    ))
+                ) : (
+                  <p className="py-4 text-sm text-ink-muted">Chưa có phiên đăng nhập</p>
+                )}
+              </div>
+              <Pagination
+                page={sessionPage}
+                pageSize={sessionPageSize}
+                total={visibleSessions.length}
+                onChange={setSessionPage}
+              />
+            </section>
+          )}
+          {activeSection === "notifications" && <NotificationPreferencesPanel />}
         </div>
-        <Pagination
-          page={sessionPage}
-          pageSize={sessionPageSize}
-          total={visibleSessions.length}
-          onChange={setSessionPage}
-        />
-      </section>
-      <NotificationPreferencesPanel />
+      </div>
       <div className="flex flex-wrap gap-3">
         <Link className="secondary-button" href="/du-an">
           Về không gian kiểm thử

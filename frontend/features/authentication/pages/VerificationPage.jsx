@@ -2,10 +2,11 @@
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import InlineState from "@/shared/components/common/InlineState";
-import { Button } from "@/shared/components/ui/Button";
 import AuthField from "../components/AuthField";
+import AuthFlowLinks from "../components/AuthFlowLinks";
 import AuthFrame from "../components/AuthFrame";
 import AuthLoading from "../components/AuthLoading";
+import AuthSubmitButton from "../components/AuthSubmitButton";
 import { useVerifyCode } from "../hooks/usePasswordRecovery";
 function VerifyCodeContent() {
   const email = useSearchParams().get("email") || "";
@@ -19,6 +20,14 @@ function VerifyCodeContent() {
     <AuthFrame
       title="Xác minh mã khôi phục mật khẩu"
       description={email ? `Nhập mã đã gửi đến ${email}.` : "Nhập mã khôi phục đã nhận qua Email."}
+      footer={
+        <AuthFlowLinks
+          links={[
+            { href: "/quen-mat-khau", label: "Gửi mã mới" },
+            { href: "/dang-nhap", label: "Quay lại đăng nhập", tone: "ink" },
+          ]}
+        />
+      }
     >
       {error && (
         <div className="mb-5">
@@ -39,9 +48,9 @@ function VerifyCodeContent() {
           onChange={(event) => setToken(event.target.value)}
           className="text-center text-[20px] tracking-[0.18em]"
         />
-        <Button type="submit" className="w-full" disabled={submitting}>
-          {submitting ? "Đang kiểm tra" : "Xác nhận"}
-        </Button>
+        <AuthSubmitButton type="submit" loading={submitting} loadingLabel="Đang kiểm tra mã">
+          Xác nhận
+        </AuthSubmitButton>
       </form>
       {email && (
         <div className="mt-5 text-[13px] text-ink-muted">

@@ -68,7 +68,7 @@ export default function DocumentEditor({
     editorProps: {
       attributes: {
         class: `testing-tiptap ${readOnly ? "min-h-0" : minHeight}`,
-        role: "textbox",
+        role: readOnly ? "document" : "textbox",
         "aria-label": label,
         spellcheck: "true",
       },

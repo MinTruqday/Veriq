@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { createPortal } from "react-dom";
 import LinkTabs from "@/shared/components/navigation/LinkTabs";
+import PageHeader from "@/shared/components/layout/PageHeader";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { hasNavigationPermission } from "@/shared/components/layout/navigation";
@@ -130,19 +131,21 @@ export function useActionDialog() {
       <section
         aria-labelledby={titleId}
         aria-modal="true"
-        className="max-h-[90dvh] w-full max-w-lg overflow-y-auto overscroll-contain rounded-panel bg-surface p-5 shadow-[0_24px_80px_rgba(32,32,30,0.18)] sm:p-6"
+        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-panel border border-border bg-surface shadow-panel"
         ref={dialogRef}
         role="dialog"
         tabIndex={-1}
       >
-        <h2 className="text-[20px] font-semibold tracking-[-0.02em] text-ink" id={titleId}>
-          {state.title}
-        </h2>
-        {state.description && (
-          <p className="mt-2 text-[13px] leading-6 text-ink-muted">{state.description}</p>
-        )}
+        <header className="shrink-0 border-b border-border px-5 py-4 sm:px-6">
+          <h2 className="text-[18px] font-semibold tracking-[-0.02em] text-ink" id={titleId}>
+            {state.title}
+          </h2>
+          {state.description && (
+            <p className="mt-1.5 text-[13px] leading-5 text-ink-muted">{state.description}</p>
+          )}
+        </header>
         <form
-          className="mt-5 space-y-4"
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
           onSubmit={async (event) => {
             event.preventDefault();
             if (submittingRef.current) return;
@@ -166,83 +169,87 @@ export function useActionDialog() {
             }
           }}
         >
-          {submitError && (
-            <div
-              aria-live="assertive"
-              className="rounded-control border border-danger/20 bg-danger/5 px-4 py-3 text-sm text-danger"
-              role="alert"
-            >
-              {submitError}
-            </div>
-          )}
-          {(state.fields || []).map((field) =>
-            field.options && field.multiple ? (
-              <MultiSelect
-                autoFocus={field.autoFocus}
-                className="min-w-0"
-                disabled={submitting || Boolean(field.disabled)}
-                key={field.name}
-                label={field.label}
-                options={field.options}
-                searchPlaceholder={`Tìm trong ${field.label.toLocaleLowerCase()}`}
-                value={values[field.name] || []}
-                onChange={(value) => setValues((current) => ({ ...current, [field.name]: value }))}
-              />
-            ) : (
-              <label className="field-label block" key={field.name}>
-                {field.label}
-                {field.options ? (
-                  <select
-                    autoFocus={field.autoFocus}
-                    className="apple-input mt-2"
-                    disabled={submitting || Boolean(field.disabled)}
-                    required={field.required}
-                    value={values[field.name] ?? ""}
-                    onChange={(event) =>
-                      setValues((current) => ({ ...current, [field.name]: event.target.value }))
-                    }
-                  >
-                    {field.options.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                ) : field.multiline ? (
-                  <textarea
-                    autoFocus={field.autoFocus}
-                    className="apple-input mt-2 min-h-28"
-                    disabled={submitting || Boolean(field.disabled)}
-                    required={field.required}
-                    maxLength={field.maxLength}
-                    value={values[field.name] || ""}
-                    placeholder={field.placeholder}
-                    onChange={(event) =>
-                      setValues((current) => ({ ...current, [field.name]: event.target.value }))
-                    }
-                  />
-                ) : (
-                  <input
-                    autoFocus={field.autoFocus}
-                    className="apple-input mt-2"
-                    disabled={submitting || Boolean(field.disabled)}
-                    required={field.required}
-                    type={field.type || "text"}
-                    maxLength={field.maxLength}
-                    min={field.min}
-                    max={field.max}
-                    step={field.step}
-                    value={values[field.name] || ""}
-                    placeholder={field.placeholder}
-                    onChange={(event) =>
-                      setValues((current) => ({ ...current, [field.name]: event.target.value }))
-                    }
-                  />
-                )}
-              </label>
-            ),
-          )}
-          <div className="action-dialog-footer flex flex-col-reverse items-stretch gap-2 pt-2 sm:flex-row sm:justify-end">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 py-4 sm:px-6">
+            {submitError && (
+              <div
+                aria-live="assertive"
+                className="rounded-control border border-danger/20 bg-danger/5 px-4 py-3 text-sm text-danger"
+                role="alert"
+              >
+                {submitError}
+              </div>
+            )}
+            {(state.fields || []).map((field) =>
+              field.options && field.multiple ? (
+                <MultiSelect
+                  autoFocus={field.autoFocus}
+                  className="min-w-0"
+                  disabled={submitting || Boolean(field.disabled)}
+                  key={field.name}
+                  label={field.label}
+                  options={field.options}
+                  searchPlaceholder={`Tìm trong ${field.label.toLocaleLowerCase()}`}
+                  value={values[field.name] || []}
+                  onChange={(value) =>
+                    setValues((current) => ({ ...current, [field.name]: value }))
+                  }
+                />
+              ) : (
+                <label className="field-label block" key={field.name}>
+                  {field.label}
+                  {field.options ? (
+                    <select
+                      autoFocus={field.autoFocus}
+                      className="apple-input mt-2"
+                      disabled={submitting || Boolean(field.disabled)}
+                      required={field.required}
+                      value={values[field.name] ?? ""}
+                      onChange={(event) =>
+                        setValues((current) => ({ ...current, [field.name]: event.target.value }))
+                      }
+                    >
+                      {field.options.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : field.multiline ? (
+                    <textarea
+                      autoFocus={field.autoFocus}
+                      className="apple-input mt-2 min-h-28"
+                      disabled={submitting || Boolean(field.disabled)}
+                      required={field.required}
+                      maxLength={field.maxLength}
+                      value={values[field.name] || ""}
+                      placeholder={field.placeholder}
+                      onChange={(event) =>
+                        setValues((current) => ({ ...current, [field.name]: event.target.value }))
+                      }
+                    />
+                  ) : (
+                    <input
+                      autoFocus={field.autoFocus}
+                      className="apple-input mt-2"
+                      disabled={submitting || Boolean(field.disabled)}
+                      required={field.required}
+                      type={field.type || "text"}
+                      maxLength={field.maxLength}
+                      min={field.min}
+                      max={field.max}
+                      step={field.step}
+                      value={values[field.name] || ""}
+                      placeholder={field.placeholder}
+                      onChange={(event) =>
+                        setValues((current) => ({ ...current, [field.name]: event.target.value }))
+                      }
+                    />
+                  )}
+                </label>
+              ),
+            )}
+          </div>
+          <div className="action-dialog-footer flex shrink-0 flex-col-reverse items-stretch gap-2 border-t border-border bg-surface px-5 py-3 sm:flex-row sm:justify-end sm:px-6">
             <button
               className="secondary-button"
               disabled={submitting}
@@ -275,24 +282,8 @@ export function WorkspacePage({ title, description, actions, children }) {
   }, [title]);
 
   return (
-    <div className="workspace-page mx-auto w-full max-w-[1600px] min-w-0 space-y-5 pb-0 pt-0">
-      <header
-        className={`workspace-page-header min-w-0 gap-4 ${actions ? "workspace-page-header-with-actions" : ""}`}
-      >
-        <div className="min-w-0">
-          <h1 className="break-words text-[28px] font-semibold leading-[1.15] tracking-[-0.035em] sm:text-[32px]">
-            {title}
-          </h1>
-          {description && (
-            <p className="mt-2 max-w-3xl text-[14px] leading-6 text-ink-muted">{description}</p>
-          )}
-        </div>
-        {actions && (
-          <div className="workspace-page-actions flex min-w-0 max-w-full flex-wrap items-center gap-2">
-            {actions}
-          </div>
-        )}
-      </header>
+    <div className="workspace-page mx-auto w-full max-w-[1600px] min-w-0 space-y-4 pb-0 pt-0 sm:space-y-5">
+      <PageHeader className="mb-0" title={title} description={description} actions={actions} />
       {children}
     </div>
   );
@@ -318,11 +309,11 @@ export function Panel({ title, description, actions, children, className = "" })
     >
       {(title || actions) && (
         <div
-          className={`workspace-panel-header min-w-0 gap-3 border-b border-border bg-surface-raised/50 px-4 py-4 sm:px-5 ${actions ? "workspace-panel-header-with-actions" : ""}`}
+          className={`workspace-panel-header min-w-0 gap-3 border-b border-border bg-surface-raised/40 px-4 py-3 sm:px-5 ${actions ? "workspace-panel-header-with-actions" : ""}`}
         >
           <div className="workspace-panel-heading">
             {title && (
-              <h2 className="min-w-0 whitespace-normal break-normal font-semibold leading-6">
+              <h2 className="min-w-0 whitespace-normal break-words text-[15px] font-semibold leading-5">
                 {title}
               </h2>
             )}
@@ -455,10 +446,12 @@ export function DegradedBanner({ mode, message }) {
 
 export function Metric({ label, value, detail }) {
   return (
-    <section className="rounded-2xl border border-border bg-surface p-4 shadow-[0_8px_20px_rgba(48,47,42,0.035)] sm:p-5">
-      <p className="text-[30px] font-semibold tracking-[-0.04em]">{value}</p>
+    <section className="min-w-0 rounded-panel border border-border bg-surface p-4 sm:p-5">
+      <p className="break-words text-[26px] font-semibold leading-tight tracking-[-0.04em]">
+        {value}
+      </p>
       <p className="mt-2 text-[12px] font-semibold leading-5 text-ink-muted">{label}</p>
-      {detail && <p className="mt-2 text-[11px] text-ink-faint">{detail}</p>}
+      {detail && <p className="mt-2 break-words text-[11px] leading-4 text-ink-faint">{detail}</p>}
     </section>
   );
 }

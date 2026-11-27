@@ -140,6 +140,13 @@ export default function TestCaseTransferPanel({
       setBusy(false);
     }
   };
+  const selectedPreviewItems = (preview?.preview || []).filter((_, index) =>
+    selectedIndexes.includes(index),
+  );
+  const selectedIncompleteCount = selectedPreviewItems.filter((item) => item.incomplete).length;
+  const selectedDuplicateCount = selectedIndexes.filter(
+    (index) => relevantImportMatches(preview?.preview?.[index] || {}, selectedIndexes).length > 0,
+  ).length;
 
   return (
     <Panel
@@ -180,6 +187,23 @@ export default function TestCaseTransferPanel({
                 </p>
               )}
               <div className="space-y-3">
+                <div
+                  className="grid gap-2 sm:grid-cols-3"
+                  aria-label="Tóm tắt bản xem trước nhập ca"
+                >
+                  <div className="rounded-control border border-border bg-surface-quiet px-3 py-2">
+                    <p className="text-xs text-ink-muted">Đã chọn</p>
+                    <p className="mt-1 text-sm font-semibold">{selectedIndexes.length} ca</p>
+                  </div>
+                  <div className="rounded-control border border-border bg-surface-quiet px-3 py-2">
+                    <p className="text-xs text-ink-muted">Cần bổ sung dữ liệu</p>
+                    <p className="mt-1 text-sm font-semibold">{selectedIncompleteCount} ca</p>
+                  </div>
+                  <div className="rounded-control border border-border bg-surface-quiet px-3 py-2">
+                    <p className="text-xs text-ink-muted">Cần xử lý trùng</p>
+                    <p className="mt-1 text-sm font-semibold">{selectedDuplicateCount} ca</p>
+                  </div>
+                </div>
                 {preview.preview.map((item, index) => {
                   const matches = relevantImportMatches(item, selectedIndexes);
                   const existing = matches.filter((match) => match.target_version_id);
@@ -315,26 +339,34 @@ export default function TestCaseTransferPanel({
                   thay phiên bản hiện hành
                 </p>
               )}
-              <button
-                className="apple-button"
-                type="button"
-                disabled={
-                  busy ||
-                  !selectedIndexes.length ||
-                  selectedIndexes.some(
-                    (index) =>
-                      relevantImportMatches(preview.preview[index], selectedIndexes).length &&
-                      (versionResolutions[index]?.target_version_id
-                        ? (versionResolutions[index]?.reason || "").trim().length < 2
-                        : (separateReasons[index] || "").trim().length < 2),
-                  ) ||
-                  (selectedIndexes.some((index) => preview.preview[index].incomplete) &&
-                    !acceptIncomplete)
-                }
-                onClick={confirm}
-              >
-                Xác nhận nhập ca đã chọn
-              </button>
+              <div className="sticky bottom-0 -mx-5 flex flex-col gap-3 border-t border-border bg-surface px-5 py-3 shadow-[0_-8px_14px_rgba(32,32,30,0.06)] sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-ink-muted" aria-live="polite">
+                  {selectedIndexes.length} ca được chọn
+                  {selectedDuplicateCount > 0 && ` · ${selectedDuplicateCount} ca cần xử lý trùng`}
+                  {selectedIncompleteCount > 0 &&
+                    ` · ${selectedIncompleteCount} ca cần bổ sung dữ liệu`}
+                </p>
+                <button
+                  className="apple-button shrink-0"
+                  type="button"
+                  disabled={
+                    busy ||
+                    !selectedIndexes.length ||
+                    selectedIndexes.some(
+                      (index) =>
+                        relevantImportMatches(preview.preview[index], selectedIndexes).length &&
+                        (versionResolutions[index]?.target_version_id
+                          ? (versionResolutions[index]?.reason || "").trim().length < 2
+                          : (separateReasons[index] || "").trim().length < 2),
+                    ) ||
+                    (selectedIndexes.some((index) => preview.preview[index].incomplete) &&
+                      !acceptIncomplete)
+                  }
+                  onClick={confirm}
+                >
+                  {busy ? "Đang nhập…" : "Xác nhận nhập ca đã chọn"}
+                </button>
+              </div>
             </>
           )}
         </div>

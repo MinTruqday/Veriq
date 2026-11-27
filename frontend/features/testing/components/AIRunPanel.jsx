@@ -27,6 +27,7 @@ import { testingApi } from "../services/testing.service";
 import { ErrorState, LoadingState, Panel, StatusPill } from "./WorkspacePrimitives";
 import ContentOriginBadge from "../../../shared/components/common/ContentOriginBadge";
 import { useDateTimeOptions } from "../hooks/useDateTimeOptions";
+import SearchField from "@/shared/components/ui/SearchField";
 
 const activeStatuses = new Set(["QUEUED", "RUNNING", "VERIFYING"]);
 
@@ -334,6 +335,8 @@ export default function AIRunPanel({
   const [detailRefreshError, setDetailRefreshError] = useState("");
   const [initialLoadAttempt, setInitialLoadAttempt] = useState(0);
   const [agentInstruction, setAgentInstruction] = useState("");
+  const [runQuery, setRunQuery] = useState("");
+  const [runStatusFilter, setRunStatusFilter] = useState("ALL");
   const [startingAgent, setStartingAgent] = useState(false);
   const [agentStartError, setAgentStartError] = useState("");
   const agentIdempotencyKey = useRef("");
@@ -382,7 +385,10 @@ export default function AIRunPanel({
         setAgentCapabilities(values[1]);
         setError(
           results
-            .filter((result) => result.status === "rejected")
+            .filter(
+              (result, index) =>
+                result.status === "rejected" && !(index === 1 && result.reason?.status === 403),
+            )
             .map((result) => messageOf(result.reason))
             .filter(Boolean)
             .join(" · "),
@@ -677,7 +683,26 @@ export default function AIRunPanel({
     (fact) => !proposalEvidenceFactIds.has(fact.source_fact_id),
   );
   const busyRun = run && activeStatuses.has(run.status);
-  const visibleRuns = recentRuns.filter(canViewRun);
+  const accessibleRuns = recentRuns.filter(canViewRun);
+  const availableRunStatuses = [
+    ...new Set(accessibleRuns.map((item) => item.status).filter(Boolean)),
+  ];
+  const normalizedRunQuery = runQuery.trim().toLocaleLowerCase("vi");
+  const visibleRuns = accessibleRuns.filter((item) => {
+    const matchesStatus = runStatusFilter === "ALL" || item.status === runStatusFilter;
+    const searchable = [
+      aiRunTitle(item),
+      item.display_name,
+      item.trigger_label,
+      item.trigger_display_name,
+      item.objective,
+      item.status ? valueLabel(item.status) : "",
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLocaleLowerCase("vi");
+    return matchesStatus && (!normalizedRunQuery || searchable.includes(normalizedRunQuery));
+  });
   const canControlRun = run?.requester_user_id === currentUserId;
   const canResumeRun = canControlRun && canResumeAIRun(run, checkpoints, currentUserId);
   const canShowRunControls = (busyRun && canControlRun) || canResumeRun;
@@ -687,7 +712,7 @@ export default function AIRunPanel({
   const authorizationGuidance = agentAuthorizationGuidance(run);
   const showCompactEmptyState = compact && !loading && !error && visibleRuns.length === 0;
   const showRecentActivity =
-    visibleRuns.length > 0 || showCompactEmptyState || (!compact && !loading && !error && !run);
+    accessibleRuns.length > 0 || showCompactEmptyState || (!compact && !loading && !error && !run);
   const canStartAgent = agentCapabilities.length > 0;
   const startAIRun = async () => {
     const instruction = agentInstruction.trim();
@@ -865,6 +890,44 @@ export default function AIRunPanel({
               className={`grid min-w-0 content-start gap-3 text-sm ${!compact && run ? "lg:sticky lg:top-44" : ""}`}
             >
               {recentActivityHeading}
+              {!compact && (
+                <div className="grid gap-3">
+                  <SearchField
+                    ariaLabel="Tìm hoạt động AI"
+                    onChange={(event) => setRunQuery(event.target.value)}
+                    placeholder="Tìm theo nội dung hoặc trạng thái"
+                    value={runQuery}
+                  />
+                  {availableRunStatuses.length > 1 && (
+                    <div aria-label="Lọc trạng thái hoạt động AI" className="flex flex-wrap gap-2">
+                      <button
+                        aria-pressed={runStatusFilter === "ALL"}
+                        className={`rounded-full border px-3 py-1.5 text-xs font-medium ${runStatusFilter === "ALL" ? "border-brand bg-brand/5 text-ink" : "border-border text-ink-muted hover:bg-surface-quiet"}`}
+                        onClick={() => setRunStatusFilter("ALL")}
+                        type="button"
+                      >
+                        Tất cả ({accessibleRuns.length})
+                      </button>
+                      {availableRunStatuses.map((status) => {
+                        const count = accessibleRuns.filter(
+                          (item) => item.status === status,
+                        ).length;
+                        return (
+                          <button
+                            aria-pressed={runStatusFilter === status}
+                            className={`rounded-full border px-3 py-1.5 text-xs font-medium ${runStatusFilter === status ? "border-brand bg-brand/5 text-ink" : "border-border text-ink-muted hover:bg-surface-quiet"}`}
+                            key={status}
+                            onClick={() => setRunStatusFilter(status)}
+                            type="button"
+                          >
+                            {valueLabel(status)} ({count})
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
               {visibleRuns.slice(0, compact ? 3 : 10).map((item) => (
                 <button
                   className={`grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 rounded-control border p-3 text-left transition ${item.ai_run_id === run?.ai_run_id ? "border-brand/50 bg-brand-soft" : "border-border hover:bg-surface-quiet"}`}
@@ -896,9 +959,33 @@ export default function AIRunPanel({
           {showRecentActivity && visibleRuns.length === 0 && (
             <div className="grid gap-2 text-sm">
               {recentActivityHeading}
-              <p className="text-ink-muted" role="status">
-                Chưa có hoạt động gần đây.
-              </p>
+              {!compact && accessibleRuns.length > 0 ? (
+                <div className="grid gap-3">
+                  <SearchField
+                    ariaLabel="Tìm hoạt động AI"
+                    onChange={(event) => setRunQuery(event.target.value)}
+                    placeholder="Tìm theo nội dung hoặc trạng thái"
+                    value={runQuery}
+                  />
+                  <p className="text-ink-muted" role="status">
+                    Không có hoạt động AI khớp với bộ lọc.
+                  </p>
+                  <button
+                    className="secondary-button justify-self-start"
+                    onClick={() => {
+                      setRunQuery("");
+                      setRunStatusFilter("ALL");
+                    }}
+                    type="button"
+                  >
+                    Xóa bộ lọc
+                  </button>
+                </div>
+              ) : (
+                <p className="text-ink-muted" role="status">
+                  Chưa có hoạt động gần đây.
+                </p>
+              )}
             </div>
           )}
           {run && (

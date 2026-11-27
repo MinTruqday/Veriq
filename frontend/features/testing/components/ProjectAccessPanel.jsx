@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { messageOf, valueLabel } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
 import { ErrorState, LoadingState, Panel } from "./WorkspacePrimitives";
+import SearchField from "@/shared/components/ui/SearchField";
 
 const groups = {
   project: "Dự án và thành viên",
@@ -153,6 +154,8 @@ export default function ProjectAccessPanel({ project }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [permissionQuery, setPermissionQuery] = useState("");
+  const [permissionFilter, setPermissionFilter] = useState("ALL");
   const requestSequence = useRef(0);
   const projectId = project?._id;
   const load = useCallback(async () => {
@@ -189,6 +192,32 @@ export default function ProjectAccessPanel({ project }) {
     items.push({ ...capability, label: actions[parts.join(".")] || "Thao tác bổ sung" });
     grouped.set(label, items);
   }
+  const normalizedPermissionQuery = permissionQuery.trim().toLocaleLowerCase("vi");
+  const visibleGroups = [...grouped]
+    .sort(([left], [right]) => left.localeCompare(right, "vi"))
+    .map(([label, items]) => [
+      label,
+      items.filter((item) => {
+        const matchesAccess =
+          permissionFilter === "ALL" ||
+          (permissionFilter === "ALLOWED" ? item.allowed : !item.allowed);
+        const searchable = [label, item.label, item.permission, reasons[item.reason_code]]
+          .filter(Boolean)
+          .join(" ")
+          .toLocaleLowerCase("vi");
+        return (
+          matchesAccess &&
+          (!normalizedPermissionQuery || searchable.includes(normalizedPermissionQuery))
+        );
+      }),
+    ])
+    .filter(([, items]) => items.length > 0);
+  const allCapabilities = data?.capabilities || [];
+  const allowedCount = allCapabilities.filter((item) => item.allowed).length;
+  const visibleCapabilityCount = visibleGroups.reduce(
+    (count, [, items]) => count + items.length,
+    0,
+  );
 
   return (
     <Panel
@@ -211,61 +240,156 @@ export default function ProjectAccessPanel({ project }) {
         {error && <ErrorState message={error} />}
         {!loading && data && (
           <>
-            <dl className="space-y-3 text-[13px]">
-              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                <dt className="text-ink-muted">Vai trò</dt>
-                <dd className="font-medium">{data.roles.map(valueLabel).join(", ")}</dd>
-              </div>
-              {(data.responsibilities || []).map((item) => (
-                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1" key={item.name}>
-                  <dt className="text-ink-muted">{responsibilityLabel(item.name)}</dt>
-                  <dd className={item.assigned_to_you ? "font-medium" : ""}>
-                    {item.assigned_to_you
+            <section aria-label="Tóm tắt quyền truy cập" className="grid gap-3 sm:grid-cols-2">
+              <article className="rounded-panel border border-border bg-surface p-4">
+                <p className="text-xs font-medium text-ink-muted">Vai trò trong dự án</p>
+                <ul className="mt-2 flex flex-wrap gap-2">
+                  {(data.roles || []).length ? (
+                    data.roles.map((role) => (
+                      <li
+                        className="rounded-full bg-brand-soft px-3 py-1 text-xs font-semibold text-brand"
+                        key={role}
+                      >
+                        {valueLabel(role)}
+                      </li>
+                    ))
+                  ) : (
+                    <li className="text-sm text-ink-muted">Chưa có vai trò được trả về.</li>
+                  )}
+                </ul>
+              </article>
+              <article className="rounded-panel border border-border bg-surface p-4">
+                <p className="text-xs font-medium text-ink-muted">Quyền được phép</p>
+                <p className="mt-2 text-2xl font-semibold tabular-nums text-ink">
+                  {allowedCount}
+                  <span className="text-base font-normal text-ink-muted">
+                    {" "}
+                    / {allCapabilities.length}
+                  </span>
+                </p>
+                <p className="mt-1 text-xs text-ink-muted">Thao tác trên tài nguyên của dự án</p>
+              </article>
+            </section>
+
+            {(data.responsibilities || []).length > 0 && (
+              <section aria-labelledby="project-responsibilities-heading" className="space-y-3">
+                <div>
+                  <h3 id="project-responsibilities-heading" className="text-sm font-semibold">
+                    Trách nhiệm được phân công
+                  </h3>
+                  <p className="mt-1 text-xs text-ink-muted">
+                    Một số thao tác còn phụ thuộc người phụ trách được giao.
+                  </p>
+                </div>
+                <ul className="grid gap-2 sm:grid-cols-2">
+                  {data.responsibilities.map((item) => {
+                    const assignedToYou = Boolean(item.assigned_to_you);
+                    const assignmentLabel = assignedToYou
                       ? "Được giao cho bạn"
                       : item.configured
-                        ? "Đã giao cho người phụ trách khác"
-                        : "Chưa phân công"}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-            <details className="border-t border-border pt-4">
-              <summary className="cursor-pointer text-[13px] font-medium">
-                Chức năng và quyền truy cập
-              </summary>
-              <p className="mt-3 text-[12px] leading-5 text-ink-muted">
-                Thao tác trên từng mục còn phụ thuộc phân công, trạng thái và phiên bản đang xử lý.
-              </p>
-              <div className="mt-3 max-h-[28rem] space-y-1 overflow-y-auto overscroll-contain pr-2">
-                {[...grouped]
-                  .sort(([left], [right]) => left.localeCompare(right))
-                  .map(([label, items]) => (
-                    <details className="border-b border-border py-2" key={label}>
-                      <summary className="cursor-pointer text-[13px]">
-                        {label}
-                        <span className="ml-2 text-[12px] text-ink-muted">
-                          Được phép {items.filter((item) => item.allowed).length}/{items.length}
+                        ? "Đã giao người khác"
+                        : "Chưa phân công";
+                    return (
+                      <li
+                        className="flex min-w-0 items-start justify-between gap-3 rounded-control border border-border p-3"
+                        key={item.name}
+                      >
+                        <span className="min-w-0 break-words text-[13px] font-medium text-ink">
+                          {responsibilityLabel(item.name)}
                         </span>
-                      </summary>
-                      <ul className="mt-2 divide-y divide-border text-[12px]">
-                        {items.map((item) => (
-                          <li
-                            className="flex flex-wrap justify-between gap-x-5 gap-y-1 py-2 pl-4"
-                            key={item.permission}
-                          >
-                            <span className="font-medium">{item.label}</span>
-                            <span className={item.allowed ? "text-ink" : "text-ink-muted"}>
-                              {item.allowed
-                                ? "Được phép"
-                                : reasons[item.reason_code] || "Chưa được phép"}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    </details>
-                  ))}
+                        <span
+                          className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium ${assignedToYou ? "bg-brand-soft text-brand" : "bg-surface-quiet text-ink-muted"}`}
+                        >
+                          {assignmentLabel}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            )}
+
+            <section
+              aria-labelledby="project-capabilities-heading"
+              className="space-y-3 border-t border-border pt-4"
+            >
+              <div className="flex flex-wrap items-end justify-between gap-2">
+                <div>
+                  <h3 id="project-capabilities-heading" className="text-sm font-semibold">
+                    Chức năng và quyền truy cập
+                  </h3>
+                  <p className="mt-1 text-xs leading-5 text-ink-muted">
+                    Thao tác trên từng mục còn phụ thuộc phân công, trạng thái và phiên bản đang xử
+                    lý.
+                  </p>
+                </div>
+                <span className="text-xs text-ink-muted" aria-live="polite">
+                  {visibleCapabilityCount} / {allCapabilities.length} quyền
+                </span>
               </div>
-            </details>
+              <SearchField
+                ariaLabel="Tìm chức năng hoặc quyền"
+                onChange={(event) => setPermissionQuery(event.target.value)}
+                placeholder="Tìm chức năng, quyền hoặc lý do bị giới hạn"
+                value={permissionQuery}
+              />
+              <div aria-label="Lọc quyền truy cập" className="flex flex-wrap gap-2" role="group">
+                {[
+                  ["ALL", `Tất cả (${allCapabilities.length})`],
+                  ["ALLOWED", `Được phép (${allowedCount})`],
+                  ["DENIED", `Chưa được phép (${allCapabilities.length - allowedCount})`],
+                ].map(([filter, label]) => (
+                  <button
+                    aria-pressed={permissionFilter === filter}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-medium ${permissionFilter === filter ? "border-brand bg-brand/5 text-ink" : "border-border text-ink-muted hover:bg-surface-quiet"}`}
+                    key={filter}
+                    onClick={() => setPermissionFilter(filter)}
+                    type="button"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {visibleGroups.length ? (
+                <div className="max-h-[34rem] space-y-2 overflow-y-auto overscroll-contain pr-1">
+                  {visibleGroups.map(([label, items]) => {
+                    const groupAllowedCount = items.filter((item) => item.allowed).length;
+                    return (
+                      <details className="rounded-control border border-border" key={label}>
+                        <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 px-4 py-3 text-[13px] font-medium hover:bg-surface-quiet">
+                          <span>{label}</span>
+                          <span className="text-xs text-ink-muted">
+                            {groupAllowedCount} / {items.length} được phép
+                          </span>
+                        </summary>
+                        <ul className="divide-y divide-border border-t border-border px-4 text-[12px]">
+                          {items.map((item) => (
+                            <li
+                              className="grid gap-1 py-2 sm:grid-cols-[minmax(8rem,0.8fr)_minmax(0,1.2fr)] sm:gap-4"
+                              key={item.permission}
+                            >
+                              <span className="font-medium text-ink">{item.label}</span>
+                              <span className={item.allowed ? "text-brand" : "text-ink-muted"}>
+                                {item.allowed
+                                  ? "Được phép"
+                                  : reasons[item.reason_code] || "Chưa được phép"}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p
+                  className="rounded-control bg-surface-quiet p-4 text-sm text-ink-muted"
+                  role="status"
+                >
+                  Không có quyền nào khớp với bộ lọc.
+                </p>
+              )}
+            </section>
           </>
         )}
       </div>

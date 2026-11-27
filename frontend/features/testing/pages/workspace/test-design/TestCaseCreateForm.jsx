@@ -25,6 +25,10 @@ export default function TestCaseCreateForm({
   membersUnavailable = false,
   onRetryMembers,
   onSubmit,
+  error = "",
+  saving = false,
+  onCancel,
+  cancelLabel = "Hủy",
 }) {
   const update = (patch) => setForm((value) => ({ ...value, ...patch }));
   const updateStep = (index, patch) =>
@@ -68,128 +72,157 @@ export default function TestCaseCreateForm({
     });
 
   return (
-    <form id="test-case-create-form" onSubmit={onSubmit} className="test-design-form space-y-4 p-5">
-      <div className="space-y-4">
-        <label className="field-label">
-          Tên ca kiểm thử <span className="text-danger">*</span>
-          <input
-            className="apple-input mt-2"
-            required
-            minLength={2}
-            value={form.title}
-            onChange={(event) => update({ title: event.target.value })}
-          />
-        </label>
-        <label className="field-label">
-          Ước lượng (phút)
-          <input
-            aria-label="Ước lượng thời gian thực hiện ca kiểm thử (phút)"
-            className="apple-input mt-2"
-            type="number"
-            min="1"
-            max="10080"
-            step="1"
-            value={form.durationMinutes}
-            onChange={(event) => update({ durationMinutes: event.target.value })}
-          />
-        </label>
-        {form.testStyle !== "BDD" && (
-          <section className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold">Các bước kiểm thử</h3>
-              <button
-                className="icon-button h-9 w-9 text-lg"
-                type="button"
-                aria-label="Thêm bước"
-                onClick={() =>
-                  update({
-                    steps: [
-                      ...form.steps,
-                      {
-                        id: crypto.randomUUID(),
-                        action: emptyDoc(),
-                        expected: emptyDoc(),
-                        data: [],
-                      },
-                    ],
-                  })
-                }
-              >
-                +
-              </button>
-            </div>
-            {form.steps.map((step, index) => (
-              <div className="space-y-3 rounded-control border border-border p-4" key={step.id}>
-                <div className="flex items-center justify-between">
-                  <span className="font-medium">{index + 1}.</span>
-                  {form.steps.length > 1 && (
-                    <button
-                      className="icon-button h-9 w-9 text-lg"
-                      type="button"
-                      aria-label={`Xóa bước ${index + 1}`}
-                      onClick={() =>
-                        update({ steps: form.steps.filter((_, position) => position !== index) })
-                      }
-                    >
-                      −
-                    </button>
-                  )}
-                </div>
-                <label className="field-label">
-                  Thao tác <span className="text-danger">*</span>
-                  <textarea
-                    className="apple-input mt-2 min-h-20"
-                    required
-                    value={docText(step.action)}
-                    onChange={(event) => updateStep(index, { action: textDoc(event.target.value) })}
-                  />
-                </label>
-                <TestDataEntries
-                  label={`Dữ liệu bước ${index + 1}`}
-                  entries={step.data || []}
-                  onChange={(data) => updateStep(index, { data })}
-                />
-                <label className="field-label">
-                  Kết quả mong đợi <span className="text-danger">*</span>
-                  <textarea
-                    className="apple-input mt-2 min-h-20"
-                    required
-                    value={docText(step.expected)}
-                    onChange={(event) =>
-                      updateStep(index, { expected: textDoc(event.target.value) })
-                    }
-                  />
-                </label>
-              </div>
-            ))}
-          </section>
-        )}
-      </div>
-      {form.testStyle === "BDD" && (
-        <div className="grid gap-3 rounded-control border border-border p-4">
-          <p className="field-label">Kịch bản BDD</p>
-          {[
-            ["feature", "Tính năng"],
-            ["scenario", "Tên kịch bản"],
-            ["given", "Given · Điều kiện ban đầu"],
-            ["when", "When · Hành động"],
-            ["then", "Then · Kết quả mong đợi"],
-          ].map(([field, label]) => (
-            <label className="field-label" key={field}>
-              {label} <span className="text-danger">*</span>
-              <input
-                aria-label={label}
-                className="apple-input mt-2"
-                value={form[field]}
-                onChange={(event) => update({ [field]: event.target.value })}
-                required
-              />
-            </label>
-          ))}
+    <form id="test-case-create-form" onSubmit={onSubmit} className="test-design-form space-y-6 p-5">
+      <section aria-labelledby="test-case-basics-heading" className="space-y-4">
+        <div>
+          <h2 id="test-case-basics-heading" className="text-sm font-semibold text-ink">
+            Thông tin ca kiểm thử
+          </h2>
         </div>
+        <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_12rem]">
+          <label className="field-label">
+            Tên ca kiểm thử <span className="text-danger">*</span>
+            <input
+              className="apple-input mt-2"
+              required
+              minLength={2}
+              value={form.title}
+              onChange={(event) => update({ title: event.target.value })}
+            />
+          </label>
+          <label className="field-label">
+            Ước lượng (phút)
+            <input
+              aria-label="Ước lượng thời gian thực hiện ca kiểm thử (phút)"
+              className="apple-input mt-2"
+              type="number"
+              min="1"
+              max="10080"
+              step="1"
+              value={form.durationMinutes}
+              onChange={(event) => update({ durationMinutes: event.target.value })}
+            />
+          </label>
+        </div>
+      </section>
+      {form.testStyle !== "BDD" && (
+        <section
+          aria-labelledby="test-case-steps-heading"
+          className="space-y-4 border-t border-border pt-5"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 id="test-case-steps-heading" className="text-sm font-semibold text-ink">
+                Các bước kiểm thử
+              </h3>
+              <p className="mt-1 text-xs text-ink-muted">
+                Mỗi bước gồm thao tác, dữ liệu thực hiện và kết quả mong đợi.
+              </p>
+            </div>
+            <button
+              className="icon-button h-9 w-9 shrink-0 text-lg"
+              type="button"
+              aria-label="Thêm bước"
+              onClick={() =>
+                update({
+                  steps: [
+                    ...form.steps,
+                    {
+                      id: crypto.randomUUID(),
+                      action: emptyDoc(),
+                      expected: emptyDoc(),
+                      data: [],
+                    },
+                  ],
+                })
+              }
+            >
+              +
+            </button>
+          </div>
+          {form.steps.map((step, index) => (
+            <div className="space-y-3 rounded-control border border-border p-4" key={step.id}>
+              <div className="flex items-center justify-between">
+                <span className="font-medium">{index + 1}.</span>
+                {form.steps.length > 1 && (
+                  <button
+                    className="icon-button h-9 w-9 text-lg"
+                    type="button"
+                    aria-label={`Xóa bước ${index + 1}`}
+                    onClick={() =>
+                      update({ steps: form.steps.filter((_, position) => position !== index) })
+                    }
+                  >
+                    −
+                  </button>
+                )}
+              </div>
+              <label className="field-label">
+                Thao tác <span className="text-danger">*</span>
+                <textarea
+                  className="apple-input mt-2 min-h-20"
+                  required
+                  value={docText(step.action)}
+                  onChange={(event) => updateStep(index, { action: textDoc(event.target.value) })}
+                />
+              </label>
+              <TestDataEntries
+                label={`Dữ liệu bước ${index + 1}`}
+                entries={step.data || []}
+                onChange={(data) => updateStep(index, { data })}
+              />
+              <label className="field-label">
+                Kết quả mong đợi <span className="text-danger">*</span>
+                <textarea
+                  className="apple-input mt-2 min-h-20"
+                  required
+                  value={docText(step.expected)}
+                  onChange={(event) => updateStep(index, { expected: textDoc(event.target.value) })}
+                />
+              </label>
+            </div>
+          ))}
+        </section>
       )}
-      <section className="space-y-3 rounded-control border border-border p-4">
-        <h3 className="font-semibold">Liên kết yêu cầu</h3>
+      {form.testStyle === "BDD" && (
+        <section
+          aria-labelledby="test-case-bdd-heading"
+          className="space-y-4 border-t border-border pt-5"
+        >
+          <div>
+            <h3 id="test-case-bdd-heading" className="text-sm font-semibold text-ink">
+              Kịch bản BDD
+            </h3>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {[
+              ["feature", "Tính năng"],
+              ["scenario", "Tên kịch bản"],
+              ["given", "Given · Điều kiện ban đầu"],
+              ["when", "When · Hành động"],
+              ["then", "Then · Kết quả mong đợi"],
+            ].map(([field, label]) => (
+              <label className="field-label" key={field}>
+                {label} <span className="text-danger">*</span>
+                <input
+                  aria-label={label}
+                  className="apple-input mt-2"
+                  value={form[field]}
+                  onChange={(event) => update({ [field]: event.target.value })}
+                  required
+                />
+              </label>
+            ))}
+          </div>
+        </section>
+      )}
+      <section
+        aria-labelledby="test-case-requirements-heading"
+        className="space-y-4 border-t border-border pt-5"
+      >
+        <h3 id="test-case-requirements-heading" className="text-sm font-semibold text-ink">
+          Liên kết yêu cầu
+        </h3>
         <p className="text-sm text-ink-muted">Chọn phiên bản yêu cầu mà ca này kiểm thử.</p>
         <MultiSelect
           showSearch={false}
@@ -260,8 +293,10 @@ export default function TestCaseCreateForm({
           />
         )}
       </section>
-      <details className="rounded-control border border-border p-4">
-        <summary className="cursor-pointer font-medium">Tùy chọn</summary>
+      <details className="rounded-control border border-border">
+        <summary className="cursor-pointer px-4 py-3 text-[13px] font-semibold text-ink hover:bg-surface-quiet focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand">
+          Thông tin mở rộng
+        </summary>
         <div
           className={`mt-4 grid min-w-0 items-start gap-4 ${
             hasAnalysisLinks ? "xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]" : "grid-cols-1"
@@ -490,6 +525,34 @@ export default function TestCaseCreateForm({
           )}
         </div>
       </details>
+      <footer className="action-dialog-footer sticky bottom-0 z-20 -mx-5 flex flex-wrap items-center justify-between gap-3 border-t border-border px-5 py-3">
+        {error ? (
+          <p className="min-w-0 flex-1 text-sm text-danger" role="alert">
+            {error}
+          </p>
+        ) : (
+          <p className="min-w-0 flex-1 text-xs text-ink-muted">
+            Lưu nháp để tiếp tục hoàn thiện, hoặc lưu ca khi đã đủ thông tin bắt buộc.
+          </p>
+        )}
+        <div className="ml-auto flex flex-wrap justify-end gap-2">
+          <button className="secondary-button" disabled={saving} onClick={onCancel} type="button">
+            {cancelLabel}
+          </button>
+          <button
+            className="secondary-button"
+            disabled={saving}
+            formNoValidate
+            type="submit"
+            value="draft"
+          >
+            {saving ? "Đang lưu…" : "Lưu nháp"}
+          </button>
+          <button className="apple-button" disabled={saving} type="submit" value="ready">
+            {saving ? "Đang lưu…" : "Lưu ca kiểm thử"}
+          </button>
+        </div>
+      </footer>
     </form>
   );
 }

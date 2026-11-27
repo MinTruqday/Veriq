@@ -2,9 +2,9 @@
 import Link from "next/link";
 import { useState } from "react";
 import InlineState from "@/shared/components/common/InlineState";
-import { Button } from "@/shared/components/ui/Button";
 import AuthField from "../components/AuthField";
 import AuthFrame from "../components/AuthFrame";
+import AuthSubmitButton from "../components/AuthSubmitButton";
 import PasswordField from "../components/PasswordField";
 import { useLogin } from "../hooks/useLogin";
 export default function LoginPage() {
@@ -53,9 +53,9 @@ export default function LoginPage() {
             Quên mật khẩu
           </Link>
         </div>
-        <Button type="submit" className="w-full" disabled={submitting}>
-          {submitting ? "Đang xử lý" : "Đăng nhập"}
-        </Button>
+        <AuthSubmitButton type="submit" loading={submitting} loadingLabel="Đang đăng nhập">
+          Đăng nhập
+        </AuthSubmitButton>
       </form>
     </AuthFrame>
   );

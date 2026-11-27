@@ -520,7 +520,10 @@ export const designTestingApi = {
       `/du-an/${projectId}/dac-ta-giao-dien/khac-biet?from_artifact_id=${encodeURIComponent(fromArtifactId)}&to_artifact_id=${encodeURIComponent(toArtifactId)}`,
     ),
   listApiOperations: (id) => testingRequest(`/du-an/${id}/dac-ta-giao-dien/thao-tac`),
-  traceability: (id) => testingRequest(`/du-an/${id}/truy-vet`),
+  traceability: (id, scope = {}) => {
+    const query = listQuery(scope);
+    return testingRequest(`/du-an/${id}/truy-vet${query ? `?${query}` : ""}`);
+  },
   exportTraceability: (id) =>
     downloadTestingFile(`/du-an/${id}/truy-vet/xuat`, `traceability-${id}.csv`),
   coverage: (id, scope = {}) => {

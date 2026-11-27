@@ -24,8 +24,9 @@ import {
   valueLabel,
 } from "../../lib/testing";
 import { shouldReloadAfterAmbiguousMutation } from "../../lib/executionRecovery.logic.mjs";
-import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
+import { Modal, ModalContent, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
+import EmptyState from "@/shared/components/common/EmptyState";
 import { eligibleRetestResults } from "./defectRetest.logic.mjs";
 import { defectActionAccess } from "./defectAccess.logic.mjs";
 import SearchField from "@/shared/components/ui/SearchField";
@@ -109,6 +110,8 @@ export default function DefectsPage({ project }) {
   currentProjectId.current = project._id;
   const loadGeneration = useRef(0);
   const [creating, setCreating] = useState(false);
+  const [viewMode, setViewMode] = useState("list");
+  const [selectedDefectId, setSelectedDefectId] = useState("");
   const [savingDefect, setSavingDefect] = useState(false);
   const savingDefectRef = useRef(false);
   const defectCreateOperation = useRef(null);
@@ -518,6 +521,10 @@ export default function DefectsPage({ project }) {
       </select>
     );
   };
+  const selectedDefect = items.find((item) => item._id === selectedDefectId) || null;
+  const selectedDefectAssignee = selectedDefect
+    ? members.find((member) => member.user_id === selectedDefect.assignee)
+    : null;
   if (initialLoading || initialLoadFailed) {
     return (
       <WorkspacePage title="Lỗi" actions={<ProjectCrumb projectId={project._id} />}>
@@ -540,6 +547,29 @@ export default function DefectsPage({ project }) {
       actions={
         <div className="flex flex-wrap items-center gap-3">
           <ProjectCrumb projectId={project._id} />
+          <div
+            className="inline-flex rounded-control border border-border p-1"
+            aria-label="Kiểu hiển thị lỗi"
+          >
+            {[
+              ["board", "Board"],
+              ["list", "Danh sách"],
+            ].map(([value, label]) => (
+              <button
+                aria-pressed={viewMode === value}
+                className={`rounded-control px-3 py-1.5 text-xs font-medium transition ${
+                  viewMode === value
+                    ? "bg-brand-soft text-brand"
+                    : "text-ink-muted hover:bg-surface-quiet"
+                }`}
+                key={value}
+                onClick={() => setViewMode(value)}
+                type="button"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           {can("defect.create") && (
             <button
               className="apple-button"
@@ -599,199 +629,258 @@ export default function DefectsPage({ project }) {
           isOpen={creating}
           onClose={() => setCreating(false)}
           ariaLabel="Tạo lỗi"
-          className="max-w-3xl max-h-[90dvh] overflow-y-auto"
+          placement="right"
+          className="max-w-3xl"
         >
           <ModalHeader>
             <ModalTitle>Tạo lỗi</ModalTitle>
+            <p className="mt-2 text-sm text-ink-muted">
+              Ghi nhận thông tin cần thiết để tái hiện, phân loại và theo dõi lỗi.
+            </p>
           </ModalHeader>
-          <form className="grid gap-4 p-5 md:grid-cols-2" onSubmit={create}>
-            {(!classificationOptions.severity.length || !classificationOptions.priority.length) && (
-              <p className="rounded-control bg-warning-soft p-3 text-sm text-warning md:col-span-2">
-                Thang mức độ và thang ưu tiên của dự án chưa được cấu hình.
-              </p>
-            )}
-            <label className="field-label md:col-span-2">
-              Tên
-              <input
-                required
-                className="apple-input mt-2"
-                value={form.title}
-                onChange={(event) => setForm({ ...form, title: event.target.value })}
-              />
-            </label>
-            <label className="field-label">
-              Mức độ nghiêm trọng
-              <select
-                required
-                className="apple-input mt-2"
-                value={form.severity}
-                onChange={(event) => setForm({ ...form, severity: event.target.value })}
-              >
-                <option value="">Chọn mức độ</option>
-                {classificationOptions.severity.map((value) => (
-                  <option key={value} value={value} />
-                ))}
-              </select>
-            </label>
-            <label className="field-label">
-              Mức ưu tiên
-              <select
-                required
-                className="apple-input mt-2"
-                value={form.priority}
-                onChange={(event) => setForm({ ...form, priority: event.target.value })}
-              >
-                <option value="">Chọn mức ưu tiên</option>
-                {classificationOptions.priority.map((value) => (
-                  <option key={value} value={value} />
-                ))}
-              </select>
-            </label>
-            <label className="field-label">
-              Môi trường
-              <select
-                className="apple-input mt-2"
-                value={form.environmentId}
-                onChange={(event) => setForm({ ...form, environmentId: event.target.value })}
-              >
-                <option value="">-</option>
-                {environments.map((item) => (
-                  <option key={item._id} value={item._id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field-label">
-              Bản dựng
-              {can("build.read") && can("release.read") ? (
-                <select
-                  className="apple-input mt-2"
-                  value={form.buildId}
-                  onChange={(event) => {
-                    const buildId = event.target.value;
-                    const build = builds.find((item) => item._id === buildId);
-                    setForm({
-                      ...form,
-                      buildId,
-                      build: build?.identifier || "",
-                      releaseId: build?.release_id || form.releaseId,
-                      release:
-                        releases.find((item) => item._id === build?.release_id)?.key ||
-                        form.release,
-                    });
-                  }}
-                >
-                  <option value="">Không gắn bản dựng</option>
-                  {builds
-                    .filter((item) => !form.releaseId || item.release_id === form.releaseId)
-                    .map((item) => (
-                      <option key={item._id} value={item._id}>
-                        {item.identifier} · {item.version}
-                      </option>
-                    ))}
-                </select>
-              ) : (
-                <input
-                  className="apple-input mt-2"
-                  value={form.build}
-                  onChange={(event) => setForm({ ...form, build: event.target.value, buildId: "" })}
-                />
+          <form className="flex min-h-full flex-col" onSubmit={create}>
+            <div className="flex-1 space-y-5 p-5">
+              {(!classificationOptions.severity.length ||
+                !classificationOptions.priority.length) && (
+                <p className="rounded-control bg-warning-soft p-3 text-sm text-warning">
+                  Thang mức độ và thang ưu tiên của dự án chưa được cấu hình.
+                </p>
               )}
-            </label>
-            <label className="field-label">
-              Bản phát hành
-              {can("release.read") ? (
-                <select
-                  className="apple-input mt-2"
-                  value={form.releaseId}
-                  onChange={(event) => {
-                    const releaseId = event.target.value;
-                    const release = releases.find((item) => item._id === releaseId);
-                    setForm({
-                      ...form,
-                      releaseId,
-                      release: release?.key || "",
-                      buildId: "",
-                      build: "",
-                    });
-                  }}
-                >
-                  <option value="">Không gắn bản phát hành</option>
-                  {releases.map((item) => (
-                    <option key={item._id} value={item._id}>
-                      {item.key} · {item.name}
-                    </option>
+              <section aria-labelledby="defect-classification-heading" className="space-y-4">
+                <div>
+                  <h3 id="defect-classification-heading" className="text-sm font-semibold">
+                    Thông tin và phân loại
+                  </h3>
+                  <p className="mt-1 text-xs text-ink-muted">
+                    Tên, mức độ và ưu tiên giúp nhóm xử lý nhận biết lỗi ngay trong danh sách.
+                  </p>
+                </div>
+                <label className="field-label block">
+                  Tên lỗi <span className="text-danger">*</span>
+                  <input
+                    required
+                    className="apple-input mt-2"
+                    value={form.title}
+                    onChange={(event) => setForm({ ...form, title: event.target.value })}
+                  />
+                </label>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="field-label">
+                    Mức độ nghiêm trọng <span className="text-danger">*</span>
+                    <select
+                      required
+                      className="apple-input mt-2"
+                      value={form.severity}
+                      onChange={(event) => setForm({ ...form, severity: event.target.value })}
+                    >
+                      <option value="">Chọn mức độ</option>
+                      {classificationOptions.severity.map((value) => (
+                        <option key={value} value={value}>
+                          {valueLabel(value)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="field-label">
+                    Mức ưu tiên <span className="text-danger">*</span>
+                    <select
+                      required
+                      className="apple-input mt-2"
+                      value={form.priority}
+                      onChange={(event) => setForm({ ...form, priority: event.target.value })}
+                    >
+                      <option value="">Chọn mức ưu tiên</option>
+                      {classificationOptions.priority.map((value) => (
+                        <option key={value} value={value}>
+                          {valueLabel(value)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              </section>
+              <details className="rounded-control border border-border">
+                <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">
+                  Bản phát hành, bản dựng và môi trường (tùy chọn)
+                </summary>
+                <div className="grid gap-4 border-t border-border p-4 sm:grid-cols-2">
+                  <label className="field-label">
+                    Môi trường liên quan
+                    <select
+                      className="apple-input mt-2"
+                      value={form.environmentId}
+                      onChange={(event) => setForm({ ...form, environmentId: event.target.value })}
+                    >
+                      <option value="">-</option>
+                      {environments.map((item) => (
+                        <option key={item._id} value={item._id}>
+                          {item.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="field-label">
+                    Bản dựng
+                    {can("build.read") && can("release.read") ? (
+                      <select
+                        className="apple-input mt-2"
+                        value={form.buildId}
+                        onChange={(event) => {
+                          const buildId = event.target.value;
+                          const build = builds.find((item) => item._id === buildId);
+                          setForm({
+                            ...form,
+                            buildId,
+                            build: build?.identifier || "",
+                            releaseId: build?.release_id || form.releaseId,
+                            release:
+                              releases.find((item) => item._id === build?.release_id)?.key ||
+                              form.release,
+                          });
+                        }}
+                      >
+                        <option value="">Không gắn bản dựng</option>
+                        {builds
+                          .filter((item) => !form.releaseId || item.release_id === form.releaseId)
+                          .map((item) => (
+                            <option key={item._id} value={item._id}>
+                              {item.identifier} · {item.version}
+                            </option>
+                          ))}
+                      </select>
+                    ) : (
+                      <input
+                        className="apple-input mt-2"
+                        value={form.build}
+                        onChange={(event) =>
+                          setForm({ ...form, build: event.target.value, buildId: "" })
+                        }
+                      />
+                    )}
+                  </label>
+                  <label className="field-label">
+                    Bản phát hành
+                    {can("release.read") ? (
+                      <select
+                        className="apple-input mt-2"
+                        value={form.releaseId}
+                        onChange={(event) => {
+                          const releaseId = event.target.value;
+                          const release = releases.find((item) => item._id === releaseId);
+                          setForm({
+                            ...form,
+                            releaseId,
+                            release: release?.key || "",
+                            buildId: "",
+                            build: "",
+                          });
+                        }}
+                      >
+                        <option value="">Không gắn bản phát hành</option>
+                        {releases.map((item) => (
+                          <option key={item._id} value={item._id}>
+                            {item.key} · {item.name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        className="apple-input mt-2"
+                        value={form.release}
+                        onChange={(event) =>
+                          setForm({
+                            ...form,
+                            release: event.target.value,
+                            releaseId: "",
+                            buildId: "",
+                          })
+                        }
+                      />
+                    )}
+                  </label>
+                </div>
+              </details>
+              <section aria-labelledby="defect-repro-heading" className="space-y-4">
+                <div>
+                  <h3 id="defect-repro-heading" className="text-sm font-semibold">
+                    Tái hiện lỗi
+                  </h3>
+                  <p className="mt-1 text-xs text-ink-muted">
+                    Liệt kê các thao tác theo đúng thứ tự để người khác có thể lặp lại vấn đề.
+                  </p>
+                </div>
+                <label className="field-label block">
+                  Các bước tái hiện <span className="text-danger">*</span>
+                  <textarea
+                    required
+                    className="apple-input mt-2 min-h-24"
+                    placeholder="Mỗi dòng là một bước"
+                    value={form.steps}
+                    onChange={(event) => setForm({ ...form, steps: event.target.value })}
+                  />
+                </label>
+                <label className="field-label block">
+                  Mô tả bổ sung
+                  <textarea
+                    className="apple-input mt-2 min-h-24"
+                    value={form.description}
+                    onChange={(event) => setForm({ ...form, description: event.target.value })}
+                  />
+                </label>
+              </section>
+              <section aria-labelledby="defect-outcome-heading" className="space-y-4">
+                <h3 id="defect-outcome-heading" className="text-sm font-semibold">
+                  Kết quả quan sát
+                </h3>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="field-label">
+                    Kết quả thực tế
+                    <textarea
+                      className="apple-input mt-2 min-h-24"
+                      value={form.actual}
+                      onChange={(event) => setForm({ ...form, actual: event.target.value })}
+                    />
+                  </label>
+                  <label className="field-label md:col-span-2">
+                    Kết quả mong đợi
+                    <textarea
+                      className="apple-input mt-2 min-h-24"
+                      value={form.expected}
+                      onChange={(event) => setForm({ ...form, expected: event.target.value })}
+                    />
+                  </label>
+                </div>
+              </section>
+              <section aria-labelledby="defect-evidence-heading" className="space-y-3">
+                <h3 id="defect-evidence-heading" className="text-sm font-semibold">
+                  Bằng chứng
+                </h3>
+                <div className="min-w-0">
+                  <FilePicker
+                    label="Tệp bằng chứng"
+                    onChange={async (event) => {
+                      const file = event.target.files?.[0];
+                      if (!file) return;
+                      try {
+                        const uploaded = await uploadAssetAPI(file);
+                        setForm({ ...form, attachments: [...form.attachments, uploaded.data] });
+                      } catch (reason) {
+                        setError(messageOf(reason));
+                      }
+                    }}
+                  />
+                  {form.attachments.map((attachment) => (
+                    <span
+                      className="mt-2 block break-all text-[11px] text-ink-muted"
+                      key={attachment.url}
+                    >
+                      {attachment.filename}
+                    </span>
                   ))}
-                </select>
-              ) : (
-                <input
-                  className="apple-input mt-2"
-                  value={form.release}
-                  onChange={(event) =>
-                    setForm({ ...form, release: event.target.value, releaseId: "", buildId: "" })
-                  }
-                />
-              )}
-            </label>
-            <label className="field-label md:col-span-2">
-              Các bước tái hiện
-              <textarea
-                required
-                className="apple-input mt-2 min-h-24"
-                placeholder="Mỗi dòng là một bước"
-                value={form.steps}
-                onChange={(event) => setForm({ ...form, steps: event.target.value })}
-              />
-            </label>
-            <label className="field-label">
-              Mô tả
-              <textarea
-                className="apple-input mt-2 min-h-24"
-                value={form.description}
-                onChange={(event) => setForm({ ...form, description: event.target.value })}
-              />
-            </label>
-            <label className="field-label">
-              Kết quả thực tế
-              <textarea
-                className="apple-input mt-2 min-h-24"
-                value={form.actual}
-                onChange={(event) => setForm({ ...form, actual: event.target.value })}
-              />
-            </label>
-            <label className="field-label md:col-span-2">
-              Kết quả mong đợi
-              <textarea
-                className="apple-input mt-2 min-h-24"
-                value={form.expected}
-                onChange={(event) => setForm({ ...form, expected: event.target.value })}
-              />
-            </label>
-            <div className="min-w-0 md:col-span-2">
-              <FilePicker
-                label="Tệp bằng chứng"
-                onChange={async (event) => {
-                  const file = event.target.files?.[0];
-                  if (!file) return;
-                  try {
-                    const uploaded = await uploadAssetAPI(file);
-                    setForm({ ...form, attachments: [...form.attachments, uploaded.data] });
-                  } catch (reason) {
-                    setError(messageOf(reason));
-                  }
-                }}
-              />
-              {form.attachments.map((attachment) => (
-                <span
-                  className="mt-2 block break-all text-[11px] text-ink-muted"
-                  key={attachment.url}
-                >
-                  {attachment.filename}
-                </span>
-              ))}
+                </div>
+              </section>
             </div>
-            <div className="action-dialog-footer flex justify-end gap-3 md:col-span-2">
+            <div className="action-dialog-footer sticky bottom-0 z-10 flex justify-end gap-3 border-t border-border bg-surface p-4">
               <button
                 className="secondary-button"
                 type="button"
@@ -928,7 +1017,7 @@ export default function DefectsPage({ project }) {
       <Panel title="Danh sách lỗi">
         <details className="border-b border-border p-4" open>
           <summary className="cursor-pointer text-sm font-medium">Tìm và lọc lỗi</summary>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-7">
             <SearchField
               ariaLabel="Tìm lỗi"
               className="xl:col-span-2"
@@ -969,6 +1058,29 @@ export default function DefectsPage({ project }) {
               ))}
             </datalist>
             <select
+              aria-label="Lọc mức ưu tiên lỗi"
+              className="apple-input"
+              value={filters.priority}
+              onChange={(event) => {
+                setFilters({ ...filters, priority: event.target.value });
+                setPage(1);
+              }}
+            >
+              <option value="">Mọi mức ưu tiên</option>
+              {[
+                ...new Set([
+                  ...classificationOptions.priority,
+                  ...items.map((item) => item.priority),
+                ]),
+              ]
+                .filter(Boolean)
+                .map((value) => (
+                  <option key={value} value={value}>
+                    {valueLabel(value)}
+                  </option>
+                ))}
+            </select>
+            <select
               aria-label="Lọc người xử lý lỗi"
               className="apple-input"
               value={filters.assignee}
@@ -1000,7 +1112,84 @@ export default function DefectsPage({ project }) {
             </select>
           </div>
         </details>
-        {items.length ? (
+        {viewMode === "board" ? (
+          <section aria-label="Bảng lỗi theo trạng thái" className="overflow-x-auto p-4">
+            <p className="mb-3 text-xs text-ink-muted">
+              Bảng phản ánh các lỗi trong trang hiện tại. Chuyển trạng thái vẫn yêu cầu thao tác có
+              xác nhận.
+            </p>
+            <div className="grid w-max min-w-full grid-cols-[repeat(9,minmax(14rem,1fr))] gap-3">
+              {Object.keys(nextStates).map((status) => {
+                const columnItems = items.filter((item) => item.status === status);
+                return (
+                  <section
+                    aria-label={`${valueLabel(status)}: ${columnItems.length} lỗi trong trang`}
+                    className="min-w-0 rounded-control border border-border bg-surface-quiet/40 p-2"
+                    key={status}
+                  >
+                    <header className="mb-2 flex items-start justify-between gap-2 px-1 py-1">
+                      <h3 className="text-xs font-semibold leading-4">{valueLabel(status)}</h3>
+                      <span className="shrink-0 rounded-full border border-border bg-surface px-1.5 py-0.5 text-[10px] text-ink-muted">
+                        {columnItems.length}
+                      </span>
+                    </header>
+                    <ul className="space-y-2">
+                      {columnItems.map((item) => {
+                        const assignee = members.find((member) => member.user_id === item.assignee);
+                        const retest = results.find(
+                          (result) => result._id === item.linked_test_result_id,
+                        );
+                        return (
+                          <li key={item._id}>
+                            <button
+                              className="w-full rounded-control border border-border bg-surface p-2.5 text-left transition hover:border-brand/50 hover:bg-brand-soft/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                              onClick={() => setSelectedDefectId(item._id)}
+                              type="button"
+                            >
+                              <span className="block font-mono text-[10px] text-ink-muted">
+                                {item.defect_key}
+                              </span>
+                              <span className="mt-1 block line-clamp-3 break-words text-xs font-medium leading-4">
+                                {item.title}
+                              </span>
+                              <span className="mt-2 flex flex-wrap gap-1.5">
+                                <span className="rounded-control border border-border px-1.5 py-0.5 text-[10px]">
+                                  {valueLabel(item.severity)}
+                                </span>
+                                <span className="rounded-control border border-border px-1.5 py-0.5 text-[10px] text-ink-muted">
+                                  {valueLabel(item.priority)}
+                                </span>
+                              </span>
+                              <span className="mt-2 block break-words text-[10px] leading-4 text-ink-muted">
+                                Xử lý:{" "}
+                                {assignee
+                                  ? memberDisplayName(assignee)
+                                  : item.assignee
+                                    ? "Thành viên dự án"
+                                    : "Chưa gán"}
+                              </span>
+                              <span className="block break-words text-[10px] leading-4 text-ink-muted">
+                                Retest:{" "}
+                                {retest
+                                  ? `${valueLabel(retest.status)} · ${retest.test_case_key || retest.test_case_name || "Ca kiểm thử"}`
+                                  : item.linked_test_result_id
+                                    ? "Kết quả đã liên kết"
+                                    : "Chưa có kết quả"}
+                              </span>
+                              <span className="mt-1 block text-[10px] text-brand">
+                                Xem chi tiết
+                              </span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </section>
+                );
+              })}
+            </div>
+          </section>
+        ) : items.length ? (
           <ul aria-label="Danh sách lỗi" className="divide-y divide-border">
             {items.map((item) => {
               const assignee = members.find((member) => member.user_id === item.assignee);
@@ -1029,10 +1218,10 @@ export default function DefectsPage({ project }) {
                     <div className="flex flex-wrap items-center gap-2">
                       <StatusPill value={item.status} />
                       <span className="rounded-control border border-border px-2.5 py-1 text-xs text-ink">
-                        {item.severity}
+                        {valueLabel(item.severity)}
                       </span>
                       <span className="rounded-control border border-border px-2.5 py-1 text-xs text-ink-muted">
-                        Ưu tiên {item.priority}
+                        Ưu tiên {valueLabel(item.priority)}
                       </span>
                     </div>
                   </div>
@@ -1131,6 +1320,16 @@ export default function DefectsPage({ project }) {
                       </div>
                     </details>
                   )}
+                  <div className="mt-3">
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() => setSelectedDefectId(item._id)}
+                    >
+                      <Eye size={15} aria-hidden="true" />
+                      Xem chi tiết
+                    </button>
+                  </div>
                   <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2">
                     {renderTransition(item)}
                     {can("ai.suggest_bug_trace") &&
@@ -1198,12 +1397,288 @@ export default function DefectsPage({ project }) {
             })}
           </ul>
         ) : (
-          <p className="px-5 py-5 text-[13px] text-ink-muted" role="status">
-            Chưa có lỗi
-          </p>
+          <EmptyState
+            bordered
+            compact
+            text={
+              filters.q ||
+              filters.status ||
+              filters.severity ||
+              filters.priority ||
+              filters.assignee
+                ? "Không có lỗi phù hợp với bộ lọc"
+                : "Dự án chưa có lỗi nào"
+            }
+            description={
+              filters.q ||
+              filters.status ||
+              filters.severity ||
+              filters.priority ||
+              filters.assignee
+                ? "Thử xóa bộ lọc hoặc tìm bằng mã, tiêu đề khác."
+                : "Lỗi được tạo từ kết quả thực thi hoặc từ nút Tạo lỗi ở đầu trang."
+            }
+            actionLabel={
+              filters.q ||
+              filters.status ||
+              filters.severity ||
+              filters.priority ||
+              filters.assignee
+                ? "Xóa bộ lọc"
+                : can("defect.create")
+                  ? "Tạo lỗi"
+                  : undefined
+            }
+            onAction={() => {
+              if (
+                filters.q ||
+                filters.status ||
+                filters.severity ||
+                filters.priority ||
+                filters.assignee
+              ) {
+                setSearchText("");
+                setFilters({
+                  q: "",
+                  status: "",
+                  severity: "",
+                  priority: "",
+                  assignee: "",
+                  sort: "-updated_at",
+                });
+                setPage(1);
+              } else {
+                setCreating(true);
+              }
+            }}
+          />
         )}
         <Pagination value={pageInfo} onChange={setPage} />
       </Panel>
+      <Modal
+        isOpen={Boolean(selectedDefectId)}
+        onClose={() => setSelectedDefectId("")}
+        ariaLabel={selectedDefect ? `Chi tiết lỗi ${selectedDefect.defect_key}` : "Chi tiết lỗi"}
+        placement="right"
+        className="!max-w-[min(92vw,56rem)]"
+      >
+        {selectedDefect ? (
+          <>
+            <ModalHeader className="p-5 pr-16 sm:p-6 sm:pr-16">
+              <div className="flex flex-wrap items-start gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="font-mono text-xs font-semibold text-brand">
+                    {selectedDefect.defect_key}
+                  </p>
+                  <ModalTitle className="mt-1 text-lg sm:text-xl">
+                    {selectedDefect.title}
+                  </ModalTitle>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <StatusPill value={selectedDefect.status} />
+                  <span className="rounded-control border border-border px-2.5 py-1 text-xs">
+                    {valueLabel(selectedDefect.severity)}
+                  </span>
+                  <span className="rounded-control border border-border px-2.5 py-1 text-xs text-ink-muted">
+                    Ưu tiên {valueLabel(selectedDefect.priority)}
+                  </span>
+                </div>
+              </div>
+              <p className="mt-3 text-xs text-ink-muted">
+                Cập nhật {formatDate(selectedDefect.updated_at)}
+                {selectedDefect.revision ? ` · Bản ghi ${selectedDefect.revision}` : ""}
+              </p>
+            </ModalHeader>
+            <ModalContent className="space-y-0 p-0">
+              <section className="border-b border-border p-5" aria-label="Thông tin lỗi">
+                <h3 className="text-sm font-semibold">Thông tin lỗi</h3>
+                <dl className="mt-3 grid gap-x-6 gap-y-4 sm:grid-cols-2">
+                  <div className="min-w-0">
+                    <dt className="text-xs text-ink-muted">Người xử lý</dt>
+                    <dd className="mt-1 break-words text-sm font-medium">
+                      {defectActionAccess(project, selectedDefect).canAssign ? (
+                        <button
+                          className="text-left text-brand hover:underline"
+                          type="button"
+                          onClick={() => assignDefect(selectedDefect)}
+                        >
+                          {selectedDefectAssignee
+                            ? memberDisplayName(selectedDefectAssignee)
+                            : selectedDefect.assignee
+                              ? "Thành viên dự án"
+                              : "Chưa gán · Gán người xử lý"}
+                        </button>
+                      ) : selectedDefectAssignee ? (
+                        memberDisplayName(selectedDefectAssignee)
+                      ) : selectedDefect.assignee ? (
+                        "Thành viên dự án"
+                      ) : (
+                        "Chưa gán"
+                      )}
+                    </dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="text-xs text-ink-muted">Môi trường</dt>
+                    <dd className="mt-1 break-words text-sm">
+                      {selectedDefect.environment
+                        ? displayEnvironment(selectedDefect.environment)
+                        : "Chưa ghi nhận"}
+                    </dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="text-xs text-ink-muted">Bản dựng</dt>
+                    <dd className="mt-1 break-words text-sm">{selectedDefect.build || "-"}</dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="text-xs text-ink-muted">Bản phát hành</dt>
+                    <dd className="mt-1 break-words text-sm">{selectedDefect.release || "-"}</dd>
+                  </div>
+                </dl>
+              </section>
+              <section className="border-b border-border p-5" aria-label="Mô tả lỗi">
+                <h3 className="text-sm font-semibold">Mô tả</h3>
+                <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-ink-muted">
+                  {docText(selectedDefect.description) || "Chưa có mô tả."}
+                </p>
+              </section>
+              <section className="border-b border-border p-5" aria-label="Tái hiện lỗi">
+                <h3 className="text-sm font-semibold">Các bước tái hiện</h3>
+                {(selectedDefect.steps_to_reproduce || []).length ? (
+                  <ol className="mt-3 space-y-3">
+                    {selectedDefect.steps_to_reproduce.map((step, index) => (
+                      <li
+                        className="grid grid-cols-[2rem_minmax(0,1fr)] gap-3 rounded-control border border-border bg-surface-quiet/50 p-3"
+                        key={step._id || `${selectedDefect._id}-step-${index}`}
+                      >
+                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-soft text-xs font-semibold text-brand">
+                          {index + 1}
+                        </span>
+                        <div className="min-w-0 space-y-2 text-sm">
+                          <p className="whitespace-pre-wrap break-words">
+                            {docText(step.action_doc || step.action || step.description) ||
+                              "Chưa có thao tác."}
+                          </p>
+                          {(step.expected_doc || step.expected) && (
+                            <p className="whitespace-pre-wrap break-words text-ink-muted">
+                              Mong đợi: {docText(step.expected_doc || step.expected)}
+                            </p>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <p className="mt-2 text-sm text-ink-muted">Chưa có bước tái hiện.</p>
+                )}
+              </section>
+              <section className="grid gap-4 border-b border-border p-5 sm:grid-cols-2">
+                <div>
+                  <h3 className="text-sm font-semibold">Kết quả mong đợi</h3>
+                  <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-ink-muted">
+                    {docText(selectedDefect.expected_result_doc) || "Chưa ghi nhận."}
+                  </p>
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold">Kết quả thực tế</h3>
+                  <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-ink-muted">
+                    {docText(selectedDefect.actual_result_doc) || "Chưa ghi nhận."}
+                  </p>
+                </div>
+              </section>
+              <section className="border-b border-border p-5" aria-label="Liên kết và retest">
+                <h3 className="text-sm font-semibold">Liên kết kiểm thử và retest</h3>
+                <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <div className="min-w-0 rounded-control border border-border p-3">
+                    <dt className="text-xs text-ink-muted">Ca kiểm thử</dt>
+                    <dd className="mt-1 break-all text-sm font-medium">
+                      {selectedDefect.linked_test_case_version_id || "Chưa liên kết ca kiểm thử"}
+                    </dd>
+                  </div>
+                  <div className="min-w-0 rounded-control border border-border p-3">
+                    <dt className="text-xs text-ink-muted">Kết quả liên quan</dt>
+                    <dd className="mt-1 text-sm font-medium">
+                      {(() => {
+                        const result = results.find(
+                          (item) => item._id === selectedDefect.linked_test_result_id,
+                        );
+                        return result
+                          ? `${valueLabel(result.status)} · ${result.test_case_key || result.test_case_name || "Ca kiểm thử"}`
+                          : selectedDefect.linked_test_result_id
+                            ? "Kết quả retest đã liên kết"
+                            : "Chưa có kết quả retest liên kết";
+                      })()}
+                    </dd>
+                  </div>
+                </dl>
+                {selectedDefect.status === "READY_FOR_RETEST" &&
+                  defectActionAccess(project, selectedDefect).canRetest && (
+                    <div className="mt-3">{renderTransition(selectedDefect)}</div>
+                  )}
+              </section>
+              {!!selectedDefect.attachments?.length && (
+                <section className="border-b border-border p-5" aria-label="Bằng chứng đính kèm">
+                  <h3 className="text-sm font-semibold">Bằng chứng</h3>
+                  <ul className="mt-2 space-y-2">
+                    {selectedDefect.attachments.map((attachment, index) => (
+                      <li
+                        className="break-all rounded-control border border-border p-3 text-sm"
+                        key={attachment.url || attachment.id || index}
+                      >
+                        {attachment.filename || attachment.name || "Tệp đính kèm"}
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+              <div className="sticky bottom-0 flex flex-wrap items-center gap-2 border-t border-border bg-surface-raised p-4">
+                {selectedDefect.status !== "READY_FOR_RETEST" && (
+                  <div className="min-w-[12rem] flex-1">{renderTransition(selectedDefect)}</div>
+                )}
+                {can("ai.suggest_bug_trace") &&
+                  (traceSuggestions[selectedDefect._id]?.source_event_revision ===
+                  selectedDefect.revision ? (
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() =>
+                        setTraceReview({
+                          defect: selectedDefect,
+                          result: traceSuggestions[selectedDefect._id],
+                        })
+                      }
+                    >
+                      Xem gợi ý truy vết
+                    </button>
+                  ) : (
+                    <button
+                      className="secondary-button"
+                      disabled={Boolean(traceGeneratingId)}
+                      type="button"
+                      onClick={() => void suggestTrace(selectedDefect)}
+                    >
+                      {traceGeneratingId === selectedDefect._id
+                        ? "Đang tìm liên kết…"
+                        : "Đề xuất liên kết bằng AI"}
+                    </button>
+                  ))}
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => setSelectedDefectId("")}
+                >
+                  Đóng chi tiết
+                </button>
+              </div>
+            </ModalContent>
+          </>
+        ) : (
+          <ModalContent>
+            <p className="text-sm text-ink-muted">
+              Lỗi này không còn trong trang hiện tại. Đóng chi tiết để tiếp tục.
+            </p>
+          </ModalContent>
+        )}
+      </Modal>
       {dialog}
     </WorkspacePage>
   );

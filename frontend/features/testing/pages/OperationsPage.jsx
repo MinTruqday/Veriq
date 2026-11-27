@@ -7,6 +7,7 @@ import PlatformUsersPanel from "../components/PlatformUsersPanel";
 import { ErrorState, Panel, WorkspacePage } from "../components/WorkspacePrimitives";
 import { testingApi } from "../services/testing.service";
 import { messageOf } from "../lib/testing";
+import SearchField from "@/shared/components/ui/SearchField";
 
 const ROLE_ORDER = ["BA", "TESTER", "SYSTEM_ADMIN"];
 const ROLE_LABELS = {
@@ -59,6 +60,7 @@ const PERMISSION_RESOURCES = {
   risk: "Rủi ro",
   statisticalquality: "Thống kê chất lượng",
   testadequacy: "Mức độ đầy đủ của kiểm thử",
+  testmonitor: "Giám sát kiểm thử",
   "testanalysis.finding": "Phát hiện phân tích kiểm thử",
   testanalysis: "Phân tích kiểm thử",
   "testcase.template": "Mẫu ca kiểm thử",
@@ -183,6 +185,12 @@ const PERMISSION_ACTIONS = {
   revoke: "Thu hồi",
   write: "Ghi nội dung",
   ai: "Tạo nội dung bằng AI",
+  assign: "Phân công",
+  verify: "Xác minh",
+  "private.read": "Xem lỗi riêng tư",
+  "trace.manage": "Quản lý liên kết truy vết",
+  "report.create": "Tạo báo cáo",
+  update_own: "Cập nhật bình luận của mình",
 };
 
 const PERMISSION_RESOURCE_KEYS = Object.keys(PERMISSION_RESOURCES).sort(
@@ -204,6 +212,26 @@ const PERMISSION_LABEL_OVERRIDES = {
   "report.export": "Tải báo cáo xuống",
   "project.audit.read": "Xem nhật ký dự án",
   "testresult.correct": "Điều chỉnh kết quả kiểm thử",
+  "ai.read": "Xem kết quả AI",
+  "ai.result_metadata.read": "Xem thông tin kết quả AI",
+  "analytics.ai.read": "Xem kết quả AI của báo cáo phân tích",
+  "apiartifact.archive": "Lưu trữ tài liệu API",
+  "apiartifact.confirm": "Xác nhận tài liệu API",
+  "apiartifact.diff.read": "Xem nội dung thay đổi tài liệu API",
+  "apiartifact.import": "Nhập dữ liệu tài liệu API",
+  "apiartifact.read": "Xem tài liệu API",
+  "apiartifact.review": "Rà soát tài liệu API",
+  "testanalysis.run_ai": "Chạy phân tích kiểm thử bằng AI",
+  "testanalysis.verify_finding": "Xác minh phát hiện phân tích kiểm thử",
+  "testcase.lint": "Rà soát chất lượng ca kiểm thử",
+  "testmonitor.control.assign": "Phân công điều phối giám sát kiểm thử",
+  "testmonitor.control.create": "Tạo mục điều phối giám sát kiểm thử",
+  "testmonitor.control.update": "Cập nhật điều phối giám sát kiểm thử",
+  "testmonitor.exit_criteria.override": "Cho phép vượt tiêu chí kết thúc giám sát kiểm thử",
+  "testmonitor.read": "Xem giám sát kiểm thử",
+  "testmonitor.report.create": "Tạo báo cáo giám sát kiểm thử",
+  "testmonitor.snapshot.create": "Tạo bản chụp dữ liệu giám sát kiểm thử",
+  "workreport.ai": "Tạo nội dung báo cáo bằng AI",
 };
 
 const permissionResource = (permission) =>
@@ -220,6 +248,7 @@ const permissionLabel = (permission) => {
   if (action === "upload") return `Tải ${resourceLabel} lên`;
   if (action === "download") return `Tải ${resourceLabel} xuống`;
   const actionLabel = PERMISSION_ACTIONS[action] || action.replaceAll("_", " ");
+  if (actionLabel.toLocaleLowerCase("vi-VN").includes(resourceLabel)) return actionLabel;
   return `${actionLabel} ${resourceLabel}`;
 };
 
@@ -229,15 +258,27 @@ export default function OperationsPage() {
   const [roles, setRoles] = useState(null);
   const [error, setError] = useState("");
   const [permissions, setPermissions] = useState([]);
+  const [permissionQuery, setPermissionQuery] = useState("");
   const [revision, setRevision] = useState(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const isAdmin = user?.system_role === "ADMIN";
-  const permissionRows = permissions.map((permission) => ({
-    permission,
-    resource: permissionResource(permission),
-    label: permissionLabel(permission),
-  }));
+  const normalizedPermissionQuery = permissionQuery.trim().toLocaleLowerCase();
+  const permissionRows = permissions
+    .map((permission) => ({
+      permission,
+      resource: permissionResource(permission),
+      label: permissionLabel(permission),
+    }))
+    .sort(
+      (left, right) =>
+        left.resource.localeCompare(right.resource) || left.label.localeCompare(right.label),
+    )
+    .filter((row) =>
+      [row.resource, row.label, row.permission].some((value) =>
+        value.toLocaleLowerCase().includes(normalizedPermissionQuery),
+      ),
+    );
 
   useEffect(() => {
     if (isLoading) return;
@@ -280,68 +321,88 @@ export default function OperationsPage() {
                 Tên quyền đã được viết bằng tiếng Việt. Đánh dấu nghĩa là vai trò được cấp quyền;
                 Admin luôn có toàn quyền.
               </p>
-              <div className="overflow-x-auto">
-                <table className="w-full max-w-[1050px] table-fixed text-left text-sm">
-                  <colgroup>
-                    <col className="w-[58%]" />
-                    <col className="w-[14%]" />
-                    <col className="w-[14%]" />
-                    <col className="w-[14%]" />
-                  </colgroup>
-                  <thead>
-                    <tr>
-                      <th className="p-2">Quyền</th>
-                      {ROLE_ORDER.map((role) => (
-                        <th key={role} className="p-2 text-center">
-                          {ROLE_LABELS[role]}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {permissionRows.map((row, index) => (
-                      <Fragment key={row.permission}>
-                        {(index === 0 || row.resource !== permissionRows[index - 1].resource) && (
-                          <tr className="border-t border-border bg-surface-quiet">
-                            <th
-                              className="px-3 py-2 text-left text-xs font-semibold text-ink-muted"
-                              colSpan={4}
-                            >
-                              {PERMISSION_RESOURCES[row.resource] || row.resource}
-                            </th>
-                          </tr>
-                        )}
-                        <tr className="border-t border-border">
-                          <th className="p-2 font-normal" title={row.permission}>
-                            {row.label}
-                          </th>
-                          {ROLE_ORDER.map((role) => (
-                            <td key={role} className="p-2 text-center">
-                              <input
-                                type="checkbox"
-                                aria-label={`${ROLE_LABELS[role]}: ${row.label}`}
-                                title={row.permission}
-                                checked={roles[role].includes(row.permission)}
-                                disabled={role === "SYSTEM_ADMIN"}
-                                onChange={(event) => {
-                                  const checked = event.target.checked;
-                                  setSaved(false);
-                                  setRoles((current) => ({
-                                    ...current,
-                                    [role]: checked
-                                      ? [...current[role], row.permission]
-                                      : current[role].filter((item) => item !== row.permission),
-                                  }));
-                                }}
-                              />
-                            </td>
-                          ))}
-                        </tr>
-                      </Fragment>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="grid max-w-[1050px] gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                <SearchField
+                  ariaLabel="Tìm quyền theo tên hoặc nhóm"
+                  onChange={(event) => setPermissionQuery(event.target.value)}
+                  placeholder="Tìm quyền, nhóm hoặc mã permission"
+                  value={permissionQuery}
+                />
+                <p aria-live="polite" className="text-xs text-ink-muted">
+                  {permissionRows.length} / {permissions.length} quyền
+                </p>
               </div>
+              {permissionRows.length ? (
+                <div className="max-h-[68dvh] max-w-[1050px] overflow-auto overscroll-contain rounded-control border border-border">
+                  <table className="w-full min-w-[720px] table-fixed text-left text-sm">
+                    <colgroup>
+                      <col className="w-[58%]" />
+                      <col className="w-[14%]" />
+                      <col className="w-[14%]" />
+                      <col className="w-[14%]" />
+                    </colgroup>
+                    <thead className="sticky top-0 z-20 bg-surface">
+                      <tr>
+                        <th className="sticky left-0 z-30 bg-surface p-2">Quyền</th>
+                        {ROLE_ORDER.map((role) => (
+                          <th key={role} className="p-2 text-center">
+                            {ROLE_LABELS[role]}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {permissionRows.map((row, index) => (
+                        <Fragment key={row.permission}>
+                          {(index === 0 || row.resource !== permissionRows[index - 1].resource) && (
+                            <tr className="border-t border-border bg-surface-quiet">
+                              <th
+                                className="px-3 py-2 text-left text-xs font-semibold text-ink-muted"
+                                colSpan={4}
+                              >
+                                {PERMISSION_RESOURCES[row.resource] || row.resource}
+                              </th>
+                            </tr>
+                          )}
+                          <tr className="border-t border-border">
+                            <th
+                              className="sticky left-0 z-10 bg-surface p-2 font-normal"
+                              title={row.permission}
+                            >
+                              {row.label}
+                            </th>
+                            {ROLE_ORDER.map((role) => (
+                              <td key={role} className="p-2 text-center">
+                                <input
+                                  type="checkbox"
+                                  aria-label={`${ROLE_LABELS[role]}: ${row.label}`}
+                                  title={row.permission}
+                                  checked={roles[role].includes(row.permission)}
+                                  disabled={role === "SYSTEM_ADMIN"}
+                                  onChange={(event) => {
+                                    const checked = event.target.checked;
+                                    setSaved(false);
+                                    setRoles((current) => ({
+                                      ...current,
+                                      [role]: checked
+                                        ? [...current[role], row.permission]
+                                        : current[role].filter((item) => item !== row.permission),
+                                    }));
+                                  }}
+                                />
+                              </td>
+                            ))}
+                          </tr>
+                        </Fragment>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="max-w-[1050px] rounded-control border border-border p-4 text-sm text-ink-muted">
+                  Không có quyền nào khớp với nội dung tìm kiếm.
+                </p>
+              )}
               <button
                 className="apple-button"
                 type="button"

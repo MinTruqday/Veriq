@@ -1,0 +1,362 @@
+{
+  "id": "defect_retest",
+  "name": "06 - Phân loại, xử lý lỗi và kiểm thử lại",
+  "file_name": "BPMN_Quality_06_Xu_ly_loi_va_kiem_thu_lai_v1.drawio",
+  "scope": "Vòng đời trạng thái được lấy từ defect_transitions; kiểm thử lại phải dùng kết quả mới và đúng ca liên kết. Kết quả PASS đóng lỗi, FAIL mở lại lỗi.",
+  "lanes": [
+    {
+      "id": "reporter",
+      "name": "Người ghi nhận lỗi",
+      "fill": "#E8F3FF",
+      "stroke": "#4A90C2"
+    },
+    {
+      "id": "triage",
+      "name": "Người có quyền phân loại lỗi",
+      "fill": "#FFF4DF",
+      "stroke": "#C58A28"
+    },
+    {
+      "id": "resolver",
+      "name": "Người được giao xử lý lỗi",
+      "fill": "#EAF7EE",
+      "stroke": "#43845A"
+    },
+    {
+      "id": "system",
+      "name": "Veriq",
+      "fill": "#EFE8FF",
+      "stroke": "#7956A8"
+    },
+    {
+      "id": "tester",
+      "name": "Người kiểm thử lại",
+      "fill": "#FFF4DF",
+      "stroke": "#C58A28"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "start",
+      "label": "Bắt đầu khi ghi nhận lỗi",
+      "type": "start",
+      "lane": "reporter",
+      "col": 0,
+      "row": 0
+    },
+    {
+      "id": "record",
+      "label": "Ghi nhận lỗi và liên kết kết quả kiểm thử nếu có",
+      "type": "user_task",
+      "lane": "reporter",
+      "col": 1,
+      "row": 0,
+      "task_type": "user"
+    },
+    {
+      "id": "triage_action",
+      "label": "Phân loại và quyết định trạng thái lỗi",
+      "type": "user_task",
+      "lane": "triage",
+      "col": 2,
+      "row": 0,
+      "task_type": "user"
+    },
+    {
+      "id": "triage_result",
+      "label": "Kết quả phân loại?",
+      "type": "gateway",
+      "lane": "triage",
+      "col": 3,
+      "row": 0
+    },
+    {
+      "id": "duplicate",
+      "label": "Đánh dấu lỗi trùng",
+      "type": "user_task",
+      "lane": "triage",
+      "col": 4,
+      "row": 1,
+      "task_type": "user"
+    },
+    {
+      "id": "duplicate_end",
+      "label": "Lỗi được ghi nhận là trùng",
+      "type": "end",
+      "lane": "system",
+      "col": 5,
+      "row": 1
+    },
+    {
+      "id": "rejected",
+      "label": "Từ chối lỗi với lý do",
+      "type": "user_task",
+      "lane": "triage",
+      "col": 4,
+      "row": 2,
+      "task_type": "user"
+    },
+    {
+      "id": "rejected_end",
+      "label": "Lỗi bị từ chối",
+      "type": "end",
+      "lane": "system",
+      "col": 5,
+      "row": 2
+    },
+    {
+      "id": "assign",
+      "label": "Giao lỗi cho người xử lý",
+      "type": "user_task",
+      "lane": "triage",
+      "col": 4,
+      "row": 0,
+      "task_type": "user"
+    },
+    {
+      "id": "resolve",
+      "label": "Xử lý lỗi và cập nhật trạng thái",
+      "type": "user_task",
+      "lane": "resolver",
+      "col": 5,
+      "row": 0,
+      "task_type": "user"
+    },
+    {
+      "id": "ready",
+      "label": "Đưa lỗi sang trạng thái sẵn sàng kiểm thử lại",
+      "type": "user_task",
+      "lane": "resolver",
+      "col": 7,
+      "row": 0,
+      "task_type": "user"
+    },
+    {
+      "id": "retest",
+      "label": "Thực thi kiểm thử lại bằng kết quả mới",
+      "type": "user_task",
+      "lane": "tester",
+      "col": 7,
+      "row": 0,
+      "task_type": "user"
+    },
+    {
+      "id": "result",
+      "label": "Kết quả kiểm thử lại?",
+      "type": "gateway",
+      "lane": "tester",
+      "col": 8,
+      "row": 0
+    },
+    {
+      "id": "close",
+      "label": "Đóng lỗi sau khi kiểm thử đạt",
+      "type": "service_task",
+      "lane": "system",
+      "col": 9,
+      "row": 0,
+      "task_type": "user"
+    },
+    {
+      "id": "closed",
+      "label": "Lỗi đã đóng",
+      "type": "end",
+      "lane": "system",
+      "col": 10,
+      "row": 0
+    },
+    {
+      "id": "reopen",
+      "label": "Mở lại lỗi khi kiểm thử không đạt",
+      "type": "service_task",
+      "lane": "system",
+      "col": 9,
+      "row": 1,
+      "task_type": "user"
+    },
+    {
+      "id": "continue",
+      "label": "Tiếp tục xử lý lỗi đã mở lại",
+      "type": "user_task",
+      "lane": "resolver",
+      "col": 10,
+      "row": 1,
+      "task_type": "user"
+    },
+    {
+      "id": "process_data",
+      "label": "Lỗi và kết quả kiểm thử lại",
+      "type": "data_store",
+      "lane": "system",
+      "col": 10,
+      "row": 1
+    },
+    {
+      "id": "ready_decision",
+      "label": "Đưa lỗi sang kiểm thử lại hay mở lại xử lý?",
+      "type": "gateway",
+      "lane": "resolver",
+      "col": 6,
+      "row": 0
+    },
+    {
+      "id": "reopen_direct",
+      "label": "Mở lại lỗi để tiếp tục xử lý",
+      "type": "user_task",
+      "task_type": "user",
+      "lane": "triage",
+      "col": 6,
+      "row": 1
+    }
+  ],
+  "edges": [
+    {
+      "id": "e01",
+      "from": "start",
+      "to": "record",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e02",
+      "from": "record",
+      "to": "triage_action",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e03",
+      "from": "triage_action",
+      "to": "triage_result",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e04",
+      "from": "triage_result",
+      "to": "assign",
+      "type": "sequence",
+      "label": "Xác nhận"
+    },
+    {
+      "id": "e05",
+      "from": "triage_result",
+      "to": "duplicate",
+      "type": "sequence",
+      "label": "Trùng"
+    },
+    {
+      "id": "e06",
+      "from": "triage_result",
+      "to": "rejected",
+      "type": "sequence",
+      "label": "Không hợp lệ"
+    },
+    {
+      "id": "e07",
+      "from": "duplicate",
+      "to": "duplicate_end",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e08",
+      "from": "rejected",
+      "to": "rejected_end",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e09",
+      "from": "assign",
+      "to": "resolve",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e10",
+      "from": "resolve",
+      "to": "ready_decision",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e10a",
+      "from": "ready_decision",
+      "to": "ready",
+      "type": "sequence",
+      "label": "Sẵn sàng kiểm thử lại"
+    },
+    {
+      "id": "e10b",
+      "from": "ready_decision",
+      "to": "reopen_direct",
+      "type": "sequence",
+      "label": "Cần xử lý tiếp"
+    },
+    {
+      "id": "e10c",
+      "from": "reopen_direct",
+      "to": "continue",
+      "type": "sequence",
+      "label": "Đã mở lại"
+    },
+    {
+      "id": "e11",
+      "from": "ready",
+      "to": "retest",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e12",
+      "from": "retest",
+      "to": "result",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e13",
+      "from": "result",
+      "to": "close",
+      "type": "sequence",
+      "label": "Đạt"
+    },
+    {
+      "id": "e14",
+      "from": "close",
+      "to": "closed",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e15",
+      "from": "result",
+      "to": "reopen",
+      "type": "sequence",
+      "label": "Không đạt"
+    },
+    {
+      "id": "e16",
+      "from": "reopen",
+      "to": "continue",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e17",
+      "from": "continue",
+      "to": "resolve",
+      "type": "sequence",
+      "label": "Xử lý lại",
+      "route": "loop_below"
+    },
+    {
+      "id": "data_assoc",
+      "from": "close",
+      "to": "process_data",
+      "type": "association",
+      "label": ""
+    }
+  ]
+}

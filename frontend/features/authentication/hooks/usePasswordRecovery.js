@@ -70,9 +70,6 @@ export function useResetPassword(token) {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  useEffect(() => {
-    if (!token) router.replace("/quen-mat-khau");
-  }, [router, token]);
   const submit = async (password) => {
     if (submitting || !token) return;
     if (password.length < 12) {

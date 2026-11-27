@@ -74,6 +74,7 @@ export default function TraceabilityPage({ project, embedded = false }) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [activeLinkId, setActiveLinkId] = useState("");
+  const [showMobileDetail, setShowMobileDetail] = useState(false);
   const [page, setPage] = useState(0);
   const [error, setError] = useState("");
   const [linkError, setLinkError] = useState("");
@@ -552,8 +553,10 @@ export default function TraceabilityPage({ project, embedded = false }) {
             </button>
           </div>
         ) : (
-          <div className="grid min-w-0 xl:grid-cols-[minmax(0,1.35fr)_minmax(300px,0.85fr)]">
-            <div className="min-w-0 border-b border-border xl:border-b-0 xl:border-r">
+          <div className="grid min-w-0 md:grid-cols-[minmax(0,1.35fr)_minmax(275px,0.85fr)]">
+            <div
+              className={`min-w-0 border-b border-border md:border-b-0 md:border-r ${showMobileDetail ? "hidden md:block" : "block"}`}
+            >
               <div className="divide-y divide-border">
                 {visibleLinks.map((item) => {
                   const selected = activeLink?._id === item._id;
@@ -563,7 +566,10 @@ export default function TraceabilityPage({ project, embedded = false }) {
                       aria-pressed={selected}
                       className={`grid w-full min-w-0 gap-3 px-4 py-4 text-left transition hover:bg-surface-quiet sm:px-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center ${selected ? "bg-brand-soft/40" : ""}`}
                       type="button"
-                      onClick={() => setActiveLinkId(item._id)}
+                      onClick={() => {
+                        setActiveLinkId(item._id);
+                        setShowMobileDetail(true);
+                      }}
                     >
                       <span className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_24px_minmax(0,1fr)] sm:items-center sm:gap-3">
                         <span className="min-w-0">
@@ -631,9 +637,19 @@ export default function TraceabilityPage({ project, embedded = false }) {
               )}
             </div>
 
-            <aside className="min-w-0 p-4 sm:p-5" aria-label="Chi tiết liên kết">
+            <aside
+              className={`min-w-0 p-4 sm:p-5 ${showMobileDetail ? "block" : "hidden md:block"}`}
+              aria-label="Chi tiết liên kết"
+            >
               {activeLink ? (
                 <div className="space-y-5">
+                  <button
+                    className="secondary-button mb-2 md:hidden"
+                    type="button"
+                    onClick={() => setShowMobileDetail(false)}
+                  >
+                    Quay lại danh sách liên kết
+                  </button>
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
   BrainCircuit,
@@ -6,10 +6,18 @@ import {
   Archive,
   BookOpen,
   Download,
+  File,
+  FileCode,
+  FileImage,
+  FileSpreadsheet,
+  FileText,
   RefreshCw,
   RotateCcw,
   Shield,
   Tags,
+  LayoutGrid,
+  List,
+  Search,
 } from "lucide-react";
 import DataTable from "../../../components/DataTable";
 import { Panel, StatusPill } from "../../../components/WorkspacePrimitives";
@@ -134,6 +142,20 @@ function documentFormatLabel(format) {
   return labels[String(format || "").toLowerCase()] || valueLabel(format || "Tệp tài liệu");
 }
 
+function DocumentFormatIcon({ item }) {
+  const fileInfo = `${item.format || ""} ${item.filename || ""}`.toLocaleLowerCase();
+  const Icon = /\b(xls|xlsx|excel|spreadsheet)\b/.test(fileInfo)
+    ? FileSpreadsheet
+    : /\b(png|jpe?g|gif|webp|image)\b/.test(fileInfo)
+      ? FileImage
+      : /\b(yaml|yml|json|xml|openapi|\.ya?ml)\b/.test(fileInfo)
+        ? FileCode
+        : /\b(pdf|doc|docx|md|markdown|txt|text|word)\b/.test(fileInfo)
+          ? FileText
+          : File;
+  return <Icon aria-hidden="true" size={18} />;
+}
+
 export default function RequirementSourceDocumentsPanel({
   projectId,
   projectLocale,
@@ -155,12 +177,28 @@ export default function RequirementSourceDocumentsPanel({
   const [startingAiDocumentId, setStartingAiDocumentId] = useState("");
   const [aiActivationNotice, setAiActivationNotice] = useState("");
   const [expandedReportId, setExpandedReportId] = useState("");
+  const [documentQuery, setDocumentQuery] = useState("");
+  const [documentStatus, setDocumentStatus] = useState("");
+  const [documentView, setDocumentView] = useState("list");
   const [selectedIds, setSelectedIds] = useState([]);
   const [summaryBusy, setSummaryBusy] = useState(false);
   const [summaryResult, setSummaryResult] = useState(null);
   const [summaryJob, setSummaryJob] = useState(null);
   const summaryIdempotencyRef = useRef({ scope: "", key: "" });
   const summaryRequestSequenceRef = useRef(0);
+  const visibleItems = useMemo(() => {
+    const query = documentQuery.trim().toLocaleLowerCase();
+    return items.filter((item) => {
+      const matchesQuery =
+        !query ||
+        [item.title, item.filename, item.source_type, item.format, item.module, item.product_area]
+          .filter(Boolean)
+          .join(" ")
+          .toLocaleLowerCase()
+          .includes(query);
+      return matchesQuery && (!documentStatus || item.status === documentStatus);
+    });
+  }, [documentQuery, documentStatus, items]);
 
   useEffect(() => {
     summaryRequestSequenceRef.current += 1;
@@ -595,330 +633,455 @@ export default function RequirementSourceDocumentsPanel({
             Thử lại phần chưa hoàn tất
           </button>
         )}
-      <DataTable
-        items={items}
-        selectedIds={selectedIds}
-        onSelectionChange={setSelectedIds}
-        selectionLabel="Chọn tài liệu"
-        selectionDisabled={!canSummarize}
-        empty="Chưa có tài liệu nguồn"
-        columns={[
-          {
-            key: "document",
-            label: "Tài liệu",
-            minWidth: 180,
-            render: (item) => (
-              <div className="space-y-1">
-                <p className="break-words font-medium">{item.title || item.filename}</p>
-                {item.title && item.title !== item.filename && (
-                  <p className="break-all text-xs text-ink-muted">{item.filename}</p>
-                )}
-                <p className="text-xs text-ink-muted">
-                  {valueLabel(item.source_type || "REFERENCE")} · {documentFormatLabel(item.format)}
-                </p>
-              </div>
-            ),
-          },
-          {
-            key: "scope",
-            label: "Phạm vi",
-            minWidth: 145,
-            render: (item) => {
-              const moduleScope = [item.product_area, item.module, item.component]
-                .filter(Boolean)
-                .join(" · ");
-              const visibility =
-                item.visibility === "project"
-                  ? "Toàn dự án"
-                  : item.visibility === "shared"
-                    ? "Thành viên được chọn"
-                    : "Riêng tư";
-              return (
-                <div className="space-y-1 text-sm">
-                  <p>{valueLabel(item.authority || "PROJECT_REFERENCE")}</p>
-                  <p className="text-xs text-ink-muted">{moduleScope || "Chưa khai báo phân hệ"}</p>
-                  <p className="text-xs text-ink-muted">{visibility}</p>
-                </div>
-              );
-            },
-          },
-          {
-            key: "processing",
-            label: "Tình trạng xử lý",
-            minWidth: 220,
-            render: (item) => {
-              const rawIssues = item.parse_report?.unprocessed_blocks;
-              const issues = Array.isArray(rawIssues) ? rawIssues : [];
-              const parseReport = item.parse_report;
-              const expanded = expandedReportId === item._id;
-              const cleanupPending =
-                Array.isArray(item.index_cleanup_pending) && item.index_cleanup_pending.length > 0;
-              const status =
-                item.index_status === "INDEXED"
-                  ? "Có thể tìm trong tài liệu"
-                  : item.index_status === "DEGRADED"
-                    ? cleanupPending
-                      ? "Đang dọn dữ liệu tìm kiếm cũ"
-                      : issues.length
-                        ? `Một phần tài liệu chưa đọc được · ${issues.length} phần cần xem`
-                        : "Cần kiểm tra lại việc xử lý tài liệu"
-                    : item.index_status === "FAILED"
-                      ? "Chưa thể xử lý tài liệu"
-                      : "Đang chờ xử lý tài liệu";
-              return (
-                <div className="flex min-w-0 flex-col items-start gap-3">
-                  <div className="flex w-full min-w-0 flex-col items-start gap-1">
-                    <p className="text-xs font-medium text-ink-muted">Phân tích tài liệu</p>
-                    <div className="block w-full">
-                      <StatusPill value={item.status} />
-                    </div>
+      <div className="flex flex-wrap items-center gap-3 border-y border-border px-4 py-3">
+        <label className="relative min-w-[15rem] flex-1">
+          <Search
+            aria-hidden="true"
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted"
+            size={16}
+          />
+          <input
+            aria-label="Tìm trong tài liệu nguồn"
+            className="apple-input w-full pl-9"
+            onChange={(event) => setDocumentQuery(event.target.value)}
+            placeholder="Tìm tên, định dạng, phân hệ…"
+            value={documentQuery}
+          />
+        </label>
+        <select
+          aria-label="Lọc trạng thái tài liệu nguồn"
+          className="apple-input w-auto min-w-[10rem]"
+          onChange={(event) => setDocumentStatus(event.target.value)}
+          value={documentStatus}
+        >
+          <option value="">Mọi trạng thái</option>
+          {[...new Set(items.map((item) => item.status).filter(Boolean))].sort().map((status) => (
+            <option key={status} value={status}>
+              {valueLabel(status)}
+            </option>
+          ))}
+        </select>
+        <div
+          aria-label="Cách hiển thị tài liệu"
+          className="flex rounded-control border border-border p-1"
+        >
+          <button
+            aria-label="Xem dạng danh sách"
+            aria-pressed={documentView === "list"}
+            className={`icon-button h-9 w-9 ${documentView === "list" ? "bg-brand-soft text-brand" : ""}`}
+            onClick={() => setDocumentView("list")}
+            type="button"
+          >
+            <List aria-hidden="true" size={17} />
+          </button>
+          <button
+            aria-label="Xem dạng lưới"
+            aria-pressed={documentView === "grid"}
+            className={`icon-button h-9 w-9 ${documentView === "grid" ? "bg-brand-soft text-brand" : ""}`}
+            onClick={() => setDocumentView("grid")}
+            type="button"
+          >
+            <LayoutGrid aria-hidden="true" size={17} />
+          </button>
+        </div>
+        <span aria-live="polite" className="text-xs text-ink-muted">
+          {visibleItems.length} / {items.length} tài liệu
+        </span>
+      </div>
+      {documentView === "grid" ? (
+        <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+          {visibleItems.length ? (
+            visibleItems.map((item) => (
+              <article className="min-w-0 rounded-control border border-border p-4" key={item._id}>
+                <div className="flex items-start gap-3">
+                  <span
+                    aria-label={documentFormatLabel(item.format)}
+                    className="grid size-10 shrink-0 place-items-center rounded-control bg-brand-soft text-brand"
+                    role="img"
+                  >
+                    <DocumentFormatIcon item={item} />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="break-words font-medium">{item.title || item.filename}</p>
+                    <p className="mt-1 break-all text-xs text-ink-muted">{item.filename}</p>
                   </div>
-                  <div className="flex w-full min-w-0 flex-col items-start gap-1">
-                    <p className="text-xs font-medium text-ink-muted">Tra cứu nội dung</p>
-                    <p className="break-words text-sm">{status}</p>
-                  </div>
-                  <p className="text-xs text-ink-muted">
-                    {item.ai_enabled ? "Đã cho phép AI đọc" : "Chưa cho phép AI đọc"}
-                  </p>
-                  {parseReport &&
-                    (parseReport.page_count > 0 || parseReport.ocr_enabled === true) && (
-                      <p className="text-xs text-ink-muted">
-                        {parseReport.page_count > 0 ? `${parseReport.page_count} trang` : ""}
-                        {parseReport.ocr_enabled === true &&
-                          `${parseReport.page_count > 0 ? " · " : ""}Đã nhận dạng chữ trong ảnh`}
-                      </p>
-                    )}
-                  {issues.length > 0 && (
-                    <>
-                      <button
-                        type="button"
-                        className="text-left text-sm font-medium text-brand underline-offset-2 hover:underline"
-                        aria-expanded={expanded}
-                        aria-controls={`parse-report-${item._id}`}
-                        onClick={() => setExpandedReportId(expanded ? "" : item._id)}
-                      >
-                        {expanded ? "Ẩn chi tiết" : "Xem phần chưa đọc"}
-                      </button>
-                      {expanded && (
-                        <ul
-                          id={`parse-report-${item._id}`}
-                          className="space-y-2 rounded-control bg-surface-quiet p-3 text-sm"
-                        >
-                          {issues.slice(0, 20).map((issue, index) => (
-                            <li
-                              className="break-words"
-                              key={`${issue.block_id || issue.reason_code || "issue"}-${index}`}
-                            >
-                              <p className="font-medium">
-                                {extractionIssueLabel(issue.reason_code)}
-                              </p>
-                              <p className="text-ink-muted">{sourceLocationLabel(issue)}</p>
-                            </li>
-                          ))}
-                          {issues.length > 20 && (
-                            <li className="text-ink-muted">
-                              Còn {issues.length - 20} phần nội dung chưa đọc; tổng số phần được giữ
-                              trong báo cáo phân tích.
-                            </li>
-                          )}
-                        </ul>
-                      )}
-                    </>
-                  )}
                 </div>
-              );
-            },
-          },
-          {
-            key: "version",
-            label: "Phiên bản nguồn",
-            minWidth: 120,
-            render: (item) => (
-              <div className="space-y-1 text-sm">
-                <p>Phiên bản {item.source_version || "1"}</p>
-                <p className="text-xs text-ink-muted">
-                  {item.previous_source_version_id ? "Có kế thừa phiên bản trước" : "Tài liệu gốc"}
-                </p>
-                <p className="text-xs text-ink-muted">Lần chỉnh sửa {item.revision ?? 1}</p>
-              </div>
-            ),
-          },
-          {
-            key: "actions",
-            label: "Thao tác",
-            minWidth: 160,
-            hideWhenEmpty: true,
-            render: (item) => (
-              <span className="grid w-max grid-cols-3 gap-1.5">
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-xs">
+                  <span className="text-ink-muted">
+                    {valueLabel(item.source_type || "REFERENCE")} ·{" "}
+                    {documentFormatLabel(item.format)}
+                  </span>
+                  <StatusPill value={item.status} />
+                </div>
+                <div className="mt-3 flex items-center justify-between gap-2 text-xs text-ink-muted">
+                  <span>Phiên bản {item.source_version || "1"}</span>
+                  <span>
+                    {item.index_status === "INDEXED"
+                      ? "Đã lập chỉ mục"
+                      : valueLabel(item.index_status || "Chưa xử lý")}
+                  </span>
+                </div>
                 {can("requirement_document.read") && item.status === "READY" && (
-                  <button
-                    aria-label="Mở đọc tài liệu"
-                    className="icon-button h-9 w-9"
-                    type="button"
-                    title="Mở đọc tài liệu"
-                    onClick={() =>
-                      window.location.assign(
-                        projectRoute(projectId, PROJECT_SECTION_SLUGS.documentReader, item._id),
-                      )
-                    }
+                  <a
+                    className="secondary-button mt-4 inline-flex min-h-9 px-3 py-1.5 text-xs"
+                    href={projectRoute(projectId, PROJECT_SECTION_SLUGS.documentReader, item._id)}
                   >
-                    <BookOpen size={16} aria-hidden="true" />
-                  </button>
+                    Mở tài liệu
+                  </a>
                 )}
-                {can("requirement_document.review_extraction") &&
-                  (item.requirement_import_status === "PREVIEW_READY" ||
-                    item.status === "EXTRACTED") &&
-                  item.last_import_job_id && (
-                    <button
-                      aria-label="Tiếp tục nhập yêu cầu"
-                      className="icon-button h-9 w-9"
-                      type="button"
-                      title="Tiếp tục nhập yêu cầu"
-                      disabled={continuingImportDocumentId === item._id}
-                      aria-busy={continuingImportDocumentId === item._id}
-                      onClick={() => continueImport(item)}
-                    >
-                      <ArrowRight size={16} aria-hidden="true" />
-                    </button>
-                  )}
-                {can("knowledge.manage") && item.status !== "ARCHIVED" && (
-                  <>
-                    <button
-                      aria-label="Phân loại tài liệu"
-                      className="icon-button h-9 w-9"
-                      type="button"
-                      title="Phân loại tài liệu"
-                      onClick={() => classify(item)}
-                    >
-                      <Tags size={16} aria-hidden="true" />
-                    </button>
-                    <button
-                      aria-label="Lập chỉ mục lại"
-                      className="icon-button h-9 w-9"
-                      type="button"
-                      title="Lập chỉ mục lại"
-                      onClick={() => reindex(item)}
-                    >
-                      <RefreshCw size={15} aria-hidden="true" />
-                    </button>
-                  </>
-                )}
-                {can("requirement_document.extract") &&
-                  (["UPLOADED", "PARSE_FAILED"].includes(item.status) || item.can_retry_parse) && (
-                    <button
-                      aria-label={
-                        item.status === "UPLOADED"
-                          ? "Tiếp tục xử lý tài liệu"
-                          : item.status === "PARSING"
-                            ? "Khôi phục phân tích bị gián đoạn"
-                            : "Thử phân tích lại"
-                      }
-                      className="icon-button h-9 w-9"
-                      type="button"
-                      title={
-                        item.status === "UPLOADED"
-                          ? "Tiếp tục xử lý tài liệu"
-                          : item.status === "PARSING"
-                            ? "Khôi phục phân tích bị gián đoạn"
-                            : "Thử phân tích lại"
-                      }
-                      disabled={retryingDocumentId === item._id}
-                      aria-busy={retryingDocumentId === item._id}
-                      onClick={() => retryParse(item)}
-                    >
-                      <RotateCcw size={16} aria-hidden="true" />
-                    </button>
-                  )}
-                {(isPlatformAdmin || item.created_by === currentUserId) &&
-                  (isPlatformAdmin || can("requirement_document.extract")) &&
-                  item.status !== "ARCHIVED" &&
-                  !item.ai_enabled &&
-                  (item.status === "READY" ? (
-                    <button
-                      aria-label="Cho phép AI đọc tài liệu"
-                      className="icon-button h-9 w-9"
-                      type="button"
-                      title="Cho phép AI đọc tài liệu"
-                      disabled={activatingAiDocumentId === item._id}
-                      aria-busy={activatingAiDocumentId === item._id}
-                      onClick={() => enableAiRead(item)}
-                    >
-                      <BrainCircuit size={16} aria-hidden="true" />
-                    </button>
-                  ) : (
-                    <span className="self-center text-xs text-ink-muted">
-                      AI xử lý sau khi phân tích tài liệu xong
-                    </span>
-                  ))}
-                {(isPlatformAdmin || item.created_by === currentUserId) &&
-                  (isPlatformAdmin || can("requirement_document.extract")) &&
-                  item.status !== "ARCHIVED" &&
-                  item.ai_enabled &&
-                  item.status === "READY" &&
-                  ["INDEXED", "DEGRADED"].includes(item.index_status) && (
-                    <button
-                      aria-label="Chạy AI trên tài liệu"
-                      className="apple-button inline-flex size-9 items-center justify-center p-0"
-                      type="button"
-                      title="Chạy AI trên tài liệu"
-                      disabled={startingAiDocumentId === item._id}
-                      aria-busy={startingAiDocumentId === item._id}
-                      onClick={() => startAiProcessing(item)}
-                    >
-                      <Play size={16} aria-hidden="true" />
-                    </button>
-                  )}
-                {(isPlatformAdmin || item.created_by === currentUserId) &&
-                  item.status !== "ARCHIVED" && (
-                    <button
-                      aria-label="Quyền xem tài liệu"
-                      className="icon-button h-9 w-9"
-                      type="button"
-                      title="Quyền xem tài liệu"
-                      onClick={() => changeAccess(item)}
-                    >
-                      <Shield size={16} aria-hidden="true" />
-                    </button>
-                  )}
-                {can("requirement_document.download") && (
-                  <button
-                    aria-label="Tải tài liệu xuống"
-                    className="icon-button h-9 w-9"
-                    type="button"
-                    title="Tải tài liệu xuống"
-                    onClick={() => download(item)}
+              </article>
+            ))
+          ) : (
+            <p className="col-span-full rounded-control border border-dashed border-border p-8 text-center text-sm text-ink-muted">
+              {items.length
+                ? "Không tìm thấy tài liệu phù hợp với bộ lọc."
+                : "Chưa có tài liệu nguồn."}
+            </p>
+          )}
+        </div>
+      ) : (
+        <DataTable
+          items={visibleItems}
+          selectedIds={selectedIds}
+          onSelectionChange={setSelectedIds}
+          selectionLabel="Chọn tài liệu"
+          selectionDisabled={!canSummarize}
+          empty={
+            items.length ? "Không tìm thấy tài liệu phù hợp với bộ lọc." : "Chưa có tài liệu nguồn"
+          }
+          columns={[
+            {
+              key: "document",
+              label: "Tài liệu",
+              minWidth: 180,
+              render: (item) => (
+                <div className="flex min-w-0 items-start gap-2.5">
+                  <span
+                    className="mt-0.5 shrink-0 text-ink-muted"
+                    title={documentFormatLabel(item.format)}
                   >
-                    <Download size={16} aria-hidden="true" />
-                  </button>
-                )}
-                {item.status === "ARCHIVED"
-                  ? can("requirement_document.restore") && (
+                    <DocumentFormatIcon item={item} />
+                  </span>
+                  <div className="min-w-0 space-y-1">
+                    <p className="break-words font-medium">{item.title || item.filename}</p>
+                    {item.title && item.title !== item.filename && (
+                      <p className="break-all text-xs text-ink-muted">{item.filename}</p>
+                    )}
+                    <p className="text-xs text-ink-muted">
+                      {valueLabel(item.source_type || "REFERENCE")} ·{" "}
+                      {documentFormatLabel(item.format)}
+                    </p>
+                  </div>
+                </div>
+              ),
+            },
+            {
+              key: "scope",
+              label: "Phạm vi",
+              minWidth: 145,
+              render: (item) => {
+                const moduleScope = [item.product_area, item.module, item.component]
+                  .filter(Boolean)
+                  .join(" · ");
+                const visibility =
+                  item.visibility === "project"
+                    ? "Toàn dự án"
+                    : item.visibility === "shared"
+                      ? "Thành viên được chọn"
+                      : "Riêng tư";
+                return (
+                  <div className="space-y-1 text-sm">
+                    <p>{valueLabel(item.authority || "PROJECT_REFERENCE")}</p>
+                    <p className="text-xs text-ink-muted">
+                      {moduleScope || "Chưa khai báo phân hệ"}
+                    </p>
+                    <p className="text-xs text-ink-muted">{visibility}</p>
+                  </div>
+                );
+              },
+            },
+            {
+              key: "processing",
+              label: "Tình trạng xử lý",
+              minWidth: 220,
+              render: (item) => {
+                const rawIssues = item.parse_report?.unprocessed_blocks;
+                const issues = Array.isArray(rawIssues) ? rawIssues : [];
+                const parseReport = item.parse_report;
+                const expanded = expandedReportId === item._id;
+                const cleanupPending =
+                  Array.isArray(item.index_cleanup_pending) &&
+                  item.index_cleanup_pending.length > 0;
+                const status =
+                  item.index_status === "INDEXED"
+                    ? "Có thể tìm trong tài liệu"
+                    : item.index_status === "DEGRADED"
+                      ? cleanupPending
+                        ? "Đang dọn dữ liệu tìm kiếm cũ"
+                        : issues.length
+                          ? `Một phần tài liệu chưa đọc được · ${issues.length} phần cần xem`
+                          : "Cần kiểm tra lại việc xử lý tài liệu"
+                      : item.index_status === "FAILED"
+                        ? "Chưa thể xử lý tài liệu"
+                        : "Đang chờ xử lý tài liệu";
+                return (
+                  <div className="flex min-w-0 flex-col items-start gap-3">
+                    <div className="flex w-full min-w-0 flex-col items-start gap-1">
+                      <p className="text-xs font-medium text-ink-muted">Phân tích tài liệu</p>
+                      <div className="block w-full">
+                        <StatusPill value={item.status} />
+                      </div>
+                    </div>
+                    <div className="flex w-full min-w-0 flex-col items-start gap-1">
+                      <p className="text-xs font-medium text-ink-muted">Tra cứu nội dung</p>
+                      <p className="break-words text-sm">{status}</p>
+                    </div>
+                    <p className="text-xs text-ink-muted">
+                      {item.ai_enabled ? "Đã cho phép AI đọc" : "Chưa cho phép AI đọc"}
+                    </p>
+                    {parseReport &&
+                      (parseReport.page_count > 0 || parseReport.ocr_enabled === true) && (
+                        <p className="text-xs text-ink-muted">
+                          {parseReport.page_count > 0 ? `${parseReport.page_count} trang` : ""}
+                          {parseReport.ocr_enabled === true &&
+                            `${parseReport.page_count > 0 ? " · " : ""}Đã nhận dạng chữ trong ảnh`}
+                        </p>
+                      )}
+                    {issues.length > 0 && (
+                      <>
+                        <button
+                          type="button"
+                          className="text-left text-sm font-medium text-brand underline-offset-2 hover:underline"
+                          aria-expanded={expanded}
+                          aria-controls={`parse-report-${item._id}`}
+                          onClick={() => setExpandedReportId(expanded ? "" : item._id)}
+                        >
+                          {expanded ? "Ẩn chi tiết" : "Xem phần chưa đọc"}
+                        </button>
+                        {expanded && (
+                          <ul
+                            id={`parse-report-${item._id}`}
+                            className="space-y-2 rounded-control bg-surface-quiet p-3 text-sm"
+                          >
+                            {issues.slice(0, 20).map((issue, index) => (
+                              <li
+                                className="break-words"
+                                key={`${issue.block_id || issue.reason_code || "issue"}-${index}`}
+                              >
+                                <p className="font-medium">
+                                  {extractionIssueLabel(issue.reason_code)}
+                                </p>
+                                <p className="text-ink-muted">{sourceLocationLabel(issue)}</p>
+                              </li>
+                            ))}
+                            {issues.length > 20 && (
+                              <li className="text-ink-muted">
+                                Còn {issues.length - 20} phần nội dung chưa đọc; tổng số phần được
+                                giữ trong báo cáo phân tích.
+                              </li>
+                            )}
+                          </ul>
+                        )}
+                      </>
+                    )}
+                  </div>
+                );
+              },
+            },
+            {
+              key: "version",
+              label: "Phiên bản nguồn",
+              minWidth: 120,
+              render: (item) => (
+                <div className="space-y-1 text-sm">
+                  <p>Phiên bản {item.source_version || "1"}</p>
+                  <p className="text-xs text-ink-muted">
+                    {item.previous_source_version_id
+                      ? "Có kế thừa phiên bản trước"
+                      : "Tài liệu gốc"}
+                  </p>
+                  <p className="text-xs text-ink-muted">Lần chỉnh sửa {item.revision ?? 1}</p>
+                </div>
+              ),
+            },
+            {
+              key: "actions",
+              label: "Thao tác",
+              minWidth: 160,
+              hideWhenEmpty: true,
+              render: (item) => (
+                <span className="grid w-max grid-cols-3 gap-1.5">
+                  {can("requirement_document.read") && item.status === "READY" && (
+                    <button
+                      aria-label="Mở đọc tài liệu"
+                      className="icon-button h-9 w-9"
+                      type="button"
+                      title="Mở đọc tài liệu"
+                      onClick={() =>
+                        window.location.assign(
+                          projectRoute(projectId, PROJECT_SECTION_SLUGS.documentReader, item._id),
+                        )
+                      }
+                    >
+                      <BookOpen size={16} aria-hidden="true" />
+                    </button>
+                  )}
+                  {can("requirement_document.review_extraction") &&
+                    (item.requirement_import_status === "PREVIEW_READY" ||
+                      item.status === "EXTRACTED") &&
+                    item.last_import_job_id && (
                       <button
-                        aria-label="Khôi phục tài liệu"
+                        aria-label="Tiếp tục nhập yêu cầu"
                         className="icon-button h-9 w-9"
                         type="button"
-                        title="Khôi phục tài liệu"
-                        onClick={() => changeArchiveStatus(item, true)}
+                        title="Tiếp tục nhập yêu cầu"
+                        disabled={continuingImportDocumentId === item._id}
+                        aria-busy={continuingImportDocumentId === item._id}
+                        onClick={() => continueImport(item)}
+                      >
+                        <ArrowRight size={16} aria-hidden="true" />
+                      </button>
+                    )}
+                  {can("knowledge.manage") && item.status !== "ARCHIVED" && (
+                    <>
+                      <button
+                        aria-label="Phân loại tài liệu"
+                        className="icon-button h-9 w-9"
+                        type="button"
+                        title="Phân loại tài liệu"
+                        onClick={() => classify(item)}
+                      >
+                        <Tags size={16} aria-hidden="true" />
+                      </button>
+                      <button
+                        aria-label="Lập chỉ mục lại"
+                        className="icon-button h-9 w-9"
+                        type="button"
+                        title="Lập chỉ mục lại"
+                        onClick={() => reindex(item)}
+                      >
+                        <RefreshCw size={15} aria-hidden="true" />
+                      </button>
+                    </>
+                  )}
+                  {can("requirement_document.extract") &&
+                    (["UPLOADED", "PARSE_FAILED"].includes(item.status) ||
+                      item.can_retry_parse) && (
+                      <button
+                        aria-label={
+                          item.status === "UPLOADED"
+                            ? "Tiếp tục xử lý tài liệu"
+                            : item.status === "PARSING"
+                              ? "Khôi phục phân tích bị gián đoạn"
+                              : "Thử phân tích lại"
+                        }
+                        className="icon-button h-9 w-9"
+                        type="button"
+                        title={
+                          item.status === "UPLOADED"
+                            ? "Tiếp tục xử lý tài liệu"
+                            : item.status === "PARSING"
+                              ? "Khôi phục phân tích bị gián đoạn"
+                              : "Thử phân tích lại"
+                        }
+                        disabled={retryingDocumentId === item._id}
+                        aria-busy={retryingDocumentId === item._id}
+                        onClick={() => retryParse(item)}
                       >
                         <RotateCcw size={16} aria-hidden="true" />
                       </button>
-                    )
-                  : can("requirement_document.archive") && (
+                    )}
+                  {(isPlatformAdmin || item.created_by === currentUserId) &&
+                    (isPlatformAdmin || can("requirement_document.extract")) &&
+                    item.status !== "ARCHIVED" &&
+                    !item.ai_enabled &&
+                    (item.status === "READY" ? (
                       <button
-                        aria-label="Lưu trữ tài liệu"
+                        aria-label="Cho phép AI đọc tài liệu"
                         className="icon-button h-9 w-9"
                         type="button"
-                        title="Lưu trữ tài liệu"
-                        onClick={() => changeArchiveStatus(item, false)}
+                        title="Cho phép AI đọc tài liệu"
+                        disabled={activatingAiDocumentId === item._id}
+                        aria-busy={activatingAiDocumentId === item._id}
+                        onClick={() => enableAiRead(item)}
                       >
-                        <Archive size={16} aria-hidden="true" />
+                        <BrainCircuit size={16} aria-hidden="true" />
+                      </button>
+                    ) : (
+                      <span className="self-center text-xs text-ink-muted">
+                        AI xử lý sau khi phân tích tài liệu xong
+                      </span>
+                    ))}
+                  {(isPlatformAdmin || item.created_by === currentUserId) &&
+                    (isPlatformAdmin || can("requirement_document.extract")) &&
+                    item.status !== "ARCHIVED" &&
+                    item.ai_enabled &&
+                    item.status === "READY" &&
+                    ["INDEXED", "DEGRADED"].includes(item.index_status) && (
+                      <button
+                        aria-label="Chạy AI trên tài liệu"
+                        className="apple-button inline-flex size-9 items-center justify-center p-0"
+                        type="button"
+                        title="Chạy AI trên tài liệu"
+                        disabled={startingAiDocumentId === item._id}
+                        aria-busy={startingAiDocumentId === item._id}
+                        onClick={() => startAiProcessing(item)}
+                      >
+                        <Play size={16} aria-hidden="true" />
                       </button>
                     )}
-              </span>
-            ),
-          },
-        ]}
-      />
+                  {(isPlatformAdmin || item.created_by === currentUserId) &&
+                    item.status !== "ARCHIVED" && (
+                      <button
+                        aria-label="Quyền xem tài liệu"
+                        className="icon-button h-9 w-9"
+                        type="button"
+                        title="Quyền xem tài liệu"
+                        onClick={() => changeAccess(item)}
+                      >
+                        <Shield size={16} aria-hidden="true" />
+                      </button>
+                    )}
+                  {can("requirement_document.download") && (
+                    <button
+                      aria-label="Tải tài liệu xuống"
+                      className="icon-button h-9 w-9"
+                      type="button"
+                      title="Tải tài liệu xuống"
+                      onClick={() => download(item)}
+                    >
+                      <Download size={16} aria-hidden="true" />
+                    </button>
+                  )}
+                  {item.status === "ARCHIVED"
+                    ? can("requirement_document.restore") && (
+                        <button
+                          aria-label="Khôi phục tài liệu"
+                          className="icon-button h-9 w-9"
+                          type="button"
+                          title="Khôi phục tài liệu"
+                          onClick={() => changeArchiveStatus(item, true)}
+                        >
+                          <RotateCcw size={16} aria-hidden="true" />
+                        </button>
+                      )
+                    : can("requirement_document.archive") && (
+                        <button
+                          aria-label="Lưu trữ tài liệu"
+                          className="icon-button h-9 w-9"
+                          type="button"
+                          title="Lưu trữ tài liệu"
+                          onClick={() => changeArchiveStatus(item, false)}
+                        >
+                          <Archive size={16} aria-hidden="true" />
+                        </button>
+                      )}
+                </span>
+              ),
+            },
+          ]}
+        />
+      )}
     </Panel>
   );
 }

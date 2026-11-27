@@ -1,7 +1,7 @@
 "use client";
 import { useDateTimeOptions } from "../../hooks/useDateTimeOptions";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Plus, RefreshCw } from "lucide-react";
 import {
   EmptyState,
@@ -14,6 +14,7 @@ import {
 } from "../../components/WorkspacePrimitives";
 import { testingApi } from "../../services/testing.service";
 import { formatCalendarDate as formatCalendarDateValue, messageOf } from "../../lib/testing";
+import SearchField from "@/shared/components/ui/SearchField";
 
 export default function ReleasesPage({ project }) {
   const dateTimeOptions = useDateTimeOptions(project);
@@ -24,6 +25,8 @@ export default function ReleasesPage({ project }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [expandedReleaseId, setExpandedReleaseId] = useState(null);
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
   const loadSequence = useRef(0);
   const can = useCallback(
     (permission) => project.current_permissions?.includes(permission),
@@ -71,6 +74,29 @@ export default function ReleasesPage({ project }) {
   useEffect(() => {
     void load();
   }, [load]);
+  const releaseSummary = useMemo(
+    () =>
+      releases.reduce(
+        (summary, item) => {
+          summary.total += 1;
+          summary[item.status] = (summary[item.status] || 0) + 1;
+          return summary;
+        },
+        { total: 0, PLANNED: 0, ACTIVE: 0, CLOSED: 0 },
+      ),
+    [releases],
+  );
+  const visibleReleases = useMemo(() => {
+    const normalizedQuery = query.trim().toLocaleLowerCase("vi");
+    return releases.filter((item) => {
+      const matchesStatus = statusFilter === "ALL" || item.status === statusFilter;
+      const searchable = [item.name, item.key, item.version, item.notes]
+        .filter(Boolean)
+        .join(" ")
+        .toLocaleLowerCase("vi");
+      return matchesStatus && (!normalizedQuery || searchable.includes(normalizedQuery));
+    });
+  }, [query, releases, statusFilter]);
   const createRelease = async () => {
     await ask({
       title: "Tạo bản phát hành",
@@ -163,7 +189,43 @@ export default function ReleasesPage({ project }) {
           </div>
         </Panel>
       ) : (
-        <Panel title="Danh sách bản phát hành">
+        <Panel
+          title="Bản phát hành trong dự án"
+          actions={
+            <span className="text-xs font-medium text-ink-muted">
+              {visibleReleases.length} / {releases.length}
+            </span>
+          }
+        >
+          <div className="grid gap-4 border-b border-border p-4 sm:p-5">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {[
+                { id: "ALL", label: "Tất cả", count: releaseSummary.total },
+                { id: "PLANNED", label: "Đã lên kế hoạch", count: releaseSummary.PLANNED },
+                { id: "ACTIVE", label: "Đang phát hành", count: releaseSummary.ACTIVE },
+                { id: "CLOSED", label: "Đã đóng", count: releaseSummary.CLOSED },
+              ].map((item) => (
+                <button
+                  aria-pressed={statusFilter === item.id}
+                  className={`rounded-control border px-3 py-2 text-left transition-colors ${statusFilter === item.id ? "border-brand bg-brand/5 text-ink" : "border-border bg-surface text-ink-muted hover:bg-surface-quiet"}`}
+                  key={item.id}
+                  onClick={() => setStatusFilter(item.id)}
+                  type="button"
+                >
+                  <span className="block text-[11px]">{item.label}</span>
+                  <span className="mt-0.5 block text-base font-semibold text-ink">
+                    {item.count}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <SearchField
+              ariaLabel="Tìm bản phát hành"
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Tìm theo mã, tên, phiên bản hoặc ghi chú"
+              value={query}
+            />
+          </div>
           {releases.length === 0 ? (
             <EmptyState
               onAction={can("release.create") ? createRelease : undefined}
@@ -171,9 +233,19 @@ export default function ReleasesPage({ project }) {
             >
               Chưa có bản phát hành
             </EmptyState>
+          ) : visibleReleases.length === 0 ? (
+            <EmptyState
+              onAction={() => {
+                setQuery("");
+                setStatusFilter("ALL");
+              }}
+              actionLabel="Xóa bộ lọc"
+            >
+              Không có bản phát hành khớp với bộ lọc
+            </EmptyState>
           ) : (
             <div className="divide-y divide-border">
-              {releases.map((item) => {
+              {visibleReleases.map((item) => {
                 const current = readiness[item._id];
                 const stale =
                   current?.data &&

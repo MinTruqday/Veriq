@@ -1,0 +1,348 @@
+{
+  "id": "test_case",
+  "name": "04 - Thiết kế, rà soát và phê duyệt ca kiểm thử",
+  "file_name": "BPMN_Testing_04_Thiet_ke_va_phe_duyet_ca_kiem_thu_v1.drawio",
+  "scope": "Sinh bằng AI và soạn thủ công là hai cách tạo bản nháp. Phê duyệt yêu cầu rà soát độc lập, kiểm tra lại nguồn và tạo phiên bản bất biến.",
+  "lanes": [
+    {
+      "id": "designer",
+      "name": "Người thiết kế ca kiểm thử",
+      "fill": "#E8F3FF",
+      "stroke": "#4A90C2"
+    },
+    {
+      "id": "system",
+      "name": "Veriq",
+      "fill": "#EFE8FF",
+      "stroke": "#7956A8"
+    },
+    {
+      "id": "reviewer",
+      "name": "Người có quyền rà soát",
+      "fill": "#FFF4DF",
+      "stroke": "#C58A28"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "start",
+      "label": "Bắt đầu tạo ca kiểm thử",
+      "type": "start",
+      "lane": "designer",
+      "col": 0,
+      "row": 0
+    },
+    {
+      "id": "choose_ai",
+      "label": "Sinh bản nháp bằng AI?",
+      "type": "gateway",
+      "lane": "designer",
+      "col": 1,
+      "row": 0
+    },
+    {
+      "id": "generate",
+      "label": "Sinh bản nháp từ phiên bản yêu cầu",
+      "type": "service_task",
+      "lane": "system",
+      "col": 2,
+      "row": 0,
+      "task_type": "service"
+    },
+    {
+      "id": "manual",
+      "label": "Soạn bản nháp thủ công",
+      "type": "user_task",
+      "lane": "designer",
+      "col": 2,
+      "row": 1,
+      "task_type": "user"
+    },
+    {
+      "id": "edit",
+      "label": "Hoàn thiện bước kiểm thử và kết quả mong đợi",
+      "type": "user_task",
+      "lane": "designer",
+      "col": 3,
+      "row": 0,
+      "task_type": "user"
+    },
+    {
+      "id": "lint",
+      "label": "Kiểm tra bước, nguồn và tính đầy đủ",
+      "type": "service_task",
+      "lane": "system",
+      "col": 4,
+      "row": 0,
+      "task_type": "service"
+    },
+    {
+      "id": "valid",
+      "label": "Bản nháp đủ điều kiện gửi rà soát?",
+      "type": "gateway",
+      "lane": "system",
+      "col": 5,
+      "row": 0
+    },
+    {
+      "id": "fix_lint",
+      "label": "Bổ sung bước hoặc bằng chứng nguồn",
+      "type": "user_task",
+      "lane": "designer",
+      "col": 4,
+      "row": 1,
+      "task_type": "user"
+    },
+    {
+      "id": "submit",
+      "label": "Gửi ca kiểm thử để rà soát",
+      "type": "user_task",
+      "lane": "designer",
+      "col": 6,
+      "row": 0,
+      "task_type": "user"
+    },
+    {
+      "id": "review",
+      "label": "Rà soát ca và đối chiếu nguồn",
+      "type": "user_task",
+      "lane": "reviewer",
+      "col": 7,
+      "row": 0,
+      "task_type": "user"
+    },
+    {
+      "id": "approved",
+      "label": "Phê duyệt ca kiểm thử?",
+      "type": "gateway",
+      "lane": "reviewer",
+      "col": 8,
+      "row": 0
+    },
+    {
+      "id": "revise",
+      "label": "Chỉnh sửa theo nhận xét",
+      "type": "user_task",
+      "lane": "designer",
+      "col": 9,
+      "row": 1,
+      "task_type": "user"
+    },
+    {
+      "id": "publish_check",
+      "label": "Kiểm tra nguồn hiện hành và tính duy nhất",
+      "type": "service_task",
+      "lane": "system",
+      "col": 9,
+      "row": 0,
+      "task_type": "service"
+    },
+    {
+      "id": "publish_ok",
+      "label": "Có thể tạo phiên bản đã duyệt?",
+      "type": "gateway",
+      "lane": "system",
+      "col": 10,
+      "row": 0
+    },
+    {
+      "id": "publish_error",
+      "label": "Không thể đóng băng do nguồn hoặc phiên bản thay đổi",
+      "type": "error_end",
+      "lane": "system",
+      "col": 11,
+      "row": 1
+    },
+    {
+      "id": "freeze",
+      "label": "Tạo phiên bản đã duyệt và đóng băng bản nháp",
+      "type": "service_task",
+      "lane": "system",
+      "col": 11,
+      "row": 0,
+      "task_type": "service"
+    },
+    {
+      "id": "done",
+      "label": "Ca kiểm thử đã được phê duyệt",
+      "type": "end",
+      "lane": "system",
+      "col": 12,
+      "row": 0
+    },
+    {
+      "id": "process_data",
+      "label": "Bản nháp và phiên bản ca kiểm thử",
+      "type": "data_store",
+      "lane": "system",
+      "col": 12,
+      "row": 1
+    },
+    {
+      "id": "auto_approval",
+      "label": "Người gửi được tự động phê duyệt?",
+      "type": "gateway",
+      "lane": "system",
+      "col": 7,
+      "row": 0
+    }
+  ],
+  "edges": [
+    {
+      "id": "e01",
+      "from": "start",
+      "to": "choose_ai",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e02",
+      "from": "choose_ai",
+      "to": "generate",
+      "type": "sequence",
+      "label": "Có"
+    },
+    {
+      "id": "e03",
+      "from": "choose_ai",
+      "to": "manual",
+      "type": "sequence",
+      "label": "Không"
+    },
+    {
+      "id": "e04",
+      "from": "generate",
+      "to": "edit",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e05",
+      "from": "manual",
+      "to": "edit",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e06",
+      "from": "edit",
+      "to": "lint",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e07",
+      "from": "lint",
+      "to": "valid",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e08",
+      "from": "valid",
+      "to": "submit",
+      "type": "sequence",
+      "label": "Đạt"
+    },
+    {
+      "id": "e09",
+      "from": "valid",
+      "to": "fix_lint",
+      "type": "sequence",
+      "label": "Chưa đạt"
+    },
+    {
+      "id": "e10",
+      "from": "fix_lint",
+      "to": "edit",
+      "type": "sequence",
+      "label": "Kiểm tra lại",
+      "route": "loop_below"
+    },
+    {
+      "id": "e11",
+      "from": "submit",
+      "to": "auto_approval",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e11a",
+      "from": "auto_approval",
+      "to": "publish_check",
+      "type": "sequence",
+      "label": "Có"
+    },
+    {
+      "id": "e11b",
+      "from": "auto_approval",
+      "to": "review",
+      "type": "sequence",
+      "label": "Không"
+    },
+    {
+      "id": "e12",
+      "from": "review",
+      "to": "approved",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e13",
+      "from": "approved",
+      "to": "publish_check",
+      "type": "sequence",
+      "label": "Phê duyệt"
+    },
+    {
+      "id": "e14",
+      "from": "approved",
+      "to": "revise",
+      "type": "sequence",
+      "label": "Yêu cầu chỉnh sửa"
+    },
+    {
+      "id": "e15",
+      "from": "revise",
+      "to": "submit",
+      "type": "sequence",
+      "label": "Gửi rà soát lại",
+      "route": "loop_below"
+    },
+    {
+      "id": "e16",
+      "from": "publish_check",
+      "to": "publish_ok",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e17",
+      "from": "publish_ok",
+      "to": "freeze",
+      "type": "sequence",
+      "label": "Đạt"
+    },
+    {
+      "id": "e18",
+      "from": "publish_ok",
+      "to": "publish_error",
+      "type": "sequence",
+      "label": "Không đạt"
+    },
+    {
+      "id": "e19",
+      "from": "freeze",
+      "to": "done",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "data_assoc",
+      "from": "freeze",
+      "to": "process_data",
+      "type": "association",
+      "label": ""
+    }
+  ]
+}

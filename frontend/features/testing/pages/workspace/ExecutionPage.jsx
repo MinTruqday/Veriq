@@ -3,7 +3,7 @@ import { useDateTimeOptions } from "../../hooks/useDateTimeOptions";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Archive, Copy, MoreHorizontal, Pencil, RefreshCw } from "lucide-react";
+import { Archive, Copy, Grid2X2, List, MoreHorizontal, Pencil, RefreshCw } from "lucide-react";
 import TestPlanEditor from "../../components/TestPlanEditor";
 import DataTable from "../../components/DataTable";
 import {
@@ -40,7 +40,6 @@ const testPlanFindingLabels = {
   TEST_PLAN_REQUIREMENT_SCOPE_REQUIRED: "Chọn phiên bản yêu cầu trong phạm vi.",
   TEST_PLAN_CASE_SCOPE_REQUIRED: "Liên kết ít nhất một phiên bản ca kiểm thử.",
 };
-
 function environmentLabel(item) {
   const typeLabels = {
     WEB: "Web",
@@ -88,6 +87,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
   const [runPageInfo, setRunPageInfo] = useState(null);
   const [runNameSearch, setRunNameSearch] = useState("");
   const [runEnvironmentSearch, setRunEnvironmentSearch] = useState("");
+  const [runViewMode, setRunViewMode] = useState("cards");
   const [runFilters, setRunFilters] = useState({
     name: "",
     status: "",
@@ -103,6 +103,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
   const [planOwnerFilter, setPlanOwnerFilter] = useState("");
   const [planPage, setPlanPage] = useState(1);
   const [planPageSize, setPlanPageSize] = useState(10);
+  const [planViewMode, setPlanViewMode] = useState("grouped");
   const [suiteFilters, setSuiteFilters] = useState({
     q: "",
     suite_type: "",
@@ -912,10 +913,284 @@ export default function ExecutionPage({ project, section, workspaceView }) {
     () => plans.filter((item) => !planOwnerFilter || item.owner_id === planOwnerFilter),
     [plans, planOwnerFilter],
   );
+  const planStatusCounts = useMemo(
+    () => ({
+      total: visiblePlans.length,
+      approved: visiblePlans.filter((item) => item.status === "APPROVED").length,
+      review: visiblePlans.filter((item) => item.status === "IN_REVIEW").length,
+      draft: visiblePlans.filter((item) => ["DRAFT", "READY"].includes(item.status)).length,
+    }),
+    [visiblePlans],
+  );
   const paginatedPlans = useMemo(
     () => visiblePlans.slice((planPage - 1) * planPageSize, planPage * planPageSize),
     [visiblePlans, planPage, planPageSize],
   );
+  const groupedPaginatedPlans = useMemo(() => {
+    const groups = new Map();
+    for (const plan of paginatedPlans) {
+      const id = plan.test_period_snapshot?._id || plan.test_period_id || "unassigned";
+      const period = testPeriods.find((item) => item._id === id);
+      const group = groups.get(id) || {
+        id,
+        label:
+          id === "unassigned"
+            ? "Kế hoạch không thuộc chu kỳ"
+            : period
+              ? `Chu kỳ ${period.sequence}: ${period.name}`
+              : plan.test_period_snapshot?.name || "Chu kỳ liên kết",
+        sequence: period?.sequence ?? Number.MAX_SAFE_INTEGER,
+        plans: [],
+      };
+      group.plans.push(plan);
+      groups.set(id, group);
+    }
+    return [...groups.values()].sort((left, right) => {
+      if (left.id === "unassigned") return 1;
+      if (right.id === "unassigned") return -1;
+      if (left.sequence !== right.sequence) return left.sequence - right.sequence;
+      return left.label.localeCompare(right.label, "vi");
+    });
+  }, [paginatedPlans, testPeriods]);
+  const planColumns = [
+    {
+      key: "identifier",
+      label: "Mã kế hoạch",
+      minWidth: 136,
+      render: (item) => {
+        const identifier = item.plan_key || item.key || item.code || item._id;
+        return (
+          <span className="block max-w-44 truncate" title={identifier}>
+            {identifier}
+          </span>
+        );
+      },
+    },
+    {
+      key: "name",
+      label: "Tên kế hoạch kiểm thử",
+      minWidth: 260,
+      render: (item) => (
+        <button
+          className="block max-w-full truncate text-left font-medium text-ink hover:text-brand"
+          type="button"
+          title={item.name || ""}
+          onClick={() => openPlan(item._id)}
+        >
+          {item.name}
+        </button>
+      ),
+    },
+    {
+      key: "test_period",
+      label: "Chu kỳ",
+      minWidth: 140,
+      render: (item) =>
+        item.test_period_snapshot?._id ? (
+          <Link
+            className="text-brand hover:underline"
+            href={projectRoute(
+              project._id,
+              PROJECT_SECTION_SLUGS.testPeriods,
+              item.test_period_snapshot._id,
+            )}
+          >
+            {item.test_period_snapshot.name || "Mở chu kỳ"}
+          </Link>
+        ) : (
+          "—"
+        ),
+    },
+    {
+      key: "schedule",
+      label: "Thời gian dự kiến",
+      minWidth: 190,
+      render: (item) => {
+        const dates = [item.schedule?.planned_start_at, item.schedule?.planned_end_at]
+          .filter(Boolean)
+          .map((date) => formatDate(date));
+        return dates.length ? dates.join(" – ") : "Chưa xác định";
+      },
+    },
+    {
+      key: "status",
+      label: "Trạng thái",
+      minWidth: 140,
+      render: (item) => (
+        <div className="space-y-2">
+          {item.status === "READY" ? "Đã lưu, chưa duyệt" : <StatusPill value={item.status} />}
+          {planValidation?.planId === item._id && planValidation?.revision === item.revision && (
+            <p
+              className={`text-xs ${planValidation.ready_for_approval ? "text-success" : "text-warning"}`}
+              role="status"
+            >
+              {planValidation.ready_for_approval
+                ? "Đủ điều kiện phê duyệt"
+                : planValidation.findings
+                    .map(
+                      (finding) =>
+                        testPlanFindingLabels[finding.code] || "Cần bổ sung thông tin kế hoạch",
+                    )
+                    .join(" · ")}
+            </p>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: "owner",
+      label: "Phụ trách kế hoạch",
+      minWidth: 170,
+      render: (item) =>
+        members.find((member) => member.user_id === item.owner_id)?.user_label ||
+        members.find((member) => member.user_id === item.owner_id)?.user?.full_name ||
+        "Chưa phân công",
+    },
+    {
+      key: "actions",
+      label: "Thao tác",
+      minWidth: 112,
+      render: (item) => {
+        const canApprove =
+          item.status === "IN_REVIEW" &&
+          (project.can_self_approve ||
+            (item.created_by !== project.current_membership?.user_id &&
+              !(item.content_author_ids || []).includes(project.current_membership?.user_id))) &&
+          can("testplan.approve");
+        const canReviewPlan =
+          item.status === "IN_REVIEW" &&
+          (project.can_self_approve ||
+            (item.created_by !== project.current_membership?.user_id &&
+              !(item.content_author_ids || []).includes(project.current_membership?.user_id)));
+        const hasMenuActions =
+          (["DRAFT", "READY"].includes(item.status) && can("testplan.update")) ||
+          can("testplan.read") ||
+          (["DRAFT", "READY"].includes(item.status) && can("testplan.submit_review")) ||
+          canApprove ||
+          (item.status === "IN_REVIEW" && can("testplan.review")) ||
+          can("testplan.create") ||
+          (item.status !== "ARCHIVED" && can("testplan.archive"));
+        return (
+          <div className="flex items-center gap-2">
+            {hasMenuActions && (
+              <details className="relative">
+                <summary
+                  className="icon-button flex h-9 w-9 cursor-pointer list-none items-center justify-center [&::-webkit-details-marker]:hidden"
+                  aria-label={`Thao tác kế hoạch ${item.name}`}
+                  title="Thao tác"
+                >
+                  <MoreHorizontal size={18} aria-hidden="true" />
+                </summary>
+                <div className="absolute right-0 top-10 z-50 w-52 rounded-control border border-border bg-surface p-1 shadow-panel">
+                  {["DRAFT", "READY"].includes(item.status) && can("testplan.update") && (
+                    <button
+                      className="w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
+                      type="button"
+                      onClick={(event) => {
+                        event.currentTarget.closest("details")?.removeAttribute("open");
+                        updatePlan(item);
+                      }}
+                    >
+                      Sửa kế hoạch
+                    </button>
+                  )}
+                  {can("testplan.read") && (
+                    <button
+                      className="w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
+                      type="button"
+                      onClick={async (event) => {
+                        event.currentTarget.closest("details")?.removeAttribute("open");
+                        try {
+                          setPlanValidation({
+                            ...(await testingApi.validatePlan(item._id)),
+                            planId: item._id,
+                            revision: item.revision,
+                          });
+                        } catch (reason) {
+                          setError(messageOf(reason));
+                        }
+                      }}
+                    >
+                      Kiểm tra kế hoạch
+                    </button>
+                  )}
+                  {["DRAFT", "READY"].includes(item.status) && can("testplan.submit_review") && (
+                    <button
+                      className="w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
+                      type="button"
+                      onClick={(event) => {
+                        event.currentTarget.closest("details")?.removeAttribute("open");
+                        transitionPlan(item, "submit");
+                      }}
+                    >
+                      {project.can_self_approve ? "Chốt kế hoạch" : "Gửi rà soát"}
+                    </button>
+                  )}
+                  {canApprove && (
+                    <button
+                      className="w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
+                      type="button"
+                      onClick={(event) => {
+                        event.currentTarget.closest("details")?.removeAttribute("open");
+                        transitionPlan(item, "approve");
+                      }}
+                    >
+                      Phê duyệt kế hoạch
+                    </button>
+                  )}
+                  {canReviewPlan && can("testplan.review") && (
+                    <button
+                      className="w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
+                      type="button"
+                      onClick={(event) => {
+                        event.currentTarget.closest("details")?.removeAttribute("open");
+                        transitionPlan(item, "revise");
+                      }}
+                    >
+                      Yêu cầu chỉnh sửa
+                    </button>
+                  )}
+                  {can("testplan.create") && (
+                    <button
+                      className="w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
+                      type="button"
+                      onClick={async (event) => {
+                        event.currentTarget.closest("details")?.removeAttribute("open");
+                        try {
+                          const cloned = await testingApi.clonePlan(item._id);
+                          await load();
+                          if (cloned?._id) openPlan(cloned._id, "chinh-sua");
+                        } catch (reason) {
+                          setError(messageOf(reason));
+                        }
+                      }}
+                    >
+                      {item.status === "APPROVED"
+                        ? "Tạo bản nháp mới từ kế hoạch này"
+                        : "Nhân bản kế hoạch"}
+                    </button>
+                  )}
+                  {item.status !== "ARCHIVED" && can("testplan.archive") && (
+                    <button
+                      className="w-full rounded-control px-3 py-2 text-left text-sm text-danger hover:bg-danger-soft"
+                      type="button"
+                      onClick={(event) => {
+                        event.currentTarget.closest("details")?.removeAttribute("open");
+                        transitionPlan(item, "archive");
+                      }}
+                    >
+                      Lưu trữ kế hoạch
+                    </button>
+                  )}
+                </div>
+              </details>
+            )}
+          </div>
+        );
+      },
+    },
+  ];
+
   if (initialLoading || initialLoadFailed) {
     return (
       <WorkspacePage title={pageTitle} actions={<ProjectCrumb projectId={project._id} />}>
@@ -977,6 +1252,25 @@ export default function ExecutionPage({ project, section, workspaceView }) {
     return (
       <WorkspacePage
         title={title}
+        description={
+          !creating && !editing && plan
+            ? [
+                plan.plan_key || plan.key || plan.code || plan._id,
+                valueLabel(plan.status),
+                members.find((member) => member.user_id === plan.owner_id)?.user_label ||
+                  members.find((member) => member.user_id === plan.owner_id)?.user?.full_name ||
+                  "Chưa phân công",
+                testPeriods.find((period) => period._id === plan.test_period_id)?.name ||
+                  (plan.test_period_id ? "Chu kỳ liên kết" : "Không thuộc chu kỳ"),
+                [plan.schedule?.planned_start_at, plan.schedule?.planned_end_at]
+                  .filter(Boolean)
+                  .map((value) => formatDate(value))
+                  .join(" – "),
+              ]
+                .filter(Boolean)
+                .join(" · ")
+            : undefined
+        }
         actions={
           <>
             {creating || editing ? (
@@ -1101,6 +1395,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                 members={members}
                 environments={environments}
                 runs={sourceRuns}
+                formatDate={formatDate}
                 onCancel={goBack}
                 onSave={async (payload) => {
                   const saved = creating
@@ -1289,36 +1584,63 @@ export default function ExecutionPage({ project, section, workspaceView }) {
             <ModalHeader>
               <ModalTitle>Tạo lần chạy</ModalTitle>
             </ModalHeader>
-            <form className="space-y-3 p-5" onSubmit={createRun}>
+            <form className="space-y-6 p-5" onSubmit={createRun}>
               <fieldset className="min-w-0 space-y-3" disabled={savingRun}>
                 <legend className="sr-only">Thông tin lần chạy kiểm thử</legend>
-                <input
-                  aria-label="Tên lần chạy"
-                  required
-                  className="apple-input"
-                  value={runForm.name}
-                  onChange={(event) => setRunForm({ ...runForm, name: event.target.value })}
-                  placeholder="Tên lần chạy"
-                />
-                <label className="field-label block">
-                  Kế hoạch kiểm thử
-                  <select
-                    aria-label="Kế hoạch kiểm thử"
-                    required
-                    className="apple-input mt-2"
-                    value={runForm.testPlanId}
-                    onChange={(event) => selectRunPlan(event.target.value)}
-                  >
-                    <option value="">-</option>
-                    {plans
-                      .filter((item) => item.status === "APPROVED")
-                      .map((item) => (
-                        <option key={item._id} value={item._id}>
-                          {item.name}
-                        </option>
-                      ))}
-                  </select>
-                </label>
+                {!plans.some((item) => item.status === "APPROVED") && (
+                  <div className="rounded-control border border-warning/40 bg-warning/5 p-3 text-sm">
+                    <p className="font-medium text-ink">
+                      Chưa có kế hoạch được duyệt để tạo lần chạy.
+                    </p>
+                    <p className="mt-1 text-ink-muted">
+                      Lần chạy phải gắn với phạm vi của một kế hoạch đã duyệt.
+                      {can("testplan.read") && (
+                        <Link
+                          className="ml-1 font-medium text-brand underline underline-offset-2"
+                          href={projectRoute(project._id, PROJECT_SECTION_SLUGS.testPlans)}
+                        >
+                          Mở kế hoạch kiểm thử
+                        </Link>
+                      )}
+                    </p>
+                  </div>
+                )}
+                <section aria-labelledby="run-create-info-heading" className="space-y-4">
+                  <h3 id="run-create-info-heading" className="text-sm font-semibold text-ink">
+                    Thông tin lần chạy
+                  </h3>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="field-label block">
+                      Tên lần chạy <span className="text-danger">*</span>
+                      <input
+                        aria-label="Tên lần chạy"
+                        required
+                        className="apple-input mt-2 w-full"
+                        value={runForm.name}
+                        onChange={(event) => setRunForm({ ...runForm, name: event.target.value })}
+                      />
+                    </label>
+                    <label className="field-label block">
+                      Kế hoạch kiểm thử <span className="text-danger">*</span>
+                      <select
+                        aria-label="Kế hoạch kiểm thử"
+                        required
+                        className="apple-input mt-2 w-full"
+                        value={runForm.testPlanId}
+                        onChange={(event) => selectRunPlan(event.target.value)}
+                      >
+                        <option value="">-</option>
+                        {plans
+                          .filter((item) => item.status === "APPROVED")
+                          .map((item) => (
+                            <option key={item._id} value={item._id}>
+                              {item.name}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                  </div>
+                </section>
                 {(() => {
                   const plan = plans.find((item) => item._id === runForm.testPlanId);
                   const scope = plan?.approved_snapshot || plan;
@@ -1333,13 +1655,46 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                     };
                   });
                   return (
-                    <section className="rounded-control border border-border p-4">
-                      <p className="text-sm font-medium text-ink">
-                        Phạm vi mặc định: toàn bộ {caseIds.length} ca trong kế hoạch
-                      </p>
+                    <section
+                      aria-labelledby="run-create-scope-heading"
+                      className="space-y-3 border-t border-border pt-5"
+                    >
+                      <div>
+                        <h3
+                          id="run-create-scope-heading"
+                          className="text-sm font-semibold text-ink"
+                        >
+                          Phạm vi kiểm thử
+                        </h3>
+                        <p className="mt-1 text-xs text-ink-muted">
+                          {plan
+                            ? `Phạm vi lấy từ snapshot đã duyệt gồm ${caseIds.length} ca.`
+                            : "Chọn kế hoạch đã duyệt để xem phạm vi kiểm thử."}
+                        </p>
+                      </div>
+                      {plan && (
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {[
+                            ["Ca trong kế hoạch", caseIds.length],
+                            [
+                              "Ca trong lần chạy",
+                              runForm.partialScope ? runForm.versionIds.length : caseIds.length,
+                            ],
+                          ].map(([label, count]) => (
+                            <div
+                              className="rounded-control border border-border bg-surface-quiet px-3 py-2"
+                              key={label}
+                            >
+                              <p className="text-[11px] font-medium text-ink-muted">{label}</p>
+                              <p className="mt-1 text-sm font-semibold tabular-nums">{count}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       <label className="mt-3 flex items-center gap-2 text-sm">
                         <input
                           type="checkbox"
+                          disabled={!plan || caseIds.length === 0}
                           checked={runForm.partialScope}
                           onChange={(event) =>
                             setRunForm((current) => ({
@@ -1353,7 +1708,13 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                         />
                         Chỉ chạy một phần ca
                       </label>
-                      {runForm.partialScope && (
+                      {plan && caseIds.length === 0 && (
+                        <p className="rounded-control border border-border bg-surface-quiet p-3 text-sm text-ink-muted">
+                          Kế hoạch đã duyệt chưa có ca trong phạm vi. Kiểm tra lại phạm vi kế hoạch
+                          nếu cần chạy ca kiểm thử.
+                        </p>
+                      )}
+                      {runForm.partialScope && caseIds.length > 0 && (
                         <div className="mt-3">
                           <MultiSelect
                             label="Ca cần chạy"
@@ -1374,80 +1735,91 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                     </section>
                   );
                 })()}
-                <details className="rounded-control border border-border p-4">
-                  <summary className="cursor-pointer">Tùy chọn</summary>
-                  <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                    <select
-                      aria-label="Bản phát hành"
-                      className="apple-input"
-                      value={runForm.releaseId}
-                      onChange={(event) => {
-                        const releaseId = event.target.value;
-                        const release = releases.find((item) => item._id === releaseId);
-                        setRunForm({
-                          ...runForm,
-                          releaseId,
-                          release: release?.key || "",
-                          buildId: "",
-                          build: "",
-                        });
-                      }}
-                    >
-                      <option value="">-</option>
-                      {releases.map((item) => (
-                        <option key={item._id} value={item._id}>
-                          {item.key} · {item.name}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      aria-label="Bản dựng"
-                      className="apple-input"
-                      value={runForm.buildId}
-                      onChange={(event) => {
-                        const buildId = event.target.value;
-                        const build = builds.find((item) => item._id === buildId);
-                        setRunForm({
-                          ...runForm,
-                          buildId,
-                          build: build?.identifier || "",
-                          releaseId: build?.release_id || runForm.releaseId,
-                          release:
-                            releases.find((item) => item._id === build?.release_id)?.key ||
-                            runForm.release,
-                        });
-                      }}
-                    >
-                      <option value="">-</option>
-                      {builds
-                        .filter(
-                          (item) => !runForm.releaseId || item.release_id === runForm.releaseId,
-                        )
-                        .map((item) => (
+                <details className="rounded-control border border-border">
+                  <summary className="cursor-pointer px-4 py-3 text-[13px] font-semibold text-ink hover:bg-surface-quiet focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand">
+                    Bản phát hành và môi trường
+                  </summary>
+                  <div className="grid gap-4 border-t border-border p-4 sm:grid-cols-2 xl:grid-cols-3">
+                    <label className="field-label block">
+                      Bản phát hành
+                      <select
+                        aria-label="Bản phát hành"
+                        className="apple-input mt-2 w-full"
+                        value={runForm.releaseId}
+                        onChange={(event) => {
+                          const releaseId = event.target.value;
+                          const release = releases.find((item) => item._id === releaseId);
+                          setRunForm({
+                            ...runForm,
+                            releaseId,
+                            release: release?.key || "",
+                            buildId: "",
+                            build: "",
+                          });
+                        }}
+                      >
+                        <option value="">-</option>
+                        {releases.map((item) => (
                           <option key={item._id} value={item._id}>
-                            {item.identifier} · {item.version}
+                            {item.key} · {item.name}
                           </option>
                         ))}
-                    </select>
-                    <select
-                      aria-label="Môi trường"
-                      className="apple-input"
-                      value={runForm.environmentId}
-                      onChange={(event) => {
-                        const environmentId = event.target.value;
-                        setRunForm({
-                          ...runForm,
-                          environmentId,
-                        });
-                      }}
-                    >
-                      <option value="">-</option>
-                      {environments.map((item) => (
-                        <option key={item._id} value={item._id}>
-                          {environmentLabel(item)}
-                        </option>
-                      ))}
-                    </select>
+                      </select>
+                    </label>
+                    <label className="field-label block">
+                      Bản dựng
+                      <select
+                        aria-label="Bản dựng"
+                        className="apple-input mt-2 w-full"
+                        value={runForm.buildId}
+                        onChange={(event) => {
+                          const buildId = event.target.value;
+                          const build = builds.find((item) => item._id === buildId);
+                          setRunForm({
+                            ...runForm,
+                            buildId,
+                            build: build?.identifier || "",
+                            releaseId: build?.release_id || runForm.releaseId,
+                            release:
+                              releases.find((item) => item._id === build?.release_id)?.key ||
+                              runForm.release,
+                          });
+                        }}
+                      >
+                        <option value="">-</option>
+                        {builds
+                          .filter(
+                            (item) => !runForm.releaseId || item.release_id === runForm.releaseId,
+                          )
+                          .map((item) => (
+                            <option key={item._id} value={item._id}>
+                              {item.identifier} · {item.version}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                    <label className="field-label block">
+                      Môi trường
+                      <select
+                        aria-label="Môi trường"
+                        className="apple-input mt-2 w-full"
+                        value={runForm.environmentId}
+                        onChange={(event) => {
+                          const environmentId = event.target.value;
+                          setRunForm({
+                            ...runForm,
+                            environmentId,
+                          });
+                        }}
+                      >
+                        <option value="">-</option>
+                        {environments.map((item) => (
+                          <option key={item._id} value={item._id}>
+                            {environmentLabel(item)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                   </div>
                 </details>
                 <div className="action-dialog-footer flex justify-end gap-3">
@@ -1493,6 +1865,24 @@ export default function ExecutionPage({ project, section, workspaceView }) {
       {can("testplan.read") && (workspaceView === "" || workspaceView === "test-plans") && (
         <div className="w-full">
           <Panel title="Danh sách kế hoạch kiểm thử">
+            {workspaceView === "test-plans" && (
+              <section
+                aria-label="Tóm tắt kế hoạch kiểm thử"
+                className="grid gap-3 border-b border-border p-4 sm:grid-cols-2 xl:grid-cols-4"
+              >
+                {[
+                  ["Kế hoạch", planStatusCounts.total],
+                  ["Đã duyệt", planStatusCounts.approved],
+                  ["Chờ rà soát", planStatusCounts.review],
+                  ["Cần hoàn thiện", planStatusCounts.draft],
+                ].map(([label, value]) => (
+                  <div className="rounded-panel border border-border bg-surface p-3" key={label}>
+                    <p className="text-xs font-medium text-ink-muted">{label}</p>
+                    <p className="mt-1 text-xl font-semibold tabular-nums">{value}</p>
+                  </div>
+                ))}
+              </section>
+            )}
             {workspaceView === "test-plans" ? (
               <div className="workspace-filter-bar grid grid-cols-1 gap-3 border-b border-border p-4 sm:grid-cols-2 xl:grid-cols-4">
                 <SearchField
@@ -1634,265 +2024,68 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                 </div>
               </details>
             )}
-            <DataTable
-              items={paginatedPlans}
-              empty="Chưa có kế hoạch kiểm thử"
-              layout="wide-table"
-              columns={[
-                {
-                  key: "identifier",
-                  label: "Mã kế hoạch",
-                  minWidth: 136,
-                  render: (item) => {
-                    const identifier = item.plan_key || item.key || item.code || item._id;
-                    return (
-                      <span className="block max-w-44 truncate" title={identifier}>
-                        {identifier}
-                      </span>
-                    );
-                  },
-                },
-                {
-                  key: "name",
-                  label: "Tên kế hoạch kiểm thử",
-                  minWidth: 260,
-                  render: (item) => (
+            {workspaceView === "test-plans" && (
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
+                <p className="text-xs text-ink-muted" aria-live="polite">
+                  {visiblePlans.length} kế hoạch · Đang hiện {paginatedPlans.length} mục ở trang{" "}
+                  {planPage}
+                </p>
+                <div aria-label="Cách xem kế hoạch" className="flex flex-wrap gap-2" role="group">
+                  {[
+                    ["grouped", "Theo chu kỳ"],
+                    ["cards", "Thẻ"],
+                    ["list", "Danh sách"],
+                  ].map(([mode, label]) => (
                     <button
-                      className="block max-w-full truncate text-left font-medium text-ink hover:text-brand"
+                      aria-pressed={planViewMode === mode}
+                      className={planViewMode === mode ? "primary-button" : "secondary-button"}
+                      key={mode}
+                      onClick={() => setPlanViewMode(mode)}
                       type="button"
-                      title={item.name || ""}
-                      onClick={() => openPlan(item._id)}
                     >
-                      {item.name}
+                      {label}
                     </button>
-                  ),
-                },
-                {
-                  key: "test_period",
-                  label: "Chu kỳ",
-                  minWidth: 140,
-                  render: (item) =>
-                    item.test_period_snapshot?._id ? (
-                      <Link
-                        className="text-brand hover:underline"
-                        href={projectRoute(
-                          project._id,
-                          PROJECT_SECTION_SLUGS.testPeriods,
-                          item.test_period_snapshot._id,
-                        )}
-                      >
-                        {item.test_period_snapshot.name || "Mở chu kỳ"}
-                      </Link>
-                    ) : (
-                      "—"
-                    ),
-                },
-                {
-                  key: "schedule",
-                  label: "Thời gian dự kiến",
-                  minWidth: 190,
-                  render: (item) => {
-                    const dates = [item.schedule?.planned_start_at, item.schedule?.planned_end_at]
-                      .filter(Boolean)
-                      .map((date) => formatDate(date));
-                    return dates.length ? dates.join(" – ") : "Chưa xác định";
-                  },
-                },
-                {
-                  key: "status",
-                  label: "Trạng thái",
-                  minWidth: 140,
-                  render: (item) => (
-                    <div className="space-y-2">
-                      {item.status === "READY" ? (
-                        "Đã lưu, chưa duyệt"
-                      ) : (
-                        <StatusPill value={item.status} />
-                      )}
-                      {planValidation?.planId === item._id &&
-                        planValidation?.revision === item.revision && (
-                          <p
-                            className={`text-xs ${planValidation.ready_for_approval ? "text-success" : "text-warning"}`}
-                            role="status"
-                          >
-                            {planValidation.ready_for_approval
-                              ? "Đủ điều kiện phê duyệt"
-                              : planValidation.findings
-                                  .map(
-                                    (finding) =>
-                                      testPlanFindingLabels[finding.code] ||
-                                      "Cần bổ sung thông tin kế hoạch",
-                                  )
-                                  .join(" · ")}
-                          </p>
-                        )}
-                    </div>
-                  ),
-                },
-                {
-                  key: "owner",
-                  label: "Phụ trách kế hoạch",
-                  minWidth: 170,
-                  render: (item) =>
-                    members.find((member) => member.user_id === item.owner_id)?.user_label ||
-                    members.find((member) => member.user_id === item.owner_id)?.user?.full_name ||
-                    "Chưa phân công",
-                },
-                {
-                  key: "actions",
-                  label: "Thao tác",
-                  minWidth: 112,
-                  render: (item) => {
-                    const canApprove =
-                      item.status === "IN_REVIEW" &&
-                      (project.can_self_approve ||
-                        (item.created_by !== project.current_membership?.user_id &&
-                          !(item.content_author_ids || []).includes(
-                            project.current_membership?.user_id,
-                          ))) &&
-                      can("testplan.approve");
-                    const canReviewPlan =
-                      item.status === "IN_REVIEW" &&
-                      (project.can_self_approve ||
-                        (item.created_by !== project.current_membership?.user_id &&
-                          !(item.content_author_ids || []).includes(
-                            project.current_membership?.user_id,
-                          )));
-                    const hasMenuActions =
-                      (["DRAFT", "READY"].includes(item.status) && can("testplan.update")) ||
-                      can("testplan.read") ||
-                      (["DRAFT", "READY"].includes(item.status) && can("testplan.submit_review")) ||
-                      canApprove ||
-                      (item.status === "IN_REVIEW" && can("testplan.review")) ||
-                      can("testplan.create") ||
-                      (item.status !== "ARCHIVED" && can("testplan.archive"));
-                    return (
-                      <div className="flex items-center gap-2">
-                        {hasMenuActions && (
-                          <details className="relative">
-                            <summary
-                              className="icon-button flex h-9 w-9 cursor-pointer list-none items-center justify-center [&::-webkit-details-marker]:hidden"
-                              aria-label={`Thao tác kế hoạch ${item.name}`}
-                              title="Thao tác"
-                            >
-                              <MoreHorizontal size={18} aria-hidden="true" />
-                            </summary>
-                            <div className="absolute right-0 top-10 z-50 w-52 rounded-control border border-border bg-surface p-1 shadow-panel">
-                              {["DRAFT", "READY"].includes(item.status) &&
-                                can("testplan.update") && (
-                                  <button
-                                    className="w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
-                                    type="button"
-                                    onClick={(event) => {
-                                      event.currentTarget
-                                        .closest("details")
-                                        ?.removeAttribute("open");
-                                      updatePlan(item);
-                                    }}
-                                  >
-                                    Sửa kế hoạch
-                                  </button>
-                                )}
-                              {can("testplan.read") && (
-                                <button
-                                  className="w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
-                                  type="button"
-                                  onClick={async (event) => {
-                                    event.currentTarget.closest("details")?.removeAttribute("open");
-                                    try {
-                                      setPlanValidation({
-                                        ...(await testingApi.validatePlan(item._id)),
-                                        planId: item._id,
-                                        revision: item.revision,
-                                      });
-                                    } catch (reason) {
-                                      setError(messageOf(reason));
-                                    }
-                                  }}
-                                >
-                                  Kiểm tra kế hoạch
-                                </button>
-                              )}
-                              {["DRAFT", "READY"].includes(item.status) &&
-                                can("testplan.submit_review") && (
-                                  <button
-                                    className="w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
-                                    type="button"
-                                    onClick={(event) => {
-                                      event.currentTarget
-                                        .closest("details")
-                                        ?.removeAttribute("open");
-                                      transitionPlan(item, "submit");
-                                    }}
-                                  >
-                                    {project.can_self_approve ? "Chốt kế hoạch" : "Gửi rà soát"}
-                                  </button>
-                                )}
-                              {canApprove && (
-                                <button
-                                  className="w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
-                                  type="button"
-                                  onClick={(event) => {
-                                    event.currentTarget.closest("details")?.removeAttribute("open");
-                                    transitionPlan(item, "approve");
-                                  }}
-                                >
-                                  Phê duyệt kế hoạch
-                                </button>
-                              )}
-                              {canReviewPlan && can("testplan.review") && (
-                                <button
-                                  className="w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
-                                  type="button"
-                                  onClick={(event) => {
-                                    event.currentTarget.closest("details")?.removeAttribute("open");
-                                    transitionPlan(item, "revise");
-                                  }}
-                                >
-                                  Yêu cầu chỉnh sửa
-                                </button>
-                              )}
-                              {can("testplan.create") && (
-                                <button
-                                  className="w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
-                                  type="button"
-                                  onClick={async (event) => {
-                                    event.currentTarget.closest("details")?.removeAttribute("open");
-                                    try {
-                                      const cloned = await testingApi.clonePlan(item._id);
-                                      await load();
-                                      if (cloned?._id) openPlan(cloned._id, "chinh-sua");
-                                    } catch (reason) {
-                                      setError(messageOf(reason));
-                                    }
-                                  }}
-                                >
-                                  {item.status === "APPROVED"
-                                    ? "Tạo bản nháp mới từ kế hoạch này"
-                                    : "Nhân bản kế hoạch"}
-                                </button>
-                              )}
-                              {item.status !== "ARCHIVED" && can("testplan.archive") && (
-                                <button
-                                  className="w-full rounded-control px-3 py-2 text-left text-sm text-danger hover:bg-danger-soft"
-                                  type="button"
-                                  onClick={(event) => {
-                                    event.currentTarget.closest("details")?.removeAttribute("open");
-                                    transitionPlan(item, "archive");
-                                  }}
-                                >
-                                  Lưu trữ kế hoạch
-                                </button>
-                              )}
-                            </div>
-                          </details>
-                        )}
+                  ))}
+                </div>
+              </div>
+            )}
+            {workspaceView === "test-plans" && planViewMode === "grouped" ? (
+              <div className="divide-y divide-border">
+                {groupedPaginatedPlans.length ? (
+                  groupedPaginatedPlans.map((group) => (
+                    <details className="group" key={group.id} open>
+                      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-4 font-medium hover:bg-surface-quiet sm:px-5 [&::-webkit-details-marker]:hidden">
+                        <span className="min-w-0 break-words">{group.label}</span>
+                        <span className="shrink-0 text-xs font-normal text-ink-muted">
+                          {group.plans.length} mục trong trang
+                        </span>
+                      </summary>
+                      <div className="border-t border-border">
+                        <DataTable items={group.plans} columns={planColumns} layout="cards" />
                       </div>
-                    );
-                  },
-                },
-              ]}
-            />
+                    </details>
+                  ))
+                ) : (
+                  <DataTable
+                    items={paginatedPlans}
+                    columns={planColumns}
+                    empty="Chưa có kế hoạch kiểm thử"
+                    layout="cards"
+                  />
+                )}
+              </div>
+            ) : (
+              <DataTable
+                items={paginatedPlans}
+                empty="Chưa có kế hoạch kiểm thử"
+                layout={
+                  workspaceView === "test-plans" && planViewMode === "cards"
+                    ? "cards"
+                    : "wide-table"
+                }
+                columns={planColumns}
+              />
+            )}
             <Pagination
               page={planPage}
               pageSize={planPageSize}
@@ -2069,7 +2262,33 @@ export default function ExecutionPage({ project, section, workspaceView }) {
       )}
       {can("testrun.read") && (workspaceView === "" || workspaceView === "test-runs") && (
         <div>
-          <Panel title="Danh sách lần chạy">
+          <Panel
+            title="Danh sách lần chạy"
+            actions={
+              <div className="flex items-center gap-1 rounded-control border border-border bg-surface p-1">
+                <button
+                  aria-label="Hiển thị lần chạy dạng thẻ"
+                  aria-pressed={runViewMode === "cards"}
+                  className={`icon-button h-8 w-8 ${runViewMode === "cards" ? "bg-brand/10 text-brand" : ""}`}
+                  type="button"
+                  title="Dạng thẻ"
+                  onClick={() => setRunViewMode("cards")}
+                >
+                  <Grid2X2 aria-hidden="true" size={16} />
+                </button>
+                <button
+                  aria-label="Hiển thị lần chạy dạng danh sách"
+                  aria-pressed={runViewMode === "list"}
+                  className={`icon-button h-8 w-8 ${runViewMode === "list" ? "bg-brand/10 text-brand" : ""}`}
+                  type="button"
+                  title="Dạng danh sách"
+                  onClick={() => setRunViewMode("list")}
+                >
+                  <List aria-hidden="true" size={16} />
+                </button>
+              </div>
+            }
+          >
             <details className="border-b border-border p-4" open={workspaceView === "test-runs"}>
               <summary className="cursor-pointer text-sm font-medium">
                 Tìm kiếm, lọc và sắp xếp
@@ -2120,41 +2339,115 @@ export default function ExecutionPage({ project, section, workspaceView }) {
               </div>
             </details>
             {runs.length > 0 ? (
-              <ul className="divide-y divide-border" aria-label="Lần chạy kiểm thử">
+              <ul
+                className={
+                  runViewMode === "cards"
+                    ? "grid gap-3 p-4 sm:grid-cols-2 sm:p-5 2xl:grid-cols-3"
+                    : "divide-y divide-border"
+                }
+                aria-label="Lần chạy kiểm thử"
+              >
                 {runs.map((item) => {
                   const name = item.name || "Lần chạy chưa có tên";
                   const caseCount = Array.isArray(item.test_case_version_ids)
                     ? item.test_case_version_ids.length
                     : null;
+                  const recordedCount = item.recorded_case_count ?? 0;
+                  const hasCaseCount = Number.isFinite(caseCount) && caseCount > 0;
+                  const environment = environments.find(
+                    (value) => value._id === item.environment_id,
+                  );
+                  const environmentText = environment
+                    ? environmentLabel(environment)
+                    : item.environment || "";
+                  const assigneeIds = new Set(
+                    [item.assignee_id, ...Object.values(item.test_case_assignments || {})].filter(
+                      Boolean,
+                    ),
+                  );
+                  const primaryAssignee = members.find(
+                    (member) => member.user_id === item.assignee_id,
+                  );
+                  const assigneeText = item.assignee_id
+                    ? primaryAssignee?.user_label ||
+                      primaryAssignee?.user?.full_name ||
+                      "Đã phân công"
+                    : assigneeIds.size
+                      ? `${assigneeIds.size} người được phân công`
+                      : "Chưa phân công";
+                  const openRun = () =>
+                    router.push(
+                      projectRoute(project._id, PROJECT_SECTION_SLUGS.testRuns, item._id),
+                    );
                   return (
-                    <li className="min-w-0 px-4 py-4 sm:px-5" key={item._id}>
-                      <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
-                        <button
-                          className="min-w-0 flex-1 text-left text-[15px] font-semibold leading-6 text-ink hover:text-brand"
-                          type="button"
-                          onClick={() =>
-                            router.push(
-                              projectRoute(project._id, PROJECT_SECTION_SLUGS.testRuns, item._id),
-                            )
-                          }
+                    <li
+                      className={`min-w-0 ${runViewMode === "cards" ? "flex flex-col rounded-panel border border-border bg-surface p-4" : "grid gap-3 p-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(11rem,0.8fr)_minmax(12rem,1fr)_auto] lg:items-center lg:px-5"}`}
+                      key={item._id}
+                    >
+                      <div
+                        className={`flex min-w-0 items-start justify-between gap-3 ${runViewMode === "list" ? "lg:items-center" : ""}`}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <button
+                            className="block max-w-full text-left text-[15px] font-semibold leading-6 text-ink hover:text-brand"
+                            type="button"
+                            onClick={openRun}
+                          >
+                            <span className="line-clamp-2 break-words [overflow-wrap:anywhere]">
+                              {name}
+                            </span>
+                          </button>
+                          {(item.run_key || item.key) && (
+                            <p className="mt-1 font-mono text-[11px] text-ink-muted">
+                              {item.run_key || item.key}
+                            </p>
+                          )}
+                        </div>
+                        <div
+                          className={`flex shrink-0 flex-col items-end gap-2 ${runViewMode === "list" ? "lg:items-start" : ""}`}
                         >
-                          <span className="line-clamp-2 break-words [overflow-wrap:anywhere]">
-                            {name}
-                          </span>
-                        </button>
-                        <StatusPill value={item.status} />
+                          <StatusPill value={item.status} />
+                        </div>
                       </div>
-                      <dl className="mt-3 grid min-w-0 gap-x-6 gap-y-2 text-[12px] sm:grid-cols-2 xl:grid-cols-4">
+                      {hasCaseCount && (
+                        <div className={runViewMode === "cards" ? "mt-4" : "min-w-0"}>
+                          <div className="mb-1 flex justify-between gap-3 text-xs">
+                            <span className="text-ink-muted">Tiến độ thực thi</span>
+                            <span className="font-medium text-ink">
+                              {Math.min(recordedCount, caseCount)}/{caseCount} ca
+                            </span>
+                          </div>
+                          <div
+                            aria-label={`Tiến độ ${name}: ${Math.min(recordedCount, caseCount)} trên ${caseCount} ca`}
+                            aria-valuemax={caseCount}
+                            aria-valuemin={0}
+                            aria-valuenow={Math.min(recordedCount, caseCount)}
+                            className="h-2 overflow-hidden rounded-full bg-surface-quiet"
+                            role="progressbar"
+                          >
+                            <span
+                              className="block h-full rounded-full bg-brand transition-[width]"
+                              style={{
+                                width: `${Math.round((Math.min(recordedCount, caseCount) / caseCount) * 100)}%`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                      {!hasCaseCount && (
+                        <p
+                          className={`text-xs text-ink-muted ${runViewMode === "cards" ? "mt-4 rounded-control bg-surface-quiet px-3 py-2" : "min-w-0"}`}
+                        >
+                          Chưa có dữ liệu phạm vi ca để tính tiến độ.
+                        </p>
+                      )}
+                      <dl
+                        className={`grid min-w-0 text-[12px] ${runViewMode === "cards" ? "mt-4 gap-x-4 gap-y-3 border-t border-border pt-3 sm:grid-cols-2" : "mt-0 grid-cols-1 gap-y-1"}`}
+                      >
                         <div className="min-w-0">
                           <dt className="text-ink-faint">Kế hoạch kiểm thử</dt>
                           <dd className="mt-0.5 break-words font-medium text-ink">
                             {plans.find((plan) => plan._id === item.test_plan_id)?.name || "-"}
-                          </dd>
-                        </div>
-                        <div className="min-w-0">
-                          <dt className="text-ink-faint">Tiến độ</dt>
-                          <dd className="mt-0.5 font-medium text-ink">
-                            {item.recorded_case_count ?? 0}/{caseCount ?? 0} ca
                           </dd>
                         </div>
                         {item.updated_at && (
@@ -2165,7 +2458,32 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                             </dd>
                           </div>
                         )}
+                        {environmentText && (
+                          <div className="min-w-0">
+                            <dt className="text-ink-faint">Môi trường</dt>
+                            <dd className="mt-0.5 break-words font-medium text-ink">
+                              {environmentText}
+                            </dd>
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <dt className="text-ink-faint">Người thực hiện</dt>
+                          <dd className="mt-0.5 break-words font-medium text-ink">
+                            {assigneeText}
+                          </dd>
+                        </div>
                       </dl>
+                      <div
+                        className={`${runViewMode === "cards" ? "mt-4 flex justify-end border-t border-border pt-3" : "flex justify-end sm:justify-end"}`}
+                      >
+                        <button
+                          className="secondary-button whitespace-nowrap"
+                          type="button"
+                          onClick={openRun}
+                        >
+                          {item.status === "IN_PROGRESS" ? "Tiếp tục thực thi" : "Mở lần chạy"}
+                        </button>
+                      </div>
                     </li>
                   );
                 })}

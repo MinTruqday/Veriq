@@ -1,6 +1,6 @@
-import Image from "next/image";
-import Link from "next/link";
 import PageHeader from "@/shared/components/layout/PageHeader";
+import PublicSiteFooter from "@/features/marketing/components/PublicSiteFooter";
+import PublicSiteHeader from "@/features/marketing/components/PublicSiteHeader";
 const sections = [
   {
     id: "su-dung",
@@ -37,25 +37,7 @@ const sections = [
 export default function TermsPage() {
   return (
     <main className="min-h-[100dvh] bg-canvas text-ink">
-      <nav className="border-b border-brand/10 bg-white/80" aria-label="Điều hướng">
-        <div className="mx-auto flex h-[72px] w-full max-w-[1200px] items-center justify-between px-5 md:px-8">
-          <Link href="/" className="flex items-center gap-3 text-[19px] font-semibold">
-            <Image
-              src="/brand/veriq-logo.png"
-              alt="Veriq"
-              width={36}
-              height={36}
-              className="h-9 w-9 rounded-xl object-cover"
-              priority
-              unoptimized
-            />
-            <span>Veriq</span>
-          </Link>
-          <Link href="/dang-nhap" className="apple-button">
-            Đăng nhập
-          </Link>
-        </div>
-      </nav>
+      <PublicSiteHeader />
 
       <div className="mx-auto w-full max-w-[1200px] min-w-0 px-5 py-8 md:px-8 md:py-10">
         <PageHeader title="Điều khoản" meta="Hiệu lực từ ngày 28 tháng 4 năm 2026" />
@@ -100,6 +82,7 @@ export default function TermsPage() {
           </article>
         </div>
       </div>
+      <PublicSiteFooter />
     </main>
   );
 }

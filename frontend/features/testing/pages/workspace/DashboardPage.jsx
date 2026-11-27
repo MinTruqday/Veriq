@@ -145,8 +145,26 @@ export default function DashboardPage({ project }) {
   const base = `/du-an/${project._id}`;
   const dashboard = value?.dashboard;
   const coverage = value?.coverage;
+  const unapprovedRequirements = dashboard
+    ? Math.max(Number(dashboard.requirements_total || 0) - Number(dashboard.requirements || 0), 0)
+    : 0;
+  const hasActionItems = Boolean(
+    (can("testcase.read") && dashboard?.tests_needing_update > 0) ||
+      (can("requirement.read") && unapprovedRequirements > 0) ||
+      (can("proposal.read") && dashboard?.pending_proposals > 0) ||
+      (can("requirement.read") && dashboard?.changes_waiting_impact > 0) ||
+      (can("defect.read") && dashboard?.open_defects > 0) ||
+      (can("testrun.read") && dashboard?.current_runs > 0),
+  );
   const openDefectSeverities = Object.entries(dashboard?.open_defects_by_severity || {}).filter(
     ([, count]) => Number(count) > 0,
+  );
+  const latestRunResults = Object.entries(dashboard?.latest_run?.result_counts || {}).filter(
+    ([, count]) => Number(count) > 0,
+  );
+  const latestRunResultTotal = latestRunResults.reduce(
+    (total, [, count]) => total + Number(count),
+    0,
   );
   const hasOverviewMetrics =
     Boolean(dashboard && (can("requirement.read") || can("testcase.read") || can("defect.read"))) ||
@@ -162,7 +180,23 @@ export default function DashboardPage({ project }) {
     Boolean(dashboard && (can("testcase.read") || can("testrun.read"))) || hasDetailedCoverage;
   const hasRecentChanges = Boolean(dashboard && can("requirement.read"));
   return (
-    <WorkspacePage title={project.name}>
+    <WorkspacePage
+      title={project.name}
+      description={[project.key, project.project_type, projectDetails.status]
+        .filter(Boolean)
+        .map(valueLabel)
+        .join(" · ")}
+      actions={
+        can("requirement.read") ? (
+          <Link
+            className="apple-button"
+            href={projectRoute(project._id, PROJECT_SECTION_SLUGS.requirements)}
+          >
+            Mở yêu cầu
+          </Link>
+        ) : null
+      }
+    >
       {error && (
         <div className="space-y-3">
           <ErrorState message={error} />
@@ -181,8 +215,11 @@ export default function DashboardPage({ project }) {
       ) : (
         <>
           <Panel title="Tiến trình kiểm thử">
-            <div className="p-5">
-              <ol className="grid gap-4 sm:grid-cols-5" aria-label="Các giai đoạn kiểm thử">
+            <div className="p-4 sm:p-5">
+              <ol
+                className="grid gap-3 sm:grid-cols-5 sm:gap-0"
+                aria-label="Các giai đoạn kiểm thử"
+              >
                 {[
                   {
                     label: "Yêu cầu",
@@ -236,18 +273,20 @@ export default function DashboardPage({ project }) {
                       {index < stages.length - 1 && (
                         <span
                           aria-hidden="true"
-                          className="absolute left-5 right-[-1rem] top-5 hidden h-px bg-border sm:block"
+                          className="absolute left-[calc(50%+1.1rem)] right-[-0.75rem] top-[1.125rem] hidden h-px bg-border sm:block"
                         />
                       )}
                       <Link
-                        className="relative flex min-w-0 flex-col items-start gap-1 rounded-control p-1 text-left hover:text-brand"
+                        className="group relative flex min-w-0 flex-col items-center gap-2 px-1 py-2 text-center"
                         href={stage.href}
                       >
-                        <span className="flex size-10 items-center justify-center rounded-full border border-brand/40 bg-surface-raised text-xs font-semibold text-brand">
+                        <span className="flex size-9 items-center justify-center rounded-full border border-brand/40 bg-surface text-xs font-semibold text-brand transition group-hover:bg-brand/10">
                           {String(index + 1).padStart(2, "0")}
                         </span>
-                        <span className="text-[13px] font-medium">{stage.label}</span>
-                        <span className="text-xs text-ink-muted">
+                        <span className="text-sm font-semibold group-hover:text-brand">
+                          {stage.label}
+                        </span>
+                        <span className="text-xs leading-5 text-ink-muted">
                           {stage.detail ||
                             (stage.count == null ? "Chưa có số liệu" : `${stage.count} mục`)}
                         </span>
@@ -283,7 +322,13 @@ export default function DashboardPage({ project }) {
                   <OverviewMetric
                     label="Lỗi đang mở"
                     value={dashboard.open_defects}
-                    detail="Lỗi chưa đóng"
+                    detail={
+                      openDefectSeverities.length
+                        ? openDefectSeverities
+                            .map(([severity, count]) => `${valueLabel(severity)} ${count}`)
+                            .join(" · ")
+                        : "Lỗi chưa đóng"
+                    }
                   />
                 )}
                 {can("coverage.read") && coverage?.requirement_coverage != null && (
@@ -297,74 +342,6 @@ export default function DashboardPage({ project }) {
               </dl>
             </Panel>
           )}
-          <div className="grid min-w-0 items-stretch gap-5 xl:grid-cols-2">
-            <Panel title="Thông tin dự án" className="h-full">
-              <dl className="divide-y divide-border px-5">
-                <div className="grid min-w-0 gap-2 py-3 sm:grid-cols-[7rem_minmax(0,1fr)]">
-                  <dt className="text-[13px] text-ink-muted">Mô tả</dt>
-                  <dd className="min-w-0 break-words text-[13px]">
-                    {projectDetails.description || "Chưa có mô tả"}
-                  </dd>
-                </div>
-                <div className="grid min-w-0 gap-2 py-3 sm:grid-cols-[7rem_minmax(0,1fr)]">
-                  <dt className="text-[13px] text-ink-muted">Trưởng dự án</dt>
-                  <dd className="min-w-0 break-words text-[13px]">
-                    {projectMembers.find((member) => member.is_project_owner)?.user_label ||
-                      (can("project.members.read") ? "Chưa phân công" : "Không có quyền xem")}
-                  </dd>
-                </div>
-                <div className="grid min-w-0 gap-2 py-3 sm:grid-cols-[7rem_minmax(0,1fr)]">
-                  <dt className="text-[13px] text-ink-muted">Thời gian dự án</dt>
-                  <dd className="min-w-0 break-words text-[13px]">
-                    {[projectDetails.planned_start_at, projectDetails.planned_end_at]
-                      .filter(Boolean)
-                      .map((date) => formatDate(date))
-                      .join(" – ") || "Chưa thiết lập thời gian"}
-                  </dd>
-                </div>
-                <div className="grid min-w-0 gap-2 py-3 sm:grid-cols-[7rem_minmax(0,1fr)]">
-                  <dt className="text-[13px] text-ink-muted">Thành viên</dt>
-                  <dd className="min-w-0 break-words text-[13px]">
-                    {can("project.members.read")
-                      ? projectMembers
-                          .filter((member) => member.status === "ACTIVE")
-                          .map((member) => member.user_label)
-                          .filter(Boolean)
-                          .join(" · ") || "Chưa có thành viên"
-                      : "Không có quyền xem"}
-                  </dd>
-                </div>
-              </dl>
-            </Panel>
-            <Panel title="Tình hình kiểm thử" className="h-full">
-              <dl className="divide-y divide-border px-5">
-                {can("requirement.read") && dashboard && (
-                  <div className="flex items-center justify-between gap-3 py-3 text-[13px]">
-                    <dt>Yêu cầu đã thiết lập phiên bản chuẩn</dt>
-                    <dd className="font-semibold tabular-nums">{dashboard.requirements}</dd>
-                  </div>
-                )}
-                {can("testcase.read") && dashboard && (
-                  <div className="flex items-center justify-between gap-3 py-3 text-[13px]">
-                    <dt>Ca kiểm thử đang hoạt động</dt>
-                    <dd className="font-semibold tabular-nums">{dashboard.active_tests}</dd>
-                  </div>
-                )}
-                {can("testrun.read") && dashboard && (
-                  <div className="flex items-center justify-between gap-3 py-3 text-[13px]">
-                    <dt>Lượt chạy đang thực hiện</dt>
-                    <dd className="font-semibold tabular-nums">{dashboard.current_runs}</dd>
-                  </div>
-                )}
-                {can("release.read") && dashboard && (
-                  <div className="flex items-center justify-between gap-3 py-3 text-[13px]">
-                    <dt>Bản phát hành</dt>
-                    <dd className="font-semibold tabular-nums">{dashboard.releases}</dd>
-                  </div>
-                )}
-              </dl>
-            </Panel>
-          </div>
           {canReadAnalytics && (
             <Panel title="Cần xử lý">
               <ul className="divide-y divide-border px-5">
@@ -379,6 +356,41 @@ export default function DashboardPage({ project }) {
                     </Link>
                   </li>
                 )}
+                {can("requirement.read") && unapprovedRequirements > 0 && (
+                  <li className="flex flex-wrap items-center justify-between gap-3 py-3 text-[13px]">
+                    <span>{unapprovedRequirements} yêu cầu chưa được phê duyệt</span>
+                    <Link
+                      className="font-medium text-brand"
+                      href={projectRoute(project._id, PROJECT_SECTION_SLUGS.requirements)}
+                    >
+                      Xem yêu cầu
+                    </Link>
+                  </li>
+                )}
+                {can("proposal.read") && dashboard?.pending_proposals > 0 && (
+                  <li className="flex flex-wrap items-center justify-between gap-3 py-3 text-[13px]">
+                    <span>{dashboard.pending_proposals} đề xuất đang chờ xử lý</span>
+                    <Link
+                      className="font-medium text-brand"
+                      href={projectRoute(project._id, PROJECT_SECTION_SLUGS.aiReview)}
+                    >
+                      Xem đề xuất
+                    </Link>
+                  </li>
+                )}
+                {can("requirement.read") && dashboard?.changes_waiting_impact > 0 && (
+                  <li className="flex flex-wrap items-center justify-between gap-3 py-3 text-[13px]">
+                    <span>
+                      {dashboard.changes_waiting_impact} phân tích ảnh hưởng đang chờ hoặc xử lý
+                    </span>
+                    <Link
+                      className="font-medium text-brand"
+                      href={projectRoute(project._id, PROJECT_SECTION_SLUGS.requirements)}
+                    >
+                      Xem yêu cầu
+                    </Link>
+                  </li>
+                )}
                 {can("defect.read") && dashboard?.open_defects > 0 && (
                   <li className="flex flex-wrap items-center justify-between gap-3 py-3 text-[13px]">
                     <span>{dashboard.open_defects} lỗi đang mở</span>
@@ -390,13 +402,61 @@ export default function DashboardPage({ project }) {
                     </Link>
                   </li>
                 )}
-                {(!can("testcase.read") || !dashboard?.tests_needing_update) &&
-                  (!can("defect.read") || !dashboard?.open_defects) && (
-                    <li className="py-4 text-[13px] text-ink-muted">Không có mục cần xử lý</li>
-                  )}
+                {can("testrun.read") && dashboard?.current_runs > 0 && (
+                  <li className="flex flex-wrap items-center justify-between gap-3 py-3 text-[13px]">
+                    <span>{dashboard.current_runs} lần chạy chưa hoàn thành</span>
+                    <Link
+                      className="font-medium text-brand"
+                      href={projectRoute(project._id, PROJECT_SECTION_SLUGS.testRuns)}
+                    >
+                      Xem lần chạy
+                    </Link>
+                  </li>
+                )}
+                {!hasActionItems && (
+                  <li className="py-4 text-[13px] text-ink-muted">Không có mục cần xử lý</li>
+                )}
               </ul>
             </Panel>
           )}
+          <Panel title="Thông tin dự án">
+            <dl className="divide-y divide-border px-5">
+              <div className="grid min-w-0 gap-2 py-3 sm:grid-cols-[7rem_minmax(0,1fr)]">
+                <dt className="text-[13px] text-ink-muted">Mô tả</dt>
+                <dd className="min-w-0 break-words text-[13px]">
+                  {projectDetails.description || "Chưa có mô tả"}
+                </dd>
+              </div>
+              <div className="grid min-w-0 gap-2 py-3 sm:grid-cols-[7rem_minmax(0,1fr)]">
+                <dt className="text-[13px] text-ink-muted">Trưởng dự án</dt>
+                <dd className="min-w-0 break-words text-[13px]">
+                  {projectMembers.find((member) => member.is_project_owner)?.user_label ||
+                    (can("project.members.read") ? "Chưa phân công" : "Không có quyền xem")}
+                </dd>
+              </div>
+              <div className="grid min-w-0 gap-2 py-3 sm:grid-cols-[7rem_minmax(0,1fr)]">
+                <dt className="text-[13px] text-ink-muted">Thời gian dự án</dt>
+                <dd className="min-w-0 break-words text-[13px]">
+                  {[projectDetails.planned_start_at, projectDetails.planned_end_at]
+                    .filter(Boolean)
+                    .map((date) => formatDate(date))
+                    .join(" – ") || "Chưa thiết lập thời gian"}
+                </dd>
+              </div>
+              <div className="grid min-w-0 gap-2 py-3 sm:grid-cols-[7rem_minmax(0,1fr)]">
+                <dt className="text-[13px] text-ink-muted">Thành viên</dt>
+                <dd className="min-w-0 break-words text-[13px]">
+                  {can("project.members.read")
+                    ? projectMembers
+                        .filter((member) => member.status === "ACTIVE")
+                        .map((member) => member.user_label)
+                        .filter(Boolean)
+                        .join(" · ") || "Chưa có thành viên"
+                    : "Không có quyền xem"}
+                </dd>
+              </div>
+            </dl>
+          </Panel>
           {((dashboard && (can("defect.read") || can("testrun.read"))) || hasRecentChanges) && (
             <div className="grid min-w-0 items-stretch gap-5 xl:grid-cols-2">
               {dashboard && can("testrun.read") && (
@@ -417,18 +477,44 @@ export default function DashboardPage({ project }) {
                           {latestRunContext(dashboard.latest_run, dateTimeOptions)}
                         </p>
                       )}
-                      <div className="flex flex-wrap gap-2 text-[12px]">
-                        {Object.entries(dashboard.latest_run.result_counts || {}).map(
-                          ([status, count]) => (
-                            <span
-                              className="rounded-full border border-border px-3 py-1"
-                              key={status}
-                            >
-                              {valueLabel(status)} {count}
-                            </span>
-                          ),
-                        )}
-                      </div>
+                      {latestRunResultTotal > 0 && (
+                        <div className="space-y-2" aria-label="Phân bố kết quả lần chạy">
+                          <div
+                            className="flex h-2 overflow-hidden rounded-full bg-surface-quiet"
+                            role="img"
+                            aria-label={`${latestRunResultTotal} kết quả ghi nhận`}
+                          >
+                            {latestRunResults.map(([status, count]) => (
+                              <span
+                                className={
+                                  status === "PASS"
+                                    ? "bg-success"
+                                    : status === "FAIL"
+                                      ? "bg-danger"
+                                      : status === "BLOCKED"
+                                        ? "bg-warning"
+                                        : "bg-brand"
+                                }
+                                key={status}
+                                style={{
+                                  width: `${(Number(count) / latestRunResultTotal) * 100}%`,
+                                }}
+                                title={`${valueLabel(status)} ${count}`}
+                              />
+                            ))}
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {latestRunResults.map(([status, count]) => (
+                              <span
+                                className="rounded-full border border-border px-3 py-1 text-xs"
+                                key={status}
+                              >
+                                {valueLabel(status)} {count}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <p className="p-5 text-[13px] text-ink-muted">Chưa có lần chạy</p>

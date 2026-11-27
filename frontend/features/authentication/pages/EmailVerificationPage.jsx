@@ -3,10 +3,11 @@ import Link from "next/link";
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import InlineState from "@/shared/components/common/InlineState";
-import { Button } from "@/shared/components/ui/Button";
+import AuthFlowLinks from "../components/AuthFlowLinks";
 import AuthField from "../components/AuthField";
 import AuthFrame from "../components/AuthFrame";
 import AuthLoading from "../components/AuthLoading";
+import AuthSubmitButton from "../components/AuthSubmitButton";
 import { useEmailVerification } from "../hooks/useEmailVerification";
 
 function EmailVerificationContent() {
@@ -34,11 +35,7 @@ function EmailVerificationContent() {
     <AuthFrame
       title="Xác minh Email"
       description={email ? `Nhập mã đã gửi đến ${email}` : "Nhập mã xác minh đã nhận qua Email"}
-      footer={
-        <Link href="/dang-nhap" className="font-semibold text-brand hover:text-brand-hover">
-          Quay lại đăng nhập
-        </Link>
-      }
+      footer={<AuthFlowLinks links={[{ href: "/dang-nhap", label: "Quay lại đăng nhập" }]} />}
     >
       {error && (
         <div className="mb-5">
@@ -64,9 +61,9 @@ function EmailVerificationContent() {
           value={token}
           onChange={(event) => setToken(event.target.value)}
         />
-        <Button type="submit" className="w-full" disabled={submitting}>
-          {submitting ? "Đang xác minh" : "Xác minh Email"}
-        </Button>
+        <AuthSubmitButton type="submit" loading={submitting} loadingLabel="Đang xác minh Email">
+          Xác minh Email
+        </AuthSubmitButton>
       </form>
     </AuthFrame>
   );

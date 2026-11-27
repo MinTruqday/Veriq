@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Check, Trash2 } from "lucide-react";
+import { Check, Search, Trash2, X } from "lucide-react";
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
 import { isSupportedTimeZone } from "@/shared/lib/timeZone.mjs";
 import { safeLocale } from "@/shared/lib/locale.mjs";
@@ -52,8 +52,9 @@ function notificationGroup(value, today, configuredTimeZone) {
 function notificationContent(item) {
   if (item.type === "DOCUMENT_UPDATE") {
     return {
-      title: "Đã cập nhật tài liệu",
-      body: "Nội dung tài liệu đã được đồng bộ và cập nhật thành công.",
+      title: item.title || "Đã cập nhật tài liệu",
+      body:
+        item.message || item.body || "Nội dung tài liệu đã được đồng bộ và cập nhật thành công.",
     };
   }
   return {
@@ -61,9 +62,21 @@ function notificationContent(item) {
     body: item.message || item.body || "Không có nội dung",
   };
 }
+function notificationTypeLabel(type) {
+  return (
+    {
+      DOCUMENT_UPDATE: "Cập nhật tài liệu",
+      comment: "Bình luận",
+      mention: "Được nhắc tên",
+      system: "Hệ thống",
+    }[type] || String(type || "Khác").replaceAll("_", " ")
+  );
+}
 export default function AnnouncementsPage() {
   const { user } = useAuth();
   const [filter, setFilter] = useState("all");
+  const [query, setQuery] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
   const {
     items,
     unread,
@@ -77,10 +90,26 @@ export default function AnnouncementsPage() {
     remove,
     processingIds,
   } = useAnnouncementsPage();
-  const visible = useMemo(
-    () => (filter === "unread" ? items.filter((item) => !item.is_read) : items),
-    [filter, items],
+  const types = useMemo(
+    () => [...new Set(items.map((item) => item.type).filter(Boolean))].sort(),
+    [items],
   );
+  const visible = useMemo(() => {
+    const normalized = query.trim().toLocaleLowerCase();
+    return items.filter((item) => {
+      const content = notificationContent(item);
+      const matchesRead = filter !== "unread" || !item.is_read;
+      const matchesType = !typeFilter || item.type === typeFilter;
+      const matchesQuery =
+        !normalized ||
+        [content.title, content.body, item.type, item.link]
+          .filter(Boolean)
+          .join(" ")
+          .toLocaleLowerCase()
+          .includes(normalized);
+      return matchesRead && matchesType && matchesQuery;
+    });
+  }, [filter, items, query, typeFilter]);
   const groups = useMemo(() => {
     const today = dateKey(new Date(), user?.timezone);
     const grouped = new Map();
@@ -137,9 +166,60 @@ export default function AnnouncementsPage() {
         />
       </div>
 
+      <div className="mb-5 flex flex-wrap items-center gap-3 rounded-panel border border-border bg-surface p-3">
+        <label className="relative min-w-[14rem] flex-1">
+          <Search
+            aria-hidden="true"
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted"
+            size={16}
+          />
+          <input
+            aria-label="Tìm thông báo"
+            className="apple-input w-full pl-9"
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Tìm nội dung thông báo…"
+            value={query}
+          />
+        </label>
+        <select
+          aria-label="Lọc loại thông báo"
+          className="apple-input w-auto min-w-[10rem]"
+          onChange={(event) => setTypeFilter(event.target.value)}
+          value={typeFilter}
+        >
+          <option value="">Mọi loại</option>
+          {types.map((type) => (
+            <option key={type} value={type}>
+              {notificationTypeLabel(type)}
+            </option>
+          ))}
+        </select>
+        <span aria-live="polite" className="text-xs text-ink-muted">
+          {visible.length} / {items.length} thông báo
+        </span>
+        {(query || typeFilter) && (
+          <button
+            className="secondary-button inline-flex items-center gap-2"
+            onClick={() => {
+              setQuery("");
+              setTypeFilter("");
+            }}
+            type="button"
+          >
+            <X aria-hidden="true" size={15} /> Xóa lọc
+          </button>
+        )}
+      </div>
+
       {loadFailed ? null : visible.length === 0 ? (
         <EmptyState
-          text={filter === "unread" ? "Không có thông báo chưa đọc" : "Chưa có thông báo"}
+          text={
+            query || typeFilter
+              ? "Không có thông báo phù hợp với bộ lọc"
+              : filter === "unread"
+                ? "Không có thông báo chưa đọc"
+                : "Chưa có thông báo"
+          }
           bordered
         />
       ) : (

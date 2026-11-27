@@ -1,10 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Plus, RefreshCw, X } from "lucide-react";
+import { Plus, RefreshCw } from "lucide-react";
 import { ErrorState, LoadingState, Panel, useActionDialog } from "./WorkspacePrimitives";
 import { testingApi } from "../services/testing.service";
 import { messageOf } from "../lib/testing";
+import {
+  Modal,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+} from "@/shared/components/ui/Modal";
 
 const blankEnvironment = {
   name: "",
@@ -245,26 +252,20 @@ export default function EnvironmentManagementPanel({ project }) {
               hoạch và lần chạy.
             </div>
           )}
-          {showEditor && (
-            <form
-              className="space-y-4 rounded-2xl border border-border bg-surface-quiet p-4"
-              onSubmit={save}
-            >
-              <div className="flex items-center justify-between gap-3">
-                <h3 className="font-semibold text-ink">
-                  {editing ? "Chỉnh sửa môi trường" : "Thêm môi trường"}
-                </h3>
-                <button
-                  aria-label="Đóng biểu mẫu môi trường"
-                  className="icon-button"
-                  disabled={saving}
-                  type="button"
-                  onClick={() => setShowEditor(false)}
-                >
-                  <X aria-hidden="true" className="size-4" />
-                </button>
-              </div>
-              <div className="space-y-4">
+          <Modal
+            ariaLabel={editing ? "Chỉnh sửa môi trường" : "Thêm môi trường"}
+            isOpen={showEditor}
+            onClose={() => {
+              if (!saving) setShowEditor(false);
+            }}
+            placement="right"
+            showCloseButton={!saving}
+          >
+            <form className="flex min-h-full flex-col" onSubmit={save}>
+              <ModalHeader>
+                <ModalTitle>{editing ? "Chỉnh sửa môi trường" : "Thêm môi trường"}</ModalTitle>
+              </ModalHeader>
+              <ModalContent className="flex-1">
                 <label className="field-label block">
                   Mẫu môi trường
                   <select
@@ -289,106 +290,112 @@ export default function EnvironmentManagementPanel({ project }) {
                     ))}
                   </select>
                 </label>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="field-label">
-                  Tên môi trường
-                  <input
-                    className="apple-input mt-2 w-full"
-                    minLength={2}
-                    required
-                    value={value.name}
-                    onChange={(event) =>
-                      setValue((current) => ({ ...current, name: event.target.value }))
-                    }
-                  />
-                </label>
-                <label className="field-label md:col-span-2">
-                  Địa chỉ cơ sở
-                  <input
-                    className="apple-input mt-2 w-full"
-                    type="url"
-                    value={value.base_url}
-                    onChange={(event) =>
-                      setValue((current) => ({ ...current, base_url: event.target.value }))
-                    }
-                  />
-                </label>
-                <label className="field-label">
-                  Loại môi trường
-                  <select
-                    className="apple-input mt-2 w-full"
-                    value={value.environment_type}
-                    onChange={(event) =>
-                      setValue((current) => ({ ...current, environment_type: event.target.value }))
-                    }
-                  >
-                    {environmentTypes.map(([key, label]) => (
-                      <option key={key} value={key}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field-label">
-                  Hệ điều hành
-                  <input
-                    className="apple-input mt-2 w-full"
-                    value={value.operating_system}
-                    onChange={(event) =>
-                      setValue((current) => ({ ...current, operating_system: event.target.value }))
-                    }
-                  />
-                </label>
-                <label className="field-label">
-                  Trình duyệt
-                  <input
-                    className="apple-input mt-2 w-full"
-                    value={value.browser}
-                    onChange={(event) =>
-                      setValue((current) => ({ ...current, browser: event.target.value }))
-                    }
-                  />
-                </label>
-                <label className="field-label">
-                  Phiên bản trình duyệt
-                  <input
-                    className="apple-input mt-2 w-full"
-                    value={value.browser_version}
-                    onChange={(event) =>
-                      setValue((current) => ({ ...current, browser_version: event.target.value }))
-                    }
-                  />
-                </label>
-                <label className="field-label">
-                  Thiết bị
-                  <input
-                    className="apple-input mt-2 w-full"
-                    value={value.device}
-                    onChange={(event) =>
-                      setValue((current) => ({ ...current, device: event.target.value }))
-                    }
-                  />
-                </label>
-                <label className="field-label">
-                  Trạng thái khả dụng
-                  <select
-                    className="apple-input mt-2 w-full"
-                    value={value.availability}
-                    onChange={(event) =>
-                      setValue((current) => ({ ...current, availability: event.target.value }))
-                    }
-                  >
-                    {Object.entries(availabilityLabels).map(([key, label]) => (
-                      <option key={key} value={key}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              {error && <p className="text-sm text-danger">{error}</p>}
-              <div className="flex justify-end gap-2">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="field-label">
+                    Tên môi trường
+                    <input
+                      className="apple-input mt-2 w-full"
+                      minLength={2}
+                      required
+                      value={value.name}
+                      onChange={(event) =>
+                        setValue((current) => ({ ...current, name: event.target.value }))
+                      }
+                    />
+                  </label>
+                  <label className="field-label md:col-span-2">
+                    Địa chỉ cơ sở
+                    <input
+                      className="apple-input mt-2 w-full"
+                      type="url"
+                      value={value.base_url}
+                      onChange={(event) =>
+                        setValue((current) => ({ ...current, base_url: event.target.value }))
+                      }
+                    />
+                  </label>
+                  <label className="field-label">
+                    Loại môi trường
+                    <select
+                      className="apple-input mt-2 w-full"
+                      value={value.environment_type}
+                      onChange={(event) =>
+                        setValue((current) => ({
+                          ...current,
+                          environment_type: event.target.value,
+                        }))
+                      }
+                    >
+                      {environmentTypes.map(([key, label]) => (
+                        <option key={key} value={key}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="field-label">
+                    Hệ điều hành
+                    <input
+                      className="apple-input mt-2 w-full"
+                      value={value.operating_system}
+                      onChange={(event) =>
+                        setValue((current) => ({
+                          ...current,
+                          operating_system: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="field-label">
+                    Trình duyệt
+                    <input
+                      className="apple-input mt-2 w-full"
+                      value={value.browser}
+                      onChange={(event) =>
+                        setValue((current) => ({ ...current, browser: event.target.value }))
+                      }
+                    />
+                  </label>
+                  <label className="field-label">
+                    Phiên bản trình duyệt
+                    <input
+                      className="apple-input mt-2 w-full"
+                      value={value.browser_version}
+                      onChange={(event) =>
+                        setValue((current) => ({ ...current, browser_version: event.target.value }))
+                      }
+                    />
+                  </label>
+                  <label className="field-label">
+                    Thiết bị
+                    <input
+                      className="apple-input mt-2 w-full"
+                      value={value.device}
+                      onChange={(event) =>
+                        setValue((current) => ({ ...current, device: event.target.value }))
+                      }
+                    />
+                  </label>
+                  <label className="field-label">
+                    Trạng thái khả dụng
+                    <select
+                      className="apple-input mt-2 w-full"
+                      value={value.availability}
+                      onChange={(event) =>
+                        setValue((current) => ({ ...current, availability: event.target.value }))
+                      }
+                    >
+                      {Object.entries(availabilityLabels).map(([key, label]) => (
+                        <option key={key} value={key}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                {error && <p className="text-sm text-danger">{error}</p>}
+              </ModalContent>
+              <ModalFooter>
                 <button
                   className="secondary-button"
                   disabled={saving}
@@ -400,9 +407,9 @@ export default function EnvironmentManagementPanel({ project }) {
                 <button className="primary-button" disabled={saving} type="submit">
                   {saving ? "Đang lưu…" : "Lưu môi trường"}
                 </button>
-              </div>
+              </ModalFooter>
             </form>
-          )}
+          </Modal>
         </div>
       </Panel>
       {dialog}

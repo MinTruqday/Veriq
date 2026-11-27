@@ -20,6 +20,7 @@ import RequirementDuplicatePanel from "./requirements/RequirementDuplicatePanel"
 import RequirementHistoryPanel from "./requirements/RequirementHistoryPanel";
 import RequirementImpactPanel from "./requirements/RequirementImpactPanel";
 import RequirementImportModal from "./requirements/RequirementImportModal";
+import RequirementNavigatorPanel from "./requirements/RequirementNavigatorPanel";
 import RequirementSourceDocumentsPanel from "./requirements/RequirementSourceDocumentsPanel";
 import RequirementTracePanel from "./requirements/RequirementTracePanel";
 import RequirementsListPanel from "./requirements/RequirementsListPanel";
@@ -39,6 +40,8 @@ export default function RequirementsPage({ project, section, workspaceView }) {
   const documentsView = workspaceView === "documents";
   const sectionKey = documentsView ? "" : section[0] || "";
   const requirementId = sectionKey && !["new", "import"].includes(sectionKey) ? sectionKey : "";
+  const forceListView = searchParams.get("view") === "list";
+  const forceLinksView = searchParams.get("view") === "links";
   const [items, setItems] = useState([]);
   const [loadedProjectId, setLoadedProjectId] = useState("");
   const [members, setMembers] = useState([]);
@@ -341,6 +344,40 @@ export default function RequirementsPage({ project, section, workspaceView }) {
   const visibleItems = useMemo(() => (projectDataReady ? items : []), [items, projectDataReady]);
   const visibleMembers = projectDataReady ? members : [];
   const visibleSourceDocuments = projectDataReady ? sourceDocuments : [];
+  useEffect(() => {
+    if (
+      documentsView ||
+      workspaceView ||
+      sectionKey ||
+      forceListView ||
+      forceLinksView ||
+      !projectDataReady ||
+      loading ||
+      !visibleItems.length
+    ) {
+      return;
+    }
+    const target = projectRoute(
+      project._id,
+      PROJECT_SECTION_SLUGS.requirements,
+      visibleItems[0]._id,
+    );
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("view");
+    const queryString = params.toString();
+    window.location.replace(queryString ? `${target}?${queryString}` : target);
+  }, [
+    documentsView,
+    forceLinksView,
+    forceListView,
+    loading,
+    project._id,
+    projectDataReady,
+    searchParams,
+    sectionKey,
+    visibleItems,
+    workspaceView,
+  ]);
   useEffect(() => {
     if (projectScopeRef.current === project._id) return;
     projectScopeRef.current = project._id;
@@ -1136,13 +1173,16 @@ export default function RequirementsPage({ project, section, workspaceView }) {
     });
   };
   const detailTabs = [
-    { id: "requirement", label: "Yêu cầu" },
-    { id: "history", label: "Lịch sử và rà soát" },
+    { id: "requirement", label: "Nội dung" },
+    { id: "history", label: "Lịch sử phiên bản" },
+    ...(can("testcase.read") ? [{ id: "impact", label: "Phân tích ảnh hưởng" }] : []),
+    ...(can("trace.read") ? [{ id: "trace", label: "Truy vết" }] : []),
+    { id: "review", label: "Rà soát và liên quan" },
   ];
   const activeDetailTab = detailTabs.some((item) => item.id === detailTab)
     ? detailTab
     : detailTabs[0].id;
-  if (!documentsView && !sectionKey && searchParams.get("view") === "links" && can("trace.read")) {
+  if (!documentsView && !sectionKey && forceLinksView && can("trace.read")) {
     return <TraceabilityPage project={project} embedded />;
   }
   if (creating) {
@@ -1218,21 +1258,48 @@ export default function RequirementsPage({ project, section, workspaceView }) {
       actions={
         <div className="flex flex-wrap items-center gap-3">
           <ProjectCrumb projectId={project._id} />
-          {!routeSelected &&
-            projectDataReady &&
-            documentsView &&
-            can("requirement_document.upload") && (
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() => {
-                  setError("");
-                  setImporting(true);
-                }}
-              >
-                Nhập tài liệu
-              </button>
-            )}
+          {routeSelected && (
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() =>
+                window.location.assign(
+                  `${projectRoute(project._id, PROJECT_SECTION_SLUGS.requirements)}?view=list`,
+                )
+              }
+            >
+              Danh sách đầy đủ
+            </button>
+          )}
+          {!routeSelected && forceListView && visibleItems.length > 0 && (
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() =>
+                window.location.assign(
+                  projectRoute(
+                    project._id,
+                    PROJECT_SECTION_SLUGS.requirements,
+                    visibleItems[0]._id,
+                  ),
+                )
+              }
+            >
+              Mở Split View
+            </button>
+          )}
+          {projectDataReady && can("requirement_document.upload") && (
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => {
+                setError("");
+                setImporting(true);
+              }}
+            >
+              Nhập tài liệu
+            </button>
+          )}
           {!routeSelected && projectDataReady && !workspaceView && can("trace.read") && (
             <button
               className="secondary-button"
@@ -1246,7 +1313,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
               Liên kết kiểm thử
             </button>
           )}
-          {!routeSelected && projectDataReady && !workspaceView && can("requirement.create") && (
+          {projectDataReady && !workspaceView && can("requirement.create") && (
             <button
               type="button"
               className="apple-button"
@@ -1286,81 +1353,118 @@ export default function RequirementsPage({ project, section, workspaceView }) {
         </div>
       )}
       {routeSelected ? (
-        <>
-          <SegmentedTabs
-            label="Nội dung yêu cầu"
-            value={activeDetailTab}
-            onChange={setDetailTab}
-            tabs={detailTabs}
-          />
-          <div className="space-y-6" hidden={activeDetailTab !== "requirement"}>
-            <RequirementCurrentVersionPanel
-              projectId={project._id}
-              current={current}
-              currentUserId={user?._id || user?.id || project.current_membership?.user_id}
-              canSelfApprove={project.can_self_approve}
-              selected={routeSelected}
-              focusAcceptanceCriterionId={focusAcceptanceCriterionId}
-              draft={draft}
+        <div className="grid min-w-0 items-start gap-5 md:items-stretch md:grid-cols-[minmax(14rem,3fr)_minmax(0,7fr)]">
+          <aside className="min-w-0 md:self-stretch" aria-label="Điều hướng yêu cầu">
+            <RequirementNavigatorPanel
+              items={visibleItems}
+              loading={loading}
+              query={query}
+              setQuery={(value) => {
+                setQuery(value);
+                setPage(1);
+              }}
+              filters={filters}
+              setFilters={setFilters}
               members={visibleMembers}
-              customFields={customFields}
-              saveState={saveState}
-              can={can}
-              saveDraft={saveDraft}
-              onCreateVersion={createVersion}
-              onSplit={splitBaseline}
-              ask={ask}
-              reload={load}
-              onDraftChange={changeDraft}
-              onError={setError}
+              pageInfo={pageInfo}
+              pageSize={pageSize}
+              onPageChange={setPage}
+              setPage={setPage}
+              selectedId={routeSelected._id}
+              onSelect={(item) => {
+                if (item._id !== requirementId) {
+                  window.location.assign(
+                    projectRoute(project._id, PROJECT_SECTION_SLUGS.requirements, item._id),
+                  );
+                }
+              }}
             />
-            {can("testcase.read") && <RequirementImpactPanel version={current} project={project} />}
-            <RequirementHistoryPanel
-              projectId={project._id}
-              selected={routeSelected}
-              versions={versions.map((version) =>
-                version._id === current._id ? current : version,
+          </aside>
+          <section className="min-w-0 space-y-5" aria-label="Chi tiết yêu cầu">
+            <SegmentedTabs
+              label="Các phần của yêu cầu"
+              value={activeDetailTab}
+              onChange={setDetailTab}
+              tabs={detailTabs}
+            />
+            <div className="space-y-6" hidden={activeDetailTab !== "requirement"}>
+              <RequirementCurrentVersionPanel
+                projectId={project._id}
+                current={current}
+                currentUserId={user?._id || user?.id || project.current_membership?.user_id}
+                canSelfApprove={project.can_self_approve}
+                selected={routeSelected}
+                sourceDocuments={visibleSourceDocuments}
+                onOpenTrace={() => setDetailTab("trace")}
+                focusAcceptanceCriterionId={focusAcceptanceCriterionId}
+                draft={draft}
+                members={visibleMembers}
+                customFields={customFields}
+                saveState={saveState}
+                can={can}
+                saveDraft={saveDraft}
+                onCreateVersion={createVersion}
+                onSplit={splitBaseline}
+                ask={ask}
+                reload={load}
+                onDraftChange={changeDraft}
+                onError={setError}
+              />
+            </div>
+            <div className="space-y-6" hidden={activeDetailTab !== "impact"}>
+              {activeDetailTab === "impact" && can("testcase.read") && (
+                <RequirementImpactPanel version={current} project={project} />
               )}
-              compareFrom={compareFrom}
-              setCompareFrom={setCompareFrom}
-              compareTo={compareTo}
-              setCompareTo={setCompareTo}
-              comparison={comparison}
-              setComparison={setComparison}
-              onError={setError}
-            />
-            {can("requirement_document.read") && (
-              <RequirementTracePanel current={current} sourceDocuments={visibleSourceDocuments} />
-            )}
-          </div>
-          <div className="space-y-6" hidden={activeDetailTab !== "history"}>
-            <RequirementHistoryPanel
-              projectId={project._id}
-              selected={routeSelected}
-              versions={versions}
-              compareFrom={compareFrom}
-              setCompareFrom={setCompareFrom}
-              compareTo={compareTo}
-              setCompareTo={setCompareTo}
-              comparison={comparison}
-              setComparison={setComparison}
-              onError={setError}
-            />
-            <ReviewCommentsPanel
-              projectId={project._id}
-              artifactType="requirement_version"
-              artifactId={current._id}
-              permissions={project.current_permissions || []}
-              currentUserId={project.current_membership?.user_id}
-            />
-            <CollaborationPanel
-              project={project}
-              artifactType="requirement"
-              artifactId={routeSelected._id}
-              onResolved={load}
-            />
-          </div>
-        </>
+            </div>
+            <div className="space-y-6" hidden={activeDetailTab !== "trace"}>
+              {activeDetailTab === "trace" && can("trace.read") && (
+                <RequirementTracePanel
+                  projectId={project._id}
+                  requirement={routeSelected}
+                  current={current}
+                  canReadCoverage={can("coverage.read")}
+                />
+              )}
+            </div>
+            <div className="space-y-6" hidden={activeDetailTab !== "history"}>
+              {activeDetailTab === "history" && (
+                <RequirementHistoryPanel
+                  projectId={project._id}
+                  selected={routeSelected}
+                  versions={versions.map((version) =>
+                    version._id === current._id ? current : version,
+                  )}
+                  compareFrom={compareFrom}
+                  setCompareFrom={setCompareFrom}
+                  compareTo={compareTo}
+                  setCompareTo={setCompareTo}
+                  comparison={comparison}
+                  setComparison={setComparison}
+                  onError={setError}
+                />
+              )}
+            </div>
+            <div className="space-y-6" hidden={activeDetailTab !== "review"}>
+              {activeDetailTab === "review" && (
+                <>
+                  <ReviewCommentsPanel
+                    projectId={project._id}
+                    artifactType="requirement_version"
+                    artifactId={current._id}
+                    permissions={project.current_permissions || []}
+                    currentUserId={project.current_membership?.user_id}
+                  />
+                  <CollaborationPanel
+                    project={project}
+                    artifactType="requirement"
+                    artifactId={routeSelected._id}
+                    onResolved={load}
+                  />
+                </>
+              )}
+            </div>
+          </section>
+        </div>
       ) : (
         <>
           {!documentsView && (
@@ -1411,30 +1515,28 @@ export default function RequirementsPage({ project, section, workspaceView }) {
               onError={setError}
             />
           )}
-          <div className="grid gap-5 xl:grid-cols-2">
-            {can("requirement_document.upload") && (
-              <RequirementImportModal
-                isOpen={importing && projectDataReady}
-                onClose={() => setImporting(false)}
-                error={error}
-                upload={upload}
-                setUpload={setUpload}
-                uploadAccess={uploadAccess}
-                setUploadAccess={setUploadAccess}
-                members={visibleMembers}
-                onUploadPreview={uploadPreview}
-                sourceProcessing={
-                  uploadingSource || retryingSource || Boolean(pendingExtractionDocumentId)
-                }
-                sourceDocument={sourceDocument}
-                onRetrySource={retrySourceDocument}
-                project={project}
-                sourceDocuments={visibleSourceDocuments}
-                onError={setError}
-              />
-            )}
-          </div>
         </>
+      )}
+      {can("requirement_document.upload") && (
+        <RequirementImportModal
+          isOpen={importing && projectDataReady}
+          onClose={() => setImporting(false)}
+          error={error}
+          upload={upload}
+          setUpload={setUpload}
+          uploadAccess={uploadAccess}
+          setUploadAccess={setUploadAccess}
+          members={visibleMembers}
+          onUploadPreview={uploadPreview}
+          sourceProcessing={
+            uploadingSource || retryingSource || Boolean(pendingExtractionDocumentId)
+          }
+          sourceDocument={sourceDocument}
+          onRetrySource={retrySourceDocument}
+          project={project}
+          sourceDocuments={visibleSourceDocuments}
+          onError={setError}
+        />
       )}
       {dialog}
     </WorkspacePage>

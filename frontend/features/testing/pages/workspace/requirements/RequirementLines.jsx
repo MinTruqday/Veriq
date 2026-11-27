@@ -1,12 +1,21 @@
-export default function RequirementLines({ label, value, onChange, required = false }) {
+export default function RequirementLines({
+  label,
+  value,
+  onChange,
+  required = false,
+  identifierPrefix,
+}) {
   const lines = (value || "").split("\n");
   return (
     <fieldset className="space-y-2">
       <legend className="field-label">{label}</legend>
       {lines.map((line, index) => (
         <div className="flex items-center gap-2" key={index}>
-          <span className="w-6 shrink-0 text-right text-sm text-ink-muted" aria-hidden="true">
-            {index + 1}.
+          <span
+            className="w-14 shrink-0 text-right font-mono text-xs text-ink-muted"
+            aria-hidden="true"
+          >
+            {identifierPrefix ? `${identifierPrefix}-${index + 1}` : `${index + 1}.`}
           </span>
           <div className="relative min-w-0 flex-1">
             <input

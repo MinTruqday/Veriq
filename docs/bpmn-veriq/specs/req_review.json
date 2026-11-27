@@ -1,0 +1,285 @@
+{
+  "id": "req_review",
+  "name": "02 - Soạn thảo, rà soát và phê duyệt yêu cầu",
+  "file_name": "BPMN_Requirements_02_Soan_thao_va_phe_duyet_yeu_cau_v1.drawio",
+  "scope": "Bao gồm soạn thảo, gửi rà soát, yêu cầu chỉnh sửa và phê duyệt thành baseline. Rà soát kỹ thuật là thao tác riêng trong API; chưa có bằng chứng rằng bước này luôn bắt buộc trong mọi lần phê duyệt.",
+  "lanes": [
+    {
+      "id": "author",
+      "name": "Người soạn yêu cầu",
+      "fill": "#E8F3FF",
+      "stroke": "#4A90C2"
+    },
+    {
+      "id": "system",
+      "name": "Veriq",
+      "fill": "#EFE8FF",
+      "stroke": "#7956A8"
+    },
+    {
+      "id": "reviewer",
+      "name": "Người có quyền rà soát",
+      "fill": "#FFF4DF",
+      "stroke": "#C58A28"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "start",
+      "label": "Bắt đầu tạo hoặc cập nhật yêu cầu",
+      "type": "start",
+      "lane": "author",
+      "col": 0,
+      "row": 0
+    },
+    {
+      "id": "draft",
+      "label": "Soạn thảo nội dung và tiêu chí chấp nhận",
+      "type": "user_task",
+      "lane": "author",
+      "col": 1,
+      "row": 0,
+      "task_type": "user"
+    },
+    {
+      "id": "validate",
+      "label": "Kiểm tra trường bắt buộc, nội dung và phiên bản",
+      "type": "service_task",
+      "lane": "system",
+      "col": 2,
+      "row": 0,
+      "task_type": "service"
+    },
+    {
+      "id": "complete",
+      "label": "Nội dung đủ điều kiện gửi rà soát?",
+      "type": "gateway",
+      "lane": "system",
+      "col": 3,
+      "row": 0
+    },
+    {
+      "id": "invalid",
+      "label": "Thiếu hoặc không hợp lệ",
+      "type": "error_end",
+      "lane": "system",
+      "col": 4,
+      "row": 1
+    },
+    {
+      "id": "submit",
+      "label": "Gửi yêu cầu để rà soát",
+      "type": "user_task",
+      "lane": "author",
+      "col": 4,
+      "row": 0,
+      "task_type": "user"
+    },
+    {
+      "id": "review",
+      "label": "Rà soát yêu cầu và ghi nhận nhận xét",
+      "type": "user_task",
+      "lane": "reviewer",
+      "col": 5,
+      "row": 0,
+      "task_type": "user"
+    },
+    {
+      "id": "approved",
+      "label": "Phê duyệt yêu cầu?",
+      "type": "gateway",
+      "lane": "reviewer",
+      "col": 6,
+      "row": 0
+    },
+    {
+      "id": "changes",
+      "label": "Chỉnh sửa theo nhận xét",
+      "type": "user_task",
+      "lane": "author",
+      "col": 7,
+      "row": 1,
+      "task_type": "user"
+    },
+    {
+      "id": "baseline_check",
+      "label": "Kiểm định điều kiện phê duyệt",
+      "type": "service_task",
+      "lane": "system",
+      "col": 7,
+      "row": 0,
+      "task_type": "service"
+    },
+    {
+      "id": "baseline_ok",
+      "label": "Yêu cầu đạt kiểm định?",
+      "type": "gateway",
+      "lane": "system",
+      "col": 8,
+      "row": 0
+    },
+    {
+      "id": "baseline_error",
+      "label": "Không thể phê duyệt do kiểm định hoặc xung đột phiên bản",
+      "type": "error_end",
+      "lane": "system",
+      "col": 9,
+      "row": 1
+    },
+    {
+      "id": "baseline",
+      "label": "Ghi nhận baseline và cập nhật chỉ mục",
+      "type": "service_task",
+      "lane": "system",
+      "col": 9,
+      "row": 0,
+      "task_type": "service"
+    },
+    {
+      "id": "done",
+      "label": "Phiên bản yêu cầu đã được phê duyệt",
+      "type": "end",
+      "lane": "system",
+      "col": 10,
+      "row": 0
+    },
+    {
+      "id": "process_data",
+      "label": "Yêu cầu và phiên bản",
+      "type": "data_store",
+      "lane": "system",
+      "col": 10,
+      "row": 1
+    },
+    {
+      "id": "auto_approval",
+      "label": "Người gửi được tự động phê duyệt?",
+      "type": "gateway",
+      "lane": "system",
+      "col": 5,
+      "row": 0
+    }
+  ],
+  "edges": [
+    {
+      "id": "e01",
+      "from": "start",
+      "to": "draft",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e02",
+      "from": "draft",
+      "to": "validate",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e03",
+      "from": "validate",
+      "to": "complete",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e04",
+      "from": "complete",
+      "to": "submit",
+      "type": "sequence",
+      "label": "Có"
+    },
+    {
+      "id": "e05",
+      "from": "complete",
+      "to": "invalid",
+      "type": "sequence",
+      "label": "Không"
+    },
+    {
+      "id": "e06",
+      "from": "submit",
+      "to": "auto_approval",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e06a",
+      "from": "auto_approval",
+      "to": "baseline_check",
+      "type": "sequence",
+      "label": "Có"
+    },
+    {
+      "id": "e06b",
+      "from": "auto_approval",
+      "to": "review",
+      "type": "sequence",
+      "label": "Không"
+    },
+    {
+      "id": "e07",
+      "from": "review",
+      "to": "approved",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e08",
+      "from": "approved",
+      "to": "baseline_check",
+      "type": "sequence",
+      "label": "Phê duyệt"
+    },
+    {
+      "id": "e09",
+      "from": "approved",
+      "to": "changes",
+      "type": "sequence",
+      "label": "Yêu cầu chỉnh sửa"
+    },
+    {
+      "id": "e10",
+      "from": "changes",
+      "to": "submit",
+      "type": "sequence",
+      "label": "Gửi rà soát lại",
+      "route": "loop_below"
+    },
+    {
+      "id": "e11",
+      "from": "baseline_check",
+      "to": "baseline_ok",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e12",
+      "from": "baseline_ok",
+      "to": "baseline",
+      "type": "sequence",
+      "label": "Đạt"
+    },
+    {
+      "id": "e13",
+      "from": "baseline_ok",
+      "to": "baseline_error",
+      "type": "sequence",
+      "label": "Không đạt"
+    },
+    {
+      "id": "e14",
+      "from": "baseline",
+      "to": "done",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "data_assoc",
+      "from": "baseline",
+      "to": "process_data",
+      "type": "association",
+      "label": ""
+    }
+  ]
+}

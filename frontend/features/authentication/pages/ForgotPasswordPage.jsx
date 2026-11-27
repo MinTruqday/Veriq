@@ -1,10 +1,10 @@
 "use client";
-import Link from "next/link";
 import { useState } from "react";
 import InlineState from "@/shared/components/common/InlineState";
-import { Button } from "@/shared/components/ui/Button";
 import AuthField from "../components/AuthField";
+import AuthFlowLinks from "../components/AuthFlowLinks";
 import AuthFrame from "../components/AuthFrame";
+import AuthSubmitButton from "../components/AuthSubmitButton";
 import { useForgotPassword } from "../hooks/usePasswordRecovery";
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -18,14 +18,12 @@ export default function ForgotPasswordPage() {
       title="Khôi phục mật khẩu"
       description="Nhập Email của tài khoản để nhận mã xác thực."
       footer={
-        <div className="flex flex-wrap gap-x-4 gap-y-2">
-          <Link href="/xac-thuc" className="font-semibold text-brand hover:text-brand-hover">
-            Nhập mã
-          </Link>
-          <Link href="/dang-nhap" className="font-semibold text-ink hover:text-brand">
-            Quay lại đăng nhập
-          </Link>
-        </div>
+        <AuthFlowLinks
+          links={[
+            { href: "/xac-thuc", label: "Nhập mã" },
+            { href: "/dang-nhap", label: "Quay lại đăng nhập", tone: "ink" },
+          ]}
+        />
       }
     >
       {error && (
@@ -44,9 +42,9 @@ export default function ForgotPasswordPage() {
           value={email}
           onChange={(event) => setEmail(event.target.value)}
         />
-        <Button type="submit" className="w-full" disabled={submitting}>
-          {submitting ? "Đang gửi" : "Gửi mã"}
-        </Button>
+        <AuthSubmitButton type="submit" loading={submitting} loadingLabel="Đang gửi mã">
+          Gửi mã
+        </AuthSubmitButton>
       </form>
     </AuthFrame>
   );

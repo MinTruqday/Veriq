@@ -20,7 +20,6 @@ import {
   invalidProjectDateRange,
   minimumProjectEndDate,
 } from "../../lib/projectSchedule.logic.mjs";
-import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { isSupportedTimeZone, timeZoneOptions } from "@/shared/lib/timeZone.mjs";
 import { RefreshCw, Trash2, UserCheck, UserX, X } from "lucide-react";
@@ -33,6 +32,32 @@ function auditActionLabel(action) {
   return label === action && /^[a-z0-9]+(?:[._][a-z0-9]+)+$/i.test(String(action || ""))
     ? "Cập nhật"
     : label;
+}
+
+const AUDIT_ENTITY_LABELS = {
+  AIResult: "Kết quả AI",
+  CollaborationSession: "Phiên cộng tác",
+  Environment: "Môi trường kiểm thử",
+  Project: "Dự án",
+  ProjectMember: "Thành viên dự án",
+  Release: "Bản phát hành",
+  Requirement: "Yêu cầu",
+  RequirementDocument: "Tài liệu yêu cầu",
+  RequirementIngestionRun: "Lần nhập yêu cầu",
+  RequirementTemplate: "Mẫu yêu cầu",
+  RequirementVersion: "Phiên bản yêu cầu",
+  TestAdequacyAssessment: "Đánh giá độ đầy đủ kiểm thử",
+  TestCaseDraft: "Bản nháp ca kiểm thử",
+  TestCaseVersion: "Phiên bản ca kiểm thử",
+  TestPeriod: "Chu kỳ kiểm thử",
+  TestPlan: "Kế hoạch kiểm thử",
+  TestRun: "Lần chạy kiểm thử",
+  TestStrategy: "Chiến lược kiểm thử",
+  TestSuite: "Bộ kiểm thử",
+};
+
+function auditEntityLabel(entityType) {
+  return AUDIT_ENTITY_LABELS[entityType] || valueLabel(entityType);
 }
 
 const toggleSettings = [
@@ -125,6 +150,9 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
   const [auditPage, setAuditPage] = useState(1);
   const [auditQuery, setAuditQuery] = useState("");
   const [auditAction, setAuditAction] = useState("");
+  const [auditEntityType, setAuditEntityType] = useState("");
+  const [auditStartDate, setAuditStartDate] = useState("");
+  const [auditEndDate, setAuditEndDate] = useState("");
   const [members, setMembers] = useState([]);
   const [analytics, setAnalytics] = useState(null);
   const [dataLoading, setDataLoading] = useState(true);
@@ -262,10 +290,26 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
     () => [...new Set(audit.map((item) => item.action).filter(Boolean))].sort(),
     [audit],
   );
+  const auditEntityTypes = useMemo(
+    () => [...new Set(audit.map((item) => item.entity_type).filter(Boolean))].sort(),
+    [audit],
+  );
+  const invalidAuditDateRange = Boolean(
+    auditStartDate && auditEndDate && auditStartDate > auditEndDate,
+  );
   const filteredAudit = useMemo(() => {
     const query = auditQuery.trim().toLocaleLowerCase();
     return audit.filter((item) => {
       if (auditAction && item.action !== auditAction) return false;
+      if (auditEntityType && item.entity_type !== auditEntityType) return false;
+      if (invalidAuditDateRange) return false;
+      if (auditStartDate || auditEndDate) {
+        const createdAt = new Date(item.created_at);
+        if (Number.isNaN(createdAt.getTime())) return false;
+        const date = `${createdAt.getFullYear()}-${String(createdAt.getMonth() + 1).padStart(2, "0")}-${String(createdAt.getDate()).padStart(2, "0")}`;
+        if (auditStartDate && date < auditStartDate) return false;
+        if (auditEndDate && date > auditEndDate) return false;
+      }
       if (!query) return true;
       return [
         item.action,
@@ -279,7 +323,15 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
           .includes(query),
       );
     });
-  }, [audit, auditAction, auditQuery]);
+  }, [
+    audit,
+    auditAction,
+    auditEntityType,
+    auditEndDate,
+    auditQuery,
+    auditStartDate,
+    invalidAuditDateRange,
+  ]);
   const loadSettingsData = useCallback(async () => {
     const requestRevision = ++settingsLoadRevision.current;
     if (loadedProjectId.current !== project._id) {
@@ -358,8 +410,8 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
             </div>
           ) : (
             <>
-              <div className="grid gap-3 border-b border-border p-4 sm:grid-cols-[minmax(16rem,1fr)_minmax(12rem,0.5fr)] sm:px-5">
-                <label className="field-label">
+              <div className="grid gap-3 border-b border-border p-4 sm:grid-cols-2 sm:px-5 xl:grid-cols-3">
+                <label className="field-label sm:col-span-2 xl:col-span-1">
                   Tìm trong nhật ký
                   <input
                     className="apple-input mt-2"
@@ -390,6 +442,82 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                     ))}
                   </select>
                 </label>
+                <label className="field-label">
+                  Loại dữ liệu
+                  <select
+                    className="apple-input mt-2"
+                    onChange={(event) => {
+                      setAuditEntityType(event.target.value);
+                      setAuditPage(1);
+                    }}
+                    value={auditEntityType}
+                  >
+                    <option value="">Tất cả loại dữ liệu</option>
+                    {auditEntityTypes.map((entityType) => (
+                      <option key={entityType} value={entityType}>
+                        {auditEntityLabel(entityType)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field-label">
+                  Từ ngày
+                  <input
+                    aria-label="Lọc nhật ký từ ngày"
+                    className="apple-input mt-2"
+                    max={auditEndDate || undefined}
+                    onChange={(event) => {
+                      setAuditStartDate(event.target.value);
+                      setAuditPage(1);
+                    }}
+                    type="date"
+                    value={auditStartDate}
+                  />
+                </label>
+                <label className="field-label">
+                  Đến ngày
+                  <input
+                    aria-label="Lọc nhật ký đến ngày"
+                    className="apple-input mt-2"
+                    min={auditStartDate || undefined}
+                    onChange={(event) => {
+                      setAuditEndDate(event.target.value);
+                      setAuditPage(1);
+                    }}
+                    type="date"
+                    value={auditEndDate}
+                  />
+                </label>
+                <div className="flex items-end justify-between gap-3 sm:col-span-2 xl:col-span-3">
+                  <p aria-live="polite" className="text-xs text-ink-muted">
+                    {filteredAudit.length} sự kiện phù hợp
+                  </p>
+                  {(auditQuery ||
+                    auditAction ||
+                    auditEntityType ||
+                    auditStartDate ||
+                    auditEndDate) && (
+                    <button
+                      className="secondary-button"
+                      onClick={() => {
+                        setAuditQuery("");
+                        setAuditAction("");
+                        setAuditEntityType("");
+                        setAuditStartDate("");
+                        setAuditEndDate("");
+                        setAuditPage(1);
+                      }}
+                      type="button"
+                    >
+                      Xóa bộ lọc
+                    </button>
+                  )}
+                </div>
+                {invalidAuditDateRange && (
+                  <p className="text-sm text-danger sm:col-span-2 xl:col-span-3" role="alert">
+                    Ngày bắt đầu phải trước hoặc bằng ngày kết thúc.
+                  </p>
+                )}
               </div>
               <DataTable
                 items={filteredAudit.slice(
@@ -406,7 +534,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                   {
                     key: "entity_type",
                     label: "Loại dữ liệu",
-                    render: (item) => valueLabel(item.entity_type),
+                    render: (item) => auditEntityLabel(item.entity_type),
                   },
                   {
                     key: "entity_id",
@@ -447,514 +575,810 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
   return (
     <WorkspacePage title="Cài đặt dự án" actions={<ProjectCrumb projectId={project._id} />}>
       {error && <ErrorState message={error} />}
-      <SegmentedTabs
-        tabs={settingsSections}
-        value={visibleSettingsSection}
-        onChange={setActiveSettingsSection}
-        label="Nhóm cài đặt dự án"
-      />
-      <div className="min-w-0" role="tabpanel" aria-label="Cài đặt dự án">
-        {visibleSettingsSection === "access" && <ProjectAccessPanel project={project} />}
-        {visibleSettingsSection === "project" && (
-          <Panel title="Thông tin dự án">
-            <form
-              className="space-y-4 p-5"
-              onChange={() => setProjectSaveNotice("")}
-              onSubmit={async (event) => {
-                event.preventDefault();
-                if (can("project.update") && plannedDateRangeInvalid) {
-                  setError("Ngày kết thúc phải sau ngày bắt đầu.");
-                  setProjectSaveNotice("");
-                  return;
-                }
-                if (can("project.update") && !timezoneIsValid) {
-                  setTimezoneError("Chọn múi giờ hợp lệ từ danh sách trước khi lưu.");
-                  setProjectSaveNotice("");
-                  return;
-                }
-                setTimezoneError("");
-                setError("");
-                setProjectSaveNotice("");
-                setSavingProjectSettings(true);
-                try {
-                  const canManageSettings = can("project.settings.manage");
-                  const canUpdateProject = can("project.update");
-                  const actionPolicies = { ...(project.settings?.action_policies || {}) };
-                  delete actionPolicies["testcase.template.archive"];
-                  delete actionPolicies["defect.rejected"];
-                  delete actionPolicies["defect.duplicate"];
-                  const payload = {
-                    expected_revision: project.revision,
-                    ...(canUpdateProject &&
-                    projectOwnerUserId &&
-                    projectOwnerUserId !== project.project_owner_user_id
-                      ? { project_owner_user_id: projectOwnerUserId }
-                      : {}),
-                    ...(can("project.members.read") && (canManageSettings || canUpdateProject)
-                      ? { project_lead_user_id: projectLeadUserId || null }
-                      : {}),
-                    ...(canUpdateProject
-                      ? {
-                          name,
-                          description,
-                          project_type: projectType,
-                          locale,
-                          timezone,
-                          planned_start_at: plannedStartAt
-                            ? new Date(`${plannedStartAt}T00:00:00.000Z`).toISOString()
-                            : null,
-                          planned_end_at: plannedEndAt
-                            ? new Date(`${plannedEndAt}T00:00:00.000Z`).toISOString()
-                            : null,
-                        }
-                      : {}),
-                    ...(canManageSettings
-                      ? {
-                          settings: {
-                            ...(project.settings || {}),
-                            ...settings,
-                            responsibilities,
-                            action_policies: actionPolicies,
-                          },
-                        }
-                      : {}),
-                  };
-                  if (canManageSettings && !canUpdateProject) {
-                    await testingApi.updateProjectSettings(project._id, payload);
-                  } else {
-                    await testingApi.updateProject(project._id, payload);
+      <div className="grid min-w-0 gap-5 xl:grid-cols-[15rem_minmax(0,1fr)]">
+        <nav
+          aria-label="Nhóm cài đặt dự án"
+          className="min-w-0 rounded-control border border-border bg-surface p-2 xl:h-fit"
+        >
+          <p className="hidden px-3 py-2 text-xs font-semibold uppercase tracking-wide text-ink-faint xl:block">
+            Cài đặt
+          </p>
+          <ul className="flex min-w-0 gap-1 overflow-x-auto xl:block xl:space-y-1 xl:overflow-visible">
+            {settingsSections.map((section) => (
+              <li className="shrink-0 xl:shrink" key={section.id}>
+                <button
+                  aria-current={visibleSettingsSection === section.id ? "page" : undefined}
+                  className={`w-full whitespace-nowrap rounded-control px-3 py-2.5 text-left text-[13px] font-medium transition ${
+                    visibleSettingsSection === section.id
+                      ? "bg-brand-soft text-brand"
+                      : "text-ink-muted hover:bg-surface-quiet hover:text-ink"
+                  } xl:whitespace-normal`}
+                  onClick={() => setActiveSettingsSection(section.id)}
+                  type="button"
+                >
+                  {section.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </nav>
+        <div className="min-w-0">
+          {visibleSettingsSection === "access" && <ProjectAccessPanel project={project} />}
+          {visibleSettingsSection === "project" && (
+            <Panel title="Thông tin dự án">
+              <form
+                className="space-y-4 p-5"
+                onChange={() => setProjectSaveNotice("")}
+                onSubmit={async (event) => {
+                  event.preventDefault();
+                  if (can("project.update") && plannedDateRangeInvalid) {
+                    setError("Ngày kết thúc phải sau ngày bắt đầu.");
+                    setProjectSaveNotice("");
+                    return;
                   }
-                  const refreshed = await onProjectChange();
-                  setProjectSaveNotice(
-                    refreshed === false
-                      ? "Đã lưu thay đổi, nhưng chưa tải lại được thông tin dự án."
-                      : "Đã lưu thay đổi dự án.",
-                  );
-                } catch (reason) {
-                  setError(messageOf(reason));
-                } finally {
-                  setSavingProjectSettings(false);
-                }
-              }}
-            >
-              <section className="space-y-4 rounded-xl border border-border bg-white p-4 sm:p-5">
-                <h3 className="text-sm font-semibold text-ink">Thông tin cơ bản</h3>
-                {can("project.update") && can("project.members.read") && (
-                  <label className="field-label block max-w-xl">
-                    Chủ dự án
-                    <select
-                      className="apple-input mt-2"
-                      value={projectOwnerUserId}
-                      disabled={dataLoading || Boolean(loadErrors.members)}
-                      onChange={(event) => setProjectOwnerUserId(event.target.value)}
-                    >
-                      <option value="" disabled>
-                        Chọn chủ dự án
-                      </option>
-                      {members
-                        .filter(
-                          (member) =>
-                            member.status === "ACTIVE" &&
-                            ["USER", "ADMIN"].includes(member.user?.system_role),
-                        )
-                        .map((member) => (
-                          <option key={member.user_id} value={member.user_id}>
-                            {member.user_label || member.user_id}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
-                )}
-
-                {(can("project.update") || can("project.settings.manage")) &&
-                  (can("project.members.read") ? (
+                  if (can("project.update") && !timezoneIsValid) {
+                    setTimezoneError("Chọn múi giờ hợp lệ từ danh sách trước khi lưu.");
+                    setProjectSaveNotice("");
+                    return;
+                  }
+                  setTimezoneError("");
+                  setError("");
+                  setProjectSaveNotice("");
+                  setSavingProjectSettings(true);
+                  try {
+                    const canManageSettings = can("project.settings.manage");
+                    const canUpdateProject = can("project.update");
+                    const actionPolicies = { ...(project.settings?.action_policies || {}) };
+                    delete actionPolicies["testcase.template.archive"];
+                    delete actionPolicies["defect.rejected"];
+                    delete actionPolicies["defect.duplicate"];
+                    const payload = {
+                      expected_revision: project.revision,
+                      ...(canUpdateProject &&
+                      projectOwnerUserId &&
+                      projectOwnerUserId !== project.project_owner_user_id
+                        ? { project_owner_user_id: projectOwnerUserId }
+                        : {}),
+                      ...(can("project.members.read") && (canManageSettings || canUpdateProject)
+                        ? { project_lead_user_id: projectLeadUserId || null }
+                        : {}),
+                      ...(canUpdateProject
+                        ? {
+                            name,
+                            description,
+                            project_type: projectType,
+                            locale,
+                            timezone,
+                            planned_start_at: plannedStartAt
+                              ? new Date(`${plannedStartAt}T00:00:00.000Z`).toISOString()
+                              : null,
+                            planned_end_at: plannedEndAt
+                              ? new Date(`${plannedEndAt}T00:00:00.000Z`).toISOString()
+                              : null,
+                          }
+                        : {}),
+                      ...(canManageSettings
+                        ? {
+                            settings: {
+                              ...(project.settings || {}),
+                              ...settings,
+                              responsibilities,
+                              action_policies: actionPolicies,
+                            },
+                          }
+                        : {}),
+                    };
+                    if (canManageSettings && !canUpdateProject) {
+                      await testingApi.updateProjectSettings(project._id, payload);
+                    } else {
+                      await testingApi.updateProject(project._id, payload);
+                    }
+                    const refreshed = await onProjectChange();
+                    setProjectSaveNotice(
+                      refreshed === false
+                        ? "Đã lưu thay đổi, nhưng chưa tải lại được thông tin dự án."
+                        : "Đã lưu thay đổi dự án.",
+                    );
+                  } catch (reason) {
+                    setError(messageOf(reason));
+                  } finally {
+                    setSavingProjectSettings(false);
+                  }
+                }}
+              >
+                <section className="space-y-4 rounded-xl border border-border bg-white p-4 sm:p-5">
+                  <h3 className="text-sm font-semibold text-ink">Thông tin cơ bản</h3>
+                  {can("project.update") && can("project.members.read") && (
                     <label className="field-label block max-w-xl">
-                      Trưởng dự án
+                      Chủ dự án
                       <select
                         className="apple-input mt-2"
-                        value={projectLeadUserId}
+                        value={projectOwnerUserId}
                         disabled={dataLoading || Boolean(loadErrors.members)}
-                        onChange={(event) => setProjectLeadUserId(event.target.value)}
+                        onChange={(event) => setProjectOwnerUserId(event.target.value)}
                       >
-                        <option value="">Chưa phân công</option>
+                        <option value="" disabled>
+                          Chọn chủ dự án
+                        </option>
                         {members
-                          .filter((member) => member.status === "ACTIVE")
+                          .filter(
+                            (member) =>
+                              member.status === "ACTIVE" &&
+                              ["USER", "ADMIN"].includes(member.user?.system_role),
+                          )
                           .map((member) => (
                             <option key={member.user_id} value={member.user_id}>
-                              {member.user_label ||
-                                member.user?.label ||
-                                member.user?.email ||
-                                member.user_id}
+                              {member.user_label || member.user_id}
                             </option>
                           ))}
                       </select>
-                      <span className="mt-1 block text-xs text-ink-muted">
-                        Có thể chọn bất kỳ thành viên đang hoạt động trong dự án.
-                      </span>
                     </label>
-                  ) : (
-                    <div className="field-label block max-w-xl">
-                      Trưởng dự án
-                      <p className="mt-2 text-sm font-medium text-ink">
-                        {project.project_lead_label || "Chưa phân công"}
-                      </p>
-                    </div>
-                  ))}
-                <label className="field-label">
-                  Tên
-                  <input
-                    className="apple-input mt-2"
-                    readOnly={!can("project.update")}
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                  />
-                </label>
-                <div className="grid gap-3 sm:grid-cols-2">
+                  )}
+
+                  {(can("project.update") || can("project.settings.manage")) &&
+                    (can("project.members.read") ? (
+                      <label className="field-label block max-w-xl">
+                        Trưởng dự án
+                        <select
+                          className="apple-input mt-2"
+                          value={projectLeadUserId}
+                          disabled={dataLoading || Boolean(loadErrors.members)}
+                          onChange={(event) => setProjectLeadUserId(event.target.value)}
+                        >
+                          <option value="">Chưa phân công</option>
+                          {members
+                            .filter((member) => member.status === "ACTIVE")
+                            .map((member) => (
+                              <option key={member.user_id} value={member.user_id}>
+                                {member.user_label ||
+                                  member.user?.label ||
+                                  member.user?.email ||
+                                  member.user_id}
+                              </option>
+                            ))}
+                        </select>
+                        <span className="mt-1 block text-xs text-ink-muted">
+                          Có thể chọn bất kỳ thành viên đang hoạt động trong dự án.
+                        </span>
+                      </label>
+                    ) : (
+                      <div className="field-label block max-w-xl">
+                        Trưởng dự án
+                        <p className="mt-2 text-sm font-medium text-ink">
+                          {project.project_lead_label || "Chưa phân công"}
+                        </p>
+                      </div>
+                    ))}
                   <label className="field-label">
-                    Loại dự án
-                    <input
-                      className="apple-input mt-2"
-                      disabled={!can("project.update")}
-                      required
-                      minLength={1}
-                      maxLength={100}
-                      value={projectType}
-                      onChange={(event) => setProjectType(event.target.value)}
-                      placeholder="Nhập loại dự án"
-                    />
-                  </label>
-                  <label className="field-label">
-                    Ngôn ngữ và vùng
+                    Tên
                     <input
                       className="apple-input mt-2"
                       readOnly={!can("project.update")}
-                      value={locale}
-                      onChange={(event) => setLocale(event.target.value)}
+                      value={name}
+                      onChange={(event) => setName(event.target.value)}
                     />
                   </label>
-                  <label className="field-label sm:col-span-2">
-                    Múi giờ
-                    <select
-                      className="apple-input mt-2"
-                      aria-invalid={!timezoneIsValid || Boolean(timezoneError)}
-                      aria-describedby={
-                        !timezoneIsValid || timezoneError ? "project-timezone-error" : undefined
-                      }
-                      disabled={!can("project.update")}
-                      value={timezone}
-                      onChange={(event) => {
-                        setTimezone(event.target.value);
-                        setTimezoneError("");
-                      }}
-                    >
-                      {projectTimeZoneOptions.map((option) => (
-                        <option key={option.value} value={option.value} disabled={!option.valid}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                    {(timezoneError || !timezoneIsValid) && (
-                      <span
-                        id="project-timezone-error"
-                        className={`mt-2 block text-sm ${timezoneError ? "text-danger" : "text-warning"}`}
-                        role={timezoneError ? "alert" : "status"}
-                      >
-                        {timezoneError ||
-                          "Múi giờ đã lưu không hợp lệ. Chọn múi giờ trong danh sách trước khi lưu."}
-                      </span>
-                    )}
-                  </label>
-                </div>
-              </section>
-              {can("project.settings.manage") && (
-                <section className="space-y-3 rounded-xl border border-border bg-white p-4 sm:p-5">
-                  <h3 className="text-sm font-semibold text-ink">Trách nhiệm quyết định</h3>
-                  {loadErrors.members && <ErrorState message={loadErrors.members} />}
-                  {responsibilityOptions.length ? (
-                    <div className="grid gap-4 md:grid-cols-2">
-                      {responsibilityOptions.map((responsibility) => (
-                        <label className="field-label" key={responsibility}>
-                          {responsibilityLabel(responsibility)}
-                          <select
-                            className="apple-input mt-2"
-                            value={responsibilities[responsibility] || ""}
-                            disabled={dataLoading || Boolean(loadErrors.members)}
-                            onChange={(event) =>
-                              setResponsibilities((current) => ({
-                                ...current,
-                                [responsibility]: event.target.value || null,
-                              }))
-                            }
-                          >
-                            <option value="">Chưa phân công</option>
-                            {members
-                              .filter(
-                                (member) =>
-                                  member.status === "ACTIVE" &&
-                                  member.assignable_responsibilities?.includes(responsibility),
-                              )
-                              .map((member) => (
-                                <option key={member.user_id} value={member.user_id}>
-                                  {memberDisplayName(member)}
-                                </option>
-                              ))}
-                          </select>
-                        </label>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-ink-muted">
-                      Chưa có trách nhiệm nào được gắn với quyền trong cấu hình dự án.
-                    </p>
-                  )}
-                </section>
-              )}
-              {can("project.update") && (
-                <section className="space-y-3 rounded-xl border border-border bg-white p-4 sm:p-5">
-                  <h3 className="text-sm font-semibold text-ink">Thời gian dự án</h3>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label className="field-label">
-                      Bắt đầu dự kiến
+                      Loại dự án
                       <input
-                        className="apple-input mt-2 w-full"
-                        type="date"
+                        className="apple-input mt-2"
                         disabled={!can("project.update")}
-                        value={plannedStartAt}
-                        onChange={(event) => setPlannedStartAt(event.target.value)}
+                        required
+                        minLength={1}
+                        maxLength={100}
+                        value={projectType}
+                        onChange={(event) => setProjectType(event.target.value)}
+                        placeholder="Nhập loại dự án"
                       />
                     </label>
                     <label className="field-label">
-                      Kết thúc dự kiến
+                      Ngôn ngữ và vùng
                       <input
-                        className="apple-input mt-2 w-full"
-                        type="date"
-                        min={minimumPlannedEndAt}
-                        disabled={!can("project.update")}
-                        value={plannedEndAt}
-                        onChange={(event) => setPlannedEndAt(event.target.value)}
+                        className="apple-input mt-2"
+                        readOnly={!can("project.update")}
+                        value={locale}
+                        onChange={(event) => setLocale(event.target.value)}
                       />
                     </label>
-                    {plannedDateRangeInvalid && (
-                      <p className="sm:col-span-2 text-sm text-danger" role="alert">
-                        Ngày kết thúc phải sau ngày bắt đầu.
-                      </p>
-                    )}
+                    <label className="field-label sm:col-span-2">
+                      Múi giờ
+                      <select
+                        className="apple-input mt-2"
+                        aria-invalid={!timezoneIsValid || Boolean(timezoneError)}
+                        aria-describedby={
+                          !timezoneIsValid || timezoneError ? "project-timezone-error" : undefined
+                        }
+                        disabled={!can("project.update")}
+                        value={timezone}
+                        onChange={(event) => {
+                          setTimezone(event.target.value);
+                          setTimezoneError("");
+                        }}
+                      >
+                        {projectTimeZoneOptions.map((option) => (
+                          <option key={option.value} value={option.value} disabled={!option.valid}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      {(timezoneError || !timezoneIsValid) && (
+                        <span
+                          id="project-timezone-error"
+                          className={`mt-2 block text-sm ${timezoneError ? "text-danger" : "text-warning"}`}
+                          role={timezoneError ? "alert" : "status"}
+                        >
+                          {timezoneError ||
+                            "Múi giờ đã lưu không hợp lệ. Chọn múi giờ trong danh sách trước khi lưu."}
+                        </span>
+                      )}
+                    </label>
                   </div>
                 </section>
-              )}
-              {can("project.settings.manage") && (
-                <details className="rounded-xl border border-border p-4">
-                  <summary className="cursor-pointer text-[13px] font-semibold">
-                    Chính sách dự án
-                  </summary>
-                  <div className="mt-4 space-y-3">
-                    <div className="grid gap-3 xl:grid-cols-2">
-                      {toggleSettingGroups.map((group) => (
-                        <fieldset
-                          className="min-w-0 rounded-lg border border-border p-3"
-                          key={group.label}
-                        >
-                          <legend className="px-1 text-sm font-semibold text-ink">
-                            {group.label}
-                          </legend>
-                          <div className="grid gap-3 pt-1">
-                            {group.keys.map((key) => {
-                              const setting = toggleSettings.find((item) => item[0] === key);
-                              if (!setting) return null;
-                              return (
-                                <label
-                                  className="flex items-start gap-3 text-[13px] leading-5"
-                                  key={key}
-                                >
-                                  <input
-                                    className="mt-1"
-                                    type="checkbox"
-                                    checked={Boolean(settings[key])}
-                                    onChange={(event) =>
-                                      setSettings((current) => ({
-                                        ...current,
-                                        [key]: event.target.checked,
-                                      }))
-                                    }
-                                  />
-                                  <span>{setting[1]}</span>
-                                </label>
-                              );
-                            })}
-                          </div>
-                        </fieldset>
-                      ))}
-                    </div>
-                    {(project.configurable_role_settings || []).length > 0 && (
-                      <fieldset className="space-y-3 rounded-lg border border-border p-3">
-                        <legend className="px-1 text-sm font-semibold text-ink">
-                          Quyền theo vai trò
-                        </legend>
-                        {(project.configurable_role_settings || []).map(({ key, rules }) => (
-                          <label
-                            className="flex items-start gap-3 border-b border-border py-2 text-[13px] leading-5 last:border-b-0"
-                            key={key}
-                          >
-                            <input
-                              className="mt-1"
-                              type="checkbox"
-                              checked={Boolean(settings[key])}
-                              onChange={(event) =>
-                                setSettings((current) => ({
-                                  ...current,
-                                  [key]: event.target.checked,
-                                }))
-                              }
-                            />
-                            <span className="min-w-0">
-                              <span className="block font-medium">{valueLabel(key)}</span>
-                              <span className="block text-ink-muted">
-                                {rules
-                                  .map((rule) => {
-                                    const action =
-                                      rule.effect === "ALLOW" ? "được cấp" : "bị giới hạn";
-                                    const condition = rule.enabled ? "khi bật" : "khi tắt";
-                                    const permissions = rule.permissions.map(valueLabel).join(", ");
-                                    return `${valueLabel(rule.role)} ${action}: ${permissions} ${condition}`;
-                                  })
-                                  .join(" · ")}
-                              </span>
-                            </span>
-                          </label>
-                        ))}
-                      </fieldset>
-                    )}
-                    <section className="grid gap-3 border-t border-border pt-4">
-                      <h4 className="text-sm font-semibold text-ink">Ngưỡng kiểm soát</h4>
-                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                        {numberSettings.map(([key, label, min, max, step]) => (
-                          <label className="field-label" key={key}>
-                            {label}
-                            <input
-                              className="apple-input mt-2"
-                              type="number"
-                              min={min}
-                              max={max}
-                              step={step}
-                              value={settings[key]}
-                              onChange={(event) =>
-                                setSettings((current) => ({
-                                  ...current,
-                                  [key]: Number(event.target.value),
-                                }))
-                              }
-                            />
-                          </label>
-                        ))}
-                      </div>
-                    </section>
-                    <section className="grid gap-3 border-t border-border pt-4">
-                      <h4 className="text-sm font-semibold text-ink">Giá trị mặc định</h4>
-                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                        {selectSettings.map(([key, label, values]) => (
-                          <label className="field-label" key={key}>
-                            {label}
+                {can("project.settings.manage") && (
+                  <section className="space-y-3 rounded-xl border border-border bg-white p-4 sm:p-5">
+                    <h3 className="text-sm font-semibold text-ink">Trách nhiệm quyết định</h3>
+                    {loadErrors.members && <ErrorState message={loadErrors.members} />}
+                    {responsibilityOptions.length ? (
+                      <div className="grid gap-4 md:grid-cols-2">
+                        {responsibilityOptions.map((responsibility) => (
+                          <label className="field-label" key={responsibility}>
+                            {responsibilityLabel(responsibility)}
                             <select
                               className="apple-input mt-2"
-                              value={settings[key]}
+                              value={responsibilities[responsibility] || ""}
+                              disabled={dataLoading || Boolean(loadErrors.members)}
                               onChange={(event) =>
-                                setSettings((current) => ({
+                                setResponsibilities((current) => ({
                                   ...current,
-                                  [key]: event.target.value,
+                                  [responsibility]: event.target.value || null,
                                 }))
                               }
                             >
-                              {values.map((value) => (
-                                <option value={value} key={value}>
-                                  {settingValueLabels[value] || valueLabel(value)}
-                                </option>
-                              ))}
+                              <option value="">Chưa phân công</option>
+                              {members
+                                .filter(
+                                  (member) =>
+                                    member.status === "ACTIVE" &&
+                                    member.assignable_responsibilities?.includes(responsibility),
+                                )
+                                .map((member) => (
+                                  <option key={member.user_id} value={member.user_id}>
+                                    {memberDisplayName(member)}
+                                  </option>
+                                ))}
                             </select>
                           </label>
                         ))}
                       </div>
-                    </section>
-                  </div>
-                </details>
-              )}
-              <section className="rounded-xl border border-border bg-white p-4 sm:p-5">
-                <label className="field-label">
-                  Mô tả
-                  <textarea
-                    className="apple-input mt-2 min-h-28"
-                    readOnly={!can("project.update")}
-                    value={description}
-                    onChange={(event) => setDescription(event.target.value)}
-                  />
-                </label>
-              </section>
-              <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
-                {(can("project.update") || can("project.settings.manage")) && (
-                  <button
-                    className="apple-button"
-                    type="submit"
-                    disabled={
-                      savingProjectSettings ||
-                      (can("project.update") && (plannedDateRangeInvalid || !timezoneIsValid))
-                    }
-                  >
-                    {savingProjectSettings ? "Đang lưu…" : "Lưu thay đổi"}
-                  </button>
+                    ) : (
+                      <p className="text-sm text-ink-muted">
+                        Chưa có trách nhiệm nào được gắn với quyền trong cấu hình dự án.
+                      </p>
+                    )}
+                  </section>
                 )}
-                {projectSaveNotice && (
-                  <p className="text-sm text-ink-muted" role="status">
-                    {projectSaveNotice}
-                  </p>
+                {can("project.update") && (
+                  <section className="space-y-3 rounded-xl border border-border bg-white p-4 sm:p-5">
+                    <h3 className="text-sm font-semibold text-ink">Thời gian dự án</h3>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="field-label">
+                        Bắt đầu dự kiến
+                        <input
+                          className="apple-input mt-2 w-full"
+                          type="date"
+                          disabled={!can("project.update")}
+                          value={plannedStartAt}
+                          onChange={(event) => setPlannedStartAt(event.target.value)}
+                        />
+                      </label>
+                      <label className="field-label">
+                        Kết thúc dự kiến
+                        <input
+                          className="apple-input mt-2 w-full"
+                          type="date"
+                          min={minimumPlannedEndAt}
+                          disabled={!can("project.update")}
+                          value={plannedEndAt}
+                          onChange={(event) => setPlannedEndAt(event.target.value)}
+                        />
+                      </label>
+                      {plannedDateRangeInvalid && (
+                        <p className="sm:col-span-2 text-sm text-danger" role="alert">
+                          Ngày kết thúc phải sau ngày bắt đầu.
+                        </p>
+                      )}
+                    </div>
+                  </section>
                 )}
-                {can("project.archive") && (
-                  <button
-                    className="danger-button"
-                    type="button"
-                    onClick={async () => {
-                      await ask({
-                        title: "Lưu trữ dự án",
-                        description: `${project.key} sẽ ngừng nhận thay đổi mới nhưng vẫn giữ lịch sử và bằng chứng`,
-                        confirmLabel: "Lưu trữ",
-                        danger: true,
-                        fields: [
-                          {
-                            name: "reason",
-                            label: "Lý do lưu trữ",
-                            initialValue: "Dự án đã kết thúc vòng đời hoạt động",
-                            required: true,
-                            multiline: true,
-                            autoFocus: true,
+                {can("project.settings.manage") && (
+                  <details className="rounded-xl border border-border p-4">
+                    <summary className="cursor-pointer text-[13px] font-semibold">
+                      Chính sách dự án
+                    </summary>
+                    <div className="mt-4 space-y-3">
+                      <div className="grid gap-3 xl:grid-cols-2">
+                        {toggleSettingGroups.map((group) => (
+                          <fieldset
+                            className="min-w-0 rounded-lg border border-border p-3"
+                            key={group.label}
+                          >
+                            <legend className="px-1 text-sm font-semibold text-ink">
+                              {group.label}
+                            </legend>
+                            <div className="grid gap-3 pt-1">
+                              {group.keys.map((key) => {
+                                const setting = toggleSettings.find((item) => item[0] === key);
+                                if (!setting) return null;
+                                return (
+                                  <label
+                                    className="flex items-start gap-3 text-[13px] leading-5"
+                                    key={key}
+                                  >
+                                    <input
+                                      className="mt-1"
+                                      type="checkbox"
+                                      checked={Boolean(settings[key])}
+                                      onChange={(event) =>
+                                        setSettings((current) => ({
+                                          ...current,
+                                          [key]: event.target.checked,
+                                        }))
+                                      }
+                                    />
+                                    <span>{setting[1]}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </fieldset>
+                        ))}
+                      </div>
+                      {(project.configurable_role_settings || []).length > 0 && (
+                        <fieldset className="space-y-3 rounded-lg border border-border p-3">
+                          <legend className="px-1 text-sm font-semibold text-ink">
+                            Quyền theo vai trò
+                          </legend>
+                          {(project.configurable_role_settings || []).map(({ key, rules }) => (
+                            <label
+                              className="flex items-start gap-3 border-b border-border py-2 text-[13px] leading-5 last:border-b-0"
+                              key={key}
+                            >
+                              <input
+                                className="mt-1"
+                                type="checkbox"
+                                checked={Boolean(settings[key])}
+                                onChange={(event) =>
+                                  setSettings((current) => ({
+                                    ...current,
+                                    [key]: event.target.checked,
+                                  }))
+                                }
+                              />
+                              <span className="min-w-0">
+                                <span className="block font-medium">{valueLabel(key)}</span>
+                                <span className="block text-ink-muted">
+                                  {rules
+                                    .map((rule) => {
+                                      const action =
+                                        rule.effect === "ALLOW" ? "được cấp" : "bị giới hạn";
+                                      const condition = rule.enabled ? "khi bật" : "khi tắt";
+                                      const permissions = rule.permissions
+                                        .map(valueLabel)
+                                        .join(", ");
+                                      return `${valueLabel(rule.role)} ${action}: ${permissions} ${condition}`;
+                                    })
+                                    .join(" · ")}
+                                </span>
+                              </span>
+                            </label>
+                          ))}
+                        </fieldset>
+                      )}
+                      <section className="grid gap-3 border-t border-border pt-4">
+                        <h4 className="text-sm font-semibold text-ink">Ngưỡng kiểm soát</h4>
+                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                          {numberSettings.map(([key, label, min, max, step]) => (
+                            <label className="field-label" key={key}>
+                              {label}
+                              <input
+                                className="apple-input mt-2"
+                                type="number"
+                                min={min}
+                                max={max}
+                                step={step}
+                                value={settings[key]}
+                                onChange={(event) =>
+                                  setSettings((current) => ({
+                                    ...current,
+                                    [key]: Number(event.target.value),
+                                  }))
+                                }
+                              />
+                            </label>
+                          ))}
+                        </div>
+                      </section>
+                      <section className="grid gap-3 border-t border-border pt-4">
+                        <h4 className="text-sm font-semibold text-ink">Giá trị mặc định</h4>
+                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                          {selectSettings.map(([key, label, values]) => (
+                            <label className="field-label" key={key}>
+                              {label}
+                              <select
+                                className="apple-input mt-2"
+                                value={settings[key]}
+                                onChange={(event) =>
+                                  setSettings((current) => ({
+                                    ...current,
+                                    [key]: event.target.value,
+                                  }))
+                                }
+                              >
+                                {values.map((value) => (
+                                  <option value={value} key={value}>
+                                    {settingValueLabels[value] || valueLabel(value)}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          ))}
+                        </div>
+                      </section>
+                    </div>
+                  </details>
+                )}
+                <section className="rounded-xl border border-border bg-white p-4 sm:p-5">
+                  <label className="field-label">
+                    Mô tả
+                    <textarea
+                      className="apple-input mt-2 min-h-28"
+                      readOnly={!can("project.update")}
+                      value={description}
+                      onChange={(event) => setDescription(event.target.value)}
+                    />
+                  </label>
+                </section>
+                <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
+                  {(can("project.update") || can("project.settings.manage")) && (
+                    <button
+                      className="apple-button"
+                      type="submit"
+                      disabled={
+                        savingProjectSettings ||
+                        (can("project.update") && (plannedDateRangeInvalid || !timezoneIsValid))
+                      }
+                    >
+                      {savingProjectSettings ? "Đang lưu…" : "Lưu thay đổi"}
+                    </button>
+                  )}
+                  {projectSaveNotice && (
+                    <p className="text-sm text-ink-muted" role="status">
+                      {projectSaveNotice}
+                    </p>
+                  )}
+                  {can("project.archive") && (
+                    <button
+                      className="danger-button"
+                      type="button"
+                      onClick={async () => {
+                        await ask({
+                          title: "Lưu trữ dự án",
+                          description: `${project.key} sẽ ngừng nhận thay đổi mới nhưng vẫn giữ lịch sử và bằng chứng`,
+                          confirmLabel: "Lưu trữ",
+                          danger: true,
+                          fields: [
+                            {
+                              name: "reason",
+                              label: "Lý do lưu trữ",
+                              initialValue: "Dự án đã kết thúc vòng đời hoạt động",
+                              required: true,
+                              multiline: true,
+                              autoFocus: true,
+                            },
+                          ],
+                          onConfirm: async (answer) => {
+                            try {
+                              await testingApi.archiveProject(project._id, {
+                                expected_revision: project.revision,
+                                reason: answer.reason,
+                              });
+                              window.location.assign("/du-an");
+                            } catch (reason) {
+                              throw new Error(messageOf(reason));
+                            }
                           },
-                        ],
-                        onConfirm: async (answer) => {
+                        });
+                      }}
+                    >
+                      Lưu trữ dự án
+                    </button>
+                  )}
+                </div>
+              </form>
+            </Panel>
+          )}
+          {visibleSettingsSection === "members" && (
+            <Panel title={can("project.members.read") ? "Thành viên dự án" : "Lời mời thành viên"}>
+              <div className="space-y-3 p-5">
+                {dataLoading ? (
+                  <LoadingState />
+                ) : loadErrors.members ? (
+                  <div className="space-y-3">
+                    <ErrorState message={loadErrors.members} />
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() => void loadSettingsData()}
+                    >
+                      Tải lại
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    {can("project.members.manage") && (
+                      <form
+                        className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]"
+                        onSubmit={async (event) => {
+                          event.preventDefault();
+                          const form = event.currentTarget;
+                          const value = new FormData(form);
                           try {
-                            await testingApi.archiveProject(project._id, {
-                              expected_revision: project.revision,
-                              reason: answer.reason,
+                            await testingApi.inviteMember(project._id, {
+                              user_id: value.get("user_id"),
+                              project_roles: value.getAll("project_roles"),
                             });
-                            window.location.assign("/du-an");
+                            form.reset();
+                            if (can("project.members.read")) {
+                              setMembers(await testingApi.listMembers(project._id));
+                            }
                           } catch (reason) {
-                            throw new Error(messageOf(reason));
+                            setError(messageOf(reason));
                           }
-                        },
-                      });
-                    }}
-                  >
-                    Lưu trữ dự án
-                  </button>
+                        }}
+                      >
+                        <input
+                          className="apple-input"
+                          name="user_id"
+                          required
+                          placeholder="Email hoặc mã người dùng"
+                          aria-label="Email hoặc mã người dùng"
+                        />
+                        <fieldset className="flex flex-wrap gap-x-3 gap-y-2 rounded-xl border border-line px-3 py-2">
+                          <legend className="px-1 text-xs text-ink-muted">Vai trò dự án</legend>
+                          {(project.available_project_roles || []).map((role, index) => (
+                            <label key={role} className="inline-flex items-center gap-1.5 text-sm">
+                              <input
+                                className="accent-accent"
+                                type="checkbox"
+                                name="project_roles"
+                                value={role}
+                                defaultChecked={index === 0}
+                              />
+                              {valueLabel(role)}
+                            </label>
+                          ))}
+                        </fieldset>
+                        <button className="secondary-button" type="submit">
+                          Gửi lời mời
+                        </button>
+                      </form>
+                    )}
+                    {can("project.members.read") ? (
+                      <DataTable
+                        items={members}
+                        empty="Chưa có thành viên"
+                        columns={[
+                          {
+                            key: "user_id",
+                            label: "Người dùng",
+                            render: (item) => (
+                              <span className="flex flex-col">
+                                <span className="font-semibold text-ink">
+                                  {memberDisplayName(item)}
+                                </span>
+                                {item.user?.email &&
+                                  item.user.email !== memberDisplayName(item) && (
+                                    <span className="text-[12px] text-ink-muted">
+                                      {item.user.email}
+                                    </span>
+                                  )}
+                              </span>
+                            ),
+                          },
+                          {
+                            key: "project_role",
+                            label: "Vai trò",
+                            render: (item) => {
+                              const roles = memberRoles(item);
+                              const roleLabels = [
+                                ...(item.is_project_owner ? ["Chủ dự án"] : []),
+                                ...roles.map(valueLabel),
+                              ];
+                              return can("project.members.manage") ? (
+                                <details className="min-w-40">
+                                  <summary
+                                    className="cursor-pointer rounded-lg border border-line px-3 py-2 text-sm text-ink"
+                                    aria-label={`Vai trò ${memberDisplayName(item)}`}
+                                  >
+                                    {roleLabels.join(", ") || "Chưa gán vai trò"}
+                                  </summary>
+                                  <fieldset
+                                    className="mt-2 grid gap-2 rounded-xl border border-line bg-surface p-3 shadow-lg"
+                                    disabled={item.status !== "ACTIVE" || isProjectLead(item)}
+                                  >
+                                    <legend className="px-1 text-xs text-ink-muted">
+                                      Vai trò dự án
+                                    </legend>
+                                    {(project.available_project_roles || []).map((role) => (
+                                      <label
+                                        key={role}
+                                        className="inline-flex items-center gap-2 text-sm"
+                                      >
+                                        <input
+                                          className="accent-accent"
+                                          type="checkbox"
+                                          checked={roles.includes(role)}
+                                          onChange={async (event) => {
+                                            const nextRoles = event.target.checked
+                                              ? [...roles, role]
+                                              : roles.filter((value) => value !== role);
+                                            if (!nextRoles.length) return;
+                                            try {
+                                              await testingApi.updateMember(
+                                                project._id,
+                                                item.user_id,
+                                                {
+                                                  expected_revision: item.membership_revision,
+                                                  project_roles: nextRoles,
+                                                },
+                                              );
+                                              setMembers(await testingApi.listMembers(project._id));
+                                            } catch (reason) {
+                                              setError(messageOf(reason));
+                                            }
+                                          }}
+                                        />
+                                        {valueLabel(role)}
+                                      </label>
+                                    ))}
+                                  </fieldset>
+                                </details>
+                              ) : (
+                                <span>{roleLabels.join(", ") || "Chưa gán vai trò"}</span>
+                              );
+                            },
+                          },
+                          {
+                            key: "status",
+                            label: "Trạng thái",
+                            render: (item) => valueLabel(item.status),
+                          },
+                          {
+                            key: "actions",
+                            label: "Thao tác",
+                            hideWhenEmpty: true,
+                            render: (item) =>
+                              !can("project.members.manage") ? null : isProjectLead(item) ? (
+                                <span className="text-[12px] text-ink-muted">
+                                  Chuyển trưởng dự án sang thành viên khác trước khi thay đổi hoặc
+                                  xóa
+                                </span>
+                              ) : (
+                                <span
+                                  aria-label={`Thao tác với ${memberDisplayName(item)}`}
+                                  className="flex items-center gap-1"
+                                >
+                                  {item.status === "INVITED" ? (
+                                    <>
+                                      <button
+                                        aria-label={`Gửi lại lời mời cho ${memberDisplayName(item)}`}
+                                        className="icon-button h-9 w-9"
+                                        title="Gửi lại lời mời"
+                                        type="button"
+                                        onClick={async () => {
+                                          try {
+                                            await testingApi.resendMemberInvite(
+                                              project._id,
+                                              item.user_id,
+                                            );
+                                            setMembers(await testingApi.listMembers(project._id));
+                                          } catch (reason) {
+                                            setError(messageOf(reason));
+                                          }
+                                        }}
+                                      >
+                                        <RefreshCw aria-hidden="true" size={16} />
+                                      </button>
+                                      <button
+                                        aria-label={`Hủy lời mời của ${memberDisplayName(item)}`}
+                                        className="icon-button h-9 w-9"
+                                        title="Hủy lời mời"
+                                        type="button"
+                                        onClick={async () => {
+                                          try {
+                                            await testingApi.cancelMemberInvite(
+                                              project._id,
+                                              item.user_id,
+                                            );
+                                            setMembers(await testingApi.listMembers(project._id));
+                                          } catch (reason) {
+                                            setError(messageOf(reason));
+                                          }
+                                        }}
+                                      >
+                                        <X aria-hidden="true" size={16} />
+                                      </button>
+                                    </>
+                                  ) : item.status !== "CANCELLED" ? (
+                                    <button
+                                      aria-label={`${item.status === "ACTIVE" ? "Vô hiệu hóa" : "Kích hoạt"} ${memberDisplayName(item)}`}
+                                      className="icon-button h-9 w-9"
+                                      title={item.status === "ACTIVE" ? "Vô hiệu hóa" : "Kích hoạt"}
+                                      type="button"
+                                      onClick={async () => {
+                                        try {
+                                          await testingApi.updateMember(project._id, item.user_id, {
+                                            expected_revision: item.membership_revision,
+                                            status:
+                                              item.status === "ACTIVE" ? "INACTIVE" : "ACTIVE",
+                                          });
+                                          setMembers(await testingApi.listMembers(project._id));
+                                        } catch (reason) {
+                                          setError(messageOf(reason));
+                                        }
+                                      }}
+                                    >
+                                      {item.status === "ACTIVE" ? (
+                                        <UserX aria-hidden="true" size={16} />
+                                      ) : (
+                                        <UserCheck aria-hidden="true" size={16} />
+                                      )}
+                                    </button>
+                                  ) : null}
+                                  <button
+                                    aria-label={`Xóa ${memberDisplayName(item)} khỏi dự án`}
+                                    className="icon-button h-9 w-9 text-danger"
+                                    title="Xóa thành viên"
+                                    type="button"
+                                    onClick={async () => {
+                                      const answer = await ask({
+                                        title: "Xóa thành viên khỏi dự án",
+                                        description: `${memberDisplayName(item)} sẽ mất toàn bộ quyền truy cập dự án này`,
+                                        confirmLabel: "Xóa thành viên",
+                                        danger: true,
+                                      });
+                                      if (!answer) return;
+                                      try {
+                                        await testingApi.removeMember(project._id, item.user_id);
+                                        setMembers(await testingApi.listMembers(project._id));
+                                      } catch (reason) {
+                                        setError(messageOf(reason));
+                                      }
+                                    }}
+                                  >
+                                    <Trash2 aria-hidden="true" size={16} />
+                                  </button>
+                                </span>
+                              ),
+                          },
+                        ]}
+                      />
+                    ) : null}
+                  </>
                 )}
               </div>
-            </form>
-          </Panel>
-        )}
-        {visibleSettingsSection === "members" && (
-          <Panel title={can("project.members.read") ? "Thành viên dự án" : "Lời mời thành viên"}>
-            <div className="space-y-3 p-5">
+            </Panel>
+          )}
+          {visibleSettingsSection === "analytics" && (
+            <Panel title="Phân tích bảo trì">
               {dataLoading ? (
-                <LoadingState />
-              ) : loadErrors.members ? (
-                <div className="space-y-3">
-                  <ErrorState message={loadErrors.members} />
+                <div className="p-5">
+                  <LoadingState />
+                </div>
+              ) : loadErrors.analytics ? (
+                <div className="space-y-3 p-5">
+                  <ErrorState message={loadErrors.analytics} />
                   <button
                     className="secondary-button"
                     type="button"
@@ -964,298 +1388,29 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                   </button>
                 </div>
               ) : (
-                <>
-                  {can("project.members.manage") && (
-                    <form
-                      className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]"
-                      onSubmit={async (event) => {
-                        event.preventDefault();
-                        const form = event.currentTarget;
-                        const value = new FormData(form);
-                        try {
-                          await testingApi.inviteMember(project._id, {
-                            user_id: value.get("user_id"),
-                            project_roles: value.getAll("project_roles"),
-                          });
-                          form.reset();
-                          if (can("project.members.read")) {
-                            setMembers(await testingApi.listMembers(project._id));
-                          }
-                        } catch (reason) {
-                          setError(messageOf(reason));
-                        }
-                      }}
-                    >
-                      <input
-                        className="apple-input"
-                        name="user_id"
-                        required
-                        placeholder="Email hoặc mã người dùng"
-                        aria-label="Email hoặc mã người dùng"
-                      />
-                      <fieldset className="flex flex-wrap gap-x-3 gap-y-2 rounded-xl border border-line px-3 py-2">
-                        <legend className="px-1 text-xs text-ink-muted">Vai trò dự án</legend>
-                        {(project.available_project_roles || []).map((role, index) => (
-                          <label key={role} className="inline-flex items-center gap-1.5 text-sm">
-                            <input
-                              className="accent-accent"
-                              type="checkbox"
-                              name="project_roles"
-                              value={role}
-                              defaultChecked={index === 0}
-                            />
-                            {valueLabel(role)}
-                          </label>
-                        ))}
-                      </fieldset>
-                      <button className="secondary-button" type="submit">
-                        Gửi lời mời
-                      </button>
-                    </form>
+                <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
+                  {can("analytics.read") && (
+                    <>
+                      <div className="min-w-0 rounded-lg border border-border bg-surface p-4">
+                        <p className="text-2xl font-semibold text-ink">
+                          {formatAnalyticsValue(analytics?.tests_stale)}
+                        </p>
+                        <p className="mt-2 text-sm text-ink-muted">Ca kiểm thử cũ</p>
+                      </div>
+                    </>
                   )}
-                  {can("project.members.read") ? (
-                    <DataTable
-                      items={members}
-                      empty="Chưa có thành viên"
-                      columns={[
-                        {
-                          key: "user_id",
-                          label: "Người dùng",
-                          render: (item) => (
-                            <span className="flex flex-col">
-                              <span className="font-semibold text-ink">
-                                {memberDisplayName(item)}
-                              </span>
-                              {item.user?.email && item.user.email !== memberDisplayName(item) && (
-                                <span className="text-[12px] text-ink-muted">
-                                  {item.user.email}
-                                </span>
-                              )}
-                            </span>
-                          ),
-                        },
-                        {
-                          key: "project_role",
-                          label: "Vai trò",
-                          render: (item) => {
-                            const roles = memberRoles(item);
-                            const roleLabels = [
-                              ...(item.is_project_owner ? ["Chủ dự án"] : []),
-                              ...roles.map(valueLabel),
-                            ];
-                            return can("project.members.manage") ? (
-                              <details className="min-w-40">
-                                <summary
-                                  className="cursor-pointer rounded-lg border border-line px-3 py-2 text-sm text-ink"
-                                  aria-label={`Vai trò ${memberDisplayName(item)}`}
-                                >
-                                  {roleLabels.join(", ") || "Chưa gán vai trò"}
-                                </summary>
-                                <fieldset
-                                  className="mt-2 grid gap-2 rounded-xl border border-line bg-surface p-3 shadow-lg"
-                                  disabled={item.status !== "ACTIVE" || isProjectLead(item)}
-                                >
-                                  <legend className="px-1 text-xs text-ink-muted">
-                                    Vai trò dự án
-                                  </legend>
-                                  {(project.available_project_roles || []).map((role) => (
-                                    <label
-                                      key={role}
-                                      className="inline-flex items-center gap-2 text-sm"
-                                    >
-                                      <input
-                                        className="accent-accent"
-                                        type="checkbox"
-                                        checked={roles.includes(role)}
-                                        onChange={async (event) => {
-                                          const nextRoles = event.target.checked
-                                            ? [...roles, role]
-                                            : roles.filter((value) => value !== role);
-                                          if (!nextRoles.length) return;
-                                          try {
-                                            await testingApi.updateMember(
-                                              project._id,
-                                              item.user_id,
-                                              {
-                                                expected_revision: item.membership_revision,
-                                                project_roles: nextRoles,
-                                              },
-                                            );
-                                            setMembers(await testingApi.listMembers(project._id));
-                                          } catch (reason) {
-                                            setError(messageOf(reason));
-                                          }
-                                        }}
-                                      />
-                                      {valueLabel(role)}
-                                    </label>
-                                  ))}
-                                </fieldset>
-                              </details>
-                            ) : (
-                              <span>{roleLabels.join(", ") || "Chưa gán vai trò"}</span>
-                            );
-                          },
-                        },
-                        {
-                          key: "status",
-                          label: "Trạng thái",
-                          render: (item) => valueLabel(item.status),
-                        },
-                        {
-                          key: "actions",
-                          label: "Thao tác",
-                          hideWhenEmpty: true,
-                          render: (item) =>
-                            !can("project.members.manage") ? null : isProjectLead(item) ? (
-                              <span className="text-[12px] text-ink-muted">
-                                Chuyển trưởng dự án sang thành viên khác trước khi thay đổi hoặc xóa
-                              </span>
-                            ) : (
-                              <span
-                                aria-label={`Thao tác với ${memberDisplayName(item)}`}
-                                className="flex items-center gap-1"
-                              >
-                                {item.status === "INVITED" ? (
-                                  <>
-                                    <button
-                                      aria-label={`Gửi lại lời mời cho ${memberDisplayName(item)}`}
-                                      className="icon-button h-9 w-9"
-                                      title="Gửi lại lời mời"
-                                      type="button"
-                                      onClick={async () => {
-                                        try {
-                                          await testingApi.resendMemberInvite(
-                                            project._id,
-                                            item.user_id,
-                                          );
-                                          setMembers(await testingApi.listMembers(project._id));
-                                        } catch (reason) {
-                                          setError(messageOf(reason));
-                                        }
-                                      }}
-                                    >
-                                      <RefreshCw aria-hidden="true" size={16} />
-                                    </button>
-                                    <button
-                                      aria-label={`Hủy lời mời của ${memberDisplayName(item)}`}
-                                      className="icon-button h-9 w-9"
-                                      title="Hủy lời mời"
-                                      type="button"
-                                      onClick={async () => {
-                                        try {
-                                          await testingApi.cancelMemberInvite(
-                                            project._id,
-                                            item.user_id,
-                                          );
-                                          setMembers(await testingApi.listMembers(project._id));
-                                        } catch (reason) {
-                                          setError(messageOf(reason));
-                                        }
-                                      }}
-                                    >
-                                      <X aria-hidden="true" size={16} />
-                                    </button>
-                                  </>
-                                ) : item.status !== "CANCELLED" ? (
-                                  <button
-                                    aria-label={`${item.status === "ACTIVE" ? "Vô hiệu hóa" : "Kích hoạt"} ${memberDisplayName(item)}`}
-                                    className="icon-button h-9 w-9"
-                                    title={item.status === "ACTIVE" ? "Vô hiệu hóa" : "Kích hoạt"}
-                                    type="button"
-                                    onClick={async () => {
-                                      try {
-                                        await testingApi.updateMember(project._id, item.user_id, {
-                                          expected_revision: item.membership_revision,
-                                          status: item.status === "ACTIVE" ? "INACTIVE" : "ACTIVE",
-                                        });
-                                        setMembers(await testingApi.listMembers(project._id));
-                                      } catch (reason) {
-                                        setError(messageOf(reason));
-                                      }
-                                    }}
-                                  >
-                                    {item.status === "ACTIVE" ? (
-                                      <UserX aria-hidden="true" size={16} />
-                                    ) : (
-                                      <UserCheck aria-hidden="true" size={16} />
-                                    )}
-                                  </button>
-                                ) : null}
-                                <button
-                                  aria-label={`Xóa ${memberDisplayName(item)} khỏi dự án`}
-                                  className="icon-button h-9 w-9 text-danger"
-                                  title="Xóa thành viên"
-                                  type="button"
-                                  onClick={async () => {
-                                    const answer = await ask({
-                                      title: "Xóa thành viên khỏi dự án",
-                                      description: `${memberDisplayName(item)} sẽ mất toàn bộ quyền truy cập dự án này`,
-                                      confirmLabel: "Xóa thành viên",
-                                      danger: true,
-                                    });
-                                    if (!answer) return;
-                                    try {
-                                      await testingApi.removeMember(project._id, item.user_id);
-                                      setMembers(await testingApi.listMembers(project._id));
-                                    } catch (reason) {
-                                      setError(messageOf(reason));
-                                    }
-                                  }}
-                                >
-                                  <Trash2 aria-hidden="true" size={16} />
-                                </button>
-                              </span>
-                            ),
-                        },
-                      ]}
-                    />
-                  ) : null}
-                </>
+                </div>
               )}
-            </div>
-          </Panel>
-        )}
-        {visibleSettingsSection === "analytics" && (
-          <Panel title="Phân tích bảo trì">
-            {dataLoading ? (
-              <div className="p-5">
-                <LoadingState />
-              </div>
-            ) : loadErrors.analytics ? (
-              <div className="space-y-3 p-5">
-                <ErrorState message={loadErrors.analytics} />
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={() => void loadSettingsData()}
-                >
-                  Tải lại
-                </button>
-              </div>
-            ) : (
-              <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
-                {can("analytics.read") && (
-                  <>
-                    <div className="min-w-0 rounded-lg border border-border bg-surface p-4">
-                      <p className="text-2xl font-semibold text-ink">
-                        {formatAnalyticsValue(analytics?.tests_stale)}
-                      </p>
-                      <p className="mt-2 text-sm text-ink-muted">Ca kiểm thử cũ</p>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-          </Panel>
-        )}
+            </Panel>
+          )}
+          {visibleSettingsSection === "notifications" && (
+            <ProjectNotificationsPanel project={project} />
+          )}
+          {visibleSettingsSection === "environments" && (
+            <EnvironmentManagementPanel project={project} />
+          )}
+        </div>
       </div>
-      {visibleSettingsSection === "notifications" && (
-        <ProjectNotificationsPanel project={project} />
-      )}
-      {visibleSettingsSection === "environments" && (
-        <EnvironmentManagementPanel project={project} />
-      )}
       {dialog}
     </WorkspacePage>
   );

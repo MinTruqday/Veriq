@@ -1,0 +1,301 @@
+{
+  "id": "test_execution",
+  "name": "05 - Phân công và thực thi lượt chạy kiểm thử",
+  "file_name": "BPMN_Testing_05_Phan_cong_va_thuc_thi_kiem_thu_v1.drawio",
+  "scope": "Lượt chạy yêu cầu kế hoạch đã duyệt nếu có gắn kế hoạch. Kết quả được ghi cho từng phiên bản ca; việc chạy song song không được khẳng định vì source không quy định thứ tự hay mức song song.",
+  "lanes": [
+    {
+      "id": "coordinator",
+      "name": "Người điều phối kiểm thử",
+      "fill": "#E8F3FF",
+      "stroke": "#4A90C2"
+    },
+    {
+      "id": "system",
+      "name": "Veriq",
+      "fill": "#EFE8FF",
+      "stroke": "#7956A8"
+    },
+    {
+      "id": "tester",
+      "name": "Người thực thi kiểm thử",
+      "fill": "#FFF4DF",
+      "stroke": "#C58A28"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "start",
+      "label": "Bắt đầu tạo lượt chạy kiểm thử",
+      "type": "start",
+      "lane": "coordinator",
+      "col": 0,
+      "row": 0
+    },
+    {
+      "id": "create",
+      "label": "Chọn kế hoạch, bộ kiểm thử và môi trường",
+      "type": "user_task",
+      "lane": "coordinator",
+      "col": 1,
+      "row": 0,
+      "task_type": "user"
+    },
+    {
+      "id": "validate",
+      "label": "Kiểm tra kế hoạch đã duyệt và phạm vi chạy",
+      "type": "service_task",
+      "lane": "system",
+      "col": 2,
+      "row": 0,
+      "task_type": "service"
+    },
+    {
+      "id": "valid",
+      "label": "Lượt chạy hợp lệ?",
+      "type": "gateway",
+      "lane": "system",
+      "col": 3,
+      "row": 0
+    },
+    {
+      "id": "invalid",
+      "label": "Không thể tạo lượt chạy",
+      "type": "error_end",
+      "lane": "system",
+      "col": 4,
+      "row": 1
+    },
+    {
+      "id": "init",
+      "label": "Tạo lượt chạy và các kết quả ban đầu",
+      "type": "service_task",
+      "lane": "system",
+      "col": 4,
+      "row": 0,
+      "task_type": "service"
+    },
+    {
+      "id": "assign",
+      "label": "Phân công lượt chạy hoặc từng ca cho tester",
+      "type": "user_task",
+      "lane": "coordinator",
+      "col": 5,
+      "row": 0,
+      "task_type": "user"
+    },
+    {
+      "id": "start_run",
+      "label": "Bắt đầu lượt chạy",
+      "type": "user_task",
+      "lane": "tester",
+      "col": 6,
+      "row": 0,
+      "task_type": "user"
+    },
+    {
+      "id": "execute",
+      "label": "Thực thi ca được phân công và ghi kết quả",
+      "type": "user_task",
+      "lane": "tester",
+      "col": 7,
+      "row": 0,
+      "task_type": "user"
+    },
+    {
+      "id": "more",
+      "label": "Còn ca nào cần thực thi?",
+      "type": "gateway",
+      "lane": "tester",
+      "col": 8,
+      "row": 0
+    },
+    {
+      "id": "complete",
+      "label": "Hoàn tất lượt chạy",
+      "type": "user_task",
+      "lane": "tester",
+      "col": 9,
+      "row": 0,
+      "task_type": "user"
+    },
+    {
+      "id": "complete_check",
+      "label": "Đã có đủ kết quả theo chính sách dự án?",
+      "type": "gateway",
+      "lane": "system",
+      "col": 10,
+      "row": 0
+    },
+    {
+      "id": "partial_error",
+      "label": "Chưa thể hoàn tất lượt chạy",
+      "type": "error_end",
+      "lane": "system",
+      "col": 11,
+      "row": 1
+    },
+    {
+      "id": "done",
+      "label": "Lượt chạy đã hoàn tất",
+      "type": "end",
+      "lane": "system",
+      "col": 11,
+      "row": 0
+    },
+    {
+      "id": "abort",
+      "label": "Hủy lượt chạy với lý do",
+      "type": "user_task",
+      "lane": "tester",
+      "col": 6,
+      "row": 1,
+      "task_type": "user"
+    },
+    {
+      "id": "aborted",
+      "label": "Lượt chạy đã bị hủy",
+      "type": "end",
+      "lane": "system",
+      "col": 5,
+      "row": 1
+    },
+    {
+      "id": "process_data",
+      "label": "Lượt chạy và kết quả kiểm thử",
+      "type": "data_store",
+      "lane": "system",
+      "col": 7,
+      "row": 1
+    }
+  ],
+  "edges": [
+    {
+      "id": "e01",
+      "from": "start",
+      "to": "create",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e02",
+      "from": "create",
+      "to": "validate",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e03",
+      "from": "validate",
+      "to": "valid",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e04",
+      "from": "valid",
+      "to": "init",
+      "type": "sequence",
+      "label": "Có"
+    },
+    {
+      "id": "e05",
+      "from": "valid",
+      "to": "invalid",
+      "type": "sequence",
+      "label": "Không"
+    },
+    {
+      "id": "e06",
+      "from": "init",
+      "to": "assign",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e07",
+      "from": "assign",
+      "to": "start_run",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e08",
+      "from": "start_run",
+      "to": "execute",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e09",
+      "from": "execute",
+      "to": "more",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e10",
+      "from": "more",
+      "to": "execute",
+      "type": "sequence",
+      "label": "Còn ca chưa ghi kết quả",
+      "route": "loop_below"
+    },
+    {
+      "id": "e13",
+      "from": "more",
+      "to": "complete",
+      "type": "sequence",
+      "label": "Đã hết"
+    },
+    {
+      "id": "e14",
+      "from": "complete",
+      "to": "complete_check",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e15",
+      "from": "complete_check",
+      "to": "done",
+      "type": "sequence",
+      "label": "Đủ hoặc cho phép hoàn tất một phần"
+    },
+    {
+      "id": "e16",
+      "from": "complete_check",
+      "to": "partial_error",
+      "type": "sequence",
+      "label": "Chưa đủ và không cho phép"
+    },
+    {
+      "id": "e17",
+      "from": "start_run",
+      "to": "abort",
+      "type": "sequence",
+      "label": "Hủy"
+    },
+    {
+      "id": "e18",
+      "from": "execute",
+      "to": "abort",
+      "type": "sequence",
+      "label": "Hủy"
+    },
+    {
+      "id": "e19",
+      "from": "abort",
+      "to": "aborted",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "data_assoc",
+      "from": "init",
+      "to": "process_data",
+      "type": "association",
+      "label": ""
+    }
+  ]
+}

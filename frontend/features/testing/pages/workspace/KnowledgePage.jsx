@@ -1,8 +1,7 @@
 "use client";
 import Image from "next/image";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Archive, Eye, RotateCw } from "lucide-react";
-import DataTable from "../../components/DataTable";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Archive, Eye, Grid2X2, List, RotateCw } from "lucide-react";
 import {
   DegradedBanner,
   ErrorState,
@@ -20,6 +19,7 @@ import { documentToMarkdown, emptyRichDocument } from "../../lib/knowledgeMarkdo
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import { useDateTimeOptions } from "../../hooks/useDateTimeOptions";
 import { formatDateTime } from "@/shared/lib/dateTime.mjs";
+import SearchField from "@/shared/components/ui/SearchField";
 
 const sourceTypes = [
   ["SRS", "Đặc tả yêu cầu phần mềm"],
@@ -94,6 +94,9 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
   const [sources, setSources] = useState([]);
+  const [sourceQuery, setSourceQuery] = useState("");
+  const [sourceIndexFilter, setSourceIndexFilter] = useState("ALL");
+  const [sourceView, setSourceView] = useState("grid");
   const [error, setError] = useState("");
   const [sourcesLoading, setSourcesLoading] = useState(true);
   const [sourcesLoadFailed, setSourcesLoadFailed] = useState(false);
@@ -127,6 +130,32 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
   const canReadMembers = project.current_permissions?.includes("project.members.read");
   const canReadReleases = project.current_permissions?.includes("release.read");
   const sourceHierarchy = sourceHierarchyFor(sourceStructurePage?.items);
+  const sourceIndexStatuses = useMemo(
+    () => [...new Set(sources.map((item) => String(item.index_status || "UNKNOWN").toUpperCase()))],
+    [sources],
+  );
+  const visibleSources = useMemo(() => {
+    const normalizedQuery = sourceQuery.trim().toLocaleLowerCase("vi");
+    return sources.filter((item) => {
+      const status = String(item.index_status || "UNKNOWN").toUpperCase();
+      const matchesStatus = sourceIndexFilter === "ALL" || status === sourceIndexFilter;
+      const searchable = [
+        item.title,
+        item.filename,
+        item.source_type,
+        item.authority,
+        item.product_area,
+        item.module,
+        item.component,
+        item.source_version,
+        ...(item.tags || []),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLocaleLowerCase("vi");
+      return matchesStatus && (!normalizedQuery || searchable.includes(normalizedQuery));
+    });
+  }, [sourceIndexFilter, sourceQuery, sources]);
   const loadSources = useCallback(async () => {
     const requestGeneration = ++sourceListRequestGeneration.current;
     if (!sourcesLoaded.current) setSourcesLoading(true);
@@ -430,37 +459,99 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
         )}
       </Panel>
       {result && (
-        <Panel title="Kết quả tìm kiếm">
-          <DataTable
-            items={result.items}
-            empty="Không tìm thấy dữ liệu phù hợp"
-            columns={[
-              {
-                key: "artifact_type",
-                label: "Loại",
-                render: (item) => valueLabel(item.artifact_type),
-              },
-              { key: "title", label: "Tên" },
-              {
-                key: "status",
-                label: "Trạng thái",
-                render: (item) => <StatusPill value={item.status} />,
-              },
-              {
-                key: "authority",
-                label: "Mức độ chính thức",
-                render: (item) => valueLabel(item.authority),
-              },
-              {
-                key: "text",
-                label: "Bằng chứng",
-                render: (item) => <span className="line-clamp-3 max-w-xl">{item.text}</span>,
-              },
-            ]}
-          />
+        <Panel
+          title="Kết quả tìm kiếm"
+          actions={
+            <span aria-live="polite" className="text-xs font-medium text-ink-muted">
+              {result.items?.length || 0} kết quả
+            </span>
+          }
+        >
+          {result.items?.length ? (
+            <ul className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5" aria-label="Kết quả tìm kiếm">
+              {result.items.map((item, index) => (
+                <li
+                  className="grid min-w-0 content-start gap-3 rounded-panel border border-border bg-surface p-4"
+                  key={item.artifact_id || `${item.artifact_type}-${item.title}-${index}`}
+                >
+                  <div className="flex min-w-0 items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-ink-muted">
+                        {valueLabel(item.artifact_type)}
+                      </p>
+                      <h3 className="mt-1 break-words text-sm font-semibold text-ink">
+                        {item.title || "Kết quả không có tiêu đề"}
+                      </h3>
+                    </div>
+                    <StatusPill value={item.status} />
+                  </div>
+                  <dl className="grid gap-2 border-t border-border pt-3 text-xs sm:grid-cols-2">
+                    <div>
+                      <dt className="text-ink-muted">Mức độ chính thức</dt>
+                      <dd className="mt-1 break-words font-medium text-ink">
+                        {valueLabel(item.authority) || "Chưa xác định"}
+                      </dd>
+                    </div>
+                    {item.source_name && (
+                      <div className="min-w-0">
+                        <dt className="text-ink-muted">Nguồn</dt>
+                        <dd className="mt-1 break-words font-medium text-ink">
+                          {item.source_name}
+                        </dd>
+                      </div>
+                    )}
+                  </dl>
+                  <blockquote className="rounded-control bg-surface-quiet p-3 text-[13px] leading-5 text-ink-muted">
+                    <p className="line-clamp-4 break-words">
+                      {item.text || "Không có đoạn trích."}
+                    </p>
+                  </blockquote>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="p-5 text-sm text-ink-muted" role="status">
+              Không tìm thấy dữ liệu phù hợp.
+            </p>
+          )}
         </Panel>
       )}
-      <Panel title="Tài liệu tham chiếu của dự án">
+      <Panel
+        title="Tài liệu tham chiếu của dự án"
+        actions={
+          <div className="flex flex-wrap items-center gap-3">
+            {!sourcesLoading && !sourcesLoadFailed && (
+              <span className="text-xs font-medium text-ink-muted">
+                {visibleSources.length} / {sources.length}
+              </span>
+            )}
+            {sources.length > 0 && (
+              <div
+                aria-label="Cách hiển thị tài liệu tham chiếu"
+                className="flex gap-1"
+                role="group"
+              >
+                {[
+                  ["grid", "Thẻ", Grid2X2],
+                  ["list", "Danh sách", List],
+                ].map(([mode, label, Icon]) => (
+                  <button
+                    aria-label={label}
+                    aria-pressed={sourceView === mode}
+                    className={`icon-button h-9 w-9 ${sourceView === mode ? "border-brand bg-brand-soft text-brand" : ""}`}
+                    key={mode}
+                    onClick={() => setSourceView(mode)}
+                    title={label}
+                    type="button"
+                  >
+                    <Icon aria-hidden="true" size={16} />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        }
+      >
         {canManage && (
           <Modal
             isOpen={creatingSource}
@@ -748,113 +839,183 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
             </button>
           </div>
         ) : sources.length ? (
-          <div className="divide-y divide-border">
-            {sources.map((item) => {
-              const title = item.title || item.filename || item._id;
-              const scope =
-                [item.product_area, item.module, item.component].filter(Boolean).join(" · ") ||
-                "Chưa khai báo";
-              return (
-                <article className="min-w-0 space-y-3 p-4 sm:p-5" key={item._id}>
-                  <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <h3 className="break-words text-sm font-semibold text-ink" title={title}>
-                        {title}
-                      </h3>
-                      {item.source_version && (
-                        <p className="mt-1 text-xs text-ink-muted">
-                          Phiên bản {item.source_version}
-                        </p>
-                      )}
-                    </div>
-                    <StatusPill value={String(item.index_status || "UNKNOWN").toUpperCase()} />
-                  </div>
-                  <dl className="grid min-w-0 gap-x-5 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">
-                    {[
-                      ["Loại", valueLabel(item.source_type)],
-                      ["Mức độ chính thức", valueLabel(item.authority)],
-                      ["Phạm vi", scope],
-                    ].map(([label, value]) => (
-                      <div className="min-w-0" key={label}>
-                        <dt className="text-xs text-ink-muted">{label}</dt>
-                        <dd className="mt-1 break-words text-sm text-ink">{value}</dd>
+          <>
+            <div className="grid gap-3 border-b border-border p-4 sm:p-5">
+              <SearchField
+                ariaLabel="Tìm tài liệu tham chiếu"
+                onChange={(event) => setSourceQuery(event.target.value)}
+                placeholder="Tìm theo tên, loại, phạm vi hoặc nhãn"
+                value={sourceQuery}
+              />
+              {sourceIndexStatuses.length > 1 && (
+                <div aria-label="Lọc tình trạng lập chỉ mục" className="flex flex-wrap gap-2">
+                  <button
+                    aria-pressed={sourceIndexFilter === "ALL"}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-medium ${sourceIndexFilter === "ALL" ? "border-brand bg-brand/5 text-ink" : "border-border text-ink-muted hover:bg-surface-quiet"}`}
+                    onClick={() => setSourceIndexFilter("ALL")}
+                    type="button"
+                  >
+                    Tất cả ({sources.length})
+                  </button>
+                  {sourceIndexStatuses.map((status) => {
+                    const count = sources.filter(
+                      (item) => String(item.index_status || "UNKNOWN").toUpperCase() === status,
+                    ).length;
+                    return (
+                      <button
+                        aria-pressed={sourceIndexFilter === status}
+                        className={`rounded-full border px-3 py-1.5 text-xs font-medium ${sourceIndexFilter === status ? "border-brand bg-brand/5 text-ink" : "border-border text-ink-muted hover:bg-surface-quiet"}`}
+                        key={status}
+                        onClick={() => setSourceIndexFilter(status)}
+                        type="button"
+                      >
+                        {valueLabel(status)} ({count})
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            {visibleSources.length ? (
+              <ul
+                className={
+                  sourceView === "grid"
+                    ? "grid gap-3 p-4 sm:grid-cols-2 sm:p-5 2xl:grid-cols-3"
+                    : "divide-y divide-border"
+                }
+                aria-label="Tài liệu tham chiếu"
+              >
+                {visibleSources.map((item) => {
+                  const title = item.title || item.filename || item._id;
+                  const scope =
+                    [item.product_area, item.module, item.component].filter(Boolean).join(" · ") ||
+                    "Chưa khai báo";
+                  return (
+                    <li
+                      className={
+                        sourceView === "grid"
+                          ? "flex min-w-0 flex-col gap-3 rounded-panel border border-border bg-surface p-4"
+                          : "min-w-0 space-y-3 p-4 sm:p-5"
+                      }
+                      key={item._id}
+                    >
+                      <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <h3 className="break-words text-sm font-semibold text-ink" title={title}>
+                            {title}
+                          </h3>
+                          {item.source_version && (
+                            <p className="mt-1 text-xs text-ink-muted">
+                              Phiên bản {item.source_version}
+                            </p>
+                          )}
+                        </div>
+                        <StatusPill value={String(item.index_status || "UNKNOWN").toUpperCase()} />
                       </div>
-                    ))}
-                  </dl>
-                  <div className="flex min-w-0 flex-wrap items-center gap-2 border-t border-border pt-3">
-                    {canManage && (
-                      <>
-                        <button
-                          aria-label={`Lập chỉ mục lại ${title}`}
-                          className="icon-button h-9 w-9"
-                          title="Lập chỉ mục lại"
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              await testingApi.reindexKnowledgeSource(item._id);
-                              await loadSources();
-                            } catch (reason) {
-                              setError(messageOf(reason));
-                            }
-                          }}
-                        >
-                          <RotateCw aria-hidden="true" size={16} />
-                        </button>
-                        <button
-                          aria-label={`Lưu trữ ${title}`}
-                          className="icon-button h-9 w-9"
-                          title="Lưu trữ"
-                          type="button"
-                          onClick={async () => {
-                            await ask({
-                              title: "Lưu trữ tài liệu tham chiếu",
-                              description: item.title || item.filename,
-                              confirmLabel: "Lưu trữ",
-                              danger: true,
-                              fields: [
-                                {
-                                  name: "reason",
-                                  label: "Lý do",
-                                  required: true,
-                                  multiline: true,
-                                },
-                              ],
-                              onConfirm: async (answer) => {
+                      <dl className="grid min-w-0 gap-x-5 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">
+                        {[
+                          ["Loại", valueLabel(item.source_type)],
+                          ["Mức độ chính thức", valueLabel(item.authority)],
+                          ["Phạm vi", scope],
+                        ].map(([label, value]) => (
+                          <div className="min-w-0" key={label}>
+                            <dt className="text-xs text-ink-muted">{label}</dt>
+                            <dd className="mt-1 break-words text-sm text-ink">{value}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                      <div className="flex min-w-0 flex-wrap items-center gap-2 border-t border-border pt-3">
+                        {canManage && (
+                          <>
+                            <button
+                              aria-label={`Lập chỉ mục lại ${title}`}
+                              className="icon-button h-9 w-9"
+                              title="Lập chỉ mục lại"
+                              type="button"
+                              onClick={async () => {
                                 try {
-                                  await testingApi.archiveKnowledgeSource(item._id, {
-                                    expected_revision: item.revision,
-                                    reason: answer.reason,
-                                  });
+                                  await testingApi.reindexKnowledgeSource(item._id);
                                   await loadSources();
                                 } catch (reason) {
-                                  throw new Error(messageOf(reason));
+                                  setError(messageOf(reason));
                                 }
-                              },
-                            });
+                              }}
+                            >
+                              <RotateCw aria-hidden="true" size={16} />
+                            </button>
+                            <button
+                              aria-label={`Lưu trữ ${title}`}
+                              className="icon-button h-9 w-9"
+                              title="Lưu trữ"
+                              type="button"
+                              onClick={async () => {
+                                await ask({
+                                  title: "Lưu trữ tài liệu tham chiếu",
+                                  description: item.title || item.filename,
+                                  confirmLabel: "Lưu trữ",
+                                  danger: true,
+                                  fields: [
+                                    {
+                                      name: "reason",
+                                      label: "Lý do",
+                                      required: true,
+                                      multiline: true,
+                                    },
+                                  ],
+                                  onConfirm: async (answer) => {
+                                    try {
+                                      await testingApi.archiveKnowledgeSource(item._id, {
+                                        expected_revision: item.revision,
+                                        reason: answer.reason,
+                                      });
+                                      await loadSources();
+                                    } catch (reason) {
+                                      throw new Error(messageOf(reason));
+                                    }
+                                  },
+                                });
+                              }}
+                            >
+                              <Archive aria-hidden="true" size={16} />
+                            </button>
+                          </>
+                        )}
+                        <button
+                          aria-label={`Xem chi tiết chỉ mục ${item.title || item.filename || "tài liệu"}`}
+                          className="icon-button h-9 w-9"
+                          title="Xem chi tiết chỉ mục"
+                          type="button"
+                          onClick={() => {
+                            clearSourceInspection();
+                            setMetadataSource(item);
+                            void loadChunkMetadata(item);
                           }}
                         >
-                          <Archive aria-hidden="true" size={16} />
+                          <Eye aria-hidden="true" size={17} />
                         </button>
-                      </>
-                    )}
-                    <button
-                      aria-label={`Xem chi tiết chỉ mục ${item.title || item.filename || "tài liệu"}`}
-                      className="icon-button h-9 w-9"
-                      title="Xem chi tiết chỉ mục"
-                      type="button"
-                      onClick={() => {
-                        clearSourceInspection();
-                        setMetadataSource(item);
-                        void loadChunkMetadata(item);
-                      }}
-                    >
-                      <Eye aria-hidden="true" size={17} />
-                    </button>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <div className="grid justify-items-start gap-3 p-5">
+                <p className="text-sm text-ink-muted" role="status">
+                  Không có tài liệu tham chiếu khớp với bộ lọc.
+                </p>
+                <button
+                  className="secondary-button"
+                  onClick={() => {
+                    setSourceQuery("");
+                    setSourceIndexFilter("ALL");
+                  }}
+                  type="button"
+                >
+                  Xóa bộ lọc
+                </button>
+              </div>
+            )}
+          </>
         ) : (
           <p className="p-5 text-sm text-ink-muted">Chưa có tài liệu tham chiếu</p>
         )}

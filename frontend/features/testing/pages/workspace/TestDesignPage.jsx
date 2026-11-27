@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Archive,
@@ -89,6 +90,29 @@ function draftConditionValues(draft, conditions, field, currentValue) {
   return [...new Set([...values, String(currentValue || "").trim()].filter(Boolean))];
 }
 
+function TraceGroup({ title, values = [], empty }) {
+  return (
+    <section className="min-w-0 rounded-control border border-border p-4">
+      <h3 className="text-sm font-semibold">{title}</h3>
+      {values.length ? (
+        <ul className="mt-3 space-y-2">
+          {values.map((value) => {
+            const id = typeof value === "string" ? value : value?.id;
+            const label = typeof value === "string" ? value : value?.label || id;
+            return (
+              <li className="break-all rounded-control bg-surface-quiet px-3 py-2 text-sm" key={id}>
+                {label}
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p className="mt-2 text-sm text-ink-muted">{empty}</p>
+      )}
+    </section>
+  );
+}
+
 export default function TestDesignPage({ project, workspaceView, section }) {
   const dateTimeOptions = useDateTimeOptions(project);
   const formatDate = (value) => formatDateValue(value, dateTimeOptions);
@@ -103,6 +127,7 @@ export default function TestDesignPage({ project, workspaceView, section }) {
   const creatingCase = workspaceView === "cases" && section?.[0] === "tao-moi";
   const searchParams = useSearchParams();
   const linkedCaseId = searchParams.get("case") || "";
+  const forceListView = searchParams.get("view") === "list";
   const returnTestPlanId = searchParams.get("returnTestPlanId") || "";
   const returnToPlanPath = returnTestPlanId
     ? `${projectRoute(project._id, PROJECT_SECTION_SLUGS.testPlans)}/${encodeURIComponent(returnTestPlanId)}/chinh-sua`
@@ -113,6 +138,7 @@ export default function TestDesignPage({ project, workspaceView, section }) {
   const [tests, setTests] = useState([]);
   const [suites, setSuites] = useState([]);
   const [suiteSearch, setSuiteSearch] = useState("");
+  const [suiteStatusFilter, setSuiteStatusFilter] = useState("all");
   const [testSetDialog, setTestSetDialog] = useState(null);
   const [projectMembers, setProjectMembers] = useState([]);
   const [projectMembersUnavailable, setProjectMembersUnavailable] = useState(false);
@@ -160,6 +186,7 @@ export default function TestDesignPage({ project, workspaceView, section }) {
   const [comparisonDraftId, setComparisonDraftId] = useState("");
   const [selectedTestId, setSelectedTestId] = useState("");
   const [selectedTestRecord, setSelectedTestRecord] = useState(null);
+  const [testDetailTab, setTestDetailTab] = useState("content");
   const [selectedCaseLoading, setSelectedCaseLoading] = useState(false);
   const [testVersions, setTestVersions] = useState([]);
   const [draftEdit, setDraftEdit] = useState(null);
@@ -373,6 +400,34 @@ export default function TestDesignPage({ project, workspaceView, section }) {
     void load();
   }, [load]);
   useEffect(() => {
+    if (
+      initialLoading ||
+      initialLoadFailed ||
+      creatingCase ||
+      !showCases ||
+      !canReadTestCases ||
+      linkedCaseId ||
+      forceListView ||
+      !tests.length
+    ) {
+      return;
+    }
+    router.replace(`${caseListPath}?case=${encodeURIComponent(tests[0]._id)}`, {
+      scroll: false,
+    });
+  }, [
+    canReadTestCases,
+    caseListPath,
+    creatingCase,
+    forceListView,
+    initialLoadFailed,
+    initialLoading,
+    linkedCaseId,
+    router,
+    showCases,
+    tests,
+  ]);
+  useEffect(() => {
     const requestedIds = [...new Set(searchParams.getAll("requirementVersionId"))];
     if (!creatingCase || !requestedIds.length || !requirements.length) return;
     const validIds = requestedIds.filter((id) =>
@@ -393,6 +448,7 @@ export default function TestDesignPage({ project, workspaceView, section }) {
     let active = true;
     setSelectedTestId(linkedCaseId);
     setSelectedTestRecord(null);
+    setTestDetailTab("content");
     setSelectedDraftId("");
     setComparisonDraftId("");
     setSelectedCaseLoading(true);
@@ -433,6 +489,27 @@ export default function TestDesignPage({ project, workspaceView, section }) {
         `${item.requirement_key} · ${item.current_version?.title || "Yêu cầu"}`,
       ]),
   );
+  const testCaseGroups = useMemo(() => {
+    const groups = new Map();
+    for (const testCase of tests) {
+      const requirementId = testCase.current_version?.requirement_version_ids?.[0] || "unlinked";
+      const group = groups.get(requirementId) || {
+        id: requirementId,
+        label:
+          requirementId === "unlinked"
+            ? "Chưa gắn yêu cầu"
+            : requirementLabels[requirementId] || "Yêu cầu liên kết",
+        items: [],
+      };
+      group.items.push(testCase);
+      groups.set(requirementId, group);
+    }
+    return [...groups.values()].sort((left, right) => {
+      if (left.id === "unlinked") return 1;
+      if (right.id === "unlinked") return -1;
+      return left.label.localeCompare(right.label, "vi");
+    });
+  }, [requirementLabels, tests]);
   const requirementAIRun = selectedRequirement
     ? aiRuns.find(
         (run) => run.trigger === "MANUAL" && run.target_artifact_ids?.includes(selectedRequirement),
@@ -1024,15 +1101,52 @@ export default function TestDesignPage({ project, workspaceView, section }) {
   }, [draftDirty, draftEdit, persistDraft, project, selectedDraft, comparisonDraftId]);
   const visibleSuites = useMemo(() => {
     const query = suiteSearch.trim().toLocaleLowerCase();
-    if (!query) return suites;
-    return suites.filter((item) =>
-      [item.name, valueLabel(item.suite_type)]
-        .filter(Boolean)
-        .join(" ")
-        .toLocaleLowerCase()
-        .includes(query),
-    );
-  }, [suiteSearch, suites]);
+    return suites.filter((item) => {
+      const matchesQuery =
+        !query ||
+        [item.name, valueLabel(item.suite_type)]
+          .filter(Boolean)
+          .join(" ")
+          .toLocaleLowerCase()
+          .includes(query);
+      const matchesStatus =
+        suiteStatusFilter === "all" ||
+        (suiteStatusFilter === "archived"
+          ? item.status === "ARCHIVED"
+          : item.status !== "ARCHIVED");
+      return matchesQuery && matchesStatus;
+    });
+  }, [suiteSearch, suiteStatusFilter, suites]);
+  const activeSuiteCount = suites.filter((item) => item.status !== "ARCHIVED").length;
+  const archivedSuiteCount = suites.length - activeSuiteCount;
+  const createSelectedCaseVersionDraft = async () => {
+    if (!selectedTestRecord?.current_version || !can("testcase.version.create")) return;
+    const answer = await ask({
+      title: `Tạo phiên bản mới cho ${selectedTestRecord.test_case_key}`,
+      description: "Phiên bản hiện tại được giữ nguyên. Bản mới sẽ được gửi rà soát và phê duyệt.",
+      confirmLabel: "Tạo bản nháp",
+      fields: [
+        {
+          name: "change_reason",
+          label: "Lý do thay đổi",
+          required: true,
+          multiline: true,
+          autoFocus: true,
+        },
+      ],
+    });
+    if (!answer) return;
+    try {
+      const draft = await testingApi.createTestCaseVersionDraft(selectedTestRecord._id, {
+        expected_current_version_id: selectedTestRecord.current_version_id,
+        change_reason: answer.change_reason,
+      });
+      await load();
+      setSelectedDraftId(draft._id);
+    } catch (reason) {
+      setError(messageOf(reason));
+    }
+  };
   const pageTitle = linkedCaseId
     ? "Chi tiết ca kiểm thử"
     : workspaceView === "" || workspaceView === "cases"
@@ -1105,12 +1219,16 @@ export default function TestDesignPage({ project, workspaceView, section }) {
           </>
         }
       >
-        {error && <ErrorState message={error} />}
+        {error && !canCreateCase && <ErrorState message={error} />}
         {canCreateCase ? (
           <Panel title="Thông tin ca kiểm thử">
             <TestCaseCreateForm
               form={form}
               setForm={setForm}
+              error={error}
+              saving={savingCreation}
+              onCancel={() => router.push(returnToPlanPath || caseListPath)}
+              cancelLabel={returnTestPlanId ? "Quay lại kế hoạch" : "Hủy"}
               testConditions={testConditions}
               requirements={requirements}
               members={projectMembers}
@@ -1136,45 +1254,15 @@ export default function TestDesignPage({ project, workspaceView, section }) {
               <button
                 className="secondary-button"
                 type="button"
-                onClick={() => router.push(caseListPath)}
+                onClick={() => router.push(`${caseListPath}?view=list`)}
               >
-                Quay lại danh sách
+                Danh sách đầy đủ
               </button>
               {can("testcase.version.create") && selectedTestRecord?.current_version && (
                 <button
                   className="apple-button"
                   type="button"
-                  onClick={async () => {
-                    const answer = await ask({
-                      title: `Tạo phiên bản mới cho ${selectedTestRecord.test_case_key}`,
-                      description:
-                        "Phiên bản hiện tại được giữ nguyên. Bản mới sẽ được gửi rà soát và phê duyệt.",
-                      confirmLabel: "Tạo bản nháp",
-                      fields: [
-                        {
-                          name: "change_reason",
-                          label: "Lý do thay đổi",
-                          required: true,
-                          multiline: true,
-                          autoFocus: true,
-                        },
-                      ],
-                    });
-                    if (!answer) return;
-                    try {
-                      const draft = await testingApi.createTestCaseVersionDraft(
-                        selectedTestRecord._id,
-                        {
-                          expected_current_version_id: selectedTestRecord.current_version_id,
-                          change_reason: answer.change_reason,
-                        },
-                      );
-                      await load();
-                      setSelectedDraftId(draft._id);
-                    } catch (reason) {
-                      setError(messageOf(reason));
-                    }
-                  }}
+                  onClick={createSelectedCaseVersionDraft}
                 >
                   Tạo phiên bản mới
                 </button>
@@ -1249,6 +1337,17 @@ export default function TestDesignPage({ project, workspaceView, section }) {
               Tạo ca kiểm thử
             </button>
           )}
+          {!linkedCaseId && forceListView && showCases && tests.length > 0 && (
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() =>
+                router.push(`${caseListPath}?case=${encodeURIComponent(tests[0]._id)}`)
+              }
+            >
+              Mở Split View
+            </button>
+          )}
         </div>
       }
     >
@@ -1293,182 +1392,391 @@ export default function TestDesignPage({ project, workspaceView, section }) {
         </div>
       )}
       {linkedCaseId && selectedTestRecord && (
-        <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(18rem,1fr)]">
-          <div className="grid min-w-0 content-start gap-5">
-            <Panel title="Thông tin chung">
-              <dl className="grid min-w-0 gap-x-6 gap-y-4 p-5 sm:grid-cols-2 xl:grid-cols-4">
-                <div className="min-w-0">
-                  <dt className="text-xs text-ink-muted">Mã ca kiểm thử</dt>
-                  <dd className="mt-1 break-words text-sm font-medium">
-                    {selectedTestRecord.test_case_key}
-                  </dd>
-                </div>
-                <div className="min-w-0 sm:col-span-2">
-                  <dt className="text-xs text-ink-muted">Tên ca kiểm thử</dt>
-                  <dd className="mt-1 break-words text-sm font-medium">
-                    {selectedTestRecord.current_version?.title || selectedTestRecord.title}
-                  </dd>
-                </div>
-                <div className="min-w-0">
-                  <dt className="text-xs text-ink-muted">Module / Tính năng</dt>
-                  <dd className="mt-1 text-sm">
-                    {selectedTestRecord.current_version?.module_name || "-"}
-                  </dd>
-                </div>
-                <div className="min-w-0">
-                  <dt className="text-xs text-ink-muted">Loại</dt>
-                  <dd className="mt-1 text-sm">
-                    {valueLabel(
-                      selectedTestRecord.current_version?.type || selectedTestRecord.type,
-                    )}
-                  </dd>
-                </div>
-                <div className="min-w-0">
-                  <dt className="text-xs text-ink-muted">Ưu tiên</dt>
-                  <dd className="mt-1 text-sm">
-                    {valueLabel(
-                      selectedTestRecord.current_version?.priority || selectedTestRecord.priority,
-                    )}
-                  </dd>
-                </div>
-                <div className="min-w-0">
-                  <dt className="text-xs text-ink-muted">Trạng thái</dt>
-                  <dd className="mt-1">
-                    <StatusPill value={selectedTestRecord.status} />
-                  </dd>
-                </div>
-                <div className="min-w-0">
-                  <dt className="text-xs text-ink-muted">Phiên bản</dt>
-                  <dd className="mt-1 text-sm">
-                    {selectedTestRecord.current_version?.version
-                      ? `v${selectedTestRecord.current_version.version}`
-                      : "Chưa có phiên bản"}
-                  </dd>
-                </div>
-                <div className="min-w-0">
-                  <dt className="text-xs text-ink-muted">Ước lượng</dt>
-                  <dd className="mt-1 text-sm">
-                    {selectedTestRecord.current_version?.duration_minutes
-                      ? `${selectedTestRecord.current_version.duration_minutes} phút`
-                      : "Chưa có dữ liệu"}
-                  </dd>
-                </div>
-                <div className="min-w-0">
-                  <dt className="text-xs text-ink-muted">Người phụ trách</dt>
-                  <dd className="mt-1 break-words text-sm">
-                    {projectMembers.find(
-                      (member) => member.user_id === selectedTestRecord.current_version?.owner_id,
-                    )?.user_label || "Chưa phân công"}
-                  </dd>
-                </div>
-              </dl>
-              {selectedTestRecord.current_version?.objective_doc && (
-                <div className="border-t border-border px-5 py-4">
-                  <h3 className="text-sm font-medium">Mô tả ca kiểm thử</h3>
-                  <p className="mt-2 whitespace-pre-wrap break-words text-sm text-ink-muted">
-                    {docText(selectedTestRecord.current_version.objective_doc) || "Chưa có mô tả"}
-                  </p>
-                </div>
-              )}
-            </Panel>
-            <Panel title="Luồng chính">
-              <p className="whitespace-pre-wrap p-5">
-                {docText(selectedTestRecord.current_version?.main_flow_doc).trim() || "-"}
-              </p>
-            </Panel>
-            <Panel title="Luồng thay thế và ngoại lệ">
-              <dl className="grid gap-4 p-5 md:grid-cols-2">
-                {[
-                  ["Luồng thay thế", selectedTestRecord.current_version?.alternate_flows_doc],
-                  ["Luồng ngoại lệ", selectedTestRecord.current_version?.exception_flows_doc],
-                ].map(([label, content]) => (
-                  <div key={label}>
-                    <dt className="field-label">{label}</dt>
-                    <dd className="mt-2 whitespace-pre-wrap">{docText(content).trim() || "-"}</dd>
-                  </div>
+        <div className="grid min-w-0 items-start gap-5 md:items-stretch md:grid-cols-[minmax(14rem,3fr)_minmax(0,7fr)]">
+          <aside className="min-w-0 md:self-stretch" aria-label="Điều hướng ca kiểm thử">
+            <Panel title="Ca kiểm thử" className="min-w-0 md:sticky md:top-20 md:self-start">
+              <div className="border-b border-border p-3">
+                <SearchField
+                  ariaLabel="Tìm ca kiểm thử"
+                  className="w-full"
+                  onChange={(event) => {
+                    setTestFilters((current) => ({ ...current, q: event.target.value }));
+                    setTestPage(1);
+                  }}
+                  placeholder="Tìm mã hoặc tên ca"
+                  value={testFilters.q}
+                />
+              </div>
+              <ul className="max-h-[min(66vh,48rem)] divide-y divide-border overflow-y-auto">
+                {testCaseGroups.map((group) => (
+                  <li key={group.id}>
+                    <details className="group/cases" open>
+                      <summary className="sticky top-0 z-[1] flex cursor-pointer list-none items-center justify-between gap-2 border-y border-border bg-surface-quiet px-3 py-2 text-[11px] font-semibold text-ink-muted [&::-webkit-details-marker]:hidden">
+                        <span className="min-w-0 truncate">{group.label}</span>
+                        <span className="shrink-0 rounded-full border border-border bg-surface px-1.5 py-0.5 font-normal">
+                          {group.items.length}
+                        </span>
+                      </summary>
+                      <ul className="divide-y divide-border/70">
+                        {group.items.map((item) => (
+                          <li key={item._id}>
+                            <button
+                              aria-current={item._id === selectedTestId ? "page" : undefined}
+                              className={`block w-full min-w-0 px-3 py-3 text-left transition ${item._id === selectedTestId ? "bg-brand-soft/60" : "hover:bg-surface-quiet"}`}
+                              onClick={() =>
+                                router.push(`${caseListPath}?case=${encodeURIComponent(item._id)}`)
+                              }
+                              type="button"
+                            >
+                              <span className="flex min-w-0 items-center justify-between gap-2">
+                                <span className="truncate font-mono text-[11px] font-semibold text-brand">
+                                  {item.test_case_key}
+                                </span>
+                                <StatusPill value={item.status} />
+                              </span>
+                              <span className="mt-1 line-clamp-2 break-words text-[13px] font-medium leading-5 [overflow-wrap:anywhere]">
+                                {item.current_version?.title || item.title || "Ca kiểm thử"}
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  </li>
                 ))}
-              </dl>
-            </Panel>
-            <Panel title="Tiền điều kiện và hậu điều kiện">
-              <div className="grid gap-4 p-5 md:grid-cols-2">
-                {[
-                  ["Tiền điều kiện", selectedTestRecord.current_version?.preconditions_doc],
-                  ["Hậu điều kiện", selectedTestRecord.current_version?.postconditions_doc],
-                ].map(([label, content]) => (
-                  <section className="min-w-0 rounded-control border border-border p-4" key={label}>
-                    <h3 className="text-sm font-medium">{label}</h3>
-                    <p className="mt-2 whitespace-pre-wrap break-words text-sm text-ink-muted">
-                      {docText(content) || "Chưa có nội dung"}
-                    </p>
-                  </section>
-                ))}
+                {!tests.length && (
+                  <li className="p-4 text-sm text-ink-muted">Không có ca phù hợp.</li>
+                )}
+              </ul>
+              <div className="border-t border-border p-3">
+                <Link className="text-sm font-medium text-brand" href={`${caseListPath}?view=list`}>
+                  Mở danh sách đầy đủ
+                </Link>
               </div>
             </Panel>
-            <Panel title="Các bước kiểm thử">
-              {selectedTestRecord.current_version?.steps?.length ? (
+          </aside>
+          <div className="min-w-0">
+            <div
+              className="mb-4 flex gap-1 overflow-x-auto border-b border-border"
+              role="tablist"
+              aria-label="Chi tiết ca kiểm thử"
+            >
+              {[
+                ["content", "Nội dung"],
+                ["versions", `Phiên bản (${testVersions.length})`],
+                ["trace", "Truy vết"],
+                ["review", "Rà soát"],
+              ].map(([tab, label]) => (
+                <button
+                  key={tab}
+                  type="button"
+                  role="tab"
+                  aria-selected={testDetailTab === tab}
+                  className={`shrink-0 border-b-2 px-3 py-2 text-sm font-medium transition ${testDetailTab === tab ? "border-brand text-brand" : "border-transparent text-ink-muted hover:text-ink"}`}
+                  onClick={() => setTestDetailTab(tab)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {testDetailTab === "content" && (
+              <div className="grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_19rem]">
+                <div className="grid min-w-0 content-start gap-4">
+                  <Panel title="Các bước kiểm thử">
+                    {selectedTestRecord.current_version?.steps?.length ? (
+                      <DataTable
+                        items={selectedTestRecord.current_version.steps.map((step, index) => ({
+                          ...step,
+                          _id: step._id || String(index),
+                          step_number: step.step_number || step.number || index + 1,
+                        }))}
+                        columns={[
+                          { key: "step_number", label: "STT", minWidth: 64 },
+                          {
+                            key: "action",
+                            label: "Thao tác",
+                            minWidth: 220,
+                            render: (step) => docText(step.action_doc || step.action),
+                          },
+                          {
+                            key: "data",
+                            label: "Dữ liệu",
+                            minWidth: 180,
+                            render: (step) => docText(step.test_data || step.data),
+                          },
+                          {
+                            key: "expected",
+                            label: "Kết quả mong đợi",
+                            minWidth: 240,
+                            render: (step) => docText(step.expected_result_doc || step.expected),
+                          },
+                        ]}
+                      />
+                    ) : (
+                      <p className="p-4 text-sm text-ink-muted">Chưa có bước kiểm thử</p>
+                    )}
+                  </Panel>
+                  <Panel title="Mô tả và luồng chính">
+                    <div className="space-y-4 p-4">
+                      <div>
+                        <h3 className="text-xs font-medium text-ink-muted">Mô tả</h3>
+                        <p className="mt-1 whitespace-pre-wrap break-words text-sm">
+                          {docText(selectedTestRecord.current_version?.objective_doc).trim() ||
+                            "Chưa có mô tả"}
+                        </p>
+                      </div>
+                      <div className="border-t border-border pt-3">
+                        <h3 className="text-xs font-medium text-ink-muted">Luồng chính</h3>
+                        <p className="mt-1 whitespace-pre-wrap break-words text-sm">
+                          {docText(selectedTestRecord.current_version?.main_flow_doc).trim() ||
+                            "Chưa có nội dung"}
+                        </p>
+                      </div>
+                    </div>
+                  </Panel>
+                  <details className="rounded-control border border-border bg-surface">
+                    <summary className="cursor-pointer px-4 py-3 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand">
+                      Điều kiện, luồng thay thế và ngoại lệ
+                    </summary>
+                    <div className="grid gap-4 border-t border-border p-4 md:grid-cols-2">
+                      {[
+                        ["Tiền điều kiện", selectedTestRecord.current_version?.preconditions_doc],
+                        ["Hậu điều kiện", selectedTestRecord.current_version?.postconditions_doc],
+                        ["Luồng thay thế", selectedTestRecord.current_version?.alternate_flows_doc],
+                        ["Luồng ngoại lệ", selectedTestRecord.current_version?.exception_flows_doc],
+                      ].map(([label, content]) => (
+                        <section
+                          className="min-w-0 rounded-control border border-border p-3"
+                          key={label}
+                        >
+                          <h3 className="text-xs font-medium text-ink-muted">{label}</h3>
+                          <p className="mt-2 whitespace-pre-wrap break-words text-sm">
+                            {docText(content).trim() || "Chưa có nội dung"}
+                          </p>
+                        </section>
+                      ))}
+                    </div>
+                  </details>
+                  <details className="rounded-control border border-border bg-surface">
+                    <summary className="cursor-pointer px-4 py-3 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand">
+                      Thông tin bổ sung và liên kết
+                    </summary>
+                    <dl className="grid gap-4 border-t border-border p-4 sm:grid-cols-3">
+                      {[
+                        [
+                          "Yêu cầu",
+                          (selectedTestRecord.current_version?.requirement_version_ids || [])
+                            .map((id) => {
+                              const item = requirements.find(
+                                (requirement) => requirement.current_version_id === id,
+                              );
+                              return item
+                                ? `${item.requirement_key} · ${item.current_version?.title || item.title || "Yêu cầu"}`
+                                : id;
+                            })
+                            .join("\n"),
+                        ],
+                        ["Kỹ thuật", selectedTestRecord.current_version?.techniques],
+                        ["Thẻ", selectedTestRecord.current_version?.tags],
+                      ].map(([label, content]) => (
+                        <div className="min-w-0" key={label}>
+                          <dt className="text-xs text-ink-muted">{label}</dt>
+                          <dd className="mt-1 whitespace-pre-wrap break-words text-sm">
+                            {Array.isArray(content)
+                              ? content.map(valueLabel).join(" · ") || "Chưa liên kết"
+                              : docText(content) || "Chưa liên kết"}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </details>
+                </div>
+                <Panel title="Thông tin ca kiểm thử">
+                  <dl className="grid min-w-0 gap-x-4 gap-y-3 p-4 sm:grid-cols-2 xl:grid-cols-1">
+                    <div className="min-w-0">
+                      <dt className="text-xs text-ink-muted">Mã ca</dt>
+                      <dd className="mt-1 break-words text-sm font-semibold">
+                        {selectedTestRecord.test_case_key}
+                      </dd>
+                    </div>
+                    <div className="min-w-0 sm:col-span-2 xl:col-span-1">
+                      <dt className="text-xs text-ink-muted">Tên ca</dt>
+                      <dd className="mt-1 break-words text-sm font-medium">
+                        {selectedTestRecord.current_version?.title || selectedTestRecord.title}
+                      </dd>
+                    </div>
+                    <div className="min-w-0">
+                      <dt className="text-xs text-ink-muted">Module / Tính năng</dt>
+                      <dd className="mt-1 break-words text-sm">
+                        {selectedTestRecord.current_version?.module_name || "Chưa phân loại"}
+                      </dd>
+                    </div>
+                    <div className="min-w-0">
+                      <dt className="text-xs text-ink-muted">Loại</dt>
+                      <dd className="mt-1 text-sm">
+                        {valueLabel(
+                          selectedTestRecord.current_version?.type || selectedTestRecord.type,
+                        )}
+                      </dd>
+                    </div>
+                    <div className="min-w-0">
+                      <dt className="text-xs text-ink-muted">Ưu tiên</dt>
+                      <dd className="mt-1 text-sm">
+                        {valueLabel(
+                          selectedTestRecord.current_version?.priority ||
+                            selectedTestRecord.priority,
+                        )}
+                      </dd>
+                    </div>
+                    <div className="min-w-0">
+                      <dt className="text-xs text-ink-muted">Trạng thái</dt>
+                      <dd className="mt-1">
+                        <StatusPill value={selectedTestRecord.status} />
+                      </dd>
+                    </div>
+                    <div className="min-w-0">
+                      <dt className="text-xs text-ink-muted">Phiên bản</dt>
+                      <dd className="mt-1 text-sm">
+                        {selectedTestRecord.current_version?.version
+                          ? `v${selectedTestRecord.current_version.version}`
+                          : "Chưa có phiên bản"}
+                      </dd>
+                    </div>
+                    <div className="min-w-0">
+                      <dt className="text-xs text-ink-muted">Ước lượng</dt>
+                      <dd className="mt-1 text-sm">
+                        {selectedTestRecord.current_version?.duration_minutes
+                          ? `${selectedTestRecord.current_version.duration_minutes} phút`
+                          : "Chưa có dữ liệu"}
+                      </dd>
+                    </div>
+                    <div className="min-w-0 sm:col-span-2 xl:col-span-1">
+                      <dt className="text-xs text-ink-muted">Người phụ trách</dt>
+                      <dd className="mt-1 break-words text-sm">
+                        {projectMembers.find(
+                          (member) =>
+                            member.user_id === selectedTestRecord.current_version?.owner_id,
+                        )?.user_label || "Chưa phân công"}
+                      </dd>
+                    </div>
+                  </dl>
+                </Panel>
+              </div>
+            )}
+            {testDetailTab === "versions" && (
+              <Panel title="Lịch sử phiên bản ca kiểm thử">
                 <DataTable
-                  items={selectedTestRecord.current_version.steps.map((step, index) => ({
-                    ...step,
-                    _id: step._id || String(index),
-                    step_number: step.step_number || step.number || index + 1,
-                  }))}
+                  items={testVersions}
+                  empty="Chưa có phiên bản"
                   columns={[
-                    { key: "step_number", label: "STT", minWidth: 64 },
+                    { key: "test_case_key", label: "Mã" },
                     {
-                      key: "action",
-                      label: "Thao tác",
-                      minWidth: 220,
-                      render: (step) => docText(step.action_doc || step.action),
+                      key: "version",
+                      label: "Phiên bản",
+                      align: "center",
+                      render: (item) => `v${item.version}`,
                     },
                     {
-                      key: "data",
-                      label: "Dữ liệu",
-                      minWidth: 180,
-                      render: (step) => docText(step.test_data || step.data),
+                      key: "title",
+                      label: "Tên",
+                      render: (item) => (
+                        <span
+                          className="line-clamp-2 break-words [overflow-wrap:anywhere]"
+                          title={item.title || ""}
+                        >
+                          {item.title}
+                        </span>
+                      ),
+                      mobileRender: (item) => item.title,
                     },
+                    { key: "change_reason", label: "Lý do thay đổi" },
                     {
-                      key: "expected",
-                      label: "Kết quả mong đợi",
-                      minWidth: 240,
-                      render: (step) => docText(step.expected_result_doc || step.expected),
+                      key: "status",
+                      label: "Trạng thái",
+                      render: (item) => <StatusPill value={item.status} />,
                     },
                   ]}
                 />
-              ) : (
-                <p className="p-5 text-sm text-ink-muted">Chưa có bước kiểm thử</p>
-              )}
-            </Panel>
-          </div>
-          <Panel title="Thông tin bổ sung và liên kết">
-            <dl className="divide-y divide-border px-5">
-              {[
-                [
-                  "Yêu cầu",
-                  (selectedTestRecord.current_version?.requirement_version_ids || [])
-                    .map((id) => {
-                      const item = requirements.find(
-                        (requirement) => requirement.current_version_id === id,
-                      );
-                      return item
-                        ? `${item.requirement_key} · ${item.current_version?.title || item.title || "Yêu cầu"}`
-                        : id;
-                    })
-                    .join("\n"),
-                ],
-                ["Kỹ thuật", selectedTestRecord.current_version?.techniques],
-                ["Thẻ", selectedTestRecord.current_version?.tags],
-              ].map(([label, content]) => (
-                <div className="py-3" key={label}>
-                  <dt className="text-xs text-ink-muted">{label}</dt>
-                  <dd className="mt-1 whitespace-pre-wrap break-words text-sm">
-                    {Array.isArray(content)
-                      ? content.map(valueLabel).join(" · ") || "Chưa liên kết"
-                      : docText(content) || "Chưa liên kết"}
-                  </dd>
+                {testVersions
+                  .filter((version) => version.evidence_quotes?.length)
+                  .map((version) => (
+                    <details
+                      className="border-t border-border p-4 text-sm"
+                      key={`evidence-${version._id}`}
+                    >
+                      <summary className="cursor-pointer font-medium">
+                        Căn cứ nguồn của phiên bản v{version.version}
+                      </summary>
+                      <div className="mt-3 space-y-2">
+                        {version.evidence_quotes.map((item, index) => (
+                          <p key={`${item.evidence_ref}-${index}`}>
+                            {item.evidence_ref} {item.quote}
+                          </p>
+                        ))}
+                      </div>
+                    </details>
+                  ))}
+              </Panel>
+            )}
+            {testDetailTab === "trace" && (
+              <Panel title="Liên kết truy vết">
+                <div className="grid gap-5 p-5 md:grid-cols-2">
+                  <TraceGroup
+                    title="Yêu cầu"
+                    values={(selectedTestRecord.current_version?.requirement_version_ids || []).map(
+                      (id) => {
+                        const item = requirements.find(
+                          (requirement) => requirement.current_version_id === id,
+                        );
+                        return {
+                          id,
+                          label: item
+                            ? `${item.requirement_key} · ${item.current_version?.title || item.title || "Yêu cầu"}`
+                            : id,
+                        };
+                      },
+                    )}
+                    empty="Chưa liên kết yêu cầu"
+                  />
+                  <TraceGroup
+                    title="Tiêu chí chấp nhận"
+                    values={selectedTestRecord.current_version?.acceptance_criterion_ids || []}
+                    empty="Chưa liên kết tiêu chí"
+                  />
+                  <TraceGroup
+                    title="Điều kiện kiểm thử"
+                    values={selectedTestRecord.current_version?.test_condition_ids || []}
+                    empty="Chưa liên kết điều kiện"
+                  />
+                  <TraceGroup
+                    title="Điểm cần kiểm thử"
+                    values={selectedTestRecord.current_version?.coverage_item_ids || []}
+                    empty="Chưa liên kết điểm cần kiểm thử"
+                  />
                 </div>
-              ))}
-            </dl>
-          </Panel>
+              </Panel>
+            )}
+            {testDetailTab === "review" && (
+              <Panel title="Rà soát ca kiểm thử">
+                <div className="space-y-3 p-5">
+                  <p className="text-sm text-ink-muted">
+                    Nhận xét rà soát được gắn với bản nháp có thể chỉnh sửa. Phiên bản đã duyệt là
+                    bất biến; tạo bản nháp mới để trao đổi, xử lý nhận xét và gửi duyệt mà không
+                    thay đổi phiên bản hiện tại.
+                  </p>
+                  {can("testcase.version.create") && (
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={createSelectedCaseVersionDraft}
+                    >
+                      Tạo bản nháp để rà soát
+                    </button>
+                  )}
+                </div>
+              </Panel>
+            )}
+          </div>
         </div>
       )}
       {showAIRuns && canReadAIRuns && (
@@ -2461,61 +2769,6 @@ export default function TestDesignPage({ project, workspaceView, section }) {
           </Panel>
         </div>
       )}
-      {showCases && selectedTestId && (
-        <Panel title="Lịch sử phiên bản ca kiểm thử">
-          <DataTable
-            items={testVersions}
-            empty="Chưa có phiên bản"
-            columns={[
-              { key: "test_case_key", label: "Mã" },
-              {
-                key: "version",
-                label: "Phiên bản",
-                align: "center",
-                render: (item) => `v${item.version}`,
-              },
-              {
-                key: "title",
-                label: "Tên",
-                render: (item) => (
-                  <span
-                    className="line-clamp-2 break-words [overflow-wrap:anywhere]"
-                    title={item.title || ""}
-                  >
-                    {item.title}
-                  </span>
-                ),
-                mobileRender: (item) => item.title,
-              },
-              { key: "change_reason", label: "Lý do thay đổi" },
-              {
-                key: "status",
-                label: "Trạng thái",
-                render: (item) => <StatusPill value={item.status} />,
-              },
-            ]}
-          />
-          {testVersions
-            .filter((version) => version.evidence_quotes?.length)
-            .map((version) => (
-              <details
-                className="border-t border-border p-4 text-sm"
-                key={`evidence-${version._id}`}
-              >
-                <summary className="cursor-pointer font-medium">
-                  Căn cứ nguồn của phiên bản v{version.version}
-                </summary>
-                <div className="mt-3 space-y-2">
-                  {version.evidence_quotes.map((item, index) => (
-                    <p key={`${item.evidence_ref}-${index}`}>
-                      {item.evidence_ref} {item.quote}
-                    </p>
-                  ))}
-                </div>
-              </details>
-            ))}
-        </Panel>
-      )}
       {showCases && selectedDraft && draftEdit && (
         <>
           <div className="flex flex-wrap items-center gap-3">
@@ -3182,69 +3435,127 @@ export default function TestDesignPage({ project, workspaceView, section }) {
       )}
       {workspaceView === "test-sets" && access.canReadTestSets && (
         <Panel title="Danh sách bộ kiểm thử">
-          <div className="flex flex-wrap items-center gap-2 px-4 pt-4 pb-4 sm:px-5">
-            <SearchField
-              ariaLabel="Tìm bộ kiểm thử"
-              className="min-w-64 flex-1"
-              onChange={(event) => setSuiteSearch(event.target.value)}
-              placeholder="Tìm theo tên hoặc loại bộ"
-              value={suiteSearch}
-            />
-            <span className="px-2 text-[12px] text-ink-muted">{visibleSuites.length} bộ</span>
-            {can("testsuite.create") && (
-              <button className="apple-button" type="button" onClick={createTestSet}>
-                Tạo bộ kiểm thử
-              </button>
+          <div className="space-y-5 p-4 sm:p-5">
+            <div className="grid gap-3 sm:grid-cols-3">
+              {[
+                { label: "Tổng bộ kiểm thử", value: suites.length },
+                { label: "Đang sử dụng", value: activeSuiteCount },
+                { label: "Đã lưu trữ", value: archivedSuiteCount },
+              ].map((metric) => (
+                <div className="rounded-control border border-border px-4 py-3" key={metric.label}>
+                  <p className="text-xs text-ink-muted">{metric.label}</p>
+                  <p className="mt-1 text-xl font-semibold tabular-nums">{metric.value}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex flex-col gap-3 border-b border-border pb-4 lg:flex-row lg:items-center lg:justify-between">
+              <SearchField
+                ariaLabel="Tìm bộ kiểm thử"
+                className="min-w-0 flex-1 lg:max-w-xl"
+                onChange={(event) => setSuiteSearch(event.target.value)}
+                placeholder="Tìm theo tên hoặc loại bộ"
+                value={suiteSearch}
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <div
+                  className="inline-flex max-w-full rounded-control border border-border p-1"
+                  role="group"
+                  aria-label="Lọc trạng thái bộ kiểm thử"
+                >
+                  {[
+                    { id: "all", label: "Tất cả", count: suites.length },
+                    { id: "active", label: "Đang sử dụng", count: activeSuiteCount },
+                    { id: "archived", label: "Đã lưu trữ", count: archivedSuiteCount },
+                  ].map((filter) => (
+                    <button
+                      aria-pressed={suiteStatusFilter === filter.id}
+                      className={`rounded-[5px] px-3 py-2 text-sm transition-colors ${suiteStatusFilter === filter.id ? "bg-surface-quiet font-medium text-ink" : "text-ink-muted hover:bg-surface-quiet hover:text-ink"}`}
+                      key={filter.id}
+                      onClick={() => setSuiteStatusFilter(filter.id)}
+                      type="button"
+                    >
+                      {filter.label} <span className="ml-1 tabular-nums">{filter.count}</span>
+                    </button>
+                  ))}
+                </div>
+                {can("testsuite.create") && (
+                  <button className="apple-button shrink-0" type="button" onClick={createTestSet}>
+                    Tạo bộ kiểm thử
+                  </button>
+                )}
+              </div>
+            </div>
+            <p aria-live="polite" className="text-sm text-ink-muted">
+              {visibleSuites.length} / {suites.length} bộ kiểm thử
+            </p>
+            {visibleSuites.length ? (
+              <ul className="min-w-0 divide-y divide-border overflow-hidden rounded-control border border-border">
+                {visibleSuites.map((item) => (
+                  <li
+                    key={item._id}
+                    className="grid min-w-0 gap-3 bg-surface px-4 py-4 transition-colors hover:bg-surface-quiet/50 sm:px-5 lg:grid-cols-[minmax(0,1fr)_10rem_9rem_auto] lg:items-center"
+                  >
+                    <div className="min-w-0">
+                      <h3 className="break-words font-semibold leading-6">{item.name}</h3>
+                      <p className="mt-1 text-sm text-ink-muted">{valueLabel(item.suite_type)}</p>
+                    </div>
+                    <p className="text-sm text-ink-muted">
+                      <span className="font-semibold text-ink tabular-nums">
+                        {item.test_case_version_ids?.length || 0}
+                      </span>{" "}
+                      ca kiểm thử
+                    </p>
+                    <div className="flex items-center">
+                      <StatusPill value={item.status} />
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2 lg:justify-end">
+                      {can("testsuite.update") && (
+                        <button
+                          className="icon-button h-9 w-9"
+                          type="button"
+                          aria-label={`Cập nhật bộ kiểm thử ${item.name}`}
+                          title="Cập nhật bộ kiểm thử"
+                          onClick={() => updateTestSet(item)}
+                        >
+                          <Pencil aria-hidden="true" size={16} />
+                        </button>
+                      )}
+                      {item.status !== "ARCHIVED" && can("testsuite.archive") && (
+                        <button
+                          className="icon-button h-9 w-9"
+                          type="button"
+                          aria-label={`Lưu trữ bộ kiểm thử ${item.name}`}
+                          title="Lưu trữ bộ kiểm thử"
+                          onClick={() => archiveTestSet(item)}
+                        >
+                          <Archive aria-hidden="true" size={16} />
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="px-5 py-10 text-center" role="status">
+                <p className="font-semibold text-ink">
+                  {suites.length ? "Không tìm thấy bộ kiểm thử phù hợp" : "Chưa có bộ kiểm thử"}
+                </p>
+                {suites.length > 0 && (
+                  <button
+                    className="secondary-button mt-3"
+                    type="button"
+                    onClick={() => {
+                      setSuiteSearch("");
+                      setSuiteStatusFilter("all");
+                    }}
+                  >
+                    Xóa bộ lọc
+                  </button>
+                )}
+              </div>
             )}
           </div>
-          <DataTable
-            items={visibleSuites}
-            empty={suites.length ? "Không tìm thấy bộ kiểm thử phù hợp" : "Chưa có bộ kiểm thử"}
-            columns={[
-              { key: "name", label: "Tên" },
-              {
-                key: "test_case_version_ids",
-                label: "Số ca",
-                render: (item) => item.test_case_version_ids?.length || 0,
-              },
-              {
-                key: "status",
-                label: "Trạng thái",
-                render: (item) => <StatusPill value={item.status} />,
-              },
-              {
-                key: "actions",
-                label: "Thao tác",
-                hideWhenEmpty: true,
-                render: (item) => (
-                  <span className="flex flex-wrap gap-2">
-                    {can("testsuite.update") && (
-                      <button
-                        className="icon-button h-9 w-9"
-                        type="button"
-                        aria-label={`Cập nhật bộ kiểm thử ${item.name}`}
-                        title="Cập nhật bộ kiểm thử"
-                        onClick={() => updateTestSet(item)}
-                      >
-                        <Pencil aria-hidden="true" size={16} />
-                      </button>
-                    )}
-                    {item.status !== "ARCHIVED" && can("testsuite.archive") && (
-                      <button
-                        className="icon-button h-9 w-9"
-                        type="button"
-                        aria-label={`Lưu trữ bộ kiểm thử ${item.name}`}
-                        title="Lưu trữ bộ kiểm thử"
-                        onClick={() => archiveTestSet(item)}
-                      >
-                        <Archive aria-hidden="true" size={16} />
-                      </button>
-                    )}
-                  </span>
-                ),
-              },
-            ]}
-          />
         </Panel>
       )}
       {showApi && (

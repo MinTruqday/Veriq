@@ -2,7 +2,7 @@ import DataTable from "../../../components/DataTable";
 import { Panel, StatusPill } from "../../../components/WorkspacePrimitives";
 import { messageOf, valueLabel } from "../../../lib/testing";
 import { testingApi } from "../../../services/testing.service";
-import { StructuredValueView } from "../../../components/StructuredValueEditor";
+import RequirementVersionDiff from "./RequirementVersionDiff";
 
 export default function RequirementHistoryPanel({
   selected,
@@ -107,28 +107,20 @@ export default function RequirementHistoryPanel({
         )}
       </Panel>
       {comparison && (
-        <Panel title="Khác biệt phiên bản">
-          <DataTable
-            items={comparison.changes.map((item, index) => ({ ...item, _id: index }))}
-            empty="Hai phiên bản không có khác biệt ngữ nghĩa"
-            columns={[
-              {
-                key: "type",
-                label: "Loại thay đổi",
-                render: (item) => valueLabel(item.type),
-              },
-              { key: "field", label: "Trường" },
-              {
-                key: "before",
-                label: "Trước",
-                render: (item) => <StructuredValueView value={item.before} />,
-              },
-              {
-                key: "after",
-                label: "Sau",
-                render: (item) => <StructuredValueView value={item.after} />,
-              },
-            ]}
+        <Panel title="Đối chiếu hai phiên bản">
+          <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 text-xs text-ink-muted">
+            <span>
+              Phiên bản trước: v{versions.find((item) => item._id === compareFrom)?.version}
+            </span>
+            <span aria-hidden="true">→</span>
+            <span>Phiên bản mới: v{versions.find((item) => item._id === compareTo)?.version}</span>
+            <span className="ml-auto font-medium text-ink">
+              {(comparison.changes || []).length} mục thay đổi
+            </span>
+          </div>
+          <RequirementVersionDiff
+            changes={comparison.changes || []}
+            empty="Hai phiên bản không có khác biệt ngữ nghĩa."
           />
         </Panel>
       )}

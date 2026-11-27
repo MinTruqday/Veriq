@@ -538,7 +538,7 @@ export default function AppShell({ children, requireAuth }) {
         Bỏ qua điều hướng
       </a>
       <header
-        className={`fixed inset-x-0 top-0 z-40 h-[68px] border-b border-border bg-surface/95 backdrop-blur-md transition-[left] duration-200 ${sidebarCollapsed ? "lg:left-[76px]" : "lg:left-[260px]"}`}
+        className={`fixed inset-x-0 top-0 z-40 h-16 border-b border-border bg-surface transition-[left] duration-200 ${sidebarCollapsed ? "lg:left-[76px]" : "lg:left-[260px]"}`}
       >
         <div className="flex h-full items-center gap-3 px-4 md:px-6">
           <button
@@ -699,7 +699,7 @@ export default function AppShell({ children, requireAuth }) {
         className={`fixed inset-y-0 left-0 z-40 hidden border-r border-border bg-surface transition-[width] duration-200 lg:block ${sidebarCollapsed ? "w-[76px]" : "w-[260px]"}`}
       >
         <div
-          className={`flex h-[68px] items-center border-b border-border ${sidebarCollapsed ? "justify-center px-3" : "justify-between px-5"}`}
+          className={`flex h-16 items-center border-b border-border ${sidebarCollapsed ? "justify-center px-3" : "justify-between px-5"}`}
         >
           <Link
             href="/"
@@ -738,7 +738,7 @@ export default function AppShell({ children, requireAuth }) {
           </button>
         )}
         <nav
-          className={`h-[calc(100dvh-68px)] overflow-y-auto ${sidebarCollapsed ? "px-2 py-4" : "px-4 py-6"}`}
+          className={`h-[calc(100dvh-64px)] overflow-y-auto ${sidebarCollapsed ? "px-2 py-4" : "px-4 py-5"}`}
           aria-label="Điều hướng chính"
         >
           {projectId && !sidebarCollapsed && (
@@ -819,7 +819,7 @@ export default function AppShell({ children, requireAuth }) {
       <main
         id="main-content"
         tabIndex={-1}
-        className={`min-h-[100dvh] min-w-0 pt-[68px] transition-[padding] duration-200 ${sidebarCollapsed ? "lg:pl-[76px]" : "lg:pl-[260px]"}`}
+        className={`min-h-[100dvh] min-w-0 pt-16 transition-[padding] duration-200 ${sidebarCollapsed ? "lg:pl-[76px]" : "lg:pl-[260px]"}`}
       >
         <div className="page-shell">
           {projectContextError ? (

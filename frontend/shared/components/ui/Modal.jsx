@@ -14,6 +14,7 @@ export function Modal({
   className,
   showCloseButton = true,
   ariaLabel = "Hộp thoại",
+  placement = "center",
 }) {
   const dialogRef = useRef(null);
   const previousFocusRef = useRef(null);
@@ -98,9 +99,14 @@ export function Modal({
     }
   }, [isOpen]);
   if (!isOpen) return null;
+  const isDrawer = placement === "right";
   return createPortal(
     <div
-      className="fixed inset-0 z-[2000] flex items-center justify-center bg-ink/30 p-4 backdrop-blur-[2px] animate-in fade-in"
+      className={
+        isDrawer
+          ? "fixed inset-0 z-[2000] flex items-stretch justify-end bg-ink/30 backdrop-blur-[2px] animate-in fade-in"
+          : "fixed inset-0 z-[2000] flex items-center justify-center bg-ink/30 p-4 backdrop-blur-[2px] animate-in fade-in"
+      }
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -112,7 +118,9 @@ export function Modal({
         aria-label={ariaLabel}
         tabIndex={-1}
         className={cn(
-          "modal-dialog relative max-h-[90dvh] w-full max-w-md overflow-x-hidden overflow-y-auto overscroll-contain rounded-panel bg-surface p-0 shadow-[0_24px_80px_rgba(32,32,30,0.18)] outline-none animate-in zoom-in-95",
+          isDrawer
+            ? "modal-dialog relative h-[100dvh] max-h-none w-full max-w-[min(92vw,56rem)] overflow-x-hidden overflow-y-auto overscroll-contain rounded-l-panel rounded-r-none bg-surface p-0 shadow-[0_24px_80px_rgba(32,32,30,0.18)] outline-none animate-in slide-in-from-right"
+            : "modal-dialog relative max-h-[90dvh] w-full max-w-md overflow-x-hidden overflow-y-auto overscroll-contain rounded-panel bg-surface p-0 shadow-[0_24px_80px_rgba(32,32,30,0.18)] outline-none animate-in zoom-in-95",
           className,
         )}
       >

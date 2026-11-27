@@ -557,6 +557,19 @@ export default function DocumentReaderPage({ project, section = [] }) {
     Number.isFinite(summaryProcessed) && Number.isFinite(summaryTotal) && summaryTotal > 0
       ? Math.min(100, Math.round((summaryProcessed / summaryTotal) * 100))
       : null;
+  const readerLocations = [
+    ...new Map(
+      sourceBlocks
+        .flatMap((block) =>
+          (block.locations || []).map((location) => ({ ...location, blockId: block.block_id })),
+        )
+        .filter((location) => location.page_no || location.sheet)
+        .map((location) => [
+          `${location.sheet || ""}:${location.page_no || ""}:${location.row_offset ?? ""}`,
+          location,
+        ]),
+    ).values(),
+  ];
 
   if (loading && !document) {
     return <LoadingState label="Đang mở tài liệu" variant="reader" />;
@@ -604,23 +617,6 @@ export default function DocumentReaderPage({ project, section = [] }) {
           </p>
         </div>
         <div className="ml-auto flex max-w-full flex-wrap items-center gap-2">
-          {canSummarize && (
-            <>
-              <button
-                className="apple-button"
-                type="button"
-                onClick={summarize}
-                disabled={summaryLoading}
-              >
-                {summaryLoading ? "Đang tóm tắt…" : "Tóm tắt tài liệu"}
-              </button>
-              {summaryLoading && summaryJob?._id && (
-                <button className="secondary-button" type="button" onClick={cancelSummary}>
-                  Hủy tóm tắt
-                </button>
-              )}
-            </>
-          )}
           {canDownloadOriginal && (
             <button
               className="secondary-button"
@@ -661,290 +657,396 @@ export default function DocumentReaderPage({ project, section = [] }) {
           Đang hiển thị nội dung đã trích xuất. Bản xem trước giữ nguyên bố cục Word chưa khả dụng.
         </div>
       )}
-      {summaryLoading && summary && (
-        <p role="status" className="text-sm text-ink-muted">
-          Đang tạo bản tóm tắt mới. Bản hiện tại vẫn được giữ cho đến khi kết quả mới hoàn tất.
-        </p>
-      )}
       {pdfPreviewError && (
         <div role="status" className="rounded-xl border border-warning/30 bg-warning/5 p-3 text-sm">
           Không mở được bản PDF gốc; nội dung đã trích xuất vẫn có thể xem bên dưới.
         </div>
       )}
-      {summaryLoading && summaryJob && (
-        <section className="space-y-2 rounded-xl border border-border bg-surface p-4" role="status">
-          <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-            <span className="font-medium text-ink">
-              {summaryJob.status === "QUEUED" ? "Đang chờ xử lý" : "Đang tóm tắt tài liệu"}
-            </span>
-            {summaryProgressPercent !== null && (
-              <span className="text-ink-muted">
-                {summaryProcessed} / {summaryTotal} tài liệu
-              </span>
-            )}
-          </div>
-          {summaryProgressPercent !== null && (
-            <div
-              aria-label="Tiến độ tóm tắt"
-              aria-valuemax={100}
-              aria-valuemin={0}
-              aria-valuenow={summaryProgressPercent}
-              className="h-2 overflow-hidden rounded-full bg-surface-quiet"
-              role="progressbar"
-            >
-              <div
-                className="h-full rounded-full bg-brand transition-[width] duration-300"
-                style={{ width: `${summaryProgressPercent}%` }}
+      <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start">
+        <main className="order-1 min-w-0 space-y-5 xl:order-1">
+          {document?.format === "pdf" && pdfPreviewUrl && (
+            <Panel title="Bản PDF gốc">
+              <iframe
+                className="h-[72vh] min-h-[36rem] w-full rounded-xl border border-border"
+                src={pdfPreviewUrl}
+                title={`Bản PDF gốc: ${document.filename || "Tài liệu"}`}
               />
-            </div>
+            </Panel>
           )}
-          {summaryProgress.current_document && (
-            <p className="break-words text-xs text-ink-muted">
-              Đang xử lý: {summaryProgress.current_document}
-            </p>
-          )}
-          {Number.isFinite(Number(summaryProgress.chunks_total)) &&
-            Number(summaryProgress.chunks_total) > 0 && (
-              <p className="text-xs text-ink-muted">
-                Đã đọc {Number(summaryProgress.chunks_processed || 0)} /{" "}
-                {Number(summaryProgress.chunks_total)} phần nội dung
-              </p>
-            )}
-        </section>
-      )}
-      {!summaryLoading && summaryJob?.status === "CANCELLED" && (
-        <div className="rounded-xl border border-border bg-surface p-3 text-sm" role="status">
-          Đã hủy yêu cầu tóm tắt.
-        </div>
-      )}
 
-      {summary && (
-        <Panel title={summary.status === "COMPLETED" ? "Tóm tắt tài liệu" : "Tóm tắt chưa đầy đủ"}>
-          <div className="space-y-4 p-4 sm:p-5">
-            <div className="prose max-w-none">
-              <ReactMarkdown components={markdownComponents} remarkPlugins={[remarkGfm]}>
-                {summary.summary || "Chưa tạo được nội dung tóm tắt."}
-              </ReactMarkdown>
-            </div>
-            {summary.results?.map((source) => (
-              <div className="space-y-2 border-t border-border pt-3" key={source.document_id}>
-                <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-sm">
-                  <span className="min-w-0 break-words text-ink-muted">
-                    Nguồn: {source.filename?.replaceAll("_", " ") || "Tài liệu"} · phiên bản{" "}
-                    {source.source_version}
-                  </span>
-                  <a
-                    className="shrink-0 font-medium text-brand hover:underline"
-                    href={projectRoute(project._id, "tai-lieu", source.document_id)}
+          <Panel
+            title={document?.format === "pdf" ? "Nội dung đã trích xuất" : "Nội dung tài liệu"}
+          >
+            <div className="p-4 sm:p-5">
+              <div className="mb-4 flex flex-wrap items-center gap-3">
+                {["pdf", "docx"].includes(document?.format) &&
+                  document?.page_count > 0 &&
+                  document?.source_pages_available && (
+                    <select
+                      className="apple-input w-auto min-w-[10rem]"
+                      aria-label="Trang tài liệu"
+                      value={selectedPage}
+                      onChange={(event) => changePage(event.target.value)}
+                    >
+                      <option value="">Toàn văn</option>
+                      {Array.from({ length: document.page_count }, (_, index) => (
+                        <option key={index + 1} value={String(index + 1)}>
+                          Trang {index + 1}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                {sheets.length > 0 && (
+                  <select
+                    className="apple-input w-auto min-w-[12rem]"
+                    aria-label="Trang tính"
+                    value={selectedSheet}
+                    onChange={(event) => changeSheet(event.target.value)}
                   >
-                    Mở tài liệu
-                  </a>
-                </div>
-                {source.complete === false && (
-                  <p className="text-sm text-warning">
-                    Tài liệu còn phần chưa đọc được; nội dung tóm tắt từ nguồn này có thể chưa đầy
-                    đủ.
-                  </p>
+                    {sheets.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
                 )}
-                {Number(source.unprocessed_blocks?.length || 0) > 0 && (
-                  <p className="text-xs text-ink-muted">
-                    Chưa xử lý được {source.unprocessed_blocks.length} phần nội dung.
+                <input
+                  className="apple-input min-w-[16rem] flex-1"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Tìm trong nội dung đã tải"
+                  aria-label="Tìm trong tài liệu"
+                />
+                {query && (
+                  <span className="text-sm text-ink-muted">
+                    {searchLoading
+                      ? "Đang tìm trong toàn bộ tài liệu…"
+                      : searchResults
+                        ? `${searchResults.total_matches}${searchResults.truncated ? "+" : ""} kết quả trong tài liệu`
+                        : "Nhập ít nhất 2 ký tự"}
+                  </span>
+                )}
+                {Number.isFinite(document?.total_rows) && (
+                  <span className="text-sm text-ink-muted">
+                    {Math.min(document.offset + 100, document.total_rows)} / {document.total_rows}{" "}
+                    dòng
+                  </span>
+                )}
+              </div>
+              {searchError && (
+                <p className="mb-3 text-sm text-danger" role="alert">
+                  {searchError}
+                </p>
+              )}
+              {searchResults?.matches?.length > 0 && (
+                <ul className="mb-4 max-h-64 space-y-2 overflow-auto rounded-xl border border-border p-3">
+                  {searchResults.matches.map((match, index) => (
+                    <li key={`${match.block_id || match.offset}-${index}`}>
+                      <button
+                        className="w-full rounded-lg p-2 text-left text-sm hover:bg-surface-muted"
+                        type="button"
+                        onClick={() => openSearchMatch(match)}
+                      >
+                        <span className="mb-1 block text-xs font-semibold text-brand">
+                          {match.page_no
+                            ? `Trang ${match.page_no}`
+                            : match.sheet
+                              ? `${match.sheet} · dòng ${Number(match.row_offset) + 2}`
+                              : "Mở vị trí phù hợp"}
+                        </span>
+                        <span className="line-clamp-2 text-ink-muted">{match.snippet}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="max-h-[72vh] overflow-auto overscroll-contain">
+                <article className="prose prose-sm max-w-none break-words">
+                  {content.trim() ? (
+                    ["openapi", "postman"].includes(document?.format) ? (
+                      <ApiSpecificationView
+                        format={document.format}
+                        content={content}
+                        query={query}
+                      />
+                    ) : (
+                      <ReactMarkdown components={markdownComponents} remarkPlugins={[remarkGfm]}>
+                        {content}
+                      </ReactMarkdown>
+                    )
+                  ) : (
+                    <p className="py-3 text-sm text-ink-muted" role="status">
+                      {sourceBlocks.some((block) => block.image_metadata)
+                        ? "Tài liệu chưa có văn bản trích xuất. Hình ảnh nguồn được giữ bên dưới để bạn đối chiếu."
+                        : "Chưa có nội dung văn bản để hiển thị. Hãy kiểm tra bản gốc hoặc trạng thái phân tích trong danh sách tài liệu."}
+                    </p>
+                  )}
+                </article>
+                {sourceBlocks
+                  .filter((block) => block.image_metadata)
+                  .map((block) => {
+                    const key = String(block.block_index);
+                    const metadata = block.image_metadata;
+                    return (
+                      <figure className="mt-5 border-t border-border pt-4" key={block.block_id}>
+                        <figcaption className="mb-2 text-sm text-ink-muted">
+                          {metadata.image_id || "Hình trong tài liệu"}
+                          {block.locations?.[0]?.page_no
+                            ? ` · Trang ${block.locations[0].page_no}`
+                            : ""}
+                        </figcaption>
+                        {sourceImageUrls[key] ? (
+                          <Image
+                            className="max-h-[36rem] max-w-full rounded-lg border border-border object-contain"
+                            src={sourceImageUrls[key]}
+                            alt={metadata.image_id || "Hình nguồn tài liệu"}
+                            width={Number(metadata.width) || 1200}
+                            height={Number(metadata.height) || 800}
+                            unoptimized
+                          />
+                        ) : (
+                          <button
+                            className="secondary-button"
+                            type="button"
+                            disabled={sourceImageLoading[key] || !metadata.asset_available}
+                            onClick={() => void loadSourceImage(block)}
+                          >
+                            {sourceImageLoading[key]
+                              ? "Đang tải hình…"
+                              : metadata.asset_available
+                                ? "Mở hình nguồn"
+                                : "Hình nguồn không khả dụng"}
+                          </button>
+                        )}
+                        {sourceImageErrors[key] && (
+                          <p className="mt-2 text-sm text-danger" role="alert">
+                            Không tải được hình nguồn.
+                          </p>
+                        )}
+                      </figure>
+                    );
+                  })}
+                {sourceBlocks.some((block) => block.extraction_status === "NO_TEXT_EXTRACTED") && (
+                  <p className="mt-4 rounded-lg bg-warning/5 p-3 text-sm text-warning">
+                    Trang này có nội dung chưa trích xuất được. Hãy đối chiếu bản gốc.
                   </p>
                 )}
               </div>
-            ))}
-            {summary.excluded?.length > 0 && (
-              <p className="text-sm text-warning">
-                {summary.excluded.length} tài liệu hoặc phần nội dung không thể đưa vào kết quả.
-              </p>
-            )}
-          </div>
-        </Panel>
-      )}
-      {summaryJob && ["FAILED", "INCOMPLETE"].includes(summaryJob.status) && !summaryLoading && (
-        <button className="secondary-button" type="button" onClick={retrySummary}>
-          Thử lại phần chưa hoàn tất
-        </button>
-      )}
-
-      {document?.format === "pdf" && pdfPreviewUrl && (
-        <Panel title="Bản PDF gốc">
-          <iframe
-            className="h-[72vh] min-h-[36rem] w-full rounded-xl border border-border"
-            src={pdfPreviewUrl}
-            title={`Bản PDF gốc: ${document.filename || "Tài liệu"}`}
-          />
-        </Panel>
-      )}
-
-      <Panel title={document?.format === "pdf" ? "Nội dung đã trích xuất" : "Nội dung tài liệu"}>
-        <div className="p-4 sm:p-5">
-          <div className="mb-4 flex flex-wrap items-center gap-3">
-            {["pdf", "docx"].includes(document?.format) &&
-              document?.page_count > 0 &&
-              document?.source_pages_available && (
-                <select
-                  className="apple-input w-auto min-w-[10rem]"
-                  aria-label="Trang tài liệu"
-                  value={selectedPage}
-                  onChange={(event) => changePage(event.target.value)}
+              {nextOffset !== null && (
+                <button
+                  className="secondary-button mt-4"
+                  type="button"
+                  disabled={loadingMore}
+                  onClick={() => loadPage(nextOffset, true, selectedSheet)}
                 >
-                  <option value="">Toàn văn</option>
-                  {Array.from({ length: document.page_count }, (_, index) => (
-                    <option key={index + 1} value={String(index + 1)}>
-                      Trang {index + 1}
-                    </option>
-                  ))}
-                </select>
+                  {loadingMore ? "Đang tải…" : "Tải thêm nội dung"}
+                </button>
               )}
-            {sheets.length > 0 && (
-              <select
-                className="apple-input w-auto min-w-[12rem]"
-                aria-label="Trang tính"
-                value={selectedSheet}
-                onChange={(event) => changeSheet(event.target.value)}
-              >
-                {sheets.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-            )}
-            <input
-              className="apple-input min-w-[16rem] flex-1"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Tìm trong nội dung đã tải"
-              aria-label="Tìm trong tài liệu"
-            />
-            {query && (
-              <span className="text-sm text-ink-muted">
-                {searchLoading
-                  ? "Đang tìm trong toàn bộ tài liệu…"
-                  : searchResults
-                    ? `${searchResults.total_matches}${searchResults.truncated ? "+" : ""} kết quả trong tài liệu`
-                    : "Nhập ít nhất 2 ký tự"}
-              </span>
-            )}
-            {Number.isFinite(document?.total_rows) && (
-              <span className="text-sm text-ink-muted">
-                {Math.min(document.offset + 100, document.total_rows)} / {document.total_rows} dòng
-              </span>
-            )}
-          </div>
-          {searchError && (
-            <p className="mb-3 text-sm text-danger" role="alert">
-              {searchError}
-            </p>
-          )}
-          {searchResults?.matches?.length > 0 && (
-            <ul className="mb-4 max-h-64 space-y-2 overflow-auto rounded-xl border border-border p-3">
-              {searchResults.matches.map((match, index) => (
-                <li key={`${match.block_id || match.offset}-${index}`}>
-                  <button
-                    className="w-full rounded-lg p-2 text-left text-sm hover:bg-surface-muted"
-                    type="button"
-                    onClick={() => openSearchMatch(match)}
-                  >
-                    <span className="mb-1 block text-xs font-semibold text-brand">
-                      {match.page_no
-                        ? `Trang ${match.page_no}`
-                        : match.sheet
-                          ? `${match.sheet} · dòng ${Number(match.row_offset) + 2}`
-                          : "Mở vị trí phù hợp"}
-                    </span>
-                    <span className="line-clamp-2 text-ink-muted">{match.snippet}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          <div className="max-h-[72vh] overflow-auto overscroll-contain">
-            <article className="prose prose-sm max-w-none break-words">
-              {content.trim() ? (
-                ["openapi", "postman"].includes(document?.format) ? (
-                  <ApiSpecificationView format={document.format} content={content} query={query} />
-                ) : (
-                  <ReactMarkdown components={markdownComponents} remarkPlugins={[remarkGfm]}>
-                    {content}
-                  </ReactMarkdown>
-                )
-              ) : (
-                <p className="py-3 text-sm text-ink-muted" role="status">
-                  {sourceBlocks.some((block) => block.image_metadata)
-                    ? "Tài liệu chưa có văn bản trích xuất. Hình ảnh nguồn được giữ bên dưới để bạn đối chiếu."
-                    : "Chưa có nội dung văn bản để hiển thị. Hãy kiểm tra bản gốc hoặc trạng thái phân tích trong danh sách tài liệu."}
+              {document?.extraction_warnings?.length > 0 && (
+                <p className="mt-3 text-sm text-ink-muted">
+                  Có cảnh báo khi đọc tệp. Kiểm tra bản gốc nếu thiếu nội dung.
                 </p>
               )}
-            </article>
-            {sourceBlocks
-              .filter((block) => block.image_metadata)
-              .map((block) => {
-                const key = String(block.block_index);
-                const metadata = block.image_metadata;
-                return (
-                  <figure className="mt-5 border-t border-border pt-4" key={block.block_id}>
-                    <figcaption className="mb-2 text-sm text-ink-muted">
-                      {metadata.image_id || "Hình trong tài liệu"}
-                      {block.locations?.[0]?.page_no
-                        ? ` · Trang ${block.locations[0].page_no}`
-                        : ""}
-                    </figcaption>
-                    {sourceImageUrls[key] ? (
-                      <Image
-                        className="max-h-[36rem] max-w-full rounded-lg border border-border object-contain"
-                        src={sourceImageUrls[key]}
-                        alt={metadata.image_id || "Hình nguồn tài liệu"}
-                        width={Number(metadata.width) || 1200}
-                        height={Number(metadata.height) || 800}
-                        unoptimized
-                      />
-                    ) : (
-                      <button
-                        className="secondary-button"
-                        type="button"
-                        disabled={sourceImageLoading[key] || !metadata.asset_available}
-                        onClick={() => void loadSourceImage(block)}
-                      >
-                        {sourceImageLoading[key]
-                          ? "Đang tải hình…"
-                          : metadata.asset_available
-                            ? "Mở hình nguồn"
-                            : "Hình nguồn không khả dụng"}
+            </div>
+          </Panel>
+        </main>
+        <aside className="order-2 min-w-0 space-y-4 xl:order-2 xl:sticky xl:top-4">
+          {(canSummarize || summary || summaryLoading || summaryJob) && (
+            <Panel title="Trợ lý tài liệu">
+              <div className="space-y-3 p-4">
+                {canSummarize && (
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      className="apple-button"
+                      type="button"
+                      onClick={summarize}
+                      disabled={summaryLoading}
+                    >
+                      {summaryLoading ? "Đang tóm tắt…" : "Tóm tắt tài liệu"}
+                    </button>
+                    {summaryLoading && summaryJob?._id && (
+                      <button className="secondary-button" type="button" onClick={cancelSummary}>
+                        Hủy tóm tắt
                       </button>
                     )}
-                    {sourceImageErrors[key] && (
-                      <p className="mt-2 text-sm text-danger" role="alert">
-                        Không tải được hình nguồn.
+                  </div>
+                )}
+                {summaryLoading && summary && (
+                  <p role="status" className="text-sm text-ink-muted">
+                    Đang tạo bản tóm tắt mới. Bản hiện tại vẫn được giữ cho đến khi kết quả mới hoàn
+                    tất.
+                  </p>
+                )}
+                {summaryLoading && summaryJob && (
+                  <section
+                    className="space-y-2 rounded-xl border border-border bg-surface p-3"
+                    role="status"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                      <span className="font-medium text-ink">
+                        {summaryJob.status === "QUEUED"
+                          ? "Đang chờ xử lý"
+                          : "Đang tóm tắt tài liệu"}
+                      </span>
+                      {summaryProgressPercent !== null && (
+                        <span className="text-ink-muted">
+                          {summaryProcessed} / {summaryTotal} tài liệu
+                        </span>
+                      )}
+                    </div>
+                    {summaryProgressPercent !== null && (
+                      <div
+                        aria-label="Tiến độ tóm tắt"
+                        aria-valuemax={100}
+                        aria-valuemin={0}
+                        aria-valuenow={summaryProgressPercent}
+                        className="h-2 overflow-hidden rounded-full bg-surface-quiet"
+                        role="progressbar"
+                      >
+                        <div
+                          className="h-full rounded-full bg-brand transition-[width] duration-300"
+                          style={{ width: `${summaryProgressPercent}%` }}
+                        />
+                      </div>
+                    )}
+                    {summaryProgress.current_document && (
+                      <p className="break-words text-xs text-ink-muted">
+                        Đang xử lý: {summaryProgress.current_document}
                       </p>
                     )}
-                  </figure>
-                );
-              })}
-            {sourceBlocks.some((block) => block.extraction_status === "NO_TEXT_EXTRACTED") && (
-              <p className="mt-4 rounded-lg bg-warning/5 p-3 text-sm text-warning">
-                Trang này có nội dung chưa trích xuất được. Hãy đối chiếu bản gốc.
+                    {Number.isFinite(Number(summaryProgress.chunks_total)) &&
+                      Number(summaryProgress.chunks_total) > 0 && (
+                        <p className="text-xs text-ink-muted">
+                          Đã đọc {Number(summaryProgress.chunks_processed || 0)} /{" "}
+                          {Number(summaryProgress.chunks_total)} phần nội dung
+                        </p>
+                      )}
+                  </section>
+                )}
+                {!summaryLoading && summaryJob?.status === "CANCELLED" && (
+                  <p
+                    className="rounded-xl border border-border bg-surface p-3 text-sm"
+                    role="status"
+                  >
+                    Đã hủy yêu cầu tóm tắt.
+                  </p>
+                )}
+                {summaryJob &&
+                  ["FAILED", "INCOMPLETE"].includes(summaryJob.status) &&
+                  !summaryLoading && (
+                    <button className="secondary-button" type="button" onClick={retrySummary}>
+                      Thử lại phần chưa hoàn tất
+                    </button>
+                  )}
+              </div>
+            </Panel>
+          )}
+          {summary && (
+            <Panel
+              title={summary.status === "COMPLETED" ? "Tóm tắt tài liệu" : "Tóm tắt chưa đầy đủ"}
+            >
+              <div className="max-h-[70vh] space-y-4 overflow-y-auto p-4">
+                <div className="prose max-w-none">
+                  <ReactMarkdown components={markdownComponents} remarkPlugins={[remarkGfm]}>
+                    {summary.summary || "Chưa tạo được nội dung tóm tắt."}
+                  </ReactMarkdown>
+                </div>
+                {summary.results?.map((source) => (
+                  <div className="space-y-2 border-t border-border pt-3" key={source.document_id}>
+                    <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-sm">
+                      <span className="min-w-0 break-words text-ink-muted">
+                        Nguồn: {source.filename?.replaceAll("_", " ") || "Tài liệu"} · phiên bản{" "}
+                        {source.source_version}
+                      </span>
+                      <a
+                        className="shrink-0 font-medium text-brand hover:underline"
+                        href={projectRoute(project._id, "tai-lieu", source.document_id)}
+                      >
+                        Mở tài liệu
+                      </a>
+                    </div>
+                    {source.complete === false && (
+                      <p className="text-sm text-warning">
+                        Tài liệu còn phần chưa đọc được; nội dung tóm tắt từ nguồn này có thể chưa
+                        đầy đủ.
+                      </p>
+                    )}
+                    {Number(source.unprocessed_blocks?.length || 0) > 0 && (
+                      <p className="text-xs text-ink-muted">
+                        Chưa xử lý được {source.unprocessed_blocks.length} phần nội dung.
+                      </p>
+                    )}
+                  </div>
+                ))}
+                {summary.excluded?.length > 0 && (
+                  <p className="text-sm text-warning">
+                    {summary.excluded.length} tài liệu hoặc phần nội dung không thể đưa vào kết quả.
+                  </p>
+                )}
+              </div>
+            </Panel>
+          )}
+          <Panel title="Thông tin tài liệu">
+            <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-3 p-4 text-sm">
+              <dt className="text-ink-muted">Định dạng</dt>
+              <dd className="font-medium uppercase text-ink">{document?.format || "—"}</dd>
+              <dt className="text-ink-muted">Phiên bản nguồn</dt>
+              <dd className="font-medium text-ink">{document?.source_version || "1"}</dd>
+              {document?.page_count > 0 && (
+                <>
+                  <dt className="text-ink-muted">Số trang</dt>
+                  <dd className="font-medium text-ink">{document.page_count}</dd>
+                </>
+              )}
+              {Number.isFinite(document?.total_rows) && (
+                <>
+                  <dt className="text-ink-muted">Số dòng</dt>
+                  <dd className="font-medium text-ink">{document.total_rows}</dd>
+                </>
+              )}
+              {sourceBlocks.length > 0 && (
+                <>
+                  <dt className="text-ink-muted">Khối nội dung đang xem</dt>
+                  <dd className="font-medium text-ink">{sourceBlocks.length}</dd>
+                </>
+              )}
+            </dl>
+            {document?.unprocessed_blocks?.length > 0 && (
+              <p className="border-t border-border px-4 py-3 text-sm text-warning">
+                Còn {document.unprocessed_blocks.length} phần chưa đọc được.
               </p>
             )}
-          </div>
-          {nextOffset !== null && (
-            <button
-              className="secondary-button mt-4"
-              type="button"
-              disabled={loadingMore}
-              onClick={() => loadPage(nextOffset, true, selectedSheet)}
-            >
-              {loadingMore ? "Đang tải…" : "Tải thêm nội dung"}
-            </button>
+          </Panel>
+          {readerLocations.length > 0 && (
+            <Panel className="mt-4" title="Vị trí trong phần đang xem">
+              <nav aria-label="Vị trí trong tài liệu" className="max-h-[50vh] overflow-y-auto p-2">
+                <ul className="grid gap-1">
+                  {readerLocations.map((location, index) => {
+                    const label = location.page_no
+                      ? `Trang ${location.page_no}`
+                      : `${location.sheet} · dòng ${Number(location.row_offset || 0) + 2}`;
+                    return (
+                      <li key={`${location.blockId}-${index}`}>
+                        <button
+                          className="w-full rounded-control px-3 py-2 text-left text-sm text-ink-muted hover:bg-surface-quiet hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+                          type="button"
+                          onClick={() =>
+                            location.page_no
+                              ? changePage(String(location.page_no))
+                              : changeSheet(location.sheet)
+                          }
+                        >
+                          {label}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </nav>
+            </Panel>
           )}
-          {document?.extraction_warnings?.length > 0 && (
-            <p className="mt-3 text-sm text-ink-muted">
-              Có cảnh báo khi đọc tệp. Kiểm tra bản gốc nếu thiếu nội dung.
-            </p>
-          )}
-        </div>
-      </Panel>
+        </aside>
+      </div>
     </div>
   );
 }

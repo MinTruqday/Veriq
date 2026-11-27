@@ -1,0 +1,319 @@
+{
+  "id": "req_import",
+  "name": "01 - Nhập tài liệu và trích xuất yêu cầu",
+  "file_name": "BPMN_Requirements_01_Nhap_tai_lieu_va_trich_xuat_yeu_cau_v1.drawio",
+  "scope": "Ranh giới bắt đầu ở thao tác nhập tệp/nội dung vào API nhập yêu cầu; không mô hình hóa riêng worker phân tích tài liệu nguồn vì đó là luồng xử lý tài liệu khác.",
+  "lanes": [
+    {
+      "id": "user",
+      "name": "Người nhập và rà soát",
+      "fill": "#E8F3FF",
+      "stroke": "#4A90C2"
+    },
+    {
+      "id": "system",
+      "name": "Veriq",
+      "fill": "#EFE8FF",
+      "stroke": "#7956A8"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "start",
+      "label": "Bắt đầu khi người dùng nhập tài liệu",
+      "type": "start",
+      "lane": "user",
+      "col": 0,
+      "row": 0
+    },
+    {
+      "id": "upload",
+      "label": "Tải lên tệp hoặc nhập nội dung",
+      "type": "user_task",
+      "lane": "user",
+      "col": 1,
+      "row": 0,
+      "task_type": "user"
+    },
+    {
+      "id": "check",
+      "label": "Kiểm tra định dạng, kích thước và nội dung",
+      "type": "service_task",
+      "lane": "system",
+      "col": 2,
+      "row": 0,
+      "task_type": "service"
+    },
+    {
+      "id": "valid",
+      "label": "Tài liệu hợp lệ?",
+      "type": "gateway",
+      "lane": "system",
+      "col": 3,
+      "row": 0
+    },
+    {
+      "id": "read",
+      "label": "Đọc nội dung tài liệu",
+      "type": "service_task",
+      "lane": "system",
+      "col": 4,
+      "row": 0,
+      "task_type": "service"
+    },
+    {
+      "id": "extract",
+      "label": "Trích xuất yêu cầu đề xuất từ tài liệu",
+      "type": "service_task",
+      "lane": "system",
+      "col": 5,
+      "row": 0,
+      "task_type": "service"
+    },
+    {
+      "id": "has_items",
+      "label": "Có yêu cầu đề xuất?",
+      "type": "gateway",
+      "lane": "system",
+      "col": 6,
+      "row": 0
+    },
+    {
+      "id": "review",
+      "label": "Đối chiếu đề xuất với tài liệu và kết quả trùng",
+      "type": "user_task",
+      "lane": "user",
+      "col": 7,
+      "row": 0,
+      "task_type": "user"
+    },
+    {
+      "id": "unresolved",
+      "label": "Còn nội dung cần rà soát?",
+      "type": "gateway",
+      "lane": "user",
+      "col": 8,
+      "row": 0
+    },
+    {
+      "id": "resolve",
+      "label": "Chỉnh sửa, gộp, tách hoặc loại đề xuất",
+      "type": "user_task",
+      "lane": "user",
+      "col": 9,
+      "row": 1,
+      "task_type": "user"
+    },
+    {
+      "id": "select",
+      "label": "Chọn các yêu cầu cần nhập",
+      "type": "user_task",
+      "lane": "user",
+      "col": 9,
+      "row": 0,
+      "task_type": "user"
+    },
+    {
+      "id": "selected",
+      "label": "Đã chọn ít nhất một yêu cầu?",
+      "type": "gateway",
+      "lane": "user",
+      "col": 10,
+      "row": 0
+    },
+    {
+      "id": "confirm",
+      "label": "Xác nhận nhập yêu cầu đã chọn",
+      "type": "user_task",
+      "lane": "user",
+      "col": 11,
+      "row": 0,
+      "task_type": "user"
+    },
+    {
+      "id": "persist",
+      "label": "Tạo yêu cầu và ghi nhận kết quả nhập",
+      "type": "service_task",
+      "lane": "system",
+      "col": 12,
+      "row": 0,
+      "task_type": "service"
+    },
+    {
+      "id": "done",
+      "label": "Các yêu cầu đã được nhập",
+      "type": "end",
+      "lane": "system",
+      "col": 13,
+      "row": 0
+    },
+    {
+      "id": "invalid",
+      "label": "Tệp hoặc nội dung không hợp lệ",
+      "type": "error_end",
+      "lane": "system",
+      "col": 4,
+      "row": 1
+    },
+    {
+      "id": "empty",
+      "label": "Không trích xuất được yêu cầu",
+      "type": "end",
+      "lane": "system",
+      "col": 7,
+      "row": 1
+    },
+    {
+      "id": "none",
+      "label": "Không có yêu cầu nào được chọn",
+      "type": "end",
+      "lane": "user",
+      "col": 11,
+      "row": 1
+    },
+    {
+      "id": "process_data",
+      "label": "Dữ liệu tài liệu và yêu cầu nhập",
+      "type": "data_store",
+      "lane": "system",
+      "col": 12,
+      "row": 1
+    }
+  ],
+  "edges": [
+    {
+      "id": "e01",
+      "from": "start",
+      "to": "upload",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e02",
+      "from": "upload",
+      "to": "check",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e03",
+      "from": "check",
+      "to": "valid",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e04",
+      "from": "valid",
+      "to": "read",
+      "type": "sequence",
+      "label": "Có"
+    },
+    {
+      "id": "e05",
+      "from": "valid",
+      "to": "invalid",
+      "type": "sequence",
+      "label": "Không"
+    },
+    {
+      "id": "e06",
+      "from": "read",
+      "to": "extract",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e07",
+      "from": "extract",
+      "to": "has_items",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e08",
+      "from": "has_items",
+      "to": "review",
+      "type": "sequence",
+      "label": "Có"
+    },
+    {
+      "id": "e09",
+      "from": "has_items",
+      "to": "empty",
+      "type": "sequence",
+      "label": "Không"
+    },
+    {
+      "id": "e10",
+      "from": "review",
+      "to": "unresolved",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e11",
+      "from": "unresolved",
+      "to": "resolve",
+      "type": "sequence",
+      "label": "Có"
+    },
+    {
+      "id": "e12",
+      "from": "resolve",
+      "to": "review",
+      "type": "sequence",
+      "label": "Rà soát lại",
+      "route": "loop_below"
+    },
+    {
+      "id": "e13",
+      "from": "unresolved",
+      "to": "select",
+      "type": "sequence",
+      "label": "Không"
+    },
+    {
+      "id": "e14",
+      "from": "select",
+      "to": "selected",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e15",
+      "from": "selected",
+      "to": "confirm",
+      "type": "sequence",
+      "label": "Có"
+    },
+    {
+      "id": "e16",
+      "from": "selected",
+      "to": "none",
+      "type": "sequence",
+      "label": "Không"
+    },
+    {
+      "id": "e17",
+      "from": "confirm",
+      "to": "persist",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "e18",
+      "from": "persist",
+      "to": "done",
+      "type": "sequence",
+      "label": ""
+    },
+    {
+      "id": "data_assoc",
+      "from": "persist",
+      "to": "process_data",
+      "type": "association",
+      "label": ""
+    }
+  ]
+}

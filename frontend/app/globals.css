@@ -20,6 +20,12 @@
     --danger-soft: 7 48% 94%;
     --warning: 41 68% 32%;
     --warning-soft: 43 58% 92%;
+    --chart-pass: var(--brand);
+    --chart-fail: var(--danger);
+    --chart-blocked: var(--warning);
+    --chart-skipped: var(--ink-muted);
+    --chart-not-applicable: 263 16% 59%;
+    --chart-not-run: var(--border-strong);
     --background: var(--canvas);
     --foreground: var(--ink);
     --card: var(--surface);
@@ -38,7 +44,8 @@
     --destructive-foreground: 0 0% 100%;
     --input: var(--border);
     --ring: var(--brand);
-    --radius: 12px;
+    /* Shared corner scale for a compact, consistent enterprise workspace. */
+    --radius: 8px;
   }
 
   * {
@@ -132,7 +139,7 @@
   }
 
   .page-shell {
-    @apply mx-auto flex min-w-0 w-full max-w-none flex-1 flex-col px-3 py-4 sm:px-5 sm:py-6 xl:px-8 xl:py-8;
+    @apply mx-auto flex min-w-0 w-full max-w-none flex-1 flex-col px-3 py-4 sm:px-5 sm:py-5 xl:px-6 xl:py-6;
   }
 
   .page-shell > *,
@@ -302,20 +309,19 @@
 
   .common-panel,
   .auth-panel {
-    @apply rounded-panel border border-border bg-surface p-5 md:p-6;
+    @apply rounded-panel border border-border bg-surface p-4 sm:p-5;
   }
 
   .workspace-panel {
-    @apply min-w-0 overflow-hidden rounded-xl border border-border bg-surface;
-    box-shadow: 0 4px 14px rgb(48 47 42 / 3%);
+    @apply min-w-0 overflow-hidden rounded-panel border border-border bg-surface;
   }
 
   .primary-button {
-    @apply inline-flex min-h-11 max-w-full items-center justify-center gap-2 rounded-control bg-brand px-4 py-2.5 text-[14px] font-semibold text-white transition hover:bg-brand-hover active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-10 max-w-full items-center justify-center gap-2 rounded-control bg-brand px-4 py-2 text-[14px] font-semibold text-white transition hover:bg-brand-hover active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .form-select {
-    @apply min-h-11 rounded-control border border-border-strong bg-surface px-3.5 py-2.5 text-[14px] text-ink outline-none transition focus:border-brand focus:ring-2 focus:ring-brand-soft;
+    @apply min-h-10 rounded-control border border-border-strong bg-surface px-3.5 py-2 text-[14px] text-ink outline-none transition focus:border-brand focus:ring-2 focus:ring-brand-soft;
   }
 
   .status-badge {
@@ -323,15 +329,15 @@
   }
 
   .pill-button {
-    @apply inline-flex min-h-11 items-center justify-center whitespace-nowrap rounded-control bg-brand px-5 py-2.5 text-[15px] font-semibold text-white transition duration-150 hover:bg-brand-hover active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-control bg-brand px-5 py-2 text-[14px] font-semibold text-white transition duration-150 hover:bg-brand-hover active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .pill-button-secondary {
-    @apply inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2.5 text-[14px] font-semibold text-ink transition hover:bg-surface-quiet active:translate-y-px;
+    @apply inline-flex min-h-10 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-[14px] font-semibold text-ink transition hover:bg-surface-quiet active:translate-y-px;
   }
 
   .secondary-button {
-    @apply inline-flex min-h-11 max-w-full items-center justify-center gap-2 rounded-control border border-border-strong bg-surface px-3.5 py-2 text-center text-[14px] font-semibold leading-5 text-ink transition duration-150 hover:bg-surface-quiet active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-10 max-w-full items-center justify-center gap-2 rounded-control border border-border-strong bg-surface px-3.5 py-2 text-center text-[14px] font-semibold leading-5 text-ink transition duration-150 hover:bg-surface-quiet active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .icon-button {
@@ -339,7 +345,7 @@
   }
 
   .apple-input {
-    @apply block min-h-11 w-full min-w-0 max-w-full rounded-control border border-border-strong bg-surface px-3.5 py-2.5 text-[15px] text-ink outline-none transition duration-150 placeholder:text-ink-faint focus:border-brand focus:ring-2 focus:ring-brand-soft disabled:cursor-not-allowed disabled:bg-surface-quiet;
+    @apply block min-h-10 w-full min-w-0 max-w-full rounded-control border border-border-strong bg-surface px-3.5 py-2 text-[14px] text-ink outline-none transition duration-150 placeholder:text-ink-faint focus:border-brand focus:ring-2 focus:ring-brand-soft disabled:cursor-not-allowed disabled:bg-surface-quiet;
   }
 
   select.apple-input,
@@ -365,7 +371,7 @@
   }
 
   .apple-button {
-    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-control bg-brand px-4 py-2.5 text-[14px] font-semibold text-white transition hover:bg-brand-hover active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-control bg-brand px-4 py-2 text-[14px] font-semibold text-white transition hover:bg-brand-hover active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .danger-button {
@@ -373,11 +379,11 @@
   }
 
   .apple-button-secondary {
-    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-control border border-border-strong bg-surface px-4 py-2.5 text-[14px] font-semibold text-ink transition hover:bg-surface-quiet active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-control border border-border-strong bg-surface px-4 py-2 text-[14px] font-semibold text-ink transition hover:bg-surface-quiet active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .product-heading {
-    @apply text-[28px] font-semibold leading-tight tracking-[-0.035em] text-ink md:text-[32px];
+    @apply text-[22px] font-semibold leading-tight tracking-[-0.03em] text-ink md:text-[24px];
   }
 
   .product-description {

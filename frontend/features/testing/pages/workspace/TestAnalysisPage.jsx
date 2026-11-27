@@ -6,6 +6,7 @@ import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import TestConditionEditor from "../../components/TestConditionEditor";
 import TestConditionTable from "../../components/TestConditionTable";
 import {
+  EmptyState,
   ErrorState,
   InitialLoadState,
   Panel,
@@ -62,6 +63,8 @@ export default function TestAnalysisPage({ project }) {
   const [editing, setEditing] = useState(false);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
+  const [findingQuery, setFindingQuery] = useState("");
+  const [findingStatus, setFindingStatus] = useState("ALL");
   const [error, setError] = useState("");
   const [initialLoading, setInitialLoading] = useState(true);
   const [initialLoadFailed, setInitialLoadFailed] = useState(false);
@@ -123,6 +126,31 @@ export default function TestAnalysisPage({ project }) {
     ...(can("testcondition.read") ? [{ id: "conditions", label: "Điều kiện kiểm thử" }] : []),
     ...(can("testanalysis.read") ? [{ id: "findings", label: "Phát hiện" }] : []),
   ];
+  const availableFindingStatuses = [
+    ...new Set(findings.map((item) => item.status).filter(Boolean)),
+  ];
+  const normalizedFindingQuery = findingQuery.trim().toLocaleLowerCase("vi");
+  const visibleFindings = findings.filter((item) => {
+    const matchesStatus = findingStatus === "ALL" || item.status === findingStatus;
+    const owner = members.find((member) => member.user_id === item.owner_id);
+    const searchable = [
+      item.finding_id,
+      item.title,
+      item.description,
+      item.category,
+      item.finding_type,
+      item.severity,
+      item.status,
+      owner?.user_label,
+      owner?.user?.email,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLocaleLowerCase("vi");
+    return (
+      matchesStatus && (!normalizedFindingQuery || searchable.includes(normalizedFindingQuery))
+    );
+  });
   const visibleTab = tabs.some((tab) => tab.id === activeTab) ? activeTab : tabs[0]?.id;
   if (initialLoading || initialLoadFailed)
     return (
@@ -149,6 +177,89 @@ export default function TestAnalysisPage({ project }) {
       },
     });
   };
+  const openFindingAction = async (item, action) => {
+    const isAssign = action === "assign";
+    const isVerify = action === "verify";
+    const title = isAssign
+      ? "Phân công phát hiện"
+      : isVerify
+        ? "Xác minh phát hiện"
+        : "Giải quyết phát hiện";
+    const fields = isAssign
+      ? [
+          members.length > 0
+            ? {
+                name: "owner_id",
+                label: "Người phụ trách",
+                required: true,
+                initialValue: item.owner_id || "",
+                options: members.map((member) => ({
+                  value: member.user_id,
+                  label: member.user_label || member.user?.email || member.user_id,
+                })),
+              }
+            : { name: "owner_id", label: "Mã thành viên", required: true },
+        ]
+      : [
+          {
+            name: "resolution",
+            label: isVerify ? "Kết quả xác minh" : "Cách giải quyết",
+            required: true,
+            multiline: true,
+          },
+          { name: "resolution_ref", label: "Tham chiếu" },
+        ];
+    await ask({
+      title,
+      confirmLabel: isAssign ? "Phân công" : isVerify ? "Xác minh" : "Giải quyết",
+      fields,
+      onConfirm: async (answer) => {
+        try {
+          const payload = { expected_revision: item.revision, ...answer };
+          if (isAssign) await testingApi.assignTestAnalysisFinding(item._id, payload);
+          else if (isVerify) await testingApi.verifyTestAnalysisFinding(item._id, payload);
+          else await testingApi.resolveStandaloneTestAnalysisFinding(item._id, payload);
+          await load();
+        } catch (reason) {
+          throw new Error(messageOf(reason));
+        }
+      },
+    });
+  };
+  const renderFindingActions = (item) => (
+    <div className="flex flex-wrap items-center gap-2">
+      {can("testanalysis.finding.assign") && ["OPEN", "IN_PROGRESS"].includes(item.status) && (
+        <button
+          aria-label={`Phân công phát hiện ${item.finding_id}`}
+          className="secondary-button"
+          type="button"
+          onClick={() => void openFindingAction(item, "assign")}
+        >
+          <UserRoundPlus aria-hidden="true" size={15} /> Phân công
+        </button>
+      )}
+      {can("testanalysis.resolve_finding") && ["OPEN", "IN_PROGRESS"].includes(item.status) && (
+        <button
+          aria-label={`Giải quyết phát hiện ${item.finding_id}`}
+          className="secondary-button"
+          type="button"
+          onClick={() => void openFindingAction(item, "resolve")}
+        >
+          <Check aria-hidden="true" size={15} /> Giải quyết
+        </button>
+      )}
+      {can("testanalysis.verify_finding") && item.status === "RESOLVED" && (
+        <button
+          aria-label={`Xác minh phát hiện ${item.finding_id}`}
+          className="secondary-button"
+          type="button"
+          onClick={() => void openFindingAction(item, "verify")}
+        >
+          <BadgeCheck aria-hidden="true" size={15} /> Xác minh
+        </button>
+      )}
+    </div>
+  );
   return (
     <WorkspacePage
       title="Phân tích kiểm thử"
@@ -523,171 +634,115 @@ export default function TestAnalysisPage({ project }) {
       )}
       {can("testanalysis.read") && (
         <div className="space-y-5" hidden={visibleTab !== "findings"}>
-          <Panel title="Phát hiện kiểm thử đã được ghi nhận">
-            <DataTable
-              items={findings}
-              empty="Chưa có phát hiện được ghi nhận"
-              columns={[
-                { key: "title", label: "Phát hiện" },
-                {
-                  key: "category",
-                  label: "Loại phát hiện",
-                  render: (item) => findingTypeLabel(item.category || item.finding_type),
-                },
-                {
-                  key: "severity",
-                  label: "Mức độ",
-                  render: (item) => <StatusPill value={severityLabel(item.severity)} />,
-                },
-                {
-                  key: "status",
-                  label: "Trạng thái",
-                  render: (item) => <StatusPill value={item.status} />,
-                },
-                {
-                  key: "owner_id",
-                  label: "Người phụ trách",
-                  render: (item) =>
-                    members.find((member) => member.user_id === item.owner_id)?.user_label ||
-                    members.find((member) => member.user_id === item.owner_id)?.user?.email ||
-                    (item.owner_id ? "Thành viên đã phân công" : "Chưa phân công"),
-                },
-                {
-                  key: "actions",
-                  label: "Thao tác",
-                  hideWhenEmpty: true,
-                  render: (item) => (
-                    <span className="flex items-center gap-1">
-                      {can("testanalysis.finding.assign") &&
-                        ["OPEN", "IN_PROGRESS"].includes(item.status) && (
-                          <button
-                            aria-label={`Phân công phát hiện ${item.finding_id}`}
-                            className="icon-button h-9 w-9"
-                            title="Phân công phát hiện"
-                            type="button"
-                            onClick={async () => {
-                              await ask({
-                                title: "Phân công phát hiện",
-                                confirmLabel: "Phân công",
-                                fields: [
-                                  members.length > 0
-                                    ? {
-                                        name: "owner_id",
-                                        label: "Người phụ trách",
-                                        required: true,
-                                        initialValue: item.owner_id || "",
-                                        options: members.map((member) => ({
-                                          value: member.user_id,
-                                          label:
-                                            member.user_label ||
-                                            member.user?.email ||
-                                            member.user_id,
-                                        })),
-                                      }
-                                    : {
-                                        name: "owner_id",
-                                        label: "Mã thành viên",
-                                        required: true,
-                                      },
-                                ],
-                                onConfirm: async (answer) => {
-                                  try {
-                                    await testingApi.assignTestAnalysisFinding(item._id, {
-                                      expected_revision: item.revision,
-                                      owner_id: answer.owner_id,
-                                    });
-                                    await load();
-                                  } catch (reason) {
-                                    throw new Error(messageOf(reason));
-                                  }
-                                },
-                              });
-                            }}
-                          >
-                            <UserRoundPlus aria-hidden="true" size={16} />
-                          </button>
+          <Panel
+            title="Phát hiện kiểm thử đã được ghi nhận"
+            actions={
+              <span className="text-xs font-medium text-ink-muted">
+                {visibleFindings.length} / {findings.length}
+              </span>
+            }
+          >
+            <div className="grid gap-3 border-b border-border p-4 sm:p-5">
+              <SearchField
+                ariaLabel="Tìm phát hiện kiểm thử"
+                onChange={(event) => setFindingQuery(event.target.value)}
+                placeholder="Tìm mã, nội dung, mức độ hoặc người phụ trách"
+                value={findingQuery}
+              />
+              {availableFindingStatuses.length > 1 && (
+                <div className="flex flex-wrap gap-2" aria-label="Lọc trạng thái phát hiện">
+                  <button
+                    aria-pressed={findingStatus === "ALL"}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-medium ${findingStatus === "ALL" ? "border-brand bg-brand/5 text-ink" : "border-border text-ink-muted hover:bg-surface-quiet"}`}
+                    onClick={() => setFindingStatus("ALL")}
+                    type="button"
+                  >
+                    Tất cả ({findings.length})
+                  </button>
+                  {availableFindingStatuses.map((value) => {
+                    const count = findings.filter((item) => item.status === value).length;
+                    return (
+                      <button
+                        aria-pressed={findingStatus === value}
+                        className={`rounded-full border px-3 py-1.5 text-xs font-medium ${findingStatus === value ? "border-brand bg-brand/5 text-ink" : "border-border text-ink-muted hover:bg-surface-quiet"}`}
+                        key={value}
+                        onClick={() => setFindingStatus(value)}
+                        type="button"
+                      >
+                        {valueLabel(value)} ({count})
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            {visibleFindings.length ? (
+              <div className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5 2xl:grid-cols-3">
+                {visibleFindings.map((item) => {
+                  const owner = members.find((member) => member.user_id === item.owner_id);
+                  const ownerLabel =
+                    owner?.user_label ||
+                    owner?.user?.email ||
+                    (item.owner_id ? "Thành viên đã phân công" : "Chưa phân công");
+                  return (
+                    <article
+                      className="flex min-w-0 flex-col rounded-control border border-border bg-surface"
+                      key={item._id}
+                    >
+                      <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
+                        <span className="font-mono text-xs font-semibold text-ink-muted">
+                          {item.finding_id || "Phát hiện"}
+                        </span>
+                        <StatusPill value={severityLabel(item.severity)} />
+                        <span className="ml-auto">
+                          <StatusPill value={item.status} />
+                        </span>
+                      </div>
+                      <div className="flex-1 space-y-3 p-4">
+                        <div>
+                          <h3 className="break-words text-sm font-semibold text-ink">
+                            {item.title || findingTypeLabel(item.category || item.finding_type)}
+                          </h3>
+                          <p className="mt-1 text-xs text-ink-muted">
+                            {findingTypeLabel(item.category || item.finding_type)}
+                          </p>
+                        </div>
+                        <p className="whitespace-pre-wrap break-words text-sm leading-6 text-ink-muted">
+                          {item.description || "Chưa có mô tả chi tiết."}
+                        </p>
+                        {item.suggestion && (
+                          <div className="rounded-control bg-surface-quiet p-3">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+                              Đề xuất
+                            </p>
+                            <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-5 text-ink">
+                              {item.suggestion}
+                            </p>
+                          </div>
                         )}
-                      {can("testanalysis.resolve_finding") &&
-                        ["OPEN", "IN_PROGRESS"].includes(item.status) && (
-                          <button
-                            aria-label={`Giải quyết phát hiện ${item.finding_id}`}
-                            className="icon-button h-9 w-9"
-                            title="Giải quyết phát hiện"
-                            type="button"
-                            onClick={async () => {
-                              await ask({
-                                title: "Giải quyết phát hiện",
-                                confirmLabel: "Giải quyết",
-                                fields: [
-                                  {
-                                    name: "resolution",
-                                    label: "Cách giải quyết",
-                                    required: true,
-                                    multiline: true,
-                                  },
-                                  { name: "resolution_ref", label: "Tham chiếu" },
-                                ],
-                                onConfirm: async (answer) => {
-                                  try {
-                                    await testingApi.resolveStandaloneTestAnalysisFinding(
-                                      item._id,
-                                      {
-                                        expected_revision: item.revision,
-                                        ...answer,
-                                      },
-                                    );
-                                    await load();
-                                  } catch (reason) {
-                                    throw new Error(messageOf(reason));
-                                  }
-                                },
-                              });
-                            }}
-                          >
-                            <Check aria-hidden="true" size={16} />
-                          </button>
-                        )}
-                      {can("testanalysis.verify_finding") && item.status === "RESOLVED" && (
-                        <button
-                          aria-label={`Xác minh phát hiện ${item.finding_id}`}
-                          className="icon-button h-9 w-9"
-                          title="Xác minh phát hiện"
-                          type="button"
-                          onClick={async () => {
-                            await ask({
-                              title: "Xác minh phát hiện",
-                              confirmLabel: "Xác minh",
-                              fields: [
-                                {
-                                  name: "resolution",
-                                  label: "Kết quả xác minh",
-                                  required: true,
-                                  multiline: true,
-                                },
-                                { name: "resolution_ref", label: "Tham chiếu" },
-                              ],
-                              onConfirm: async (answer) => {
-                                try {
-                                  await testingApi.verifyTestAnalysisFinding(item._id, {
-                                    expected_revision: item.revision,
-                                    ...answer,
-                                  });
-                                  await load();
-                                } catch (reason) {
-                                  throw new Error(messageOf(reason));
-                                }
-                              },
-                            });
-                          }}
+                      </div>
+                      <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3">
+                        <span
+                          className="min-w-0 truncate text-xs text-ink-muted"
+                          title={ownerLabel}
                         >
-                          <BadgeCheck aria-hidden="true" size={16} />
-                        </button>
-                      )}
-                    </span>
-                  ),
-                },
-              ]}
-            />
+                          Phụ trách: {ownerLabel}
+                        </span>
+                        {renderFindingActions(item)}
+                      </footer>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="p-4 sm:p-5">
+                <EmptyState>
+                  {findings.length
+                    ? "Không có phát hiện khớp với bộ lọc"
+                    : "Chưa có phát hiện được ghi nhận"}
+                </EmptyState>
+              </div>
+            )}
           </Panel>
         </div>
       )}

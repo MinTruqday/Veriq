@@ -61,6 +61,7 @@ export default function TestPlanEditor({
   onSave,
   onCancel,
   sourcePeriodId = "",
+  formatDate,
 }) {
   const [value, setValue] = useState(() => {
     if (!initialValue)
@@ -90,9 +91,30 @@ export default function TestPlanEditor({
   const [newPeriodName, setNewPeriodName] = useState("");
   const [newPeriodSourceId, setNewPeriodSourceId] = useState(sourcePeriodId);
   const [showNewPeriod, setShowNewPeriod] = useState(false);
+  const [openSections, setOpenSections] = useState(() => ({
+    additionalScope: Boolean(initialValue?.scope_out?.some((item) => String(item).trim())),
+    classification: Boolean(initialValue?.test_types?.length || initialValue?.test_level),
+    environment: Boolean(initialValue?.environment_id),
+    conditions: Boolean(
+      initialValue?.entry_criteria?.length || initialValue?.exit_criteria?.length,
+    ),
+    people: Boolean(
+      initialValue?.owner_id ||
+        initialValue?.test_period_id ||
+        initialValue?.schedule?.planned_start_at ||
+        initialValue?.schedule?.planned_end_at ||
+        sourcePeriodId,
+    ),
+    risks: Boolean(
+      initialValue?.risk_register?.some(
+        (item) => String(item.title || "").trim() || String(item.response || "").trim(),
+      ),
+    ),
+  }));
 
   const selectedTestTypes = value.test_types || [];
   const selectedPeriod = testPeriods.find((period) => period._id === value.test_period_id);
+  const selectedEnvironment = environments.find((item) => item._id === value.environment_id);
   const carryOverItems = selectedPeriod?.carry_over_items || [];
   const selectedSuiteIds = new Set(value.test_suite_ids || []);
   const suiteCaseVersionIds = new Set(
@@ -144,6 +166,12 @@ export default function TestPlanEditor({
   ];
   const savingRef = useRef(false);
   const setField = (key, next) => setValue((current) => ({ ...current, [key]: next }));
+  const setDisclosureOpen = (key, event) => {
+    const isOpen = event.currentTarget.open;
+    setOpenSections((current) =>
+      current[key] === isOpen ? current : { ...current, [key]: isOpen },
+    );
+  };
 
   useEffect(() => {
     let active = true;
@@ -178,6 +206,188 @@ export default function TestPlanEditor({
     };
   }, [initialValue?._id, projectId, sourcePeriodId]);
 
+  if (readOnly && initialValue) {
+    const requirementLabels = (value.requirement_version_ids || []).map((versionId) => {
+      const item = requirements.find((requirement) => requirement.current_version_id === versionId);
+      return item
+        ? `${item.requirement_key} · ${item.current_version?.title || item.title || "Yêu cầu"}`
+        : `Phiên bản yêu cầu ${versionId}`;
+    });
+    const suiteLabels = (value.test_suite_ids || []).map((suiteId) => {
+      const suite = suites.find((item) => item._id === suiteId);
+      return suite
+        ? `${suite.name} · ${(suite.test_case_version_ids || []).length} ca`
+        : `Bộ kiểm thử ${suiteId}`;
+    });
+    const caseLabels = (value.test_case_version_ids || [])
+      .filter((versionId) => !suiteCaseVersionIds.has(versionId))
+      .map((versionId) => {
+        const item = tests.find((test) => test.current_version_id === versionId);
+        return item
+          ? `${item.test_case_key} · ${item.current_version?.title || item.title || "Ca kiểm thử"}`
+          : `Phiên bản ca kiểm thử ${versionId}`;
+      });
+    const owner = members.find((member) => member.user_id === value.owner_id);
+    const period = testPeriods.find((item) => item._id === value.test_period_id);
+    const environment = environments.find((item) => item._id === value.environment_id);
+    const displayList = (items, emptyText) =>
+      items.length ? (
+        <ul className="space-y-1.5 text-[13px] leading-5">
+          {items.map((item, index) => (
+            <li className="break-words" key={`${item}-${index}`}>
+              {item}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-[13px] text-ink-muted">{emptyText}</p>
+      );
+    const displayValue = (item) => item || "Chưa thiết lập";
+
+    return (
+      <div aria-label="Chi tiết kế hoạch kiểm thử" className="space-y-4 p-5">
+        <section className="rounded-control border border-border p-4">
+          <h3 className="text-[15px] font-semibold">Mục tiêu</h3>
+          <p className="mt-2 whitespace-pre-wrap break-words text-[13px] leading-6">
+            {displayValue(value.objective)}
+          </p>
+        </section>
+
+        <section className="rounded-control border border-border p-4">
+          <h3 className="text-[15px] font-semibold">Phạm vi kiểm thử</h3>
+          <dl className="mt-3 grid min-w-0 gap-4 sm:grid-cols-2">
+            <div className="min-w-0">
+              <dt className="field-label mb-2">Yêu cầu</dt>
+              {displayList(requirementLabels, "Chưa liên kết yêu cầu")}
+            </div>
+            <div className="min-w-0">
+              <dt className="field-label mb-2">Ca và bộ kiểm thử</dt>
+              {displayList([...suiteLabels, ...caseLabels], "Chưa chọn ca kiểm thử")}
+            </div>
+            <div className="min-w-0 sm:col-span-2">
+              <dt className="field-label mb-2">Ngoài phạm vi</dt>
+              {displayList(value.scope_out || [], "Không ghi nhận nội dung ngoài phạm vi")}
+            </div>
+          </dl>
+        </section>
+
+        <section className="rounded-control border border-border p-4">
+          <h3 className="text-[15px] font-semibold">Cách tiếp cận kiểm thử</h3>
+          <dl className="mt-3 grid min-w-0 gap-4 sm:grid-cols-2">
+            <div>
+              <dt className="field-label mb-1">Loại kiểm thử</dt>
+              <dd className="text-[13px]">
+                {selectedTestTypes.length
+                  ? selectedTestTypes.map(valueLabel).join(" · ")
+                  : "Chưa phân loại"}
+              </dd>
+            </div>
+            <div>
+              <dt className="field-label mb-1">Cấp kiểm thử</dt>
+              <dd className="text-[13px]">
+                {value.test_level ? valueLabel(value.test_level) : "Chưa thiết lập"}
+              </dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="rounded-control border border-border p-4">
+          <h3 className="text-[15px] font-semibold">Môi trường kiểm thử</h3>
+          <p className="mt-2 break-words text-[13px]">
+            {environment
+              ? environmentOptionLabel(environment)
+              : value.environment_id
+                ? "Môi trường liên kết"
+                : "Chưa chọn môi trường"}
+          </p>
+        </section>
+
+        <section className="rounded-control border border-border p-4">
+          <h3 className="text-[15px] font-semibold">Điều kiện và tiêu chí hoàn thành</h3>
+          <dl className="mt-3 grid min-w-0 gap-4 sm:grid-cols-2">
+            {conditionFields.map(([key, label]) => (
+              <div className="min-w-0" key={key}>
+                <dt className="field-label mb-2">{label}</dt>
+                {displayList(value[key] || [], "Chưa thiết lập")}
+              </div>
+            ))}
+          </dl>
+        </section>
+
+        <details className="rounded-control border border-border p-4">
+          <summary className="cursor-pointer text-[13px] font-semibold">
+            Nhân sự và thời gian
+          </summary>
+          <dl className="mt-3 grid min-w-0 gap-4 sm:grid-cols-2">
+            <div>
+              <dt className="field-label mb-1">Chu kỳ</dt>
+              <dd className="text-[13px]">
+                {period?.name || (value.test_period_id ? "Chu kỳ liên kết" : "Không thuộc chu kỳ")}
+              </dd>
+            </div>
+            <div>
+              <dt className="field-label mb-1">Người phụ trách kế hoạch</dt>
+              <dd className="text-[13px]">
+                {owner?.user_label ||
+                  owner?.user?.full_name ||
+                  (value.owner_id ? "Thành viên dự án" : "Chưa phân công")}
+              </dd>
+            </div>
+            <div>
+              <dt className="field-label mb-1">Bắt đầu dự kiến</dt>
+              <dd className="text-[13px]">
+                {initialValue.schedule?.planned_start_at
+                  ? formatDate?.(initialValue.schedule.planned_start_at) ||
+                    initialValue.schedule.planned_start_at
+                  : "Chưa thiết lập"}
+              </dd>
+            </div>
+            <div>
+              <dt className="field-label mb-1">Kết thúc dự kiến</dt>
+              <dd className="text-[13px]">
+                {initialValue.schedule?.planned_end_at
+                  ? formatDate?.(initialValue.schedule.planned_end_at) ||
+                    initialValue.schedule.planned_end_at
+                  : "Chưa thiết lập"}
+              </dd>
+            </div>
+          </dl>
+        </details>
+
+        <details className="rounded-control border border-border p-4">
+          <summary className="cursor-pointer text-[13px] font-semibold">
+            Rủi ro và biện pháp xử lý ({(value.risk_register || []).length})
+          </summary>
+          <div className="mt-3 space-y-3">
+            {(value.risk_register || []).length ? (
+              value.risk_register.map((risk, index) => (
+                <article
+                  className="grid min-w-0 gap-3 rounded-control border border-border p-3 sm:grid-cols-2"
+                  key={risk.risk_id || index}
+                >
+                  <div className="min-w-0">
+                    <h4 className="field-label">Rủi ro {index + 1}</h4>
+                    <p className="mt-1 whitespace-pre-wrap break-words text-[13px]">
+                      {risk.title || "Chưa mô tả rủi ro"}
+                    </p>
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="field-label">Cách ứng phó</h4>
+                    <p className="mt-1 whitespace-pre-wrap break-words text-[13px]">
+                      {risk.response || "Chưa thiết lập"}
+                    </p>
+                  </div>
+                </article>
+              ))
+            ) : (
+              <p className="text-[13px] text-ink-muted">Chưa ghi nhận rủi ro.</p>
+            )}
+          </div>
+        </details>
+      </div>
+    );
+  }
+
   return (
     <form
       id="test-plan-editor"
@@ -197,6 +407,7 @@ export default function TestPlanEditor({
             (risk) => !String(risk.title || "").trim() && String(risk.response || "").trim(),
           )
         ) {
+          setOpenSections((current) => ({ ...current, risks: true }));
           setError("Nhập nội dung rủi ro cho cách ứng phó đã điền.");
           return;
         }
@@ -265,7 +476,6 @@ export default function TestPlanEditor({
         }
       }}
     >
-      {error && <p className="text-sm text-danger">{error}</p>}
       <fieldset disabled={readOnly || saving} className="flex min-w-0 flex-col gap-5">
         <section
           className="order-1 min-w-0 space-y-4 rounded-control border border-border bg-surface p-4"
@@ -286,9 +496,290 @@ export default function TestPlanEditor({
                 required
               />
             </label>
+            <label className="field-label md:col-span-2">
+              Mục tiêu <span className="text-danger">*</span>
+              <textarea
+                className="apple-input mt-2 min-h-20"
+                value={value.objective}
+                onChange={(event) => setField("objective", event.target.value)}
+              />
+            </label>
+            <MultiSelect
+              className="md:col-span-2"
+              label={
+                <span>
+                  Yêu cầu trong phạm vi <span className="text-danger">*</span>
+                </span>
+              }
+              showSearch={false}
+              options={requirements.map((item) => ({
+                value: item.current_version_id,
+                label: `${item.requirement_key} ${item.current_version?.title || item.title || ""}`,
+              }))}
+              searchPlaceholder="Tìm yêu cầu"
+              value={value.requirement_version_ids}
+              onChange={(selected) => {
+                setField("requirement_version_ids", selected);
+                setAiSuggestion(null);
+                setSelectedAiFields(new Set());
+                setAppliedAiFields(new Set());
+              }}
+              disabled={readOnly}
+            />
+            <div className="md:col-span-2">
+              <MultiSelect
+                label={
+                  <span>
+                    Ca kiểm thử trong phạm vi <span className="text-danger">*</span>
+                  </span>
+                }
+                options={caseScopeOptions}
+                searchPlaceholder="Tìm ca hoặc bộ kiểm thử"
+                value={caseScopeSelection}
+                onChange={(selected) => {
+                  const suitesSelected = selected
+                    .filter((item) => item.startsWith("suite:"))
+                    .map((item) => item.slice("suite:".length));
+                  const casesSelected = selected
+                    .filter((item) => item.startsWith("case:"))
+                    .map((item) => item.slice("case:".length));
+                  setValue((current) => ({
+                    ...current,
+                    test_suite_ids: suitesSelected,
+                    test_case_version_ids: casesSelected,
+                  }));
+                }}
+                disabled={readOnly}
+              />
+              <p className="mt-2 text-sm text-ink-muted">
+                Chọn ca đã được duyệt hoặc bộ ca đã có nội dung. Có thể lưu kế hoạch trước khi có
+                ca, nhưng cần ít nhất một ca trong phạm vi trước khi gửi duyệt.
+              </p>
+              {canCreateCases &&
+                !readOnly &&
+                initialValue?._id &&
+                value.requirement_version_ids?.length > 0 && (
+                  <Link
+                    className="mt-2 inline-flex text-sm font-medium text-brand underline underline-offset-2"
+                    href={createCaseHref}
+                  >
+                    Tạo ca từ các yêu cầu đã chọn
+                  </Link>
+                )}
+            </div>
+          </div>
+        </section>
+        <details
+          className="order-2 rounded-control border border-border bg-surface p-4"
+          open={openSections.additionalScope}
+          onToggle={(event) => setDisclosureOpen("additionalScope", event)}
+        >
+          <summary className="cursor-pointer font-medium">
+            Ngoài phạm vi (tùy chọn)
+            {(value.scope_out || []).some((item) => String(item).trim()) && (
+              <span className="ml-2 text-sm font-normal text-ink-muted">
+                {(value.scope_out || []).filter((item) => String(item).trim()).length} mục
+              </span>
+            )}
+          </summary>
+          <label className="field-label mt-4 block">
+            Nội dung ngoài phạm vi
+            <textarea
+              className="apple-input mt-2 min-h-20"
+              value={(value.scope_out || []).join("\n")}
+              onChange={(event) => setField("scope_out", event.target.value.split("\n"))}
+            />
+          </label>
+        </details>
+        <details
+          className="order-3 rounded-control border border-border bg-surface p-4"
+          open={openSections.classification}
+          onToggle={(event) => setDisclosureOpen("classification", event)}
+        >
+          <summary className="cursor-pointer font-medium">
+            Phân loại kiểm thử (tùy chọn)
+            {(selectedTestTypes.length > 0 || value.test_level) && (
+              <span className="ml-2 text-sm font-normal text-ink-muted">
+                {[
+                  selectedTestTypes.length ? `${selectedTestTypes.length} loại` : "",
+                  value.test_level ? valueLabel(value.test_level) : "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
+            )}
+          </summary>
+          <div className="mt-4 space-y-4">
+            <fieldset className="space-y-2">
+              <legend className="field-label">Loại kiểm thử</legend>
+              <p className="text-sm text-ink-muted">
+                Chọn một hoặc nhiều loại áp dụng cho phạm vi kế hoạch. Kỹ thuật như phân vùng tương
+                đương hoặc giá trị biên được ghi ở ca kiểm thử.
+              </p>
+              <div className="space-y-3">
+                <div className="flex flex-wrap gap-x-5 gap-y-2">
+                  {testTypeOptions.map(([type, label]) => (
+                    <label className="flex items-center gap-2 text-sm" key={type}>
+                      <input
+                        type="checkbox"
+                        checked={selectedTestTypes.includes(type)}
+                        onChange={(event) =>
+                          setField(
+                            "test_types",
+                            event.target.checked
+                              ? [...selectedTestTypes, type]
+                              : selectedTestTypes.filter((item) => item !== type),
+                          )
+                        }
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </fieldset>
+            <label className="field-label block">
+              Cấp kiểm thử (tùy chọn)
+              <select
+                className="apple-input mt-2"
+                value={value.test_level || ""}
+                onChange={(event) => setField("test_level", event.target.value || null)}
+              >
+                <option value="">-</option>
+                <option value="component">Thành phần</option>
+                <option value="component_integration">Tích hợp thành phần</option>
+                <option value="system">Hệ thống</option>
+                <option value="system_integration">Tích hợp hệ thống</option>
+                <option value="acceptance">Chấp nhận</option>
+                {value.test_level === "integration" && (
+                  <option value="integration">Tích hợp (dữ liệu cũ)</option>
+                )}
+              </select>
+            </label>
+          </div>
+        </details>
+        <details
+          className="order-4 rounded-control border border-border bg-surface p-4"
+          open={openSections.environment}
+          onToggle={(event) => setDisclosureOpen("environment", event)}
+        >
+          <summary className="cursor-pointer font-medium">
+            Môi trường kiểm thử (tùy chọn)
+            {selectedEnvironment && (
+              <span className="ml-2 text-sm font-normal text-ink-muted">
+                {selectedEnvironment.name}
+              </span>
+            )}
+          </summary>
+          <div className="mt-4 space-y-4">
+            <label className="field-label block">
+              Môi trường dự kiến (tùy chọn)
+              <select
+                className="apple-input mt-2"
+                value={value.environment_id || ""}
+                onChange={(event) => {
+                  const environmentId = event.target.value;
+                  setValue((current) => ({
+                    ...current,
+                    environment_id: environmentId,
+                  }));
+                }}
+              >
+                <option value="">-</option>
+                {environments.map((item) => (
+                  <option key={item._id} value={item._id}>
+                    {environmentOptionLabel(item)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {environments.length === 0 ? (
+              <p className="text-sm text-ink-muted">
+                Dự án chưa có môi trường để chọn. Có thể thêm môi trường trong{" "}
+                <Link
+                  className="font-medium text-brand underline underline-offset-2"
+                  href={`${projectRoute(projectId, PROJECT_SECTION_SLUGS.settings)}?section=environments`}
+                >
+                  Cài đặt dự án
+                </Link>
+                .
+              </p>
+            ) : (
+              <p className="text-sm text-ink-muted">
+                Môi trường này được dùng làm mặc định khi tạo lần chạy. Có thể đổi môi trường ở từng
+                lần chạy.
+              </p>
+            )}
+          </div>
+        </details>
+        <details
+          className="order-5 rounded-control border border-border bg-surface p-4"
+          open={openSections.conditions}
+          onToggle={(event) => setDisclosureOpen("conditions", event)}
+        >
+          <summary className="cursor-pointer font-medium">
+            Điều kiện và tiêu chí hoàn thành (tùy chọn)
+            {(value.entry_criteria?.length || value.exit_criteria?.length) > 0 && (
+              <span className="ml-2 text-sm font-normal text-ink-muted">
+                {`${(value.entry_criteria || []).filter((item) => String(item).trim()).length} điều kiện · ${(value.exit_criteria || []).filter((item) => String(item).trim()).length} tiêu chí`}
+              </span>
+            )}
+          </summary>
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            {conditionFields.map(([key, label]) => (
+              <label className="field-label" key={key}>
+                {label}
+                <textarea
+                  className="apple-input mt-2 min-h-20"
+                  value={(value[key] || []).join("\n")}
+                  onChange={(event) => setField(key, event.target.value.split("\n"))}
+                />
+              </label>
+            ))}
+          </div>
+        </details>
+        <details
+          className="order-6 rounded-control border border-border bg-surface p-4"
+          open={openSections.people}
+          onToggle={(event) => {
+            if (showNewPeriod && !event.currentTarget.open) {
+              setOpenSections((current) => ({ ...current, people: true }));
+              return;
+            }
+            setDisclosureOpen("people", event);
+          }}
+        >
+          <summary className="cursor-pointer font-medium">
+            Nhân sự, chu kỳ và thời gian (tùy chọn)
+            {(value.owner_id ||
+              value.test_period_id ||
+              value.schedule?.planned_start_at ||
+              value.schedule?.planned_end_at) && (
+              <span className="ml-2 text-sm font-normal text-ink-muted">
+                {[
+                  (() => {
+                    const owner = members.find((item) => item.user_id === value.owner_id);
+                    return (
+                      owner?.user_label ||
+                      owner?.user?.full_name ||
+                      owner?.user?.email ||
+                      (value.owner_id ? "Đã phân công" : "")
+                    );
+                  })(),
+                  selectedPeriod?.name,
+                  value.schedule?.planned_start_at || value.schedule?.planned_end_at
+                    ? "Có lịch dự kiến"
+                    : "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
+            )}
+          </summary>
+          <div className="mt-4 grid min-w-0 gap-4 md:grid-cols-2">
             <div className="field-label md:col-span-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <span>Chu kỳ (không bắt buộc)</span>
+                <span>Chu kỳ</span>
                 {!initialValue?._id && !showNewPeriod && (
                   <button
                     type="button"
@@ -298,6 +789,7 @@ export default function TestPlanEditor({
                       setNewPeriodName("");
                       setNewPeriodSourceId("");
                       setShowNewPeriod(true);
+                      setOpenSections((current) => ({ ...current, people: true }));
                     }}
                   >
                     + Tạo chu kỳ
@@ -390,195 +882,6 @@ export default function TestPlanEditor({
               </div>
             )}
             <label className="field-label md:col-span-2">
-              Mục tiêu <span className="text-danger">*</span>
-              <textarea
-                className="apple-input mt-2 min-h-20"
-                value={value.objective}
-                onChange={(event) => setField("objective", event.target.value)}
-              />
-            </label>
-            <MultiSelect
-              className="md:col-span-2"
-              label={
-                <span>
-                  Yêu cầu trong phạm vi <span className="text-danger">*</span>
-                </span>
-              }
-              showSearch={false}
-              options={requirements.map((item) => ({
-                value: item.current_version_id,
-                label: `${item.requirement_key} ${item.current_version?.title || item.title || ""}`,
-              }))}
-              searchPlaceholder="Tìm yêu cầu"
-              value={value.requirement_version_ids}
-              onChange={(selected) => {
-                setField("requirement_version_ids", selected);
-                setAiSuggestion(null);
-                setSelectedAiFields(new Set());
-                setAppliedAiFields(new Set());
-              }}
-              disabled={readOnly}
-            />
-            <div className="md:col-span-2">
-              <MultiSelect
-                label={
-                  <span>
-                    Ca kiểm thử trong phạm vi <span className="text-danger">*</span>
-                  </span>
-                }
-                options={caseScopeOptions}
-                searchPlaceholder="Tìm ca hoặc bộ kiểm thử"
-                value={caseScopeSelection}
-                onChange={(selected) => {
-                  const suitesSelected = selected
-                    .filter((item) => item.startsWith("suite:"))
-                    .map((item) => item.slice("suite:".length));
-                  const casesSelected = selected
-                    .filter((item) => item.startsWith("case:"))
-                    .map((item) => item.slice("case:".length));
-                  setValue((current) => ({
-                    ...current,
-                    test_suite_ids: suitesSelected,
-                    test_case_version_ids: casesSelected,
-                  }));
-                }}
-                disabled={readOnly}
-              />
-              <p className="mt-2 text-sm text-ink-muted">
-                Chọn ca đã được duyệt hoặc bộ ca đã có nội dung. Có thể lưu kế hoạch trước khi có
-                ca, nhưng cần ít nhất một ca trong phạm vi trước khi gửi duyệt.
-              </p>
-              {canCreateCases &&
-                !readOnly &&
-                initialValue?._id &&
-                value.requirement_version_ids?.length > 0 && (
-                  <Link
-                    className="mt-2 inline-flex text-sm font-medium text-brand underline underline-offset-2"
-                    href={createCaseHref}
-                  >
-                    Tạo ca từ các yêu cầu đã chọn
-                  </Link>
-                )}
-            </div>
-            <label className="field-label md:col-span-2">
-              Ngoài phạm vi (tùy chọn)
-              <textarea
-                className="apple-input mt-2 min-h-20"
-                value={(value.scope_out || []).join("\n")}
-                onChange={(event) => setField("scope_out", event.target.value.split("\n"))}
-              />
-            </label>
-          </div>
-        </section>
-        <section className="order-2 space-y-4 rounded-control border border-border bg-surface p-4">
-          <h3 className="text-base font-semibold text-ink">Phân loại kiểm thử (tùy chọn)</h3>
-          <fieldset className="space-y-2">
-            <legend className="field-label">Loại kiểm thử</legend>
-            <p className="text-sm text-ink-muted">
-              Chọn một hoặc nhiều loại áp dụng cho phạm vi kế hoạch. Kỹ thuật như phân vùng tương
-              đương hoặc giá trị biên được ghi ở ca kiểm thử.
-            </p>
-            <div className="space-y-3">
-              <div className="flex flex-wrap gap-x-5 gap-y-2">
-                {testTypeOptions.map(([type, label]) => (
-                  <label className="flex items-center gap-2 text-sm" key={type}>
-                    <input
-                      type="checkbox"
-                      checked={selectedTestTypes.includes(type)}
-                      onChange={(event) =>
-                        setField(
-                          "test_types",
-                          event.target.checked
-                            ? [...selectedTestTypes, type]
-                            : selectedTestTypes.filter((item) => item !== type),
-                        )
-                      }
-                    />
-                    {label}
-                  </label>
-                ))}
-              </div>
-            </div>
-          </fieldset>
-          <label className="field-label block">
-            Cấp kiểm thử (tùy chọn)
-            <select
-              className="apple-input mt-2"
-              value={value.test_level || ""}
-              onChange={(event) => setField("test_level", event.target.value || null)}
-            >
-              <option value="">-</option>
-              <option value="component">Thành phần</option>
-              <option value="component_integration">Tích hợp thành phần</option>
-              <option value="system">Hệ thống</option>
-              <option value="system_integration">Tích hợp hệ thống</option>
-              <option value="acceptance">Chấp nhận</option>
-              {value.test_level === "integration" && (
-                <option value="integration">Tích hợp (dữ liệu cũ)</option>
-              )}
-            </select>
-          </label>
-        </section>
-        <section className="order-3 space-y-4 rounded-control border border-border bg-surface p-4">
-          <h3 className="text-base font-semibold text-ink">Môi trường kiểm thử</h3>
-          <label className="field-label block">
-            Môi trường dự kiến (tùy chọn)
-            <select
-              className="apple-input mt-2"
-              value={value.environment_id || ""}
-              onChange={(event) => {
-                const environmentId = event.target.value;
-                setValue((current) => ({
-                  ...current,
-                  environment_id: environmentId,
-                }));
-              }}
-            >
-              <option value="">-</option>
-              {environments.map((item) => (
-                <option key={item._id} value={item._id}>
-                  {environmentOptionLabel(item)}
-                </option>
-              ))}
-            </select>
-          </label>
-          {environments.length === 0 ? (
-            <p className="text-sm text-ink-muted">
-              Dự án chưa có môi trường để chọn. Có thể thêm môi trường trong{" "}
-              <Link
-                className="font-medium text-brand underline underline-offset-2"
-                href={`${projectRoute(projectId, PROJECT_SECTION_SLUGS.settings)}?section=environments`}
-              >
-                Cài đặt dự án
-              </Link>
-              .
-            </p>
-          ) : (
-            <p className="text-sm text-ink-muted">
-              Môi trường này được dùng làm mặc định khi tạo lần chạy. Có thể đổi môi trường ở từng
-              lần chạy.
-            </p>
-          )}
-        </section>
-        <section className="order-4 space-y-4 rounded-control border border-border bg-surface p-4">
-          <h3 className="text-base font-semibold text-ink">Tiêu chí bắt đầu và kết thúc</h3>
-          <div className="grid gap-4 md:grid-cols-2">
-            {conditionFields.map(([key, label]) => (
-              <label className="field-label" key={key}>
-                {label}
-                <textarea
-                  className="apple-input mt-2 min-h-20"
-                  value={(value[key] || []).join("\n")}
-                  onChange={(event) => setField(key, event.target.value.split("\n"))}
-                />
-              </label>
-            ))}
-          </div>
-        </section>
-        <details className="order-5 rounded-control border border-border bg-surface p-4">
-          <summary className="cursor-pointer font-medium">Nhân sự và thời gian (tùy chọn)</summary>
-          <div className="mt-4 grid min-w-0 gap-4 md:grid-cols-2">
-            <label className="field-label md:col-span-2">
               Người phụ trách kế hoạch
               <select
                 className="apple-input mt-2"
@@ -630,9 +933,25 @@ export default function TestPlanEditor({
             </p>
           </div>
         </details>
-        <details className="order-6 rounded-control border border-border bg-surface p-4">
+        <details
+          className="order-7 rounded-control border border-border bg-surface p-4"
+          open={openSections.risks}
+          onToggle={(event) => setDisclosureOpen("risks", event)}
+        >
           <summary className="cursor-pointer font-medium">
             Rủi ro và cách ứng phó (tùy chọn)
+            {value.risk_register?.some(
+              (item) => String(item.title || "").trim() || String(item.response || "").trim(),
+            ) && (
+              <span className="ml-2 text-sm font-normal text-ink-muted">
+                {
+                  value.risk_register.filter(
+                    (item) => String(item.title || "").trim() || String(item.response || "").trim(),
+                  ).length
+                }{" "}
+                mục
+              </span>
+            )}
           </summary>
           <div className="mt-4 space-y-3">
             {riskRows.map((risk, index) => (
@@ -722,6 +1041,38 @@ export default function TestPlanEditor({
           </div>
         </details>
       </fieldset>
+      {!readOnly && (
+        <footer className="action-dialog-footer sticky bottom-0 z-20 -mx-5 flex flex-wrap items-center justify-between gap-3 border-t border-border px-5 py-3">
+          {error ? (
+            <p className="min-w-0 flex-1 text-sm text-danger" role="alert">
+              {error}
+            </p>
+          ) : (
+            <p className="min-w-0 flex-1 text-xs text-ink-muted">
+              Các thay đổi chỉ được lưu khi bạn xác nhận.
+            </p>
+          )}
+          <div className="ml-auto flex flex-wrap justify-end gap-2">
+            <button className="secondary-button" disabled={saving} onClick={onCancel} type="button">
+              Hủy
+            </button>
+            {!initialValue?._id && (
+              <button
+                className="secondary-button"
+                disabled={saving}
+                formNoValidate
+                type="submit"
+                value="draft"
+              >
+                Lưu nháp
+              </button>
+            )}
+            <button className="apple-button" disabled={saving} type="submit" value="ready">
+              {saving ? "Đang lưu…" : "Lưu kế hoạch"}
+            </button>
+          </div>
+        </footer>
+      )}
       {readOnly && (
         <div className="action-dialog-footer flex items-center justify-end">
           <button className="secondary-button" type="button" onClick={onCancel}>

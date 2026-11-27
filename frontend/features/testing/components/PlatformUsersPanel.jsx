@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Eye,
   KeyRound,
@@ -31,6 +31,8 @@ export default function PlatformUsersPanel() {
   const { ask, dialog } = useActionDialog();
   const [users, setUsers] = useState([]);
   const [query, setQuery] = useState("");
+  const [roleFilter, setRoleFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
   const [selectedId, setSelectedId] = useState("");
   const [detail, setDetail] = useState(null);
   const [memberships, setMemberships] = useState([]);
@@ -43,6 +45,19 @@ export default function PlatformUsersPanel() {
   const usersRequestId = useRef(0);
   const detailRequestId = useRef(0);
   const accountActionInFlightRef = useRef(false);
+  const availableRoles = useMemo(
+    () => [...new Set(users.map((user) => user.system_role).filter(Boolean))].sort(),
+    [users],
+  );
+  const filteredUsers = useMemo(
+    () =>
+      users.filter((user) => {
+        if (roleFilter && user.system_role !== roleFilter) return false;
+        if (statusFilter && Boolean(user.is_active) !== (statusFilter === "ACTIVE")) return false;
+        return true;
+      }),
+    [roleFilter, statusFilter, users],
+  );
 
   const loadUsers = useCallback(async (search = "") => {
     const requestId = ++usersRequestId.current;
@@ -226,7 +241,7 @@ export default function PlatformUsersPanel() {
               Thao tác hàng loạt
             </button>
             <form
-              className="flex min-w-0 flex-wrap gap-2 sm:flex-nowrap"
+              className="grid min-w-0 gap-2 sm:grid-cols-[minmax(14rem,1fr)_minmax(9rem,auto)_minmax(9rem,auto)_auto]"
               onSubmit={(event) => {
                 event.preventDefault();
                 void loadUsers(query);
@@ -234,12 +249,50 @@ export default function PlatformUsersPanel() {
             >
               <SearchField
                 ariaLabel="Tìm tài khoản"
-                className="w-full sm:w-72"
-                onChange={(event) => setQuery(event.target.value)}
+                className="w-full"
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  setPage(1);
+                }}
                 placeholder="Email, họ tên hoặc tên đăng nhập"
                 value={query}
               />
-              <button className="secondary-button shrink-0" type="submit">
+              <label className="sr-only" htmlFor="platform-user-role-filter">
+                Lọc theo vai trò
+              </label>
+              <select
+                className="apple-input"
+                id="platform-user-role-filter"
+                onChange={(event) => {
+                  setRoleFilter(event.target.value);
+                  setPage(1);
+                }}
+                value={roleFilter}
+              >
+                <option value="">Tất cả vai trò</option>
+                {availableRoles.map((role) => (
+                  <option key={role} value={role}>
+                    {valueLabel(role)}
+                  </option>
+                ))}
+              </select>
+              <label className="sr-only" htmlFor="platform-user-status-filter">
+                Lọc theo trạng thái
+              </label>
+              <select
+                className="apple-input"
+                id="platform-user-status-filter"
+                onChange={(event) => {
+                  setStatusFilter(event.target.value);
+                  setPage(1);
+                }}
+                value={statusFilter}
+              >
+                <option value="">Tất cả trạng thái</option>
+                <option value="ACTIVE">Đang hoạt động</option>
+                <option value="DISABLED">Đã vô hiệu hóa</option>
+              </select>
+              <button className="secondary-button shrink-0" disabled={loading} type="submit">
                 Tìm
               </button>
             </form>
@@ -252,7 +305,7 @@ export default function PlatformUsersPanel() {
           </div>
         ) : (
           <DataTable
-            items={users.slice((page - 1) * pageSize, page * pageSize)}
+            items={filteredUsers.slice((page - 1) * pageSize, page * pageSize)}
             empty="Không có tài khoản phù hợp"
             columns={[
               { key: "email", label: "Email" },
@@ -289,7 +342,19 @@ export default function PlatformUsersPanel() {
           />
         )}
         {!loading && (
-          <Pagination page={page} pageSize={pageSize} total={users.length} onChange={setPage} />
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 sm:px-5">
+            <p aria-live="polite" className="text-xs text-ink-muted">
+              {filteredUsers.length === users.length
+                ? `${users.length} tài khoản`
+                : `${filteredUsers.length} / ${users.length} tài khoản`}
+            </p>
+            <Pagination
+              page={page}
+              pageSize={pageSize}
+              total={filteredUsers.length}
+              onChange={setPage}
+            />
+          </div>
         )}
       </Panel>
 
@@ -297,7 +362,7 @@ export default function PlatformUsersPanel() {
         isOpen={Boolean(selectedId)}
         onClose={() => setSelectedId("")}
         ariaLabel="Chi tiết tài khoản"
-        className="max-w-5xl"
+        placement="right"
       >
         <ModalHeader>
           <ModalTitle>{detail ? `Chi tiết ${detail.email}` : "Đang tải tài khoản"}</ModalTitle>

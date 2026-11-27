@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
+import { Modal, ModalFooter, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import DocumentEditor from "../../../editor/DocumentEditor";
 import FilePicker from "../../../components/FilePicker";
 import { docText, emptyDoc, messageOf, valueLabel } from "../../../lib/testing";
@@ -949,7 +949,7 @@ export default function TestCaseCompareWorkspace({
         isOpen
         onClose={close}
         ariaLabel="So sánh và ghép ca kiểm thử"
-        className="w-[min(1600px,100%)] max-w-none max-h-[94dvh] overflow-y-auto"
+        className="flex max-h-[94dvh] w-[min(1600px,100%)] max-w-none flex-col overflow-hidden"
       >
         <ModalHeader>
           <ModalTitle>So sánh và ghép ca kiểm thử</ModalTitle>
@@ -1034,7 +1034,7 @@ export default function TestCaseCompareWorkspace({
       isOpen
       onClose={close}
       ariaLabel="So sánh và ghép ca kiểm thử"
-      className="w-[min(1600px,100%)] max-w-none max-h-[94dvh] overflow-y-auto"
+      className="flex max-h-[94dvh] w-[min(1600px,100%)] max-w-none flex-col overflow-hidden"
     >
       <ModalHeader>
         <ModalTitle>So sánh và ghép ca kiểm thử</ModalTitle>
@@ -1043,7 +1043,7 @@ export default function TestCaseCompareWorkspace({
           thành nháp, không tự duyệt.
         </p>
       </ModalHeader>
-      <div className="min-w-0 space-y-5 p-4 sm:p-6">
+      <div className="min-h-0 min-w-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-4 sm:p-6">
         {error && (
           <div
             role="alert"
@@ -1110,16 +1110,6 @@ export default function TestCaseCompareWorkspace({
               {editable && proposal && (
                 <button type="button" className="secondary-button" onClick={() => acceptAll("AI")}>
                   Lấy nội dung AI
-                </button>
-              )}
-              {canEdit && (
-                <button
-                  type="button"
-                  className="apple-button"
-                  disabled={!editable || !dirty}
-                  onClick={save}
-                >
-                  {saving ? "Đang lưu…" : "Lưu bản ghép"}
                 </button>
               )}
             </div>
@@ -1699,6 +1689,40 @@ export default function TestCaseCompareWorkspace({
           </>
         )}
       </div>
+      <ModalFooter className="sm:flex-row sm:justify-between">
+        <p aria-live="polite" className="text-sm text-ink-muted sm:mr-auto">
+          {stale
+            ? "Nguồn đã thay đổi; cần tải lại và đối chiếu trước khi lưu."
+            : dirty
+              ? "Có thay đổi chưa lưu. Bản ghép sẽ ở trạng thái nháp."
+              : "Chưa có thay đổi chưa lưu."}
+        </p>
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
+          {stale && (
+            <button
+              className="secondary-button"
+              disabled={saving}
+              onClick={() => void reloadComparison()}
+              type="button"
+            >
+              Tải lại để đối chiếu
+            </button>
+          )}
+          <button className="secondary-button" disabled={saving} onClick={close} type="button">
+            Đóng
+          </button>
+          {canEdit && (
+            <button
+              className="apple-button"
+              disabled={!editable || !dirty}
+              onClick={save}
+              type="button"
+            >
+              {saving ? "Đang lưu…" : "Lưu bản ghép"}
+            </button>
+          )}
+        </div>
+      </ModalFooter>
     </Modal>
   );
 }

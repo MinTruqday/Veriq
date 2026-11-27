@@ -84,11 +84,14 @@ module.exports = {
       },
       borderRadius: {
         lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
-        control: "9px",
-        panel: "12px",
-        workspace: "16px",
+        md: "6px",
+        sm: "4px",
+        xl: "8px",
+        "2xl": "8px",
+        "3xl": "8px",
+        control: "7px",
+        panel: "8px",
+        workspace: "8px",
       },
       keyframes: {
         "accordion-down": {

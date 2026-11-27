@@ -1,14 +1,21 @@
-export default function PageHeader({ title, showTitle = true, description, actions, meta }) {
+export default function PageHeader({
+  title,
+  showTitle = true,
+  description,
+  actions,
+  meta,
+  className = "mb-6",
+}) {
   if (!showTitle && !actions && !meta) {
     return <h1 className="sr-only">{title}</h1>;
   }
   return (
-    <header className="mb-6 min-w-0">
+    <header className={`min-w-0 ${className}`}>
       <div
         className={`workspace-page-header min-w-0 gap-4 ${actions ? "workspace-page-header-with-actions" : ""}`}
       >
         <div className="min-w-0">
-          <h1 className={showTitle ? "product-heading" : "sr-only"}>{title}</h1>
+          <h1 className={showTitle ? "product-heading break-words" : "sr-only"}>{title}</h1>
           {showTitle && description && (
             <p className="mt-2 max-w-[65ch] text-[14px] leading-relaxed text-ink-muted">
               {description}

@@ -3,18 +3,18 @@ import Image from "next/image";
 
 export default function AuthFrame({ title, description, children, footer, width = "sm" }) {
   return (
-    <main className="min-h-[100dvh] bg-[#eef3ef] px-4 py-5 sm:px-6 md:px-10 md:py-8">
-      <div className="mx-auto flex min-w-0 w-full max-w-[1180px] items-center justify-between">
+    <main className="min-h-[100dvh] bg-canvas px-4 py-4 text-ink sm:px-6 sm:py-6">
+      <div className="mx-auto flex min-w-0 w-full max-w-[1180px] items-center justify-between border-b border-border pb-4">
         <Link
           href="/"
-          className="flex items-center gap-3 text-[19px] font-semibold tracking-[-0.035em] text-ink"
+          className="flex min-w-0 items-center gap-2.5 rounded-control text-[17px] font-semibold tracking-[-0.025em] text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
         >
           <Image
             src="/brand/veriq-logo.png"
             alt="Veriq"
-            width={36}
-            height={36}
-            className="h-9 w-9 rounded-xl object-cover"
+            width={32}
+            height={32}
+            className="h-8 w-8 rounded-control object-cover"
             priority
             unoptimized
           />
@@ -22,28 +22,26 @@ export default function AuthFrame({ title, description, children, footer, width 
         </Link>
         <Link
           href="/"
-          className="rounded-control px-3 py-2 text-[14px] font-semibold text-ink-muted hover:bg-surface-quiet hover:text-ink"
+          className="rounded-control px-3 py-2 text-[13px] font-medium text-ink-muted transition hover:bg-surface-quiet hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
         >
           Về trang chủ
         </Link>
       </div>
-      <div className="mx-auto flex min-h-[calc(100dvh-104px)] min-w-0 w-full max-w-[1180px] items-center justify-center py-6 sm:py-8">
+      <div className="mx-auto flex min-h-[calc(100dvh-88px)] min-w-0 w-full max-w-[1180px] items-center justify-center py-8 sm:py-10">
         <section
-          className={`min-w-0 w-full max-w-full ${width === "md" ? "sm:max-w-[520px]" : "sm:max-w-[500px]"} rounded-3xl bg-surface p-6 shadow-[0_24px_70px_rgba(48,47,42,0.12)] sm:p-9`}
+          className={`min-w-0 w-full max-w-full ${width === "md" ? "sm:max-w-[520px]" : "sm:max-w-[440px]"} rounded-panel border border-border bg-surface p-5 sm:p-8`}
         >
-          <header className="mb-6">
-            <h1 className="text-[28px] font-semibold leading-tight tracking-[-0.035em] text-ink">
+          <header className="mb-6 border-b border-border pb-5">
+            <h1 className="text-[23px] font-semibold leading-tight tracking-[-0.025em] text-ink sm:text-[24px]">
               {title}
             </h1>
             {description && (
-              <p className="mt-2 break-words text-[14px] leading-relaxed text-ink-muted">
-                {description}
-              </p>
+              <p className="mt-2 break-words text-[13px] leading-5 text-ink-muted">{description}</p>
             )}
           </header>
           {children}
           {footer && (
-            <div className="mt-7 border-t border-border pt-5 text-[14px] text-ink-muted">
+            <div className="mt-6 border-t border-border pt-4 text-[13px] leading-5 text-ink-muted">
               {footer}
             </div>
           )}

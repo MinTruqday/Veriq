@@ -13,6 +13,15 @@ import {
 import { docText, messageOf, valueLabel } from "../../../lib/testing";
 import { testingApi } from "../../../services/testing.service";
 
+function caseMatchesFilter(result, filter) {
+  if (filter === "NOT_RUN") return !result || result.status === "NOT_RUN";
+  if (filter === "FAIL") return result?.status === "FAIL";
+  if (filter === "RECORDED") {
+    return ["PASS", "FAIL", "BLOCKED", "SKIPPED", "NOT_APPLICABLE"].includes(result?.status);
+  }
+  return true;
+}
+
 export default function RunExecutionWorkspace({
   run,
   projectId,
@@ -50,6 +59,7 @@ export default function RunExecutionWorkspace({
   const [pendingFail, setPendingFail] = useState({});
   const [resumingRun, setResumingRun] = useState(false);
   const [focusedCaseIndex, setFocusedCaseIndex] = useState(0);
+  const [caseStatusFilter, setCaseStatusFilter] = useState("ALL");
   const rerunKey = useRef(null);
   const resumeOperation = useRef(null);
   const testCaseVersions = run.test_case_versions || [];
@@ -61,13 +71,33 @@ export default function RunExecutionWorkspace({
   const recordedCases = (run.results || []).filter((result) =>
     ["PASS", "FAIL", "BLOCKED", "SKIPPED", "NOT_APPLICABLE"].includes(result.status),
   ).length;
+  const resultSegments = [
+    ["PASS", "bg-brand"],
+    ["FAIL", "bg-danger"],
+    ["BLOCKED", "bg-warning"],
+    ["SKIPPED", "bg-ink-faint"],
+    ["NOT_APPLICABLE", "bg-ink-muted"],
+  ]
+    .map(([status, color]) => ({
+      status,
+      color,
+      count: (run.results || []).filter((result) => result.status === status).length,
+    }))
+    .filter((segment) => segment.count > 0);
+  const notRecordedCases = Math.max(0, totalCases - recordedCases);
+  const caseEntries = testCaseVersions.map((item, index) => ({
+    item,
+    index,
+    result: run.results?.find((value) => value.test_case_version_id === item._id),
+  }));
+  const filteredCaseEntries = caseEntries.filter(({ result }) =>
+    caseMatchesFilter(result, caseStatusFilter),
+  );
+  const countCasesMatching = (filter) =>
+    caseEntries.filter(({ result }) => caseMatchesFilter(result, filter)).length;
   const navigateCase = (index) => {
     const nextIndex = Math.max(0, Math.min(index, testCaseVersions.length - 1));
     setFocusedCaseIndex(nextIndex);
-    document.getElementById(`execution-case-${nextIndex}`)?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
   };
   const beginAssignmentEdit = () => {
     const assignments = { ...(run.test_case_assignments || {}) };
@@ -317,48 +347,97 @@ export default function RunExecutionWorkspace({
           </div>
         }
       >
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 p-4">
-          <StatusPill value={run.status} />
-          <p className="text-sm">Mã: {run._id}</p>
-          {run.test_plan_id && (
-            <a
-              className="text-sm underline"
-              href={`/du-an/${encodeURIComponent(projectId)}/ke-hoach-kiem-thu/${encodeURIComponent(run.test_plan_id)}`}
-            >
-              Xem kế hoạch
-            </a>
-          )}
-          <div className="min-w-48 text-sm">
-            <p>
-              Đã ghi nhận {recordedCases}/{totalCases} ca
-            </p>
+        <div className="grid min-w-0 gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,0.9fr)]">
+          <div className="min-w-0 space-y-4">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <StatusPill value={run.status} />
+              {run.test_plan_id && (
+                <a
+                  className="secondary-button h-8 px-3 text-xs"
+                  href={`/du-an/${encodeURIComponent(projectId)}/ke-hoach-kiem-thu/${encodeURIComponent(run.test_plan_id)}`}
+                >
+                  Xem kế hoạch
+                </a>
+              )}
+            </div>
+            <div className="min-w-0 rounded-control border border-border p-3">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-ink-muted">
+                Mã lần chạy
+              </p>
+              <p className="mt-1 break-all font-mono text-xs">{run._id}</p>
+            </div>
+            {(run.environment || run.release || run.build) && (
+              <dl className="grid min-w-0 gap-3 sm:grid-cols-2">
+                {run.environment && (
+                  <div className="min-w-0">
+                    <dt className="text-xs text-ink-muted">Môi trường</dt>
+                    <dd className="mt-1 break-words text-sm font-medium">{run.environment}</dd>
+                  </div>
+                )}
+                {run.release && (
+                  <div className="min-w-0">
+                    <dt className="text-xs text-ink-muted">Bản phát hành</dt>
+                    <dd className="mt-1 break-words text-sm font-medium">{run.release}</dd>
+                  </div>
+                )}
+                {run.build && (
+                  <div className="min-w-0 sm:col-span-2">
+                    <dt className="text-xs text-ink-muted">Bản dựng</dt>
+                    <dd className="mt-1 break-all text-sm font-medium">{run.build}</dd>
+                  </div>
+                )}
+              </dl>
+            )}
+          </div>
+          <div className="min-w-0 rounded-control border border-border bg-surface-quiet p-4">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+              <p className="text-sm font-semibold">Tiến độ thực thi</p>
+              <p className="text-sm font-semibold tabular-nums">
+                {recordedCases}/{totalCases} ca
+              </p>
+            </div>
             <progress
-              className="mt-1 w-full"
+              className="mt-2 w-full"
               value={recordedCases}
               max={totalCases || 1}
               aria-label="Tiến độ ghi nhận kết quả"
             />
+            <figure aria-label="Phân bố kết quả lần chạy" className="mt-4">
+              <div
+                aria-label="Phân bố trạng thái ca kiểm thử"
+                className="flex h-2.5 overflow-hidden rounded-full bg-surface"
+                role="img"
+              >
+                {resultSegments.map((segment) => (
+                  <span
+                    className={`${segment.color} h-full`}
+                    key={segment.status}
+                    style={{ width: `${(segment.count / Math.max(totalCases, 1)) * 100}%` }}
+                    title={`${valueLabel(segment.status)}: ${segment.count}`}
+                  />
+                ))}
+              </div>
+              <figcaption className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-ink-muted">
+                {resultSegments.map((segment) => (
+                  <span className="inline-flex items-center gap-1.5" key={segment.status}>
+                    <span aria-hidden="true" className={`h-2 w-2 rounded-full ${segment.color}`} />
+                    {valueLabel(segment.status)} {segment.count}
+                  </span>
+                ))}
+                {notRecordedCases > 0 && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <span aria-hidden="true" className="h-2 w-2 rounded-full bg-surface" />
+                    Chưa chạy {notRecordedCases}
+                  </span>
+                )}
+                {!resultSegments.length && totalCases === 0 && (
+                  <span>Lần chạy chưa có ca kiểm thử</span>
+                )}
+              </figcaption>
+            </figure>
           </div>
-          {run.environment && (
-            <p className="text-[13px]">
-              <span className="text-ink-muted">Môi trường: </span>
-              <span className="font-medium">{run.environment}</span>
-            </p>
-          )}
-          {run.release && (
-            <p className="text-[13px]">
-              <span className="text-ink-muted">Bản phát hành: </span>
-              <span className="font-medium">{run.release}</span>
-            </p>
-          )}
-          {run.build && (
-            <p className="break-all text-[13px]">
-              <span className="text-ink-muted">Bản dựng: </span>
-              <span className="font-medium">{run.build}</span>
-            </p>
-          )}
           {resumeContext && (
-            <div className="mt-4 rounded-xl border border-border bg-surface-raised p-4 text-[13px]">
+            <div className="min-w-0 rounded-xl border border-border bg-surface-raised p-4 text-[13px] lg:col-span-2">
               {resumeContext.current_test_case_version ? (
                 <>
                   <p className="font-semibold">Vị trí tiếp tục</p>
@@ -479,475 +558,554 @@ export default function RunExecutionWorkspace({
           </div>
         </Panel>
       )}
-      <div className="w-full">
-        <Panel
-          title="Kết quả từng ca"
-          actions={
-            testCaseVersions.length > 1 && (
-              <nav aria-label="Điều hướng ca kiểm thử" className="flex items-center gap-2">
-                <button
-                  className="secondary-button"
-                  type="button"
-                  disabled={focusedCaseIndex <= 0}
-                  onClick={() => navigateCase(focusedCaseIndex - 1)}
+      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(15rem,0.32fr)_minmax(0,0.68fr)]">
+        <aside className="min-w-0 lg:sticky lg:top-4 lg:self-start">
+          <Panel title={`Ca kiểm thử · ${filteredCaseEntries.length}/${testCaseVersions.length}`}>
+            {testCaseVersions.length ? (
+              <>
+                <div className="border-b border-border p-3">
+                  <label className="field-label block">
+                    Lọc ca theo kết quả
+                    <select
+                      aria-label="Lọc ca kiểm thử theo kết quả"
+                      className="apple-input mt-2 w-full"
+                      value={caseStatusFilter}
+                      onChange={(event) => {
+                        const nextFilter = event.target.value;
+                        const nextEntries = caseEntries.filter(({ result }) =>
+                          caseMatchesFilter(result, nextFilter),
+                        );
+                        setCaseStatusFilter(nextFilter);
+                        if (
+                          nextEntries.length &&
+                          !nextEntries.some(({ index }) => index === focusedCaseIndex)
+                        ) {
+                          setFocusedCaseIndex(nextEntries[0].index);
+                        }
+                      }}
+                    >
+                      <option value="ALL">Tất cả ca ({countCasesMatching("ALL")})</option>
+                      <option value="NOT_RUN">Chưa chạy ({countCasesMatching("NOT_RUN")})</option>
+                      <option value="FAIL">Thất bại ({countCasesMatching("FAIL")})</option>
+                      <option value="RECORDED">
+                        Đã có kết quả ({countCasesMatching("RECORDED")})
+                      </option>
+                    </select>
+                  </label>
+                </div>
+                <nav
+                  aria-label="Danh sách ca kiểm thử"
+                  className="max-h-[72vh] divide-y divide-border overflow-y-auto"
                 >
-                  Ca trước
-                </button>
-                <span className="min-w-12 text-center text-sm text-ink-muted">
-                  {focusedCaseIndex + 1}/{testCaseVersions.length}
-                </span>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  disabled={focusedCaseIndex >= testCaseVersions.length - 1}
-                  onClick={() => navigateCase(focusedCaseIndex + 1)}
-                >
-                  Ca tiếp
-                </button>
-              </nav>
-            )
-          }
-        >
-          {savingExecution && (
-            <p className="px-5 pt-4 text-sm text-ink-muted" role="status">
-              Đang lưu kết quả thực thi…
-            </p>
-          )}
-          <div className="divide-y divide-border">
-            {testCaseVersions.map((item, caseIndex) => {
-              const result = run.results?.find((value) => value.test_case_version_id === item._id);
-              const assigneeId = run.test_case_assignments?.[item._id] || run.assignee_id;
-              const assignee = assigneeId
-                ? run.test_case_assignment_identities?.[assigneeId]?.display_name ||
-                  "Thành viên không còn trong dự án"
-                : "Chưa phân công";
-              const linkedDefect = result
-                ? (result.linked_defect_ids || []).length > 0 ||
-                  run.defects?.some(
-                    (defect) =>
-                      defect.linked_test_result_id === result._id ||
-                      (result.linked_defect_ids || []).includes(defect._id),
-                  )
-                : false;
+                  {filteredCaseEntries.map(({ item, index: caseIndex, result }) => {
+                    return (
+                      <button
+                        aria-current={focusedCaseIndex === caseIndex ? "step" : undefined}
+                        className={`block w-full min-w-0 px-4 py-3 text-left transition-colors ${
+                          focusedCaseIndex === caseIndex
+                            ? "bg-surface-raised ring-1 ring-inset ring-border"
+                            : "hover:bg-surface-raised"
+                        }`}
+                        key={item._id}
+                        onClick={() => navigateCase(caseIndex)}
+                        type="button"
+                      >
+                        <span className="flex min-w-0 items-center justify-between gap-2">
+                          <span className="truncate text-xs font-semibold">
+                            {item.test_case_key}
+                          </span>
+                          {result ? (
+                            <StatusPill value={result.status} />
+                          ) : (
+                            <span className="shrink-0 text-[11px] text-ink-muted">Chưa chạy</span>
+                          )}
+                        </span>
+                        <span className="mt-1 block truncate text-sm">{item.title}</span>
+                      </button>
+                    );
+                  })}
+                  {!filteredCaseEntries.length && (
+                    <p className="p-4 text-sm text-ink-muted">Không có ca theo bộ lọc này.</p>
+                  )}
+                </nav>
+              </>
+            ) : (
+              <p className="p-4 text-sm text-ink-muted">Lần chạy chưa có ca kiểm thử.</p>
+            )}
+          </Panel>
+        </aside>
+        <div className="min-w-0">
+          <Panel
+            title="Ca đang chọn"
+            actions={
+              testCaseVersions.length > 1 && (
+                <nav aria-label="Điều hướng ca kiểm thử" className="flex items-center gap-2">
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    disabled={focusedCaseIndex <= 0}
+                    onClick={() => navigateCase(focusedCaseIndex - 1)}
+                  >
+                    Ca trước
+                  </button>
+                  <span className="min-w-12 text-center text-sm text-ink-muted">
+                    {focusedCaseIndex + 1}/{testCaseVersions.length}
+                  </span>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    disabled={focusedCaseIndex >= testCaseVersions.length - 1}
+                    onClick={() => navigateCase(focusedCaseIndex + 1)}
+                  >
+                    Ca tiếp
+                  </button>
+                </nav>
+              )
+            }
+          >
+            {savingExecution && (
+              <p className="px-5 pt-4 text-sm text-ink-muted" role="status">
+                Đang lưu kết quả thực thi…
+              </p>
+            )}
+            <div className="divide-y divide-border">
+              {testCaseVersions.map((item, caseIndex) => {
+                const result = run.results?.find(
+                  (value) => value.test_case_version_id === item._id,
+                );
+                const assigneeId = run.test_case_assignments?.[item._id] || run.assignee_id;
+                const assignee = assigneeId
+                  ? run.test_case_assignment_identities?.[assigneeId]?.display_name ||
+                    "Thành viên không còn trong dự án"
+                  : "Chưa phân công";
+                const linkedDefect = result
+                  ? (result.linked_defect_ids || []).length > 0 ||
+                    run.defects?.some(
+                      (defect) =>
+                        defect.linked_test_result_id === result._id ||
+                        (result.linked_defect_ids || []).includes(defect._id),
+                    )
+                  : false;
 
-              return (
-                <article
-                  className="min-w-0 scroll-mt-6 space-y-4 p-5"
-                  id={`execution-case-${caseIndex}`}
-                  key={item._id}
-                >
-                  <header className="flex min-w-0 flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                        <span className="font-semibold">{item.test_case_key}</span>
-                        {item.version !== null && item.version !== undefined && (
-                          <span className="text-sm text-ink-muted">v{item.version}</span>
-                        )}
-                      </div>
-                      <h3 className="mt-1 break-words font-medium">{item.title}</h3>
-                    </div>
-                    <div className="flex shrink-0 flex-wrap items-center gap-2">
-                      {result ? (
-                        <StatusPill value={result.status} />
-                      ) : (
-                        <span className="text-sm text-ink-muted">Chưa có kết quả</span>
-                      )}
-                    </div>
-                  </header>
-                  <p className="text-sm text-ink-muted">
-                    Người thực hiện: <span className="text-ink">{assignee}</span>
-                  </p>
-                  {!result ? (
-                    <p className="rounded-control bg-surface-raised px-3 py-2 text-sm text-ink-muted">
-                      Chưa có kết quả cho ca này.
-                    </p>
-                  ) : !["NOT_RUN", "IN_PROGRESS"].includes(result.status) ? (
-                    <div className="space-y-3">
-                      <details className="rounded-control border border-border px-4 py-3">
-                        <summary className="cursor-pointer text-sm font-medium text-ink">
-                          Xem kết quả đã ghi nhận
-                        </summary>
-                        <div className="mt-3 space-y-4 border-t border-border pt-3 text-sm">
-                          <div className="grid gap-4 md:grid-cols-2">
-                            <div className="min-w-0">
-                              <h4 className="text-xs font-medium text-ink-muted">
-                                Kết quả mong đợi
-                              </h4>
-                              <p className="mt-1 whitespace-pre-wrap break-words">
-                                {docText(item.expected_result_doc) || "Chưa có kết quả mong đợi"}
-                              </p>
-                            </div>
-                            <div className="min-w-0">
-                              <h4 className="text-xs font-medium text-ink-muted">
-                                Kết quả thực tế
-                              </h4>
-                              <p className="mt-1 whitespace-pre-wrap break-words">
-                                {docText(result.actual_result_doc) ||
-                                  "Chưa ghi nhận kết quả thực tế"}
-                              </p>
-                            </div>
-                          </div>
-                          {(item.steps || []).map((step, stepIndex) => {
-                            const stepResult = result.step_results?.find(
-                              (value) => value.step_id === step.id,
-                            );
-                            if (!stepResult) return null;
-                            return (
-                              <section
-                                className="border-t border-border pt-3"
-                                key={step.id}
-                                aria-label={`Kết quả bước ${stepIndex + 1}`}
-                              >
-                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <h4 className="font-medium">Bước {stepIndex + 1}</h4>
-                                  <StatusPill value={stepResult.status} />
-                                </div>
-                                <p className="mt-2 break-words">{docText(step.action_doc)}</p>
-                                <p className="mt-1 break-words text-ink-muted">
-                                  Mong đợi: {docText(step.expected_doc) || "Chưa có"}
-                                </p>
-                                <p className="mt-1 whitespace-pre-wrap break-words">
-                                  Thực tế: {docText(stepResult.actual_doc) || "Chưa ghi nhận"}
-                                </p>
-                                {stepResult.note && (
-                                  <p className="mt-1 whitespace-pre-wrap break-words text-ink-muted">
-                                    Ghi chú: {stepResult.note}
-                                  </p>
-                                )}
-                              </section>
-                            );
-                          })}
-                          {result.attachments?.length > 0 && (
-                            <section className="border-t border-border pt-3">
-                              <h4 className="font-medium">Tệp bằng chứng</h4>
-                              <ul className="mt-2 space-y-1">
-                                {result.attachments.map((attachment) => (
-                                  <li className="break-all text-ink-muted" key={attachment.url}>
-                                    {attachment.filename}
-                                  </li>
-                                ))}
-                              </ul>
-                            </section>
+                return (
+                  <article
+                    className={`${caseIndex === focusedCaseIndex ? "" : "hidden"} min-w-0 space-y-4 p-5`}
+                    id={`execution-case-${caseIndex}`}
+                    key={item._id}
+                  >
+                    <header className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                          <span className="font-semibold">{item.test_case_key}</span>
+                          {item.version !== null && item.version !== undefined && (
+                            <span className="text-sm text-ink-muted">v{item.version}</span>
                           )}
                         </div>
-                      </details>
-                      <div className="flex flex-wrap items-center gap-3">
-                        {linkedDefect && (
-                          <span className="text-sm text-ink-muted">Đã liên kết lỗi</span>
+                        <h3 className="mt-1 break-words font-medium">{item.title}</h3>
+                      </div>
+                      <div className="flex shrink-0 flex-wrap items-center gap-2">
+                        {result ? (
+                          <StatusPill value={result.status} />
+                        ) : (
+                          <span className="text-sm text-ink-muted">Chưa có kết quả</span>
                         )}
                       </div>
-                      {result.status === "FAIL" &&
-                        !linkedDefect &&
-                        (can("defect.create") ||
-                          (can("defect.read") &&
-                            can("defect.trace.manage") &&
-                            can("testrun.execute"))) && (
-                          <InlineDefectForm
-                            key={result._id}
-                            result={result}
-                            version={item}
-                            members={members}
-                            projectId={projectId}
-                            canCreate={can("defect.create")}
-                            canLink={
-                              can("defect.read") &&
-                              can("defect.trace.manage") &&
-                              can("testrun.execute")
-                            }
-                            onLinked={async () => onRunChange(await testingApi.getRun(run._id))}
-                            saving={creatingDefectResultIds.has(result._id)}
-                            onCreate={onCreateInlineDefect}
-                          />
-                        )}
-                      {linkedDefect &&
-                        (run.defects || [])
-                          .filter(
-                            (defect) =>
-                              defect.linked_test_result_id === result._id ||
-                              (result.linked_defect_ids || []).includes(defect._id),
-                          )
-                          .map((defect) => {
-                            const next = {
-                              NEW: ["CONFIRMED", "defect.triage"],
-                              CONFIRMED: ["IN_PROGRESS", "defect.transition.resolve"],
-                              IN_PROGRESS: ["RESOLVED", "defect.transition.resolve"],
-                              RESOLVED: ["READY_FOR_RETEST", "defect.transition.resolve"],
-                              REOPENED: ["IN_PROGRESS", "defect.transition.resolve"],
-                            }[defect.status];
-                            return (
-                              <div
-                                className="flex flex-wrap items-center gap-3 text-sm"
-                                key={defect._id}
-                              >
-                                <span>
-                                  {defect.defect_key || defect._id} · {defect.title} ·{" "}
-                                  {valueLabel(defect.status)} · {valueLabel(defect.severity)}
-                                </span>
-                                {next && can(next[1]) && (
-                                  <button
-                                    className="secondary-button"
-                                    type="button"
-                                    onClick={() =>
-                                      ask({
-                                        title: "Cập nhật trạng thái lỗi",
-                                        confirmLabel: "Cập nhật",
-                                        fields: [
-                                          {
-                                            name: "reason",
-                                            label: "Lý do",
-                                            required: true,
-                                            multiline: true,
-                                          },
-                                        ],
-                                        onConfirm: async ({ reason }) => {
-                                          await testingApi.transitionDefect(defect._id, {
-                                            expected_revision: defect.revision,
-                                            to_status: next[0],
-                                            reason,
-                                          });
-                                          onRunChange(await testingApi.getRun(run._id));
-                                        },
-                                      })
-                                    }
-                                  >
-                                    {valueLabel(next[0])}
-                                  </button>
-                                )}
+                    </header>
+                    <p className="text-sm text-ink-muted">
+                      Người thực hiện: <span className="text-ink">{assignee}</span>
+                    </p>
+                    {!result ? (
+                      <p className="rounded-control bg-surface-raised px-3 py-2 text-sm text-ink-muted">
+                        Chưa có kết quả cho ca này.
+                      </p>
+                    ) : !["NOT_RUN", "IN_PROGRESS"].includes(result.status) ? (
+                      <div className="space-y-3">
+                        <details className="rounded-control border border-border px-4 py-3">
+                          <summary className="cursor-pointer text-sm font-medium text-ink">
+                            Xem kết quả đã ghi nhận
+                          </summary>
+                          <div className="mt-3 space-y-4 border-t border-border pt-3 text-sm">
+                            <div className="grid gap-4 md:grid-cols-2">
+                              <div className="min-w-0">
+                                <h4 className="text-xs font-medium text-ink-muted">
+                                  Kết quả mong đợi
+                                </h4>
+                                <p className="mt-1 whitespace-pre-wrap break-words">
+                                  {docText(item.expected_result_doc) || "Chưa có kết quả mong đợi"}
+                                </p>
                               </div>
-                            );
-                          })}
-                    </div>
-                  ) : run.status !== "IN_PROGRESS" || !can("testrun.execute") ? null : (
-                    <div className="min-w-0 space-y-4">
-                      {(item.steps || []).map((step, stepIndex) => {
-                        const existing = result.step_results?.find(
-                          (value) => value.step_id === step.id,
-                        );
-                        const edited = stepResults[result._id]?.[step.id] || {};
-                        return (
-                          <fieldset
-                            className="min-w-0 rounded-xl border border-border p-4"
-                            key={step.id}
-                          >
-                            <legend className="px-2 text-[12px] font-semibold">
-                              Bước {stepIndex + 1}
-                            </legend>
-                            <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-                              <div className="min-w-0 space-y-3">
-                                <div>
-                                  <h4 className="text-xs font-medium text-ink-muted">Thao tác</h4>
-                                  <p className="mt-1 break-words text-[13px]">
-                                    {docText(step.action_doc) || "Chưa có hướng dẫn thao tác"}
-                                  </p>
-                                </div>
-                                <div>
-                                  <h4 className="text-xs font-medium text-ink-muted">
-                                    Kết quả mong đợi
-                                  </h4>
-                                  <p className="mt-1 break-words text-[13px]">
-                                    {docText(step.expected_doc) || "Chưa có kết quả mong đợi"}
-                                  </p>
-                                </div>
+                              <div className="min-w-0">
+                                <h4 className="text-xs font-medium text-ink-muted">
+                                  Kết quả thực tế
+                                </h4>
+                                <p className="mt-1 whitespace-pre-wrap break-words">
+                                  {docText(result.actual_result_doc) ||
+                                    "Chưa ghi nhận kết quả thực tế"}
+                                </p>
                               </div>
-                              <details className="min-w-0 space-y-3">
-                                <summary className="cursor-pointer text-sm">
-                                  Kết quả từng bước (tùy chọn)
-                                </summary>
-                                <label className="field-label block">
-                                  Kết quả bước
-                                  <select
-                                    aria-label={`Trạng thái bước ${stepIndex + 1} ${item.test_case_key}`}
-                                    className="apple-input mt-1 w-full min-w-0"
-                                    disabled={savingExecution}
-                                    value={edited.status || existing?.status || ""}
-                                    onChange={(event) =>
-                                      onStepResultsChange((values) => ({
-                                        ...values,
-                                        [result._id]: {
-                                          ...values[result._id],
-                                          [step.id]: {
-                                            ...values[result._id]?.[step.id],
-                                            status: event.target.value,
-                                          },
-                                        },
-                                      }))
-                                    }
-                                  >
-                                    <option value="">-</option>
-                                    {terminalResultStatuses.map((value) => (
-                                      <option value={value} key={value}>
-                                        {valueLabel(value)}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </label>
-                                <label className="field-label block">
-                                  Ghi nhận thực tế
-                                  <textarea
-                                    aria-label={`Kết quả bước ${stepIndex + 1} ${item.test_case_key}`}
-                                    className="apple-input mt-1 min-h-16 w-full min-w-0"
-                                    disabled={savingExecution}
-                                    value={edited.actual ?? docText(existing?.actual_doc)}
-                                    onChange={(event) =>
-                                      onStepResultsChange((values) => ({
-                                        ...values,
-                                        [result._id]: {
-                                          ...values[result._id],
-                                          [step.id]: {
-                                            ...values[result._id]?.[step.id],
-                                            actual: event.target.value,
-                                          },
-                                        },
-                                      }))
-                                    }
-                                  />
-                                </label>
-                                <label className="field-label block">
-                                  Ghi chú
-                                  <textarea
-                                    aria-label={`Lý do trạng thái bước ${stepIndex + 1} ${item.test_case_key}`}
-                                    className="apple-input mt-1 min-h-16 w-full min-w-0"
-                                    disabled={savingExecution}
-                                    value={edited.note ?? existing?.note ?? ""}
-                                    onChange={(event) =>
-                                      onStepResultsChange((values) => ({
-                                        ...values,
-                                        [result._id]: {
-                                          ...values[result._id],
-                                          [step.id]: {
-                                            ...values[result._id]?.[step.id],
-                                            note: event.target.value,
-                                          },
-                                        },
-                                      }))
-                                    }
-                                    placeholder="Bắt buộc khi chọn Không áp dụng"
-                                  />
-                                </label>
-                              </details>
                             </div>
-                          </fieldset>
-                        );
-                      })}
-                      {pendingFail[result._id] && (
-                        <p className="text-sm">
-                          Nhập kết quả thực tế. Bạn có thể lưu kết quả hoặc tạo hay liên kết lỗi
-                          ngay bên dưới.
-                        </p>
-                      )}
-                      <label className="field-label block">
-                        Kết quả thực tế
-                        <textarea
-                          aria-label={`Kết quả thực tế ${item.test_case_key}`}
-                          className="apple-input mt-1 min-h-20 w-full min-w-0"
-                          disabled={savingExecution}
-                          value={actuals[result._id] ?? docText(result.actual_result_doc)}
-                          onChange={(event) =>
-                            onActualsChange({ ...actuals, [result._id]: event.target.value })
-                          }
-                        />
-                      </label>
-                      {pendingFail[result._id] &&
-                        !linkedDefect &&
-                        (can("defect.create") ||
-                          (can("defect.read") &&
-                            can("defect.trace.manage") &&
-                            can("testrun.execute"))) && (
-                          <InlineDefectForm
-                            result={result}
-                            version={item}
-                            members={members}
-                            projectId={projectId}
-                            canCreate={can("defect.create")}
-                            canLink={
-                              can("defect.read") &&
-                              can("defect.trace.manage") &&
-                              can("testrun.execute")
-                            }
-                            onLinked={async () => onRunChange(await testingApi.getRun(run._id))}
-                            saving={creatingDefectResultIds.has(result._id) || savingExecution}
-                            onCreate={onCreateInlineDefect}
-                            ensureFail={async () => {
-                              if (!(await onTransition(result, "FAIL", item)))
-                                throw new Error("Chưa lưu được kết quả thất bại.");
-                              const refreshed = await testingApi.getRun(run._id);
-                              const updated = refreshed.results?.find(
-                                (entry) => entry._id === result._id,
+                            {(item.steps || []).map((step, stepIndex) => {
+                              const stepResult = result.step_results?.find(
+                                (value) => value.step_id === step.id,
                               );
-                              if (!updated || updated.status !== "FAIL")
-                                throw new Error("Không tìm thấy kết quả thất bại vừa lưu.");
-                              return updated;
-                            }}
-                          />
-                        )}
-                      <FilePicker
-                        ariaLabel={`Tệp bằng chứng ${item.test_case_key}`}
-                        buttonLabel="Chọn tệp bằng chứng"
-                        disabled={savingExecution}
-                        onChange={async (event) => {
-                          const file = event.target.files?.[0];
-                          if (!file) return;
-                          try {
-                            const uploaded = await uploadAssetAPI(file);
-                            const linked = await testingApi.registerAttachment(projectId, {
-                              filename: uploaded.data.filename,
-                              url: uploaded.data.url,
-                              item_id: uploaded.data.item_id,
-                              size: uploaded.data.size,
-                              content_type: uploaded.data.content_type,
-                              artifact_type: "test_result",
-                              artifact_id: result._id,
-                            });
-                            onAttachmentsChange((current) => ({
-                              ...current,
-                              [result._id]: [
-                                ...(current[result._id] || result.attachments || []),
-                                linked,
-                              ],
-                            }));
-                          } catch (reason) {
-                            onError(messageOf(reason));
-                          }
-                        }}
-                      />
-                      {(attachments[result._id] || result.attachments || []).map((attachment) => (
-                        <p className="break-all text-[11px] text-ink-muted" key={attachment.url}>
-                          {attachment.filename}
-                        </p>
-                      ))}
-                      <div className="flex flex-wrap gap-2">
-                        {terminalResultStatuses.map((value) => (
-                          <button
-                            className="secondary-button"
-                            type="button"
-                            disabled={savingExecution}
-                            key={value}
-                            onClick={async () => {
-                              if (value === "FAIL" && !pendingFail[result._id]) {
-                                setPendingFail((current) => ({ ...current, [result._id]: true }));
-                                return;
+                              if (!stepResult) return null;
+                              return (
+                                <section
+                                  className="border-t border-border pt-3"
+                                  key={step.id}
+                                  aria-label={`Kết quả bước ${stepIndex + 1}`}
+                                >
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <h4 className="font-medium">Bước {stepIndex + 1}</h4>
+                                    <StatusPill value={stepResult.status} />
+                                  </div>
+                                  <p className="mt-2 break-words">{docText(step.action_doc)}</p>
+                                  <p className="mt-1 break-words text-ink-muted">
+                                    Mong đợi: {docText(step.expected_doc) || "Chưa có"}
+                                  </p>
+                                  <p className="mt-1 whitespace-pre-wrap break-words">
+                                    Thực tế: {docText(stepResult.actual_doc) || "Chưa ghi nhận"}
+                                  </p>
+                                  {stepResult.note && (
+                                    <p className="mt-1 whitespace-pre-wrap break-words text-ink-muted">
+                                      Ghi chú: {stepResult.note}
+                                    </p>
+                                  )}
+                                </section>
+                              );
+                            })}
+                            {result.attachments?.length > 0 && (
+                              <section className="border-t border-border pt-3">
+                                <h4 className="font-medium">Tệp bằng chứng</h4>
+                                <ul className="mt-2 space-y-1">
+                                  {result.attachments.map((attachment) => (
+                                    <li className="break-all text-ink-muted" key={attachment.url}>
+                                      {attachment.filename}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </section>
+                            )}
+                          </div>
+                        </details>
+                        <div className="flex flex-wrap items-center gap-3">
+                          {linkedDefect && (
+                            <span className="text-sm text-ink-muted">Đã liên kết lỗi</span>
+                          )}
+                        </div>
+                        {result.status === "FAIL" &&
+                          !linkedDefect &&
+                          (can("defect.create") ||
+                            (can("defect.read") &&
+                              can("defect.trace.manage") &&
+                              can("testrun.execute"))) && (
+                            <InlineDefectForm
+                              key={result._id}
+                              result={result}
+                              version={item}
+                              members={members}
+                              projectId={projectId}
+                              canCreate={can("defect.create")}
+                              canLink={
+                                can("defect.read") &&
+                                can("defect.trace.manage") &&
+                                can("testrun.execute")
                               }
-                              const saved = await onTransition(result, value, item);
-                              if (
-                                saved &&
-                                value === "PASS" &&
-                                caseIndex + 1 < testCaseVersions.length
-                              ) {
-                                navigateCase(caseIndex + 1);
-                              }
-                            }}
-                          >
-                            {valueLabel(value)}
-                          </button>
-                        ))}
+                              onLinked={async () => onRunChange(await testingApi.getRun(run._id))}
+                              saving={creatingDefectResultIds.has(result._id)}
+                              onCreate={onCreateInlineDefect}
+                            />
+                          )}
+                        {linkedDefect &&
+                          (run.defects || [])
+                            .filter(
+                              (defect) =>
+                                defect.linked_test_result_id === result._id ||
+                                (result.linked_defect_ids || []).includes(defect._id),
+                            )
+                            .map((defect) => {
+                              const next = {
+                                NEW: ["CONFIRMED", "defect.triage"],
+                                CONFIRMED: ["IN_PROGRESS", "defect.transition.resolve"],
+                                IN_PROGRESS: ["RESOLVED", "defect.transition.resolve"],
+                                RESOLVED: ["READY_FOR_RETEST", "defect.transition.resolve"],
+                                REOPENED: ["IN_PROGRESS", "defect.transition.resolve"],
+                              }[defect.status];
+                              return (
+                                <div
+                                  className="flex flex-wrap items-center gap-3 text-sm"
+                                  key={defect._id}
+                                >
+                                  <span>
+                                    {defect.defect_key || defect._id} · {defect.title} ·{" "}
+                                    {valueLabel(defect.status)} · {valueLabel(defect.severity)}
+                                  </span>
+                                  {next && can(next[1]) && (
+                                    <button
+                                      className="secondary-button"
+                                      type="button"
+                                      onClick={() =>
+                                        ask({
+                                          title: "Cập nhật trạng thái lỗi",
+                                          confirmLabel: "Cập nhật",
+                                          fields: [
+                                            {
+                                              name: "reason",
+                                              label: "Lý do",
+                                              required: true,
+                                              multiline: true,
+                                            },
+                                          ],
+                                          onConfirm: async ({ reason }) => {
+                                            await testingApi.transitionDefect(defect._id, {
+                                              expected_revision: defect.revision,
+                                              to_status: next[0],
+                                              reason,
+                                            });
+                                            onRunChange(await testingApi.getRun(run._id));
+                                          },
+                                        })
+                                      }
+                                    >
+                                      {valueLabel(next[0])}
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })}
                       </div>
-                    </div>
-                  )}
-                </article>
-              );
-            })}
-          </div>
-        </Panel>
+                    ) : run.status !== "IN_PROGRESS" || !can("testrun.execute") ? null : (
+                      <div className="min-w-0 space-y-4">
+                        {(item.steps || []).map((step, stepIndex) => {
+                          const existing = result.step_results?.find(
+                            (value) => value.step_id === step.id,
+                          );
+                          const edited = stepResults[result._id]?.[step.id] || {};
+                          return (
+                            <fieldset
+                              className="min-w-0 rounded-xl border border-border p-4"
+                              key={step.id}
+                            >
+                              <legend className="px-2 text-[12px] font-semibold">
+                                Bước {stepIndex + 1}
+                              </legend>
+                              <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+                                <div className="min-w-0 space-y-3">
+                                  <div>
+                                    <h4 className="text-xs font-medium text-ink-muted">Thao tác</h4>
+                                    <p className="mt-1 break-words text-[13px]">
+                                      {docText(step.action_doc) || "Chưa có hướng dẫn thao tác"}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <h4 className="text-xs font-medium text-ink-muted">
+                                      Kết quả mong đợi
+                                    </h4>
+                                    <p className="mt-1 break-words text-[13px]">
+                                      {docText(step.expected_doc) || "Chưa có kết quả mong đợi"}
+                                    </p>
+                                  </div>
+                                </div>
+                                <details className="min-w-0 space-y-3">
+                                  <summary className="cursor-pointer text-sm">
+                                    Kết quả từng bước (tùy chọn)
+                                  </summary>
+                                  <label className="field-label block">
+                                    Kết quả bước
+                                    <select
+                                      aria-label={`Trạng thái bước ${stepIndex + 1} ${item.test_case_key}`}
+                                      className="apple-input mt-1 w-full min-w-0"
+                                      disabled={savingExecution}
+                                      value={edited.status || existing?.status || ""}
+                                      onChange={(event) =>
+                                        onStepResultsChange((values) => ({
+                                          ...values,
+                                          [result._id]: {
+                                            ...values[result._id],
+                                            [step.id]: {
+                                              ...values[result._id]?.[step.id],
+                                              status: event.target.value,
+                                            },
+                                          },
+                                        }))
+                                      }
+                                    >
+                                      <option value="">-</option>
+                                      {terminalResultStatuses.map((value) => (
+                                        <option value={value} key={value}>
+                                          {valueLabel(value)}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                  <label className="field-label block">
+                                    Ghi nhận thực tế
+                                    <textarea
+                                      aria-label={`Kết quả bước ${stepIndex + 1} ${item.test_case_key}`}
+                                      className="apple-input mt-1 min-h-16 w-full min-w-0"
+                                      disabled={savingExecution}
+                                      value={edited.actual ?? docText(existing?.actual_doc)}
+                                      onChange={(event) =>
+                                        onStepResultsChange((values) => ({
+                                          ...values,
+                                          [result._id]: {
+                                            ...values[result._id],
+                                            [step.id]: {
+                                              ...values[result._id]?.[step.id],
+                                              actual: event.target.value,
+                                            },
+                                          },
+                                        }))
+                                      }
+                                    />
+                                  </label>
+                                  <label className="field-label block">
+                                    Ghi chú
+                                    <textarea
+                                      aria-label={`Lý do trạng thái bước ${stepIndex + 1} ${item.test_case_key}`}
+                                      className="apple-input mt-1 min-h-16 w-full min-w-0"
+                                      disabled={savingExecution}
+                                      value={edited.note ?? existing?.note ?? ""}
+                                      onChange={(event) =>
+                                        onStepResultsChange((values) => ({
+                                          ...values,
+                                          [result._id]: {
+                                            ...values[result._id],
+                                            [step.id]: {
+                                              ...values[result._id]?.[step.id],
+                                              note: event.target.value,
+                                            },
+                                          },
+                                        }))
+                                      }
+                                      placeholder="Bắt buộc khi chọn Không áp dụng"
+                                    />
+                                  </label>
+                                </details>
+                              </div>
+                            </fieldset>
+                          );
+                        })}
+                        {pendingFail[result._id] && (
+                          <p className="text-sm">
+                            Nhập kết quả thực tế. Bạn có thể lưu kết quả hoặc tạo hay liên kết lỗi
+                            ngay bên dưới.
+                          </p>
+                        )}
+                        <label className="field-label block">
+                          Kết quả thực tế
+                          <textarea
+                            aria-label={`Kết quả thực tế ${item.test_case_key}`}
+                            className="apple-input mt-1 min-h-20 w-full min-w-0"
+                            disabled={savingExecution}
+                            value={actuals[result._id] ?? docText(result.actual_result_doc)}
+                            onChange={(event) =>
+                              onActualsChange({ ...actuals, [result._id]: event.target.value })
+                            }
+                          />
+                        </label>
+                        {pendingFail[result._id] &&
+                          !linkedDefect &&
+                          (can("defect.create") ||
+                            (can("defect.read") &&
+                              can("defect.trace.manage") &&
+                              can("testrun.execute"))) && (
+                            <InlineDefectForm
+                              result={result}
+                              version={item}
+                              members={members}
+                              projectId={projectId}
+                              canCreate={can("defect.create")}
+                              canLink={
+                                can("defect.read") &&
+                                can("defect.trace.manage") &&
+                                can("testrun.execute")
+                              }
+                              onLinked={async () => onRunChange(await testingApi.getRun(run._id))}
+                              saving={creatingDefectResultIds.has(result._id) || savingExecution}
+                              onCreate={onCreateInlineDefect}
+                              ensureFail={async () => {
+                                if (!(await onTransition(result, "FAIL", item)))
+                                  throw new Error("Chưa lưu được kết quả thất bại.");
+                                const refreshed = await testingApi.getRun(run._id);
+                                const updated = refreshed.results?.find(
+                                  (entry) => entry._id === result._id,
+                                );
+                                if (!updated || updated.status !== "FAIL")
+                                  throw new Error("Không tìm thấy kết quả thất bại vừa lưu.");
+                                return updated;
+                              }}
+                            />
+                          )}
+                        <FilePicker
+                          ariaLabel={`Tệp bằng chứng ${item.test_case_key}`}
+                          buttonLabel="Chọn tệp bằng chứng"
+                          disabled={savingExecution}
+                          onChange={async (event) => {
+                            const file = event.target.files?.[0];
+                            if (!file) return;
+                            try {
+                              const uploaded = await uploadAssetAPI(file);
+                              const linked = await testingApi.registerAttachment(projectId, {
+                                filename: uploaded.data.filename,
+                                url: uploaded.data.url,
+                                item_id: uploaded.data.item_id,
+                                size: uploaded.data.size,
+                                content_type: uploaded.data.content_type,
+                                artifact_type: "test_result",
+                                artifact_id: result._id,
+                              });
+                              onAttachmentsChange((current) => ({
+                                ...current,
+                                [result._id]: [
+                                  ...(current[result._id] || result.attachments || []),
+                                  linked,
+                                ],
+                              }));
+                            } catch (reason) {
+                              onError(messageOf(reason));
+                            }
+                          }}
+                        />
+                        {(attachments[result._id] || result.attachments || []).map((attachment) => (
+                          <p className="break-all text-[11px] text-ink-muted" key={attachment.url}>
+                            {attachment.filename}
+                          </p>
+                        ))}
+                        <div className="flex flex-wrap gap-2">
+                          {terminalResultStatuses.map((value) => (
+                            <button
+                              className="secondary-button"
+                              type="button"
+                              disabled={savingExecution}
+                              key={value}
+                              onClick={async () => {
+                                if (value === "FAIL" && !pendingFail[result._id]) {
+                                  setPendingFail((current) => ({ ...current, [result._id]: true }));
+                                  return;
+                                }
+                                const saved = await onTransition(result, value, item);
+                                if (
+                                  saved &&
+                                  value === "PASS" &&
+                                  caseIndex + 1 < testCaseVersions.length
+                                ) {
+                                  navigateCase(caseIndex + 1);
+                                }
+                              }}
+                            >
+                              {valueLabel(value)}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          </Panel>
+        </div>
       </div>
       {dialog}
     </WorkspacePage>

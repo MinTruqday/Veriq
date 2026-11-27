@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { testingApi } from "../../../services/testing.service";
 import { messageOf } from "../../../lib/testing";
 import { Panel } from "../../../components/WorkspacePrimitives";
+import RequirementVersionDiff from "./RequirementVersionDiff";
 
 const labels = {
   STILL_VALID: "Chưa thấy ảnh hưởng",
@@ -26,6 +27,7 @@ const sections = {
 
 export default function RequirementImpactPanel({ version, project }) {
   const [impact, setImpact] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [drafts, setDrafts] = useState({});
   const [creating, setCreating] = useState("");
@@ -64,6 +66,7 @@ export default function RequirementImpactPanel({ version, project }) {
     let timer;
     setImpact(null);
     setError("");
+    setLoading(true);
     async function load() {
       try {
         const value = await testingApi.getRequirementImpact(version._id);
@@ -72,6 +75,8 @@ export default function RequirementImpactPanel({ version, project }) {
         if (value && ["PENDING", "RUNNING"].includes(value.status)) timer = setTimeout(load, 5000);
       } catch (reason) {
         if (active) setError(messageOf(reason));
+      } finally {
+        if (active) setLoading(false);
       }
     }
     if (version?._id) load();
@@ -80,16 +85,25 @@ export default function RequirementImpactPanel({ version, project }) {
       clearTimeout(timer);
     };
   }, [version?._id, reloadKey]);
-  if (!impact && !error) return null;
   return (
     <Panel title="Ảnh hưởng đến kiểm thử">
       <div className="space-y-4 p-5 text-sm">
         {error && <p role="alert">{error}</p>}
+        {loading && !impact && !error && <p role="status">Đang tải phân tích ảnh hưởng…</p>}
+        {!loading && !impact && !error && (
+          <p className="text-ink-muted">Chưa có dữ liệu phân tích ảnh hưởng cho phiên bản này.</p>
+        )}
         {["PENDING", "RUNNING"].includes(impact?.status) && <p>Đang phân tích thay đổi…</p>}
         {impact?.status === "FAILED" && (
-          <p>Chưa thể phân tích tự động. Mã lỗi: {impact.error_code}</p>
+          <p className="rounded-control border border-danger/30 bg-danger/5 p-3" role="alert">
+            Chưa thể phân tích tự động. Mã lỗi: {impact.error_code}
+          </p>
         )}
-        {impact?.status === "STALE" && <p>Dữ liệu đã thay đổi sau khi bắt đầu phân tích.</p>}
+        {impact?.status === "STALE" && (
+          <p className="rounded-control border border-border bg-surface-quiet p-3">
+            Dữ liệu đã thay đổi sau khi bắt đầu phân tích. Hãy chạy lại để đối chiếu phiên bản mới.
+          </p>
+        )}
         {["FAILED", "PARTIAL", "STALE"].includes(impact?.status) &&
           project.current_permissions?.includes("ai.run_impact") && (
             <button type="button" className="secondary-button" disabled={retrying} onClick={retry}>
@@ -99,6 +113,22 @@ export default function RequirementImpactPanel({ version, project }) {
         {impact?.status === "NO_CONTENT_CHANGE" && <p>Không có thay đổi nội dung cần phân tích.</p>}
         {["COMPLETED", "PARTIAL"].includes(impact?.status) && (
           <>
+            <div className="grid gap-3 sm:grid-cols-3" aria-label="Tóm tắt ảnh hưởng">
+              <div className="rounded-control border border-border p-3">
+                <p className="text-xs text-ink-muted">Trạng thái phân tích</p>
+                <p className="mt-1 font-semibold">
+                  {impact.status === "COMPLETED" ? "Hoàn tất" : "Chưa đầy đủ"}
+                </p>
+              </div>
+              <div className="rounded-control border border-border p-3">
+                <p className="text-xs text-ink-muted">Ca kiểm thử liên quan</p>
+                <p className="mt-1 font-semibold">{impact.cases?.length || 0}</p>
+              </div>
+              <div className="rounded-control border border-border p-3">
+                <p className="text-xs text-ink-muted">Gợi ý bổ sung</p>
+                <p className="mt-1 font-semibold">{impact.new_candidates?.length || 0}</p>
+              </div>
+            </div>
             {impact.status === "PARTIAL" && (
               <p>Phân tích chưa đầy đủ. Hãy xem các ca cần xem xét.</p>
             )}
@@ -109,18 +139,28 @@ export default function RequirementImpactPanel({ version, project }) {
                 ))}
               </ul>
             )}
-            <details>
-              <summary className="cursor-pointer font-medium">Nội dung thay đổi</summary>
-              <div className="mt-3 space-y-3">
-                {impact.comparison?.changes?.map((change) => (
-                  <div key={change.field} className="rounded-control border border-border p-3">
-                    <p className="font-medium">{sections[change.field] || change.field}</p>
-                    <p className="mt-2 whitespace-pre-wrap">Trước: {change.before || "-"}</p>
-                    <p className="mt-2 whitespace-pre-wrap">Sau: {change.after || "-"}</p>
-                  </div>
-                ))}
+            <section className="overflow-hidden rounded-control border border-border">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
+                <div>
+                  <h3 className="text-sm font-semibold">Đối chiếu thay đổi</h3>
+                  <p className="mt-1 text-xs text-ink-muted">
+                    {impact.comparison?.changes?.length || 0} mục được phân tích
+                  </p>
+                </div>
+                <div className="flex gap-3 text-xs text-ink-muted" aria-label="Chú giải thay đổi">
+                  <span>Thêm</span>
+                  <span>Sửa</span>
+                  <span>Loại bỏ</span>
+                </div>
               </div>
-            </details>
+              <RequirementVersionDiff
+                changes={(impact.comparison?.changes || []).map((change) => ({
+                  ...change,
+                  label: sections[change.field] || change.field,
+                }))}
+                empty="Không có nội dung thay đổi để so sánh."
+              />
+            </section>
             <p className="font-medium">Ca kiểm thử liên quan ({impact.cases?.length || 0})</p>
             {!impact.cases?.length && (
               <p>Chưa có ca kiểm thử đang hiệu lực được liên kết với phiên bản trước.</p>

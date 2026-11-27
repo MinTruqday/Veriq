@@ -86,8 +86,7 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
           ? projectRoute(projectId, PROJECT_SECTION_SLUGS.execution)
           : section[0] === PROJECT_SECTION_SLUGS.traceability
             ? projectRoute(projectId, PROJECT_SECTION_SLUGS.requirements)
-            : section[0] === PROJECT_SECTION_SLUGS.testSets ||
-                (section[0] === PROJECT_SECTION_SLUGS.testCases && section[1] === "bo-kiem-thu")
+            : section[0] === PROJECT_SECTION_SLUGS.testSets
               ? projectRoute(projectId, PROJECT_SECTION_SLUGS.testCases)
               : section[0] === PROJECT_SECTION_SLUGS.testData ||
                   section[0] === PROJECT_SECTION_SLUGS.automation ||
