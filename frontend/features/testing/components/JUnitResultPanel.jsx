@@ -109,7 +109,7 @@ export default function JUnitResultPanel({ project, runs, tests, can, onError })
         </form>
       )}
       <div className="mb-3 space-y-2 px-4 pt-4 text-sm text-ink-muted sm:px-5">
-        <p>Để hệ thống tự liên kết kết quả, mỗi mục trong tệp cần có mã phiên bản ca kiểm thử.</p>
+        <p>Để hệ thống tự liên kết kết quả, mỗi mục trong tệp cần có mã phiên bản ca kiểm thử</p>
         <details className="text-xs">
           <summary className="w-fit cursor-pointer">Xem tên trường cần dùng trong tệp XML</summary>
           <code className="mt-2 inline-block rounded bg-surface-quiet px-2 py-1 font-mono text-ink">

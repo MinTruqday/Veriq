@@ -196,7 +196,7 @@ export default function PlatformUsersPanel() {
                 void runAccountAction(async () => {
                   const answer = await ask({
                     title: "Thao tác tài khoản hàng loạt",
-                    description: "Nhập mỗi mã tài khoản trên một dòng hoặc phân tách bằng dấu phẩy",
+                    description: "Chọn tài khoản cần xử lý trong danh sách",
                     confirmLabel: "Tạo bản xem trước",
                     fields: [
                       {
@@ -208,16 +208,23 @@ export default function PlatformUsersPanel() {
                           { value: "INVITE", label: "Gửi lại lời mời" },
                         ],
                       },
-                      { name: "user_ids", label: "Mã tài khoản", required: true, multiline: true },
+                      {
+                        name: "user_ids",
+                        label: "Tài khoản",
+                        required: true,
+                        multiple: true,
+                        options: users.map((item) => ({
+                          value: item._id,
+                          label: `${item.full_name || item.email} · ${item.email}`,
+                        })),
+                      },
                       { name: "reason", label: "Lý do", required: true, multiline: true },
                     ],
                   });
                   if (!answer) return;
                   try {
-                    const userIds = answer.user_ids
-                      .split(/[\s,]+/)
-                      .map((value) => value.trim())
-                      .filter(Boolean);
+                    const userIds = Array.isArray(answer.user_ids) ? answer.user_ids : [];
+                    if (!userIds.length) throw new Error("Chọn ít nhất một tài khoản");
                     const preview = await platformApi.previewBulkUsers(
                       answer.action,
                       userIds,

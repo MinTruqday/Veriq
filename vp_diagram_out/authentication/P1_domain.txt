@@ -1,0 +1,8 @@
+Domain Model (UML class diagram: attributes only, no operations, no reference fields)
+Create the authentication domain model. Use PascalCase English names. Each class has a primary key named '<ClassName>Id'.
+Class 'AuthCredential': attributes 'AuthCredentialId' (PK), 'AvatarUrl', 'Bio', 'BlockedUsers', 'Bookmarks', 'CoverUrl', 'CreatedAt', 'CreatorStatus', 'DonationLink', 'Email', 'EmailVerified', 'EmailVerifiedAt', 'FullName', 'IsActive', 'IsKycVerified', 'IsShadowbanned', 'IsVerified', 'KycStatus', 'LastBankUpdate', 'LastPasswordChange', 'LastReadDate', 'Locale', 'Location', 'LoginSecurity', 'PasswordHash', 'PendingEmail', 'PendingEmailRequestedAt', 'Permissions', 'PinnedDocuments', 'Settings', 'Slug', 'SocialLinks', 'StorageLimit', 'SystemRole', 'Timezone', 'TosAcceptedAt', 'UpdatedAt', 'Website', 'WelcomeMessage'.
+Every listed class has no relationships.
+Include EVERY class, attribute, operation and relationship listed above, exactly as named. Do not omit, merge, rename, simplify, summarize or add anything. Do not invent extra classes, attributes or relationships. If something does not fit, keep it and let the layout grow instead of dropping it. Totals: 1 classes, 0 relationships, 39 attributes.
+
+Checklist: classes=1; relationships=0; attributes=39.
+Correction prompt: Fix only the following items and keep everything else unchanged: [insert verified discrepancy].

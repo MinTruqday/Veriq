@@ -37,7 +37,7 @@ async function refreshAccessToken(expectedToken) {
       .then(async (response) => {
         if (response.status === 401 || response.status === 403) return null;
         if (!response.ok) {
-          throw new Error("Không thể làm mới phiên đăng nhập. Vui lòng thử lại.");
+          throw new Error("Không thể làm mới phiên đăng nhập. Vui lòng thử lại");
         }
         let body;
         try {

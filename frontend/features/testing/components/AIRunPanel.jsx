@@ -626,6 +626,12 @@ export default function AIRunPanel({
   };
 
   const proposal = run?.result?.proposal;
+  const sourceExtractionWarnings = (run?.result?.observations || []).flatMap((observation) =>
+    observation?.tool_name === "process_ingested_requirement_document" &&
+    Array.isArray(observation?.result?.source_extraction_warnings)
+      ? observation.result.source_extraction_warnings
+      : [],
+  );
   const documentWorkflow = documentWorkflowResult(run);
   const documentWorkflowStages = documentWorkflow?.workflow_stages || null;
   const sourceFactsById = new Map(
@@ -796,7 +802,7 @@ export default function AIRunPanel({
           >
             <h3 className="font-semibold text-ink">Chưa có thao tác AI khả dụng</h3>
             <p className="text-sm text-ink-muted">
-              Hiện chưa có chức năng AI phù hợp với quyền truy cập của bạn trong dự án.
+              Hiện chưa có chức năng AI phù hợp với quyền truy cập của bạn trong dự án
             </p>
           </section>
         )}
@@ -815,7 +821,7 @@ export default function AIRunPanel({
                 maxLength={4000}
                 value={agentInstruction}
                 onChange={(event) => setAgentInstruction(event.target.value)}
-                placeholder="Mô tả kết quả cần có. AI sẽ kiểm tra căn cứ và quyền hiện tại trước khi xử lý."
+                placeholder="Mô tả kết quả cần có. AI sẽ kiểm tra căn cứ và quyền hiện tại trước khi xử lý"
               />
             </label>
             {agentStartError && <ErrorState message={agentStartError} />}
@@ -968,7 +974,7 @@ export default function AIRunPanel({
                     value={runQuery}
                   />
                   <p className="text-ink-muted" role="status">
-                    Không có hoạt động AI khớp với bộ lọc.
+                    Không có hoạt động AI khớp với bộ lọc
                   </p>
                   <button
                     className="secondary-button justify-self-start"
@@ -983,7 +989,7 @@ export default function AIRunPanel({
                 </div>
               ) : (
                 <p className="text-ink-muted" role="status">
-                  Chưa có hoạt động gần đây.
+                  Chưa có hoạt động gần đây
                 </p>
               )}
             </div>
@@ -1027,9 +1033,7 @@ export default function AIRunPanel({
                       ))}
                     </ul>
                   ) : (
-                    <p className="text-ink-muted">
-                      Lượt này không giới hạn vào một yêu cầu cụ thể.
-                    </p>
+                    <p className="text-ink-muted">Lượt này không giới hạn vào một yêu cầu cụ thể</p>
                   )}
                 </section>
               )}
@@ -1044,7 +1048,7 @@ export default function AIRunPanel({
                     <p className="mt-1 text-ink-muted">
                       Agent đã dừng trước khi tạo hoặc cập nhật dữ liệu vì còn phần nguồn chưa trích
                       xuất được. Hãy xử lý tài liệu được nêu dưới đây rồi tải lại nguồn; hệ thống
-                      không xem phần chưa đọc là nội dung đã kiểm tra.
+                      không xem phần chưa đọc là nội dung đã kiểm tra
                     </p>
                   </div>
                   <ul className="grid gap-2">
@@ -1084,7 +1088,7 @@ export default function AIRunPanel({
                         {gap.unprocessed_blocks_truncated && (
                           <p className="text-xs text-warning">
                             Danh sách vị trí đã được rút gọn; tổng số phần chưa đọc vẫn được giữ
-                            nguyên.
+                            nguyên
                           </p>
                         )}
                       </li>
@@ -1101,11 +1105,11 @@ export default function AIRunPanel({
                   <div>
                     <h3 className="font-semibold text-ink">Cần bổ sung thông tin</h3>
                     <p className="mt-1 text-ink-muted">
-                      AI đã tạm dừng vì dữ liệu hiện có chưa đủ căn cứ để tiếp tục an toàn.
+                      AI đã tạm dừng vì dữ liệu hiện có chưa đủ căn cứ để tiếp tục an toàn
                     </p>
                     <p className="mt-1 text-ink-muted">
                       Hãy bổ sung thông tin vào yêu cầu hoặc tài liệu nguồn liên quan. Khi nguồn
-                      được cập nhật, hãy bấm bắt đầu xử lý bằng AI để tiếp tục.
+                      được cập nhật, hãy bấm bắt đầu xử lý bằng AI để tiếp tục
                     </p>
                   </div>
                   {uncertainties.length > 0 ? (
@@ -1129,7 +1133,7 @@ export default function AIRunPanel({
                   ) : (
                     <p className="text-sm text-ink-muted">
                       Tác vụ AI chưa ghi nhận chi tiết về nguồn cần bổ sung. Hãy mở yêu cầu hoặc tài
-                      liệu liên quan.
+                      liệu liên quan
                     </p>
                   )}
                 </section>
@@ -1152,7 +1156,7 @@ export default function AIRunPanel({
                 !canResumeRun && (
                   <p className="rounded-control border border-warning/40 bg-warning/5 p-3 text-sm text-ink-muted">
                     Chưa thể tiếp tục an toàn vì hệ thống chưa xác minh được trạng thái thao tác
-                    trước. Cần đối soát kết quả để tránh chạy lặp hoặc ghi trùng dữ liệu.
+                    trước. Cần đối soát kết quả để tránh chạy lặp hoặc ghi trùng dữ liệu
                   </p>
                 )}
               {proposal?.summary && (
@@ -1166,6 +1170,24 @@ export default function AIRunPanel({
                   </p>
                 </div>
               )}
+              {sourceExtractionWarnings.length > 0 && (
+                <section
+                  aria-label="Cảnh báo về quá trình trích xuất tài liệu"
+                  className="grid gap-2 rounded-control border border-warning/40 bg-warning/5 p-4"
+                  role="status"
+                >
+                  <h3 className="font-semibold text-ink">Cần đối soát tài liệu nguồn</h3>
+                  <ul className="grid gap-1 text-sm text-ink-muted">
+                    {sourceExtractionWarnings.map((warning, index) => (
+                      <li
+                        key={`${warning.document_id || "source"}-${warning.reason_code || index}`}
+                      >
+                        {warning.message || valueLabel(warning.reason_code || "SOURCE_WARNING")}
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
               {documentWorkflowStages && (
                 <section
                   aria-label="Cây tiến độ AI từ tài liệu đến ca kiểm thử"
@@ -1175,7 +1197,7 @@ export default function AIRunPanel({
                     <h3 className="font-semibold text-ink">AI từ tài liệu đến ca kiểm thử</h3>
                     <p className="mt-1 text-ink-muted">
                       Cây này ghi nhận các nội dung được tạo từ tài liệu trong lượt AI hiện tại. Mở
-                      từng mục để xem và rà soát nội dung.
+                      từng mục để xem và rà soát nội dung
                     </p>
                   </div>
                   <ol className="relative grid gap-0">
@@ -1375,7 +1397,7 @@ export default function AIRunPanel({
                     documentWorkflow.unresolved.length > 0 && (
                       <p className="text-sm text-ink-muted">
                         Còn {documentWorkflow.unresolved.length} nội dung cần rà soát hoặc bổ sung
-                        trước khi hoàn tất quy trình.
+                        trước khi hoàn tất quy trình
                       </p>
                     )}
                 </section>
@@ -1384,8 +1406,7 @@ export default function AIRunPanel({
                 <div>
                   <h3 className="font-semibold text-ink">Căn cứ được trích dẫn trong kết quả</h3>
                   <p className="mt-1 text-ink-muted">
-                    {citedProposalEvidenceReferences.length} căn cứ được trích dẫn trong câu trả
-                    lời.
+                    {citedProposalEvidenceReferences.length} căn cứ được trích dẫn trong câu trả lời
                   </p>
                   {citedProposalEvidenceReferences.length > 0 ? (
                     <ul className="mt-2 grid gap-1 text-sm text-ink-muted">
@@ -1441,7 +1462,7 @@ export default function AIRunPanel({
                   ) : (
                     <p className="mt-2 text-sm text-ink-muted">
                       Câu trả lời không trích dẫn nguồn cụ thể. Có thể xem nguồn được đối chiếu
-                      trong phần truy vết bên dưới.
+                      trong phần truy vết bên dưới
                     </p>
                   )}
                 </div>

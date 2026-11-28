@@ -1,0 +1,9 @@
+UML Class Diagram (Boundary-Control-Entity analysis)
+Create the BCE class diagram for 'authentication', group 'service_PlatformOperationsService'. Use English PascalCase names. Use stereotypes <<boundary>>, <<control>>, <<entity>>. Do not connect boundaries directly to entities.
+Class 'Ctrl_PlatformOperationsService' <<control>>: + Jobs(status : string, kind : string, limit : int, currentUser : json) : json; + RetryJob(jobId : string, currentUser : json) : json; + CancelJob(jobId : string, currentUser : json) : json; + DeadLetterJobs(limit : int) : json; + DiscardJob(jobId : string, payload : json, currentUser : json) : json; + TestSmtp(payload : json, currentUser : json) : json; + QueueOverview() : json; + RequeueDeadLetterJob(jobId : string, payload : json, currentUser : json) : json; + RagOperations() : json; + StorageUsage() : json; + PlatformHealth(currentUser : json) : json; + Audit(action : string, limit : int) : json; + TestStorage(currentUser : json) : json; + IntegrationHealth() : json; + Metrics() : json; + ExportAudit(currentUser : json) : json; + ServiceHealth(name : string) : json.
+Class 'AuditLog' <<entity>>: - AuditLogId : string; + InsertAuditLog(logData : json) : json; + ListAuditLogs(query : json, limit : int) : json.
+Control dependency: 'Ctrl_PlatformOperationsService' to 'AuditLog', multiplicity at control: 1, multiplicity at entity: 1, navigable from control to entity.
+Include EVERY class, attribute, operation and relationship listed above, exactly as named. Do not omit, merge, rename, simplify, summarize or add anything. Do not invent extra classes, attributes or relationships. If something does not fit, keep it and let the layout grow instead of dropping it. Totals: 2 classes, 1 relationships, 1 attributes.
+
+Checklist: classes=2; relationships=1; attributes=1.
+Correction prompt: Fix only the following items and keep everything else unchanged: [insert verified discrepancy].

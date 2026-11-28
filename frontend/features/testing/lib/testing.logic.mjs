@@ -4,6 +4,12 @@ export function emptyDoc() {
   return { type: "doc", content: [] };
 }
 
+export function isApprovedCurrentRequirement(requirement) {
+  const versionId = requirement?.current_version_id;
+  const status = requirement?.current_version?.status || requirement?.status;
+  return Boolean(versionId) && ["READY", "BASELINED"].includes(status);
+}
+
 export function textDoc(text) {
   return {
     type: "doc",
@@ -553,21 +559,21 @@ export function formatCalendarDate(value, options = {}) {
 export function messageOf(reason) {
   const documentDuplicateMessages = {
     DOCUMENT_DUPLICATE_CONFIRMATION_REQUIRED:
-      "Tài liệu vừa được thêm hoặc thay đổi trong lúc đối chiếu. Hãy đối chiếu lại danh sách trùng trước khi import tiếp.",
+      "Tài liệu vừa được thêm hoặc thay đổi trong lúc đối chiếu. Hãy đối chiếu lại danh sách trùng trước khi import tiếp",
     DOCUMENT_DUPLICATE_CONFIRMATION_INVALID:
-      "Thông tin xác nhận trùng lặp không hợp lệ. Hãy đối chiếu lại tài liệu trước khi import.",
+      "Thông tin xác nhận trùng lặp không hợp lệ. Hãy đối chiếu lại tài liệu trước khi import",
     DOCUMENT_DUPLICATE_SCAN_LIMIT_EXCEEDED:
-      "Có quá nhiều tài liệu trong phạm vi bạn được xem để đối chiếu an toàn. Hãy thu hẹp lô tài liệu hoặc thử lại sau.",
-    DOCUMENT_BATCH_SIZE_INVALID: "Số lượng tệp trong lô đối chiếu không hợp lệ.",
-    DOCUMENT_BATCH_TOO_LARGE: "Tổng dung lượng lô tài liệu vượt giới hạn của hệ thống.",
-    DOCUMENT_FORMATS_INVALID: "Thông tin định dạng tệp không khớp với danh sách tài liệu đã chọn.",
+      "Có quá nhiều tài liệu trong phạm vi bạn được xem để đối chiếu an toàn. Hãy thu hẹp lô tài liệu hoặc thử lại sau",
+    DOCUMENT_BATCH_SIZE_INVALID: "Số lượng tệp trong lô đối chiếu không hợp lệ",
+    DOCUMENT_BATCH_TOO_LARGE: "Tổng dung lượng lô tài liệu vượt giới hạn của hệ thống",
+    DOCUMENT_FORMATS_INVALID: "Thông tin định dạng tệp không khớp với danh sách tài liệu đã chọn",
   };
   if (documentDuplicateMessages[reason?.code]) return documentDuplicateMessages[reason.code];
   const defectClassificationMessages = {
     DEFECT_CLASSIFICATION_POLICY_REQUIRED:
-      "Thang mức độ và thang ưu tiên của dự án chưa được cấu hình.",
+      "Thang mức độ và thang ưu tiên của dự án chưa được cấu hình",
     DEFECT_CLASSIFICATION_NOT_CONFIGURED:
-      "Mức độ hoặc mức ưu tiên chưa được cấu hình cho dự án. Hãy tải lại danh sách lựa chọn.",
+      "Mức độ hoặc mức ưu tiên chưa được cấu hình cho dự án. Hãy tải lại danh sách lựa chọn",
   };
   if (defectClassificationMessages[reason?.code]) {
     return defectClassificationMessages[reason.code];
@@ -577,402 +583,401 @@ export function messageOf(reason) {
       ? reason.details.unsupported_claims.filter((item) => typeof item === "string" && item.trim())
       : [];
     const message =
-      "Đề xuất có nội dung chưa được tài liệu xác nhận. Bổ sung nguồn hoặc điều chỉnh phạm vi rồi thử lại.";
+      "Đề xuất có nội dung chưa được tài liệu xác nhận. Bổ sung nguồn hoặc điều chỉnh phạm vi rồi thử lại";
     return claims.length ? `${message} Nội dung chưa đủ căn cứ: ${claims.join("; ")}` : message;
   }
   const documentMessages = {
     DOCUMENT_CONTENT_NOT_READY:
-      "Tài liệu đã lưu trữ hoặc chưa xử lý xong nên chưa thể mở. Hãy quay lại danh sách và chọn bản tài liệu có thể đọc.",
+      "Tài liệu đã lưu trữ hoặc chưa xử lý xong nên chưa thể mở. Hãy quay lại danh sách và chọn bản tài liệu có thể đọc",
     DOCUMENT_CONTENT_UNAVAILABLE:
-      "Chưa có nội dung có thể đọc trong tài liệu này. Hãy kiểm tra bản gốc hoặc chọn phiên bản khác.",
-    DOCUMENT_NOT_FOUND: "Không tìm thấy tài liệu hoặc quyền xem đã thay đổi.",
+      "Chưa có nội dung có thể đọc trong tài liệu này. Hãy kiểm tra bản gốc hoặc chọn phiên bản khác",
+    DOCUMENT_NOT_FOUND: "Không tìm thấy tài liệu hoặc quyền xem đã thay đổi",
   };
   if (documentMessages[reason?.code]) return documentMessages[reason.code];
   const aiRunMessages = {
     AI_RUN_PUBLICATION_NOT_AUTHORIZED:
-      "AI không được phép tự công bố kết quả này. Người có quyền cần kiểm tra và xác nhận.",
-    AI_RUN_EXECUTOR_UNAVAILABLE: "Chưa có người thực hiện phù hợp cho tác vụ AI này.",
+      "AI không được phép tự công bố kết quả này. Người có quyền cần kiểm tra và xác nhận",
+    AI_RUN_EXECUTOR_UNAVAILABLE: "Chưa có người thực hiện phù hợp cho tác vụ AI này",
     AI_RUN_PRINCIPAL_ROLE_CHANGED:
-      "Vai trò người thực hiện đã thay đổi; cần kiểm tra lại quyền dự án.",
-    AI_RUN_PRINCIPAL_UNAVAILABLE: "Không thể xác minh quyền của người thực hiện hiện tại.",
+      "Vai trò người thực hiện đã thay đổi; cần kiểm tra lại quyền dự án",
+    AI_RUN_PRINCIPAL_UNAVAILABLE: "Không thể xác minh quyền của người thực hiện hiện tại",
     AUTHORIZATION_EXPIRED:
-      "Phiên ủy quyền của lượt chạy đã hết hạn; hãy kiểm tra quyền hiện tại rồi tiếp tục.",
+      "Phiên ủy quyền của lượt chạy đã hết hạn; hãy kiểm tra quyền hiện tại rồi tiếp tục",
     PROJECT_AUTHORIZATION_CHECK_FAILED:
-      "Chưa xác minh được quyền truy cập dự án. Hãy thử lại khi dịch vụ phân quyền sẵn sàng.",
+      "Chưa xác minh được quyền truy cập dự án. Hãy thử lại khi dịch vụ phân quyền sẵn sàng",
     AI_RUN_RETRY_REQUIRES_RECONCILIATION:
-      "Chưa thể tiếp tục an toàn. Hãy đối soát kết quả thao tác trước.",
-    AI_RUN_RETRY_NOT_ALLOWED: "Lượt chạy hiện không ở trạng thái có thể tiếp tục.",
+      "Chưa thể tiếp tục an toàn. Hãy đối soát kết quả thao tác trước",
+    AI_RUN_RETRY_NOT_ALLOWED: "Lượt chạy hiện không ở trạng thái có thể tiếp tục",
     AI_RUN_ACTION_OUTCOME_UNCERTAIN:
-      "Chưa xác định được kết quả thao tác trước; cần đối soát để tránh ghi trùng.",
+      "Chưa xác định được kết quả thao tác trước; cần đối soát để tránh ghi trùng",
     AI_RUN_QUEUE_UNAVAILABLE:
-      "Hàng đợi AI tạm thời chưa sẵn sàng. Hãy thử tiếp tục lại sau khi hàng đợi hoạt động.",
+      "Hàng đợi AI tạm thời chưa sẵn sàng. Hãy thử tiếp tục lại sau khi hàng đợi hoạt động",
     REVISION_CONFLICT:
-      "Dữ liệu đã được thay đổi ở phiên khác. Hãy tải lại và đối chiếu trước khi lưu.",
+      "Dữ liệu đã được thay đổi ở phiên khác. Hãy tải lại và đối chiếu trước khi lưu",
     IDEMPOTENCY_KEY_REUSED:
-      "Nội dung yêu cầu đã thay đổi nhưng đang dùng lại mã của lần trước. Hãy chạy lại thao tác.",
+      "Nội dung yêu cầu đã thay đổi nhưng đang dùng lại mã của lần trước. Hãy chạy lại thao tác",
     REQUIREMENT_QUALITY_ANALYSIS_IN_PROGRESS:
-      "Lần rà soát Requirement này đang chạy. Hãy đợi một chút rồi tải lại kết quả.",
+      "Lần rà soát Requirement này đang chạy. Hãy đợi một chút rồi tải lại kết quả",
     REQUIREMENT_QUALITY_ANALYSIS_SOURCE_CHANGED:
-      "Requirement đã thay đổi trong lúc AI rà soát. Hãy chạy lại để phân tích đúng phiên bản mới nhất.",
+      "Requirement đã thay đổi trong lúc AI rà soát. Hãy chạy lại để phân tích đúng phiên bản mới nhất",
     REQUIREMENT_QUALITY_ANALYSIS_CLAIM_LOST:
-      "Không thể lưu kết quả rà soát vì lượt xử lý đã thay đổi. Hãy tải lại và chạy lại.",
+      "Không thể lưu kết quả rà soát vì lượt xử lý đã thay đổi. Hãy tải lại và chạy lại",
     IMPACT_SOURCE_CHANGED:
-      "Nguồn hoặc liên kết truy vết đã thay đổi sau lần phân tích. Hãy chạy lại phân tích trước khi tiếp tục.",
-    SCENARIO_INCOMPLETE: "Bổ sung mục tiêu và yêu cầu nguồn trước khi duyệt kịch bản.",
-    SCENARIO_DRAFT_REQUIRED: "Kịch bản mới phải được lưu nháp trước khi gửi rà soát.",
+      "Nguồn hoặc liên kết truy vết đã thay đổi sau lần phân tích. Hãy chạy lại phân tích trước khi tiếp tục",
+    SCENARIO_INCOMPLETE: "Bổ sung mục tiêu và yêu cầu nguồn trước khi duyệt kịch bản",
+    SCENARIO_DRAFT_REQUIRED: "Kịch bản mới phải được lưu nháp trước khi gửi rà soát",
     SCENARIO_BATCH_SIZE_INVALID:
-      "Nhóm kịch bản cần có từ 1 đến 100 mục. Hãy điều chỉnh lựa chọn rồi thử lại.",
+      "Nhóm kịch bản cần có từ 1 đến 100 mục. Hãy điều chỉnh lựa chọn rồi thử lại",
     SCENARIO_KEY_EXISTS:
-      "Mã kịch bản đã được dùng trong dự án. Tải lại danh sách hoặc chọn mã khác.",
-    SCENARIO_PREVIEW_REQUIRED: "Hãy xem trước và chọn các kịch bản cần lưu trước khi tiếp tục.",
+      "Mã kịch bản đã được dùng trong dự án. Tải lại danh sách hoặc chọn mã khác",
+    SCENARIO_PREVIEW_REQUIRED: "Hãy xem trước và chọn các kịch bản cần lưu trước khi tiếp tục",
     SCENARIO_PREVIEW_STALE:
-      "Yêu cầu hoặc tiêu chí đã thay đổi sau lần xem trước. Tải lại nguồn và tạo bản xem trước mới.",
+      "Yêu cầu hoặc tiêu chí đã thay đổi sau lần xem trước. Tải lại nguồn và tạo bản xem trước mới",
     IMMUTABLE_SCENARIO:
-      "Kịch bản đã gửi rà soát hoặc được duyệt. Hãy yêu cầu chỉnh sửa hoặc tạo bản sao để thay đổi nội dung.",
+      "Kịch bản đã gửi rà soát hoặc được duyệt. Hãy yêu cầu chỉnh sửa hoặc tạo bản sao để thay đổi nội dung",
     ACCEPTANCE_CRITERIA_NOT_IN_REQUIREMENT:
-      "Có tiêu chí không thuộc phiên bản yêu cầu đã chọn. Tải lại yêu cầu và chọn lại tiêu chí.",
+      "Có tiêu chí không thuộc phiên bản yêu cầu đã chọn. Tải lại yêu cầu và chọn lại tiêu chí",
     DUPLICATE_ACCEPTANCE_CRITERIA:
-      "Một tiêu chí đang được chọn nhiều lần. Bỏ lựa chọn trùng rồi thử lại.",
+      "Một tiêu chí đang được chọn nhiều lần. Bỏ lựa chọn trùng rồi thử lại",
     DUPLICATE_DESIGN_TECHNIQUE:
-      "Một kỹ thuật kiểm thử đang được chọn nhiều lần. Bỏ lựa chọn trùng rồi thử lại.",
+      "Một kỹ thuật kiểm thử đang được chọn nhiều lần. Bỏ lựa chọn trùng rồi thử lại",
     GENERATION_EVIDENCE_LIMIT_EXCEEDED:
-      "Yêu cầu có quá nhiều tiêu chí để tạo ca đầy đủ trong một lượt. Chưa có ca nào được tạo; hãy thu hẹp phạm vi.",
+      "Yêu cầu có quá nhiều tiêu chí để tạo ca đầy đủ trong một lượt. Chưa có ca nào được tạo; hãy thu hẹp phạm vi",
     GENERATION_INSTRUCTION_TOO_LONG:
-      "Hướng dẫn bổ sung quá dài. Rút gọn nội dung rồi tạo bản xem trước lại.",
+      "Hướng dẫn bổ sung quá dài. Rút gọn nội dung rồi tạo bản xem trước lại",
     GENERATION_LIMIT_EXCEEDED:
-      "Số ca yêu cầu vượt giới hạn cho một lượt. Giảm số lượng hoặc chia thành các lượt riêng.",
+      "Số ca yêu cầu vượt giới hạn cho một lượt. Giảm số lượng hoặc chia thành các lượt riêng",
     INVALID_GENERATION_CATEGORIES:
-      "Có loại kiểm thử không còn hợp lệ. Tải lại danh sách lựa chọn rồi thử lại.",
+      "Có loại kiểm thử không còn hợp lệ. Tải lại danh sách lựa chọn rồi thử lại",
     AI_GENERATION_INVALID:
-      "Chưa tạo được bản nháp kiểm thử hợp lệ. Không có kết quả nào được lưu; hãy thử lại.",
+      "Chưa tạo được bản nháp kiểm thử hợp lệ. Không có kết quả nào được lưu; hãy thử lại",
     AI_PROVIDER_UNAVAILABLE:
-      "Dịch vụ AI đang tạm thời không phản hồi. Dữ liệu hiện có được giữ nguyên; hãy thử lại sau.",
+      "Dịch vụ AI đang tạm thời không phản hồi. Dữ liệu hiện có được giữ nguyên; hãy thử lại sau",
     AI_UNGROUNDED_OUTPUT:
-      "Đề xuất có nội dung chưa được tài liệu xác nhận. Bổ sung nguồn hoặc điều chỉnh phạm vi rồi thử lại.",
+      "Đề xuất có nội dung chưa được tài liệu xác nhận. Bổ sung nguồn hoặc điều chỉnh phạm vi rồi thử lại",
     AI_RECOMMENDATION_INVALID:
-      "Chưa tạo được đề xuất hợp lệ. Dữ liệu hiện có được giữ nguyên; hãy tải lại rồi thử lại.",
+      "Chưa tạo được đề xuất hợp lệ. Dữ liệu hiện có được giữ nguyên; hãy tải lại rồi thử lại",
     TECHNIQUE_EVIDENCE_INSUFFICIENT:
-      "Nguồn hiện tại chưa đủ căn cứ cho các kỹ thuật đã chọn. Bổ sung tài liệu hoặc chọn kỹ thuật phù hợp hơn.",
+      "Nguồn hiện tại chưa đủ căn cứ cho các kỹ thuật đã chọn. Bổ sung tài liệu hoặc chọn kỹ thuật phù hợp hơn",
     TECHNIQUE_EVIDENCE_LIMIT_EXCEEDED:
-      "Phạm vi bằng chứng vượt giới hạn của một lượt. Hãy thu hẹp nguồn trước khi tạo ca.",
+      "Phạm vi bằng chứng vượt giới hạn của một lượt. Hãy thu hẹp nguồn trước khi tạo ca",
     TECHNIQUE_GENERATION_INCOMPLETE:
-      "Chưa tạo được ca cho mọi kỹ thuật đã chọn. Chưa lưu nhóm ca thiếu; hãy xem lại nguồn hoặc số lượng ca.",
+      "Chưa tạo được ca cho mọi kỹ thuật đã chọn. Chưa lưu nhóm ca thiếu; hãy xem lại nguồn hoặc số lượng ca",
     TEST_DESIGN_REQUIREMENT_CHANGED:
-      "Yêu cầu đã thay đổi hoặc chưa còn được duyệt. Tải lại phiên bản yêu cầu trước khi tạo hoặc lưu ca.",
+      "Yêu cầu đã thay đổi hoặc chưa còn được duyệt. Tải lại phiên bản yêu cầu trước khi tạo hoặc lưu ca",
     TEST_DESIGN_PREVIEW_STALE:
-      "Yêu cầu hoặc bộ ca hiện có đã thay đổi sau lần xem trước. Tạo lại bản xem trước trước khi lưu.",
-    TEST_CASE_PREVIEW_REQUIRED: "Hãy xem trước và chọn các ca cần lưu trước khi tiếp tục.",
-    TEST_CASE_DRAFT_REVISION_REQUIRED:
-      "Thiếu thông tin phiên bản bản nháp. Tải lại ca rồi thử lại.",
+      "Yêu cầu hoặc bộ ca hiện có đã thay đổi sau lần xem trước. Tạo lại bản xem trước trước khi lưu",
+    TEST_CASE_PREVIEW_REQUIRED: "Hãy xem trước và chọn các ca cần lưu trước khi tiếp tục",
+    TEST_CASE_DRAFT_REVISION_REQUIRED: "Thiếu thông tin phiên bản bản nháp. Tải lại ca rồi thử lại",
     TEST_CASE_DRAFT_REVISION_STALE:
-      "Bản nháp đã thay đổi trong lúc xử lý. Tải lại và đối chiếu trước khi tiếp tục.",
-    SYSTEM_ADMIN_REQUIRED: "Thao tác này chỉ dành cho Admin hệ thống.",
-    PROJECT_NOT_FOUND: "Không tìm thấy dự án hoặc bạn không còn quyền truy cập.",
-    TEST_PLAN_NOT_FOUND: "Không tìm thấy kế hoạch kiểm thử. Tải lại danh sách rồi thử lại.",
+      "Bản nháp đã thay đổi trong lúc xử lý. Tải lại và đối chiếu trước khi tiếp tục",
+    SYSTEM_ADMIN_REQUIRED: "Thao tác này chỉ dành cho Admin hệ thống",
+    PROJECT_NOT_FOUND: "Không tìm thấy dự án hoặc bạn không còn quyền truy cập",
+    TEST_PLAN_NOT_FOUND: "Không tìm thấy kế hoạch kiểm thử. Tải lại danh sách rồi thử lại",
     TEST_PLAN_SCOPE_EMPTY:
-      "Kế hoạch chưa có ca hoặc bộ kiểm thử trong phạm vi đã duyệt. Cập nhật phạm vi kế hoạch rồi tạo lần chạy, hoặc tạo lần chạy không gắn kế hoạch.",
+      "Kế hoạch chưa có ca hoặc bộ kiểm thử trong phạm vi đã duyệt. Cập nhật phạm vi kế hoạch rồi tạo lần chạy, hoặc tạo lần chạy không gắn kế hoạch",
     IMPORT_CANDIDATE_COUNT_INVALID:
-      "Số yêu cầu trong bản nhập không hợp lệ. Tạo lại bản xem trước rồi thử lại.",
+      "Số yêu cầu trong bản nhập không hợp lệ. Tạo lại bản xem trước rồi thử lại",
     IMPORT_CANDIDATE_INCOMPLETE:
-      "Một yêu cầu đang thiếu nội dung hoặc nguồn dẫn. Bổ sung dữ liệu trước khi nhập.",
+      "Một yêu cầu đang thiếu nội dung hoặc nguồn dẫn. Bổ sung dữ liệu trước khi nhập",
     IMPORT_CANDIDATE_LIMIT_EXCEEDED:
-      "Tài liệu tạo ra quá nhiều yêu cầu trong một lượt. Chia nhỏ phạm vi rồi nhập lại.",
-    IMPORT_CANDIDATE_NOT_FOUND: "Không tìm thấy mục nhập này. Tải lại bản xem trước.",
+      "Tài liệu tạo ra quá nhiều yêu cầu trong một lượt. Chia nhỏ phạm vi rồi nhập lại",
+    IMPORT_CANDIDATE_NOT_FOUND: "Không tìm thấy mục nhập này. Tải lại bản xem trước",
     IMPORT_CONFIRMATION_CONFLICT:
-      "Bản nhập đã thay đổi trong lúc xác nhận. Tải lại trạng thái trước khi tiếp tục.",
+      "Bản nhập đã thay đổi trong lúc xác nhận. Tải lại trạng thái trước khi tiếp tục",
     IMPORT_CONFIRMED_VERSION_MISSING:
-      "Không tìm thấy phiên bản yêu cầu đã xác nhận. Tải lại bản nhập để đối chiếu.",
+      "Không tìm thấy phiên bản yêu cầu đã xác nhận. Tải lại bản nhập để đối chiếu",
     IMPORT_MATCH_CHANGED:
-      "Các yêu cầu hiện có đã thay đổi sau lần đối chiếu. Chạy đối chiếu lại trước khi nhập.",
+      "Các yêu cầu hiện có đã thay đổi sau lần đối chiếu. Chạy đối chiếu lại trước khi nhập",
     IMPORT_MATCH_REVIEW_REQUIRED:
-      "Có yêu cầu gần trùng cần được xem xét. Chọn cách xử lý cho từng mục rồi tiếp tục.",
+      "Có yêu cầu gần trùng cần được xem xét. Chọn cách xử lý cho từng mục rồi tiếp tục",
     IMPORT_REQUIREMENT_COMPARISON_LIMIT_EXCEEDED:
-      "Có quá nhiều yêu cầu cần đối chiếu cùng lúc. Thu hẹp lựa chọn rồi thử lại.",
+      "Có quá nhiều yêu cầu cần đối chiếu cùng lúc. Thu hẹp lựa chọn rồi thử lại",
     IMPORT_REQUIREMENT_KEY_CONFLICT:
-      "Mã yêu cầu trong bản nhập bị trùng. Sửa mã hoặc bỏ chọn mục trùng rồi thử lại.",
+      "Mã yêu cầu trong bản nhập bị trùng. Sửa mã hoặc bỏ chọn mục trùng rồi thử lại",
     IMPORT_REQUIREMENT_VERSION_MISSING:
-      "Không tìm thấy phiên bản yêu cầu cần đối chiếu. Tải lại dữ liệu dự án.",
+      "Không tìm thấy phiên bản yêu cầu cần đối chiếu. Tải lại dữ liệu dự án",
     IMPORT_RESOLUTION_INCOMPLETE:
-      "Chưa chọn cách xử lý cho mọi yêu cầu trùng. Hoàn tất lựa chọn rồi tiếp tục.",
-    IMPORT_RESOLUTION_TARGET_REQUIRED: "Chọn yêu cầu đích để liên kết mục này rồi tiếp tục.",
+      "Chưa chọn cách xử lý cho mọi yêu cầu trùng. Hoàn tất lựa chọn rồi tiếp tục",
+    IMPORT_RESOLUTION_TARGET_REQUIRED: "Chọn yêu cầu đích để liên kết mục này rồi tiếp tục",
     IMPORT_REVISION_CONFLICT:
-      "Bản nhập đã được cập nhật ở nơi khác. Tải lại bản xem trước rồi thử lại.",
-    IMPORT_SELECTION_REQUIRED: "Chọn ít nhất một yêu cầu để nhập.",
-    IMPORT_SEPARATE_REASON_REQUIRED: "Ghi lý do giữ riêng yêu cầu gần trùng trước khi xác nhận.",
+      "Bản nhập đã được cập nhật ở nơi khác. Tải lại bản xem trước rồi thử lại",
+    IMPORT_SELECTION_REQUIRED: "Chọn ít nhất một yêu cầu để nhập",
+    IMPORT_SEPARATE_REASON_REQUIRED: "Ghi lý do giữ riêng yêu cầu gần trùng trước khi xác nhận",
     IMPORT_SOURCE_MISSING:
-      "Không tìm thấy tài liệu nguồn của bản nhập. Tải lại tài liệu rồi tạo bản xem trước mới.",
+      "Không tìm thấy tài liệu nguồn của bản nhập. Tải lại tài liệu rồi tạo bản xem trước mới",
     IMPORT_TEST_CASE_IMPACT_LIMIT_EXCEEDED:
-      "Có quá nhiều ca kiểm thử bị ảnh hưởng để đối chiếu trong một lượt. Thu hẹp phạm vi rồi thử lại.",
+      "Có quá nhiều ca kiểm thử bị ảnh hưởng để đối chiếu trong một lượt. Thu hẹp phạm vi rồi thử lại",
     INVALID_IMPORT_RESOLUTION:
-      "Cách xử lý yêu cầu trùng không còn hợp lệ. Tải lại bản xem trước và chọn lại.",
+      "Cách xử lý yêu cầu trùng không còn hợp lệ. Tải lại bản xem trước và chọn lại",
     REQUIREMENT_EVIDENCE_INVALID:
-      "Nguồn dẫn của yêu cầu không khớp nội dung tài liệu. Hãy tạo lại bản xem trước.",
+      "Nguồn dẫn của yêu cầu không khớp nội dung tài liệu. Hãy tạo lại bản xem trước",
     REQUIREMENT_EXTRACTION_UNAVAILABLE:
-      "Chưa trích xuất được yêu cầu từ tài liệu. Tài liệu vẫn được giữ nguyên; hãy thử lại sau.",
+      "Chưa trích xuất được yêu cầu từ tài liệu. Tài liệu vẫn được giữ nguyên; hãy thử lại sau",
     REQUIREMENT_SEMANTIC_MATCH_UNAVAILABLE:
-      "Chưa thể đối chiếu các yêu cầu tương tự. Dữ liệu chưa được xác nhận; hãy thử lại sau.",
+      "Chưa thể đối chiếu các yêu cầu tương tự. Dữ liệu chưa được xác nhận; hãy thử lại sau",
     REQUIREMENT_SOURCE_TOO_LARGE:
-      "Tài liệu vượt giới hạn xử lý yêu cầu. Chia nhỏ tài liệu rồi nhập lại.",
+      "Tài liệu vượt giới hạn xử lý yêu cầu. Chia nhỏ tài liệu rồi nhập lại",
     SOURCE_LINK_REQUIRES_EXACT_MATCH:
-      "Chỉ có thể liên kết nguồn khi nội dung khớp chính xác. Chọn một kết quả khớp hoàn toàn.",
+      "Chỉ có thể liên kết nguồn khi nội dung khớp chính xác. Chọn một kết quả khớp hoàn toàn",
     SOURCE_LINK_STATE_CHANGED:
-      "Trạng thái liên kết nguồn đã thay đổi. Tải lại bản đối chiếu trước khi tiếp tục.",
+      "Trạng thái liên kết nguồn đã thay đổi. Tải lại bản đối chiếu trước khi tiếp tục",
     TEMPLATE_SOURCE_ACCESS_DENIED:
-      "Bạn không có quyền truy cập mẫu nguồn này. Chọn mẫu khác hoặc liên hệ quản trị viên.",
+      "Bạn không có quyền truy cập mẫu nguồn này. Chọn mẫu khác hoặc liên hệ quản trị viên",
     DUPLICATE_PREVIEW_INDEX:
-      "Một mục xem trước đang được chọn nhiều lần. Bỏ lựa chọn trùng rồi thử lại.",
+      "Một mục xem trước đang được chọn nhiều lần. Bỏ lựa chọn trùng rồi thử lại",
     COVERAGE_ITEM_SOURCE_INVALID:
-      "Một mục truy vết không còn hợp lệ trong nguồn đã chọn. Tải lại yêu cầu và chọn lại.",
+      "Một mục truy vết không còn hợp lệ trong nguồn đã chọn. Tải lại yêu cầu và chọn lại",
     IDEMPOTENCY_RECEIPT_INCOMPLETE:
-      "Chưa xác minh được kết quả lần lưu trước. Tải lại dữ liệu trước khi thử lại để tránh ghi trùng.",
+      "Chưa xác minh được kết quả lần lưu trước. Tải lại dữ liệu trước khi thử lại để tránh ghi trùng",
     INVALID_STATE_TRANSITION:
-      "Trạng thái đã thay đổi nên thao tác này không còn phù hợp. Tải lại dữ liệu rồi thử lại.",
+      "Trạng thái đã thay đổi nên thao tác này không còn phù hợp. Tải lại dữ liệu rồi thử lại",
     PROJECT_RESPONSIBILITY_REQUIRED:
-      "Bạn chưa được phân công thực hiện quyết định này. Liên hệ người quản lý dự án để kiểm tra phân công.",
+      "Bạn chưa được phân công thực hiện quyết định này. Liên hệ người quản lý dự án để kiểm tra phân công",
     PROJECT_RESPONSIBILITIES_INVALID:
-      "Thông tin người chịu trách nhiệm không hợp lệ. Chọn lại thành viên dự án.",
+      "Thông tin người chịu trách nhiệm không hợp lệ. Chọn lại thành viên dự án",
     PROJECT_RESPONSIBLE_MEMBER_INVALID:
-      "Người được chọn phải đang hoạt động trong dự án và có vai trò phù hợp.",
+      "Người được chọn phải đang hoạt động trong dự án và có vai trò phù hợp",
     REVIEW_AUTHORSHIP_UNVERIFIED:
-      "Lịch sử người sửa bản này chưa đầy đủ để xác minh duyệt độc lập. Cần đối chiếu lịch sử trước khi duyệt.",
+      "Lịch sử người sửa bản này chưa đầy đủ để xác minh duyệt độc lập. Cần đối chiếu lịch sử trước khi duyệt",
     REQUIREMENT_TECHNICAL_REVIEW_REQUIRED:
-      "Cần hoàn tất rà soát kỹ thuật cho phiên bản hiện tại trước khi xác nhận nghiệp vụ.",
-    DESIGN_ASSIGNMENT_REQUIRED: "Bạn chỉ được soạn nội dung kiểm thử đã được giao cho mình.",
-    DESIGN_REASSIGNMENT_DENIED: "Chỉ người có quyền phân công mới được thay đổi người phụ trách.",
+      "Cần hoàn tất rà soát kỹ thuật cho phiên bản hiện tại trước khi xác nhận nghiệp vụ",
+    DESIGN_ASSIGNMENT_REQUIRED: "Bạn chỉ được soạn nội dung kiểm thử đã được giao cho mình",
+    DESIGN_REASSIGNMENT_DENIED: "Chỉ người có quyền phân công mới được thay đổi người phụ trách",
     DEFECT_TRIAGE_AUTHORITY_REQUIRED:
-      "Việc đổi mức độ, ưu tiên hoặc người phụ trách lỗi cần quyền phân loại lỗi.",
-    DEFECT_ASSIGNMENT_REQUIRED: "Bạn chỉ được sửa lỗi đang được giao cho mình.",
+      "Việc đổi mức độ, ưu tiên hoặc người phụ trách lỗi cần quyền phân loại lỗi",
+    DEFECT_ASSIGNMENT_REQUIRED: "Bạn chỉ được sửa lỗi đang được giao cho mình",
     TEST_CASE_SELF_REVIEW_FORBIDDEN:
-      "Người tạo hoặc sửa ca này không thể tự duyệt. Một người có quyền khác cần xem và quyết định.",
+      "Người tạo hoặc sửa ca này không thể tự duyệt. Một người có quyền khác cần xem và quyết định",
     TEST_PLAN_SELF_REVIEW_FORBIDDEN:
-      "Người tạo hoặc sửa kế hoạch này không thể tự duyệt. Một người có quyền khác cần xem và quyết định.",
+      "Người tạo hoặc sửa kế hoạch này không thể tự duyệt. Một người có quyền khác cần xem và quyết định",
     REQUIREMENT_SELF_REVIEW_FORBIDDEN:
-      "Người tạo hoặc sửa yêu cầu không thể tự xác nhận cùng phiên bản.",
+      "Người tạo hoặc sửa yêu cầu không thể tự xác nhận cùng phiên bản",
     TEST_SCENARIO_SELF_REVIEW_FORBIDDEN:
-      "Người tạo hoặc sửa kịch bản rà soát không thể tự duyệt kịch bản đó.",
+      "Người tạo hoặc sửa kịch bản rà soát không thể tự duyệt kịch bản đó",
     TEST_CONDITION_SELF_REVIEW_FORBIDDEN:
-      "Người tạo hoặc sửa điều kiện rà soát không thể tự duyệt điều kiện đó.",
+      "Người tạo hoặc sửa điều kiện rà soát không thể tự duyệt điều kiện đó",
     TEST_STATUS_REPORT_SELF_REVIEW_FORBIDDEN:
-      "Người tạo hoặc sửa báo cáo trạng thái rà soát không thể tự duyệt báo cáo đó.",
+      "Người tạo hoặc sửa báo cáo trạng thái rà soát không thể tự duyệt báo cáo đó",
     TEST_COMPLETION_SELF_REVIEW_FORBIDDEN:
-      "Người tạo hoặc sửa báo cáo hoàn tất rà soát không thể tự duyệt báo cáo đó.",
+      "Người tạo hoặc sửa báo cáo hoàn tất rà soát không thể tự duyệt báo cáo đó",
     PROJECT_MISMATCH:
-      "Mục đã chọn không thuộc dự án hiện tại. Tải lại dữ liệu và chọn mục trong đúng dự án.",
+      "Mục đã chọn không thuộc dự án hiện tại. Tải lại dữ liệu và chọn mục trong đúng dự án",
     VERIFIED_REQUIREMENT_EVENT_REQUIRED:
-      "Chỉ có thể phân tích yêu cầu đã được xác minh. Mở yêu cầu và hoàn tất bước rà soát trước.",
+      "Chỉ có thể phân tích yêu cầu đã được xác minh. Mở yêu cầu và hoàn tất bước rà soát trước",
     TEST_CONDITION_EVENT_KEY_INVALID:
-      "Mã điều kiện kiểm thử không hợp lệ. Tải lại dữ liệu rồi thử lại.",
+      "Mã điều kiện kiểm thử không hợp lệ. Tải lại dữ liệu rồi thử lại",
     TEST_CONDITION_EVENT_KEY_CONFLICT:
-      "Điều kiện kiểm thử đã được cập nhật ở nơi khác. Tải lại danh sách rồi thử lại.",
-    TEST_BASIS_SOURCE_CHANGED: "Nguồn kiểm thử đã thay đổi. Phân tích lại trước khi tiếp tục.",
+      "Điều kiện kiểm thử đã được cập nhật ở nơi khác. Tải lại danh sách rồi thử lại",
+    TEST_BASIS_SOURCE_CHANGED: "Nguồn kiểm thử đã thay đổi. Phân tích lại trước khi tiếp tục",
     TEST_BASIS_NOT_BASELINED:
-      "Chưa ghi nhận phiên bản cơ sở của nguồn kiểm thử. Tải lại yêu cầu rồi tạo bản phân tích mới.",
+      "Chưa ghi nhận phiên bản cơ sở của nguồn kiểm thử. Tải lại yêu cầu rồi tạo bản phân tích mới",
     REQUIREMENT_EVENT_SOURCE_CHANGED:
-      "Yêu cầu hoặc phiên bản nguồn đã đổi sau khi mở lượt phân tích. Tải lại rồi chạy lại.",
-    ENTITY_NOT_FOUND: "Không tìm thấy mục cần xử lý. Tải lại dữ liệu rồi thử lại.",
-    TEST_RUN_NOT_FOUND: "Không tìm thấy lượt chạy kiểm thử. Tải lại danh sách rồi thử lại.",
+      "Yêu cầu hoặc phiên bản nguồn đã đổi sau khi mở lượt phân tích. Tải lại rồi chạy lại",
+    ENTITY_NOT_FOUND: "Không tìm thấy mục cần xử lý. Tải lại dữ liệu rồi thử lại",
+    TEST_RUN_NOT_FOUND: "Không tìm thấy lượt chạy kiểm thử. Tải lại danh sách rồi thử lại",
     TEST_RUN_SCOPE_EMPTY:
-      "Chọn ít nhất một phiên bản ca kiểm thử hoặc một bộ kiểm thử trước khi tạo lượt chạy.",
+      "Chọn ít nhất một phiên bản ca kiểm thử hoặc một bộ kiểm thử trước khi tạo lượt chạy",
     TEST_RUN_ASSIGNMENTS_REQUIRED:
-      "Phân công người thực hiện cho tất cả ca kiểm thử trước khi bắt đầu lượt chạy.",
+      "Phân công người thực hiện cho tất cả ca kiểm thử trước khi bắt đầu lượt chạy",
     TEST_RUN_ASSIGNEE_UNAVAILABLE:
-      "Người được phân công không còn quyền thực hiện trong dự án. Cập nhật phân công rồi thử lại.",
+      "Người được phân công không còn quyền thực hiện trong dự án. Cập nhật phân công rồi thử lại",
     DEFECT_RETEST_CASE_LINK_REQUIRED:
-      "Lỗi chưa liên kết với ca kiểm thử. Hãy liên kết ca trước khi ghi nhận kết quả kiểm thử lại.",
+      "Lỗi chưa liên kết với ca kiểm thử. Hãy liên kết ca trước khi ghi nhận kết quả kiểm thử lại",
     DEFECT_RETEST_BASELINE_UNAVAILABLE:
-      "Không xác định được thời điểm chuyển lỗi sang chờ kiểm thử lại. Cần kiểm tra lịch sử lỗi.",
+      "Không xác định được thời điểm chuyển lỗi sang chờ kiểm thử lại. Cần kiểm tra lịch sử lỗi",
     DEFECT_RETEST_RESULT_CHANGED:
-      "Kết quả kiểm thử đã thay đổi hoặc không còn thuộc phạm vi ca của lượt chạy. Tải lại rồi chọn kết quả mới.",
+      "Kết quả kiểm thử đã thay đổi hoặc không còn thuộc phạm vi ca của lượt chạy. Tải lại rồi chọn kết quả mới",
     DEFECT_RETEST_RESULT_NOT_NEW:
-      "Chỉ dùng kết quả được ghi sau khi lỗi chuyển sang chờ kiểm thử lại.",
-    DEFECT_RETEST_RESULT_ALREADY_USED: "Kết quả này đã được dùng để kiểm thử lại lỗi này.",
+      "Chỉ dùng kết quả được ghi sau khi lỗi chuyển sang chờ kiểm thử lại",
+    DEFECT_RETEST_RESULT_ALREADY_USED: "Kết quả này đã được dùng để kiểm thử lại lỗi này",
     DEFECT_NOT_READY_FOR_RETEST:
-      "Chỉ có thể kiểm thử lại sau khi lỗi được chuyển sang trạng thái chờ kiểm thử lại.",
+      "Chỉ có thể kiểm thử lại sau khi lỗi được chuyển sang trạng thái chờ kiểm thử lại",
     DEFECT_RETEST_SOURCE_RESULT_UNAVAILABLE:
-      "Không tìm thấy kết quả ban đầu của lỗi. Kiểm tra lại liên kết với ca kiểm thử.",
+      "Không tìm thấy kết quả ban đầu của lỗi. Kiểm tra lại liên kết với ca kiểm thử",
     DEFECT_RETEST_SOURCE_VERSION_UNAVAILABLE:
-      "Không xác định được ca kiểm thử ban đầu của lỗi. Kiểm tra lại liên kết.",
+      "Không xác định được ca kiểm thử ban đầu của lỗi. Kiểm tra lại liên kết",
     RETEST_RESULT_MUST_BE_NEW:
-      "Chọn kết quả của một lượt chạy mới, không chọn kết quả đã tạo ra lỗi ban đầu.",
-    RETEST_RESULT_MUST_PASS_OR_FAIL: "Kết quả dùng để kiểm thử lại phải là Đạt hoặc Không đạt.",
-    RETEST_CASE_VERSION_MISMATCH: "Kết quả được chọn không thuộc ca kiểm thử đã liên kết với lỗi.",
+      "Chọn kết quả của một lượt chạy mới, không chọn kết quả đã tạo ra lỗi ban đầu",
+    RETEST_RESULT_MUST_PASS_OR_FAIL: "Kết quả dùng để kiểm thử lại phải là Đạt hoặc Không đạt",
+    RETEST_CASE_VERSION_MISMATCH: "Kết quả được chọn không thuộc ca kiểm thử đã liên kết với lỗi",
     IDEMPOTENCY_REPLAY_ACTOR_MISMATCH:
-      "Mã thao tác này thuộc về người dùng khác. Tải lại dữ liệu trước khi thử lại.",
+      "Mã thao tác này thuộc về người dùng khác. Tải lại dữ liệu trước khi thử lại",
     EXECUTION_CONFLICT:
-      "Kết quả thực thi đã được cập nhật ở nơi khác. Tải lại lượt chạy trước khi ghi kết quả.",
+      "Kết quả thực thi đã được cập nhật ở nơi khác. Tải lại lượt chạy trước khi ghi kết quả",
     API_DEFINITION_INVALID:
-      "Không đọc được đặc tả API. Kiểm tra lại định dạng OpenAPI hoặc Postman rồi tải lên lại.",
-    API_ARTIFACT_REQUIRED: "Chọn tệp OpenAPI hoặc Postman để tiếp tục.",
-    API_ARTIFACT_JSON_INVALID: "Nội dung tệp không phải JSON hợp lệ. Sửa tệp rồi thử lại.",
+      "Không đọc được đặc tả API. Kiểm tra lại định dạng OpenAPI hoặc Postman rồi tải lên lại",
+    API_ARTIFACT_REQUIRED: "Chọn tệp OpenAPI hoặc Postman để tiếp tục",
+    API_ARTIFACT_JSON_INVALID: "Nội dung tệp không phải JSON hợp lệ. Sửa tệp rồi thử lại",
     API_ARTIFACT_OBJECT_REQUIRED:
-      "Nội dung đặc tả cần có cấu trúc JSON dạng đối tượng ở cấp cao nhất.",
+      "Nội dung đặc tả cần có cấu trúc JSON dạng đối tượng ở cấp cao nhất",
     API_ARTIFACT_HAS_NO_OPERATIONS:
-      "Không tìm thấy thao tác API trong đặc tả. Kiểm tra lại đường dẫn và phương thức.",
+      "Không tìm thấy thao tác API trong đặc tả. Kiểm tra lại đường dẫn và phương thức",
     API_ARTIFACT_NOT_REVIEWABLE:
-      "Bản nhập này không còn ở trạng thái có thể rà soát. Tải lại danh sách để xem trạng thái mới.",
-    API_ARTIFACT_SELECTION_REQUIRED: "Chọn ít nhất một thao tác API sau khi rà soát.",
-    API_ARTIFACT_REVIEW_REQUIRED: "Hãy rà soát và xác nhận đặc tả API trước khi tiếp tục.",
-    API_ARTIFACT_NOT_CONFIRMED: "Đặc tả API chưa được xác nhận nên chưa thể tạo ca kiểm thử.",
+      "Bản nhập này không còn ở trạng thái có thể rà soát. Tải lại danh sách để xem trạng thái mới",
+    API_ARTIFACT_SELECTION_REQUIRED: "Chọn ít nhất một thao tác API sau khi rà soát",
+    API_ARTIFACT_REVIEW_REQUIRED: "Hãy rà soát và xác nhận đặc tả API trước khi tiếp tục",
+    API_ARTIFACT_NOT_CONFIRMED: "Đặc tả API chưa được xác nhận nên chưa thể tạo ca kiểm thử",
     API_ARTIFACT_VERSION_INVALID:
-      "Không tìm thấy đủ hai phiên bản đặc tả API để so sánh. Tải lại danh sách phiên bản.",
+      "Không tìm thấy đủ hai phiên bản đặc tả API để so sánh. Tải lại danh sách phiên bản",
     API_OPERATION_SOURCE_INVALID:
-      "Thao tác API không còn liên kết với đặc tả đã xác nhận. Tải lại dữ liệu trước khi tiếp tục.",
+      "Thao tác API không còn liên kết với đặc tả đã xác nhận. Tải lại dữ liệu trước khi tiếp tục",
     API_OPERATION_EVIDENCE_TOO_LARGE:
-      "Thao tác API có quá nhiều nội dung để tạo ca trong một lượt. Hãy giảm phạm vi đặc tả.",
+      "Thao tác API có quá nhiều nội dung để tạo ca trong một lượt. Hãy giảm phạm vi đặc tả",
     API_TEST_GENERATION_REQUIRES_AI_RUN_EVENT:
-      "Chưa thể chạy sinh ca cho thao tác API này. Kiểm tra trạng thái xử lý rồi thử lại.",
+      "Chưa thể chạy sinh ca cho thao tác API này. Kiểm tra trạng thái xử lý rồi thử lại",
     API_TEST_GENERATION_UNAVAILABLE:
-      "AI chưa thể tạo ca từ đặc tả API lúc này. Đặc tả vẫn được giữ nguyên; hãy thử lại sau.",
+      "AI chưa thể tạo ca từ đặc tả API lúc này. Đặc tả vẫn được giữ nguyên; hãy thử lại sau",
     API_TEST_GENERATION_CONTRACT_INVALID:
-      "AI trả về ca không đúng cấu trúc. Chưa có ca nào được nhập; hãy thử lại.",
+      "AI trả về ca không đúng cấu trúc. Chưa có ca nào được nhập; hãy thử lại",
     API_TEST_GENERATION_EVIDENCE_INSUFFICIENT:
-      "Đặc tả chưa có đủ thông tin để tạo ca kiểm thử. Bổ sung mô tả hoặc schema cho thao tác API.",
+      "Đặc tả chưa có đủ thông tin để tạo ca kiểm thử. Bổ sung mô tả hoặc schema cho thao tác API",
     API_TEST_GENERATION_GROUNDING_INVALID:
-      "Một ca AI đề xuất không khớp với đặc tả API đã xác nhận. Ca chưa được lưu; hãy thử lại.",
+      "Một ca AI đề xuất không khớp với đặc tả API đã xác nhận. Ca chưa được lưu; hãy thử lại",
     API_OPERATION_SOURCE_CHANGED:
-      "Đặc tả API đã thay đổi sau lần xem trước. Tạo lại bản xem trước trước khi tiếp tục.",
+      "Đặc tả API đã thay đổi sau lần xem trước. Tạo lại bản xem trước trước khi tiếp tục",
     INVALID_PREVIEW_INDEX:
-      "Lựa chọn thao tác API không còn hợp lệ. Tải lại bản xem trước rồi chọn lại.",
+      "Lựa chọn thao tác API không còn hợp lệ. Tải lại bản xem trước rồi chọn lại",
     TEST_IMPORT_IDEMPOTENCY_CONFLICT:
-      "Mã xử lý bản nhập đã được dùng cho dữ liệu khác. Tạo lượt nhập mới rồi thử lại.",
-    TEST_IMPORT_FORMAT_UNSUPPORTED: "Định dạng tệp chưa được hỗ trợ để nhập ca kiểm thử.",
+      "Mã xử lý bản nhập đã được dùng cho dữ liệu khác. Tạo lượt nhập mới rồi thử lại",
+    TEST_IMPORT_FORMAT_UNSUPPORTED: "Định dạng tệp chưa được hỗ trợ để nhập ca kiểm thử",
     TEST_IMPORT_ROW_LIMIT_EXCEEDED:
-      "Tệp có quá nhiều dòng để xử lý cùng lúc. Chia tệp thành các phần nhỏ hơn rồi nhập lại.",
+      "Tệp có quá nhiều dòng để xử lý cùng lúc. Chia tệp thành các phần nhỏ hơn rồi nhập lại",
     TEST_IMPORT_ROWS_INCOMPLETE:
-      "Một số dòng thiếu tên hoặc nội dung kiểm thử bắt buộc. Sửa các dòng được báo rồi nhập lại.",
-    TEST_IMPORT_EMPTY: "Tệp không có ca kiểm thử để nhập.",
+      "Một số dòng thiếu tên hoặc nội dung kiểm thử bắt buộc. Sửa các dòng được báo rồi nhập lại",
+    TEST_IMPORT_EMPTY: "Tệp không có ca kiểm thử để nhập",
     TEST_IMPORT_ENCODING_INVALID:
-      "Không đọc được bảng mã của tệp. Lưu lại tệp bằng UTF-8 rồi thử nhập lại.",
+      "Không đọc được bảng mã của tệp. Lưu lại tệp bằng UTF-8 rồi thử nhập lại",
     TEST_IMPORT_SOURCE_CHANGED:
-      "Nguồn API đã thay đổi hoặc được lưu trữ. Tạo lại bản xem trước trước khi nhập ca.",
-    TEST_IMPORT_SELECTION_REQUIRED: "Chọn ít nhất một ca trong bản xem trước để nhập.",
+      "Nguồn API đã thay đổi hoặc được lưu trữ. Tạo lại bản xem trước trước khi nhập ca",
+    TEST_IMPORT_SELECTION_REQUIRED: "Chọn ít nhất một ca trong bản xem trước để nhập",
     TEST_IMPORT_AUTOMATION_EMPTY_SELECTION_UNSAFE:
-      "Không thể tự nhập nhóm ca này vì còn nội dung cần người rà soát. Mở bản xem trước và chọn ca phù hợp.",
+      "Không thể tự nhập nhóm ca này vì còn nội dung cần người rà soát. Mở bản xem trước và chọn ca phù hợp",
     TEST_IMPORT_CONFIRM_IN_PROGRESS:
-      "Bản nhập đang được xử lý. Chờ hoàn tất rồi tải lại trạng thái trước khi thử lại.",
+      "Bản nhập đang được xử lý. Chờ hoàn tất rồi tải lại trạng thái trước khi thử lại",
     TEST_IMPORT_RESOLUTION_INVALID:
-      "Cách xử lý ca trùng hoặc phiên bản không hợp lệ. Tải lại bản xem trước và kiểm tra lựa chọn.",
+      "Cách xử lý ca trùng hoặc phiên bản không hợp lệ. Tải lại bản xem trước và kiểm tra lựa chọn",
     TEST_IMPORT_SEPARATE_REASON_REQUIRED:
-      "Ghi lý do giữ ca riêng khi nội dung gần giống một ca đã có.",
+      "Ghi lý do giữ ca riêng khi nội dung gần giống một ca đã có",
     TEST_IMPORT_INCOMPLETE_ACK_REQUIRED:
-      "Xác nhận ca thiếu bước hoặc kết quả kiểm chứng trước khi tiếp tục nhập.",
+      "Xác nhận ca thiếu bước hoặc kết quả kiểm chứng trước khi tiếp tục nhập",
     TEST_IMPORT_REUPLOAD_REQUIRED:
-      "Nguồn của bản xem trước đã cũ. Tải tệp lên lại để kiểm tra trước khi nhập.",
+      "Nguồn của bản xem trước đã cũ. Tải tệp lên lại để kiểm tra trước khi nhập",
     TEST_IMPORT_DRAFT_INVALID:
-      "Một ca trong bản xem trước không hợp lệ. Chưa có ca nào được nhập; hãy tạo lại bản xem trước.",
+      "Một ca trong bản xem trước không hợp lệ. Chưa có ca nào được nhập; hãy tạo lại bản xem trước",
     TEST_IMPORT_DUPLICATE_REVIEW_REQUIRED:
-      "Có ca gần trùng với ca đã có. Bỏ chọn ca trùng hoặc ghi lý do giữ riêng trước khi nhập.",
+      "Có ca gần trùng với ca đã có. Bỏ chọn ca trùng hoặc ghi lý do giữ riêng trước khi nhập",
     TEST_IMPORT_TARGET_CHANGED:
-      "Ca hoặc phiên bản đích đã thay đổi sau lần xem trước. Tải lại và đối chiếu trước khi nhập.",
+      "Ca hoặc phiên bản đích đã thay đổi sau lần xem trước. Tải lại và đối chiếu trước khi nhập",
     DOCUMENT_SUMMARY_JOB_CONTEXT_INVALID:
-      "Không thể xác minh dự án của yêu cầu tóm tắt. Tải lại trang rồi thử lại.",
+      "Không thể xác minh dự án của yêu cầu tóm tắt. Tải lại trang rồi thử lại",
     DOCUMENT_SUMMARY_JOB_NOT_FOUND:
-      "Không tìm thấy lượt tóm tắt này. Tải lại tài liệu để kiểm tra trạng thái mới nhất.",
-    DOCUMENT_SUMMARY_JOB_NOT_CANCELLABLE: "Lượt tóm tắt đã kết thúc nên không thể hủy.",
+      "Không tìm thấy lượt tóm tắt này. Tải lại tài liệu để kiểm tra trạng thái mới nhất",
+    DOCUMENT_SUMMARY_JOB_NOT_CANCELLABLE: "Lượt tóm tắt đã kết thúc nên không thể hủy",
     DOCUMENT_SUMMARY_JOB_NOT_RETRYABLE:
-      "Lượt tóm tắt hiện không thể chạy lại. Tạo một lượt tóm tắt mới để tiếp tục.",
-    DOCUMENT_SUMMARY_JOB_RUNNING: "Lượt tóm tắt đang chạy. Hãy chờ hoàn tất trước khi thử lại.",
+      "Lượt tóm tắt hiện không thể chạy lại. Tạo một lượt tóm tắt mới để tiếp tục",
+    DOCUMENT_SUMMARY_JOB_RUNNING: "Lượt tóm tắt đang chạy. Hãy chờ hoàn tất trước khi thử lại",
     SUMMARY_SOURCE_CHANGED_OR_ACCESS_REVOKED:
-      "Tài liệu đã thay đổi hoặc quyền truy cập không còn hiệu lực. Kiểm tra lại nguồn rồi tạo lượt tóm tắt mới.",
+      "Tài liệu đã thay đổi hoặc quyền truy cập không còn hiệu lực. Kiểm tra lại nguồn rồi tạo lượt tóm tắt mới",
     SUMMARY_WORKER_UNAVAILABLE:
-      "Dịch vụ xử lý tài liệu đang tạm thời không sẵn sàng. Dữ liệu nguồn được giữ nguyên; hãy thử lại sau.",
+      "Dịch vụ xử lý tài liệu đang tạm thời không sẵn sàng. Dữ liệu nguồn được giữ nguyên; hãy thử lại sau",
     SUMMARY_WORKER_FAILED:
-      "Chưa thể tóm tắt tài liệu trong lượt này. Dữ liệu nguồn được giữ nguyên; hãy thử lại.",
+      "Chưa thể tóm tắt tài liệu trong lượt này. Dữ liệu nguồn được giữ nguyên; hãy thử lại",
     SUMMARY_FAILED:
-      "Một phần tài liệu chưa tóm tắt được. Xem danh sách tài liệu bị bỏ qua hoặc thử lại phần còn thiếu.",
-    RuntimeError: "Quá trình tóm tắt gặp lỗi. Dữ liệu nguồn được giữ nguyên; hãy thử lại sau.",
-    TimeoutError: "Quá trình tóm tắt quá thời gian cho phép. Hãy thử lại sau.",
-    ValueError: "Nội dung tài liệu chưa phù hợp để tóm tắt. Kiểm tra lại tệp rồi thử lại.",
+      "Một phần tài liệu chưa tóm tắt được. Xem danh sách tài liệu bị bỏ qua hoặc thử lại phần còn thiếu",
+    RuntimeError: "Quá trình tóm tắt gặp lỗi. Dữ liệu nguồn được giữ nguyên; hãy thử lại sau",
+    TimeoutError: "Quá trình tóm tắt quá thời gian cho phép. Hãy thử lại sau",
+    ValueError: "Nội dung tài liệu chưa phù hợp để tóm tắt. Kiểm tra lại tệp rồi thử lại",
     TEST_PLAN_DATA_OWNER_NOT_ACTIVE:
-      "Người chuẩn bị dữ liệu phải là thành viên đang hoạt động của dự án.",
-    TEST_PLAN_REVISION_REASON_REQUIRED: "Nhập lý do yêu cầu chỉnh sửa kế hoạch.",
+      "Người chuẩn bị dữ liệu phải là thành viên đang hoạt động của dự án",
+    TEST_PLAN_REVISION_REASON_REQUIRED: "Nhập lý do yêu cầu chỉnh sửa kế hoạch",
     COMPLETION_AI_SOURCE_CHANGED:
-      "Báo cáo đã thay đổi. Hãy tải lại trước khi yêu cầu AI tạo đề xuất.",
-    COMPLETION_AI_UNAVAILABLE: "AI chưa tạo được đề xuất hợp lệ. Hãy thử lại sau.",
-    STATUS_REPORT_AI_UNAVAILABLE: "AI chưa tạo được diễn giải hợp lệ. Hãy thử lại sau.",
+      "Báo cáo đã thay đổi. Hãy tải lại trước khi yêu cầu AI tạo đề xuất",
+    COMPLETION_AI_UNAVAILABLE: "AI chưa tạo được đề xuất hợp lệ. Hãy thử lại sau",
+    STATUS_REPORT_AI_UNAVAILABLE: "AI chưa tạo được diễn giải hợp lệ. Hãy thử lại sau",
     STATUS_REPORT_EVENT_SUPERSEDED:
-      "Báo cáo đã thay đổi. Hãy tải lại trước khi yêu cầu AI tạo đề xuất.",
+      "Báo cáo đã thay đổi. Hãy tải lại trước khi yêu cầu AI tạo đề xuất",
     DUPLICATE_SOURCE_NOT_READY:
-      "Tài liệu trùng đang được xử lý hoặc chưa phân tích xong. Hãy chờ nguồn sẵn sàng rồi thử lại.",
+      "Tài liệu trùng đang được xử lý hoặc chưa phân tích xong. Hãy chờ nguồn sẵn sàng rồi thử lại",
     DUPLICATE_SOURCE_ARCHIVED:
-      "Tài liệu trùng đang được lưu trữ. Hãy khôi phục tài liệu hiện có trước khi dùng lại.",
+      "Tài liệu trùng đang được lưu trữ. Hãy khôi phục tài liệu hiện có trước khi dùng lại",
     DUPLICATE_SOURCE_RECOVERY_PENDING:
-      "Đã tìm thấy tài liệu trùng nhưng chưa khôi phục được chỉ mục. Nguồn vẫn được giữ; hãy thử lại sau.",
+      "Đã tìm thấy tài liệu trùng nhưng chưa khôi phục được chỉ mục. Nguồn vẫn được giữ; hãy thử lại sau",
     DUPLICATE_SOURCE_SETTINGS_CONFLICT:
-      "Tệp này đã có trong dự án với phạm vi chia sẻ hoặc cấu hình AI khác.",
+      "Tệp này đã có trong dự án với phạm vi chia sẻ hoặc cấu hình AI khác",
     SOURCE_EXTRACTION_INCOMPLETE:
-      "Xử lý tài liệu bằng AI đã dừng an toàn vì còn phần chưa trích xuất đầy đủ. Xem chi tiết vị trí trong kết quả lượt chạy.",
-    TEST_CASE_OWNER_ROLE_INVALID: "Người phụ trách phải là thành viên đang hoạt động của dự án.",
+      "Xử lý tài liệu bằng AI đã dừng an toàn vì còn phần chưa trích xuất đầy đủ. Xem chi tiết vị trí trong kết quả lượt chạy",
+    TEST_CASE_OWNER_ROLE_INVALID: "Người phụ trách phải là thành viên đang hoạt động của dự án",
     TEST_CASE_COMPARISON_STALE:
-      "Bản so sánh hoặc nguồn đã thay đổi. Mở lại ca để đối chiếu trước khi duyệt.",
+      "Bản so sánh hoặc nguồn đã thay đổi. Mở lại ca để đối chiếu trước khi duyệt",
     TEST_CASE_STEPS_REQUIRED:
-      "Ca kiểm thử cần có ít nhất một bước với kết quả mong đợi trước khi duyệt.",
+      "Ca kiểm thử cần có ít nhất một bước với kết quả mong đợi trước khi duyệt",
     TEST_CASE_SOURCE_REVIEW_REQUIRED:
-      "Ca do AI đề xuất chưa có dẫn chứng nguồn. Đối chiếu nguồn và lưu lại trước khi duyệt.",
+      "Ca do AI đề xuất chưa có dẫn chứng nguồn. Đối chiếu nguồn và lưu lại trước khi duyệt",
     TEST_CASE_DUPLICATE_REVIEW_REQUIRED:
-      "Ca gần trùng với ca đang hiệu lực. Hãy loại ca trùng hoặc ghi lý do giữ riêng trước khi duyệt.",
+      "Ca gần trùng với ca đang hiệu lực. Hãy loại ca trùng hoặc ghi lý do giữ riêng trước khi duyệt",
     TEST_CASE_BATCH_DUPLICATE_REVIEW_REQUIRED:
-      "Các ca được chọn có nội dung gần trùng. Bỏ ca trùng hoặc ghi lý do giữ riêng trước khi duyệt.",
+      "Các ca được chọn có nội dung gần trùng. Bỏ ca trùng hoặc ghi lý do giữ riêng trước khi duyệt",
     TEST_CASE_BATCH_SIZE_INVALID:
-      "Nhóm cần có từ 1 đến 100 ca. Hãy điều chỉnh lựa chọn rồi thử lại.",
+      "Nhóm cần có từ 1 đến 100 ca. Hãy điều chỉnh lựa chọn rồi thử lại",
     TEST_CASE_BATCH_SOURCE_MISMATCH:
-      "Các ca trong nhóm không cùng lượt đề xuất. Tải lại danh sách và chọn lại nhóm cần xử lý.",
+      "Các ca trong nhóm không cùng lượt đề xuất. Tải lại danh sách và chọn lại nhóm cần xử lý",
     TEST_CASE_BATCH_TARGET_CONFLICT:
-      "Có nhiều đề xuất cùng nhắm đến một ca gốc. Chỉ chọn một đề xuất cho mỗi ca trong lượt này.",
+      "Có nhiều đề xuất cùng nhắm đến một ca gốc. Chỉ chọn một đề xuất cho mỗi ca trong lượt này",
     TEST_CASE_LINT_BLOCKED:
-      "Ca kiểm thử còn lỗi nội dung bắt buộc. Mở ca, xử lý các mục được đánh dấu rồi gửi duyệt lại.",
+      "Ca kiểm thử còn lỗi nội dung bắt buộc. Mở ca, xử lý các mục được đánh dấu rồi gửi duyệt lại",
     TEST_CASE_EVIDENCE_CHANGED:
-      "Yêu cầu hoặc tiêu chí nguồn đã thay đổi. Tải lại ca, đối chiếu nguồn mới rồi lưu lại.",
+      "Yêu cầu hoặc tiêu chí nguồn đã thay đổi. Tải lại ca, đối chiếu nguồn mới rồi lưu lại",
     TEST_CASE_EVIDENCE_REQUIRED:
-      "Ca do AI tạo cần liên kết với yêu cầu và có dẫn chứng nguồn trước khi lưu.",
+      "Ca do AI tạo cần liên kết với yêu cầu và có dẫn chứng nguồn trước khi lưu",
     TEST_CASE_EXISTING_KEY_REQUIRES_VERSION_DRAFT:
-      "Mã ca này đã tồn tại. Hãy tạo bản nháp phiên bản mới cho ca hiện có thay vì tạo ca khác cùng mã.",
-    TEST_CASE_IMPACT_REASON_REQUIRED: "Hãy ghi lý do đánh giá ảnh hưởng trước khi duyệt ca.",
+      "Mã ca này đã tồn tại. Hãy tạo bản nháp phiên bản mới cho ca hiện có thay vì tạo ca khác cùng mã",
+    TEST_CASE_IMPACT_REASON_REQUIRED: "Hãy ghi lý do đánh giá ảnh hưởng trước khi duyệt ca",
     TEST_CASE_MERGE_INCOMPLETE:
-      "Không xác minh được bản ghép đã lưu. Tải lại ca để kiểm tra trạng thái trước khi thao tác tiếp.",
+      "Không xác minh được bản ghép đã lưu. Tải lại ca để kiểm tra trạng thái trước khi thao tác tiếp",
     TEST_CASE_MERGE_INVALID:
-      "Bản ghép chưa hợp lệ. Kiểm tra nội dung, các bước và nguồn dẫn rồi lưu lại.",
+      "Bản ghép chưa hợp lệ. Kiểm tra nội dung, các bước và nguồn dẫn rồi lưu lại",
     TEST_CASE_OWNER_NOT_ACTIVE_PROJECT_MEMBER:
-      "Người phụ trách phải là thành viên đang hoạt động của dự án.",
+      "Người phụ trách phải là thành viên đang hoạt động của dự án",
     TEST_CASE_STEP_IDENTITY_CONFLICT:
-      "Một bước đã bị thay đổi trong lúc ghép. Tải lại ca và đối chiếu các bước trước khi lưu.",
+      "Một bước đã bị thay đổi trong lúc ghép. Tải lại ca và đối chiếu các bước trước khi lưu",
     TEST_CASE_VERSION_RESOLUTION_INVALID:
-      "Thông tin tạo phiên bản chưa hợp lệ. Kiểm tra ca đích và lý do thay đổi rồi thử lại.",
+      "Thông tin tạo phiên bản chưa hợp lệ. Kiểm tra ca đích và lý do thay đổi rồi thử lại",
     TEST_CASE_VERSION_TARGET_CHANGED:
-      "Ca đích đã thay đổi sau khi tạo bản xem trước. Tạo lại bản xem trước trước khi lưu.",
+      "Ca đích đã thay đổi sau khi tạo bản xem trước. Tạo lại bản xem trước trước khi lưu",
     TEST_CASE_CURRENT_VERSION_MISSING:
-      "Không tìm thấy phiên bản ca đang hiệu lực để đối chiếu trùng lặp. Nhóm chưa được duyệt; hãy tải lại và báo quản trị viên nếu lỗi còn tiếp diễn.",
+      "Không tìm thấy phiên bản ca đang hiệu lực để đối chiếu trùng lặp. Nhóm chưa được duyệt; hãy tải lại và báo quản trị viên nếu lỗi còn tiếp diễn",
     TEST_CASE_BASE_VERSION_CHANGED:
-      "Ca gốc đã được cập nhật trong lúc rà soát. Tải lại, đối chiếu phiên bản mới rồi duyệt lại.",
+      "Ca gốc đã được cập nhật trong lúc rà soát. Tải lại, đối chiếu phiên bản mới rồi duyệt lại",
     TEST_CASE_PARENT_VERSION_CHANGED:
-      "Ca đã có phiên bản gốc mới. Tải lại và đối chiếu trước khi duyệt.",
+      "Ca đã có phiên bản gốc mới. Tải lại và đối chiếu trước khi duyệt",
     TEST_CASE_VERSION_CONFLICT:
-      "Phiên bản ca vừa thay đổi. Nhóm chưa được duyệt; tải lại rồi đối chiếu lại.",
+      "Phiên bản ca vừa thay đổi. Nhóm chưa được duyệt; tải lại rồi đối chiếu lại",
     TEST_CASE_VERSION_HISTORY_INVALID:
-      "Lịch sử phiên bản của ca không nhất quán. Ca chưa được duyệt; cần kiểm tra dữ liệu trước khi tiếp tục.",
+      "Lịch sử phiên bản của ca không nhất quán. Ca chưa được duyệt; cần kiểm tra dữ liệu trước khi tiếp tục",
     TEST_CASE_APPROVAL_INCOMPLETE:
-      "Không xác minh được kết quả duyệt nhóm. Hãy tải lại danh sách để kiểm tra trạng thái từng ca trước khi thao tác tiếp.",
+      "Không xác minh được kết quả duyệt nhóm. Hãy tải lại danh sách để kiểm tra trạng thái từng ca trước khi thao tác tiếp",
     MULTIPLE_DRAFTS_FOR_SAME_TEST_CASE:
-      "Nhóm có nhiều bản nháp cho cùng một mã ca. Chỉ chọn một bản cho mỗi mã rồi thử lại.",
-    EXECUTION_RESULT_NOT_RECORDED: "Cần lưu kết quả kiểm thử trước khi yêu cầu AI phân tích.",
+      "Nhóm có nhiều bản nháp cho cùng một mã ca. Chỉ chọn một bản cho mỗi mã rồi thử lại",
+    EXECUTION_RESULT_NOT_RECORDED: "Cần lưu kết quả kiểm thử trước khi yêu cầu AI phân tích",
     EXECUTION_ASSISTANCE_UNAVAILABLE:
-      "Chưa thể phân tích kết quả lúc này. Kết quả kiểm thử vẫn được giữ nguyên; bạn có thể thử lại.",
+      "Chưa thể phân tích kết quả lúc này. Kết quả kiểm thử vẫn được giữ nguyên; bạn có thể thử lại",
     EXECUTION_ASSISTANCE_RESPONSE_INVALID:
-      "AI trả về đề xuất không đầy đủ. Không có thay đổi nào được áp dụng.",
+      "AI trả về đề xuất không đầy đủ. Không có thay đổi nào được áp dụng",
     EXECUTION_ASSISTANCE_DEFECT_STATUS_INVALID:
-      "Chỉ có thể đề xuất bản nháp lỗi cho kết quả Không đạt hoặc Bị chặn.",
+      "Chỉ có thể đề xuất bản nháp lỗi cho kết quả Không đạt hoặc Bị chặn",
     EXECUTION_ASSISTANCE_REFERENCE_INVALID:
-      "AI dẫn đến nguồn ngoài kết quả kiểm thử này. Không có đề xuất nào được áp dụng.",
+      "AI dẫn đến nguồn ngoài kết quả kiểm thử này. Không có đề xuất nào được áp dụng",
     EXECUTION_ASSISTANCE_STEP_INVALID:
-      "AI đề cập đến bước không tồn tại trong phiên bản ca kiểm thử đang chạy.",
+      "AI đề cập đến bước không tồn tại trong phiên bản ca kiểm thử đang chạy",
     EXECUTION_ASSISTANCE_GROUNDING_INVALID:
-      "Có trích dẫn không khớp với nội dung đã lưu. Không có đề xuất nào được áp dụng.",
-    EXECUTION_ASSISTANCE_GROUNDING_REQUIRED: "Đề xuất thiếu căn cứ từ kết quả kiểm thử đã lưu.",
-    EXECUTION_ASSISTANCE_EVIDENCE_REQUIRED: "Chưa có nội dung kết quả kiểm thử để phân tích.",
+      "Có trích dẫn không khớp với nội dung đã lưu. Không có đề xuất nào được áp dụng",
+    EXECUTION_ASSISTANCE_GROUNDING_REQUIRED: "Đề xuất thiếu căn cứ từ kết quả kiểm thử đã lưu",
+    EXECUTION_ASSISTANCE_EVIDENCE_REQUIRED: "Chưa có nội dung kết quả kiểm thử để phân tích",
     EXECUTION_ASSISTANCE_SCOPE_TOO_LARGE:
-      "Nội dung kết quả vượt giới hạn phân tích. Hãy bổ sung kết quả ngắn gọn hơn.",
+      "Nội dung kết quả vượt giới hạn phân tích. Hãy bổ sung kết quả ngắn gọn hơn",
     EXECUTION_ASSISTANCE_SOURCE_CHANGED:
-      "Kết quả kiểm thử đã thay đổi trong lúc phân tích. Hãy yêu cầu phân tích lại.",
+      "Kết quả kiểm thử đã thay đổi trong lúc phân tích. Hãy yêu cầu phân tích lại",
   };
   if (aiRunMessages[reason?.code]) return aiRunMessages[reason.code];
   if (
@@ -989,5 +994,5 @@ export function messageOf(reason) {
   if (message && message !== reason?.code && !/^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/.test(message)) {
     return message;
   }
-  return "Không thể hoàn tất thao tác. Tải lại dữ liệu rồi thử lại.";
+  return "Không thể hoàn tất thao tác. Tải lại dữ liệu rồi thử lại";
 }

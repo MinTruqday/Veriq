@@ -41,6 +41,11 @@ export const executionTestingApi = {
   },
   createPlan: (payload) =>
     testingRequest("/ke-hoach-kiem-thu", { method: "POST", body: JSON.stringify(payload) }),
+  suggestTestPlan: (projectId, payload) =>
+    testingRequest(`/du-an/${projectId}/ke-hoach-kiem-thu/ai/de-xuat`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   analyzeExecutionResult: (projectId, runId, resultId) =>
     testingRequest(
       `/du-an/${projectId}/lan-chay-kiem-thu/${runId}/ket-qua/${resultId}/ai/phan-tich`,

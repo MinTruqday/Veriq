@@ -136,6 +136,8 @@ def permissions_for_role(role: str, settings_value: dict | None = None):
     denied_overrides = {canonical_permission(item) for item in overrides.get("deny", [])}
     permissions.update(item for item in allowed_overrides if item in known_permissions)
     permissions.difference_update(denied | denied_overrides)
+    if normalized in {"BA", "TESTER"}:
+        permissions.discard("testcase.approve")
     return permissions
 
 
@@ -208,7 +210,9 @@ def project_membership_permissions(project, membership, user_is_admin=False):
     if not membership or membership.get("status") != "ACTIVE":
         return set()
     if membership.get("user_id") == project.get("project_lead_user_id"):
-        return project_permissions()
+        permissions = project_permissions()
+        permissions.discard("testcase.approve")
+        return permissions
     return permissions_for_membership(membership, project.get("settings"))
 
 

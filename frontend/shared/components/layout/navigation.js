@@ -83,6 +83,7 @@ export function testDesignSectionItems(projectId) {
 }
 
 export function projectIdFromPath(pathname) {
+  if (pathname === `${PROJECTS_ROUTE}/tao-moi`) return "";
   const match = pathname.match(/^\/du-an\/([^/]+)/);
   return match?.[1] || "";
 }

@@ -502,16 +502,14 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                     )}
                   </dl>
                   <blockquote className="rounded-control bg-surface-quiet p-3 text-[13px] leading-5 text-ink-muted">
-                    <p className="line-clamp-4 break-words">
-                      {item.text || "Không có đoạn trích."}
-                    </p>
+                    <p className="line-clamp-4 break-words">{item.text || "Không có đoạn trích"}</p>
                   </blockquote>
                 </li>
               ))}
             </ul>
           ) : (
             <p className="p-5 text-sm text-ink-muted" role="status">
-              Không tìm thấy dữ liệu phù hợp.
+              Không tìm thấy dữ liệu phù hợp
             </p>
           )}
         </Panel>
@@ -570,7 +568,7 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                 const values = new FormData(form);
                 const content = documentToMarkdown(sourceContent);
                 if (!content) {
-                  setSourceContentError("Nhập nội dung tài liệu trước khi lưu.");
+                  setSourceContentError("Nhập nội dung tài liệu trước khi lưu");
                   return;
                 }
                 try {
@@ -666,12 +664,12 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                     </select>
                     {!canReadMembers && (
                       <span className="mt-1 block text-xs text-ink-muted">
-                        Cần quyền xem thành viên để phân công người phụ trách.
+                        Cần quyền xem thành viên để phân công người phụ trách
                       </span>
                     )}
                     {sourceOptionErrors.members && (
                       <span className="mt-1 block text-xs text-danger" role="alert">
-                        Không thể tải danh sách thành viên.
+                        Không thể tải danh sách thành viên
                       </span>
                     )}
                   </label>
@@ -699,12 +697,12 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                     </select>
                     {!canReadReleases && (
                       <span className="mt-1 block text-xs text-ink-muted">
-                        Cần quyền xem bản phát hành để liên kết tài liệu.
+                        Cần quyền xem bản phát hành để liên kết tài liệu
                       </span>
                     )}
                     {sourceOptionErrors.releases && (
                       <span className="mt-1 block text-xs text-danger" role="alert">
-                        Không thể tải danh sách bản phát hành.
+                        Không thể tải danh sách bản phát hành
                       </span>
                     )}
                   </label>
@@ -1001,7 +999,7 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
             ) : (
               <div className="grid justify-items-start gap-3 p-5">
                 <p className="text-sm text-ink-muted" role="status">
-                  Không có tài liệu tham chiếu khớp với bộ lọc.
+                  Không có tài liệu tham chiếu khớp với bộ lọc
                 </p>
                 <button
                   className="secondary-button"
@@ -1049,7 +1047,7 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
               <div className="mt-3 space-y-3 text-sm">
                 <p className="text-ink-muted">
                   Đây là các phần mà bộ phân tích nhận diện được trong tài liệu. Quan hệ cha–con chỉ
-                  hiển thị khi nguồn cung cấp; một số tài liệu không có cấu trúc phân cấp.
+                  hiển thị khi nguồn cung cấp; một số tài liệu không có cấu trúc phân cấp
                 </p>
                 {!sourceStructurePage && !sourceStructureLoading && (
                   <button
@@ -1211,7 +1209,7 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                     {canManage && sourceStructurePage.parse_report?.unprocessed_block_count > 0 && (
                       <p className="rounded-md border border-border p-3 text-sm text-ink-muted">
                         Có {sourceStructurePage.parse_report.unprocessed_block_count} phần chưa được
-                        trích xuất đầy đủ. Hãy đối chiếu với tệp gốc.
+                        trích xuất đầy đủ. Hãy đối chiếu với tệp gốc
                       </p>
                     )}
                     {canManage &&
@@ -1221,7 +1219,7 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                         <div className="rounded-md border border-border p-3 text-sm">
                           <p className="font-medium">Chi tiết nhận dạng chữ trong hình</p>
                           <p className="mt-1 text-ink-muted">
-                            Thông tin hỗ trợ người quản lý kiểm tra quá trình đọc tài liệu.
+                            Thông tin hỗ trợ người quản lý kiểm tra quá trình đọc tài liệu
                           </p>
                           <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
                             {sourceStructurePage.parse_report.unprocessed_blocks
@@ -1248,7 +1246,6 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                   {metadataPage.next_cursor
                     ? "; còn nội dung phù hợp"
                     : "; đã hiển thị hết kết quả"}
-                  .
                 </p>
                 {metadataPage.items.map((chunk) => {
                   const metadata = chunk.metadata || {};
@@ -1595,7 +1592,7 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                           </ol>
                         ) : (
                           <p className="mt-2 text-sm text-ink-muted">
-                            Không có liên kết đến phần nguồn cho đoạn này.
+                            Không có liên kết đến phần nguồn cho đoạn này
                           </p>
                         )}
                       </details>
@@ -1616,7 +1613,7 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
             ) : !metadataError ? (
               <p className="rounded-lg border border-border p-5 text-sm text-ink-muted">
                 Chưa tìm thấy nội dung phù hợp cho phiên bản này. Tài liệu có thể chưa sẵn sàng để
-                tìm kiếm hoặc chưa có thông tin chi tiết.
+                tìm kiếm hoặc chưa có thông tin chi tiết
               </p>
             ) : null}
           </div>

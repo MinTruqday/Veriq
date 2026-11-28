@@ -127,7 +127,7 @@ function ReadValue({ value, kind, members = [] }) {
         ))}
       </ul>
     ) : (
-      <p className="text-ink-muted">Chưa có tệp đính kèm.</p>
+      <p className="text-ink-muted">Chưa có tệp đính kèm</p>
     );
   if (kind === "reference_list") {
     const count = Array.isArray(value) ? value.length : 0;
@@ -281,7 +281,7 @@ function AttachmentEditor({ value = [], onChange, disabled = false }) {
     try {
       const response = await uploadAssetAPI(file);
       if (!response?.data || typeof response.data !== "object") {
-        throw new Error("Kho tệp không trả về thông tin tệp hợp lệ.");
+        throw new Error("Kho tệp không trả về thông tin tệp hợp lệ");
       }
       onChange((current = []) => [...current, response.data]);
     } catch (reason) {
@@ -329,7 +329,7 @@ function AttachmentEditor({ value = [], onChange, disabled = false }) {
           ))}
         </ul>
       )}
-      <p className="text-xs text-ink-muted">Bỏ tệp khỏi bản ghép không xóa tệp khỏi kho lưu trữ.</p>
+      <p className="text-xs text-ink-muted">Bỏ tệp khỏi bản ghép không xóa tệp khỏi kho lưu trữ</p>
     </div>
   );
 }
@@ -446,7 +446,7 @@ function FieldEditor({
         </button>
       </div>
     ) : (
-      <p className="text-sm text-ink-muted">Không có kịch bản BDD.</p>
+      <p className="text-sm text-ink-muted">Không có kịch bản BDD</p>
     );
   if (field.kind === "document")
     return (
@@ -566,7 +566,7 @@ function EvidenceValue({ value }) {
   const quotes = value?.evidence_quotes || [];
   const references = value?.evidence_refs || [];
   if (!sources.length && !quotes.length && !references.length)
-    return <p className="text-sm text-ink-muted">Chưa có bằng chứng nguồn được lưu.</p>;
+    return <p className="text-sm text-ink-muted">Chưa có bằng chứng nguồn được lưu</p>;
   return (
     <div className="space-y-3 text-sm">
       {sources.map((source, index) => (
@@ -579,7 +579,7 @@ function EvidenceValue({ value }) {
             {source.block_id ? " · Có vị trí trong tài liệu" : ""}
           </p>
           <p className="mt-2 whitespace-pre-wrap break-words">
-            {source.text || "Không lưu đoạn trích."}
+            {source.text || "Không lưu đoạn trích"}
           </p>
         </article>
       ))}
@@ -611,7 +611,7 @@ function CoverageLineageValue({ value, stale = false }) {
   const sources = value?.source_evidence || [];
   if (!snapshotIds.length && !sources.length) {
     return (
-      <p className="text-sm text-ink-muted">Chưa có dữ liệu nguồn được lưu tại thời điểm tạo.</p>
+      <p className="text-sm text-ink-muted">Chưa có dữ liệu nguồn được lưu tại thời điểm tạo</p>
     );
   }
   return (
@@ -619,7 +619,7 @@ function CoverageLineageValue({ value, stale = false }) {
       {stale && (
         <p className="rounded-control border border-warning/40 bg-warning-soft p-3 text-warning">
           Nội dung ca đã thay đổi. Căn cứ và độ phủ dưới đây thuộc bản trước khi sửa, không còn là
-          bằng chứng hiệu lực; khi lưu, hệ thống sẽ yêu cầu đối chiếu lại trước khi duyệt.
+          bằng chứng hiệu lực; khi lưu, hệ thống sẽ yêu cầu đối chiếu lại trước khi duyệt
         </p>
       )}
       <div>
@@ -636,7 +636,7 @@ function CoverageLineageValue({ value, stale = false }) {
             })}
           </ul>
         ) : (
-          <p className="mt-1 text-ink-muted">Không lưu tiêu chí chấp nhận tại thời điểm tạo.</p>
+          <p className="mt-1 text-ink-muted">Không lưu tiêu chí chấp nhận tại thời điểm tạo</p>
         )}
       </div>
     </div>
@@ -703,7 +703,7 @@ export default function TestCaseCompareWorkspace({
       })
       .catch(() => {
         if (active) {
-          setMembersError("Không tải được danh sách thành viên dự án.");
+          setMembersError("Không tải được danh sách thành viên dự án");
           setMembersLoaded(false);
         }
       });
@@ -733,7 +733,7 @@ export default function TestCaseCompareWorkspace({
       setChoices([]);
       setDirty(false);
       setRevisionStale(false);
-      setNotice("Đã tải lại bản gốc, nguồn và đề xuất mới nhất.");
+      setNotice("Đã tải lại bản gốc, nguồn và đề xuất mới nhất");
       pendingRequest.current = null;
       try {
         if (recoveryKey) window.sessionStorage.removeItem(recoveryKey);
@@ -786,8 +786,8 @@ export default function TestCaseCompareWorkspace({
           setRevisionStale(!sameComparison);
           setNotice(
             sameComparison
-              ? "Đã khôi phục bản ghép chưa lưu trên thẻ trình duyệt này."
-              : "Đã khôi phục nội dung đang sửa, nhưng nguồn hoặc bản nháp đã đổi. Hãy đối chiếu lại trước khi lưu.",
+              ? "Đã khôi phục bản ghép chưa lưu trên thẻ trình duyệt này"
+              : "Đã khôi phục nội dung đang sửa, nhưng nguồn hoặc bản nháp đã đổi. Hãy đối chiếu lại trước khi lưu",
           );
         } else {
           setResult(copyValue(normalized.draft));
@@ -823,7 +823,7 @@ export default function TestCaseCompareWorkspace({
         }),
       );
     } catch {
-      setNotice("Không thể lưu bản phục hồi trên thẻ này; hãy lưu bản ghép lên hệ thống.");
+      setNotice("Không thể lưu bản phục hồi trên thẻ này; hãy lưu bản ghép lên hệ thống");
     }
   }, [choices, context, dirty, draftId, recoveryKey, result]);
 
@@ -896,7 +896,7 @@ export default function TestCaseCompareWorkspace({
           stale_reasons: [...new Set([...(current?.stale_reasons || []), reason.code])],
         }));
         setError(
-          "Nguồn hoặc bản nháp đã đổi. Nội dung đang nhập được giữ nguyên; hãy tải lại và đối chiếu trước khi lưu tiếp.",
+          "Nguồn hoặc bản nháp đã đổi. Nội dung đang nhập được giữ nguyên; hãy tải lại và đối chiếu trước khi lưu tiếp",
         );
       } else {
         setError(messageOf(reason));
@@ -916,7 +916,7 @@ export default function TestCaseCompareWorkspace({
     try {
       window.sessionStorage.removeItem(recoveryKey);
     } catch {}
-    setNotice("Đã lưu bản ghép. Ca cần được rà soát lại trước khi duyệt.");
+    setNotice("Đã lưu bản ghép. Ca cần được rà soát lại trước khi duyệt");
     onSaved(saved.draft);
     try {
       const refreshed = await testingApi.compareTestDraft(requestedDraftId);
@@ -936,7 +936,7 @@ export default function TestCaseCompareWorkspace({
         ],
       }));
       setError(
-        "Bản ghép đã được lưu, nhưng chưa tải được phiên bản mới nhất. Tải lại dữ liệu đối chiếu trước khi tiếp tục sửa hoặc duyệt.",
+        "Bản ghép đã được lưu, nhưng chưa tải được phiên bản mới nhất. Tải lại dữ liệu đối chiếu trước khi tiếp tục sửa hoặc duyệt",
       );
     } finally {
       if (requestId === comparisonRequest.current) setSaving(false);
@@ -983,7 +983,7 @@ export default function TestCaseCompareWorkspace({
   const proposal = context?.proposal;
   const stale = revisionStale || !!context?.stale_reasons?.length;
   const lineageChanged = choices.some((choice) => {
-    const field = choice.field.startsWith("steps.") ? "steps" : choice.field;
+    const field = choice.field.startsWith("steps") ? "steps" : choice.field;
     return (
       lineageSensitiveFields.has(choice.field) &&
       JSON.stringify(result?.[field] ?? null) !== JSON.stringify(context?.draft?.[field] ?? null)
@@ -1040,7 +1040,7 @@ export default function TestCaseCompareWorkspace({
         <ModalTitle>So sánh và ghép ca kiểm thử</ModalTitle>
         <p className="mt-2 text-sm text-ink-muted">
           {context?.draft?.test_case_key} · Bản gốc và đề xuất AI chỉ đọc. Bản kết quả được lưu
-          thành nháp, không tự duyệt.
+          thành nháp, không tự duyệt
         </p>
       </ModalHeader>
       <div className="min-h-0 min-w-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-4 sm:p-6">
@@ -1082,7 +1082,7 @@ export default function TestCaseCompareWorkspace({
                 className="rounded-control border border-amber-300 bg-amber-50 p-3 text-sm"
               >
                 Nguồn hoặc phiên bản gốc không còn hiện hành. Không thể lưu/duyệt đề xuất này; cần
-                tạo lại đề xuất từ nguồn đã cập nhật.
+                tạo lại đề xuất từ nguồn đã cập nhật
               </p>
             )}
             {stale && (
@@ -1093,8 +1093,8 @@ export default function TestCaseCompareWorkspace({
             {!context.proposal_available && (
               <p className="text-sm text-ink-muted">
                 {context.draft.origin === "ai_generated"
-                  ? "Bản nháp cũ không lưu đề xuất AI ban đầu. Hệ thống không coi bản đã chỉnh sửa là bản AI gốc."
-                  : "Ca này không có đề xuất AI được lưu; vẫn có thể đối chiếu nguồn và chỉnh bản kết quả."}
+                  ? "Bản nháp cũ không lưu đề xuất AI ban đầu. Hệ thống không coi bản đã chỉnh sửa là bản AI gốc"
+                  : "Ca này không có đề xuất AI được lưu; vẫn có thể đối chiếu nguồn và chỉnh bản kết quả"}
               </p>
             )}
             <div className="flex flex-wrap gap-2">
@@ -1144,11 +1144,11 @@ export default function TestCaseCompareWorkspace({
                         </blockquote>
                       ))
                     ) : (
-                      <p className="text-sm text-ink-muted">Chưa có đặc tả nguồn liên kết.</p>
+                      <p className="text-sm text-ink-muted">Chưa có đặc tả nguồn liên kết</p>
                     )}
                   </div>
                 ) : (
-                  <p className="mt-3 text-sm text-ink-muted">Không có phiên bản gốc.</p>
+                  <p className="mt-3 text-sm text-ink-muted">Không có phiên bản gốc</p>
                 )}
               </section>
               <section className="min-w-0 rounded-control border border-violet-300 bg-violet-50/60 p-4">
@@ -1164,11 +1164,11 @@ export default function TestCaseCompareWorkspace({
                       trích dẫn nguồn
                     </p>
                     <p className="text-xs text-ink-muted">
-                      Bản đề xuất gốc được giữ nguyên khi chỉnh kết quả.
+                      Bản đề xuất gốc được giữ nguyên khi chỉnh kết quả
                     </p>
                   </div>
                 ) : (
-                  <p className="mt-3 text-sm text-ink-muted">Không lưu bản đề xuất AI.</p>
+                  <p className="mt-3 text-sm text-ink-muted">Không lưu bản đề xuất AI</p>
                 )}
               </section>
               <section className="min-w-0 rounded-control border border-brand/30 bg-brand/5 p-4 xl:col-span-2 2xl:col-span-1">
@@ -1182,7 +1182,7 @@ export default function TestCaseCompareWorkspace({
                     {result.test_case_key} · {result.steps?.length || 0} bước · Bản nháp hiện tại
                   </p>
                   <p className="text-xs text-ink-muted">
-                    {editable ? "Chọn từng trường hoặc tự chỉnh sửa bên dưới." : "Chế độ chỉ đọc."}
+                    {editable ? "Chọn từng trường hoặc tự chỉnh sửa bên dưới" : "Chế độ chỉ đọc"}
                   </p>
                 </div>
               </section>
@@ -1190,8 +1190,8 @@ export default function TestCaseCompareWorkspace({
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-control bg-surface-quiet p-3">
               <p className="text-sm" aria-live="polite">
                 {proposal
-                  ? `${changedFields.length} / ${comparableFields.length} trường có khác biệt giữa bản gốc và đề xuất.`
-                  : "Không có đề xuất AI để so sánh trường; bạn vẫn có thể chỉnh bản kết quả."}
+                  ? `${changedFields.length} / ${comparableFields.length} trường có khác biệt giữa bản gốc và đề xuất`
+                  : "Không có đề xuất AI để so sánh trường; bạn vẫn có thể chỉnh bản kết quả"}
               </p>
               <button
                 type="button"
@@ -1316,7 +1316,7 @@ export default function TestCaseCompareWorkspace({
                 <h4 className="font-semibold">Nguồn dẫn và trích dẫn</h4>
                 <p className="text-sm text-ink-muted">
                   Đây là dấu vết căn cứ được lưu cùng ca; không chỉnh sửa nội dung trích dẫn tại màn
-                  ghép.
+                  ghép
                 </p>
               </div>
               <div className="grid min-w-0 gap-3 xl:grid-cols-2 2xl:grid-cols-3">
@@ -1353,7 +1353,7 @@ export default function TestCaseCompareWorkspace({
                 <h4 className="font-semibold">Liên kết độ phủ và căn cứ sinh ca</h4>
                 <p className="text-sm text-ink-muted">
                   Đây là dữ liệu truy vết chỉ đọc. Sửa nội dung kiểm thử sẽ vô hiệu hóa căn cứ và độ
-                  phủ hiện tại khi lưu.
+                  phủ hiện tại khi lưu
                 </p>
               </div>
               <div className="grid min-w-0 gap-3 xl:grid-cols-2 2xl:grid-cols-3">
@@ -1429,7 +1429,7 @@ export default function TestCaseCompareWorkspace({
                               </>
                             ) : (
                               <div className="space-y-2">
-                                <p className="text-ink-muted">Không có bước này.</p>
+                                <p className="text-ink-muted">Không có bước này</p>
                                 {editable && final && (
                                   <button
                                     className="secondary-button"
@@ -1610,7 +1610,7 @@ export default function TestCaseCompareWorkspace({
                             </>
                           ) : (
                             <p className="text-sm text-ink-muted">
-                              Bước không nằm trong bản kết quả.
+                              Bước không nằm trong bản kết quả
                             </p>
                           )}
                         </div>
@@ -1647,7 +1647,7 @@ export default function TestCaseCompareWorkspace({
               <section className="space-y-2 rounded-control border border-amber-300 bg-amber-50 p-4">
                 <h4 className="font-semibold">Ca đã có nội dung gần giống</h4>
                 <p className="text-sm">
-                  Rà soát các ca này trước khi duyệt để tránh tạo trùng ngoài ý muốn.
+                  Rà soát các ca này trước khi duyệt để tránh tạo trùng ngoài ý muốn
                 </p>
                 <ul className="list-disc space-y-1 pl-5 text-sm">
                   {context.duplicates.map((item) => (
@@ -1670,7 +1670,7 @@ export default function TestCaseCompareWorkspace({
                   />
                 </label>
                 <p className="text-xs text-ink-muted">
-                  Cần ghi lý do trước khi người có quyền duyệt xem xét ca gần giống ca đã có.
+                  Cần ghi lý do trước khi người có quyền duyệt xem xét ca gần giống ca đã có
                 </p>
               </section>
             )}
@@ -1680,7 +1680,7 @@ export default function TestCaseCompareWorkspace({
                 <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
                   {context.findings.map((finding, index) => (
                     <li key={index}>
-                      {finding.message || finding.suggestion || "Cần rà soát nội dung ca kiểm thử."}
+                      {finding.message || finding.suggestion || "Cần rà soát nội dung ca kiểm thử"}
                     </li>
                   ))}
                 </ul>
@@ -1692,10 +1692,10 @@ export default function TestCaseCompareWorkspace({
       <ModalFooter className="sm:flex-row sm:justify-between">
         <p aria-live="polite" className="text-sm text-ink-muted sm:mr-auto">
           {stale
-            ? "Nguồn đã thay đổi; cần tải lại và đối chiếu trước khi lưu."
+            ? "Nguồn đã thay đổi; cần tải lại và đối chiếu trước khi lưu"
             : dirty
-              ? "Có thay đổi chưa lưu. Bản ghép sẽ ở trạng thái nháp."
-              : "Chưa có thay đổi chưa lưu."}
+              ? "Có thay đổi chưa lưu. Bản ghép sẽ ở trạng thái nháp"
+              : "Chưa có thay đổi chưa lưu"}
         </p>
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
           {stale && (

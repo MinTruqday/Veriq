@@ -71,6 +71,11 @@ class AnnouncementService:
         profile = await AuthenticationClient.get(data.target_user_id)
         if not profile:
             raise HTTPException(status_code=404, detail="Không tìm thấy người nhận thông báo")
+        if profile.get("notifications_enabled") is False:
+            return {"id": None, "skipped": True}
+        settings = await AnnouncementService.settings(data.target_user_id)
+        if not settings.get("enable_system_notifications", True):
+            return {"id": None, "skipped": True}
         notif_id = str(uuid.uuid4())
         doc = {
             "_id": notif_id,

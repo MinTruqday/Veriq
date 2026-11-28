@@ -25,7 +25,7 @@ export default function RequirementHistoryPanel({
               key: "version",
               label: "Phiên bản",
               align: "center",
-              render: (item) => `v${item.version}`,
+              render: (item) => <span className="whitespace-nowrap">v{item.version}</span>,
             },
             { key: "title", label: "Tên" },
             {
@@ -120,7 +120,7 @@ export default function RequirementHistoryPanel({
           </div>
           <RequirementVersionDiff
             changes={comparison.changes || []}
-            empty="Hai phiên bản không có khác biệt ngữ nghĩa."
+            empty="Hai phiên bản không có khác biệt ngữ nghĩa"
           />
         </Panel>
       )}

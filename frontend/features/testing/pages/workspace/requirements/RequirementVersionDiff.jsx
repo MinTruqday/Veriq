@@ -22,7 +22,7 @@ function changeLabel(type) {
   return changeLabels[normalized] || "Khác biệt";
 }
 
-export default function RequirementVersionDiff({ changes = [], empty = "Không có khác biệt." }) {
+export default function RequirementVersionDiff({ changes = [], empty = "Không có khác biệt" }) {
   if (!changes.length) {
     return <p className="p-5 text-sm text-ink-muted">{empty}</p>;
   }

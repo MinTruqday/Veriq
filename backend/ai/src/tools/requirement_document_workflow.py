@@ -331,8 +331,7 @@ def source_extraction_warnings(document_ids, documents):
         report = document.get("parse_report")
         report = report if isinstance(report, dict) else {}
         items = report.get("extraction_warnings")
-        if not isinstance(items, list) or not items:
-            continue
+        items = items if isinstance(items, list) else []
         if len(warnings) >= 500:
             truncated = True
             break
@@ -355,6 +354,42 @@ def source_extraction_warnings(document_ids, documents):
             warnings.append(warning)
         if len(items) > warning_limit:
             truncated = True
+        content = document.get("normalized_content")
+        if isinstance(content, str):
+            declared_match = re.search(
+                r"\bpage\s+\d+\s+of\s+(\d+)\b|\btrang\s+\d+\s+(?:trên|of)\s+(\d+)\b",
+                content,
+                re.IGNORECASE,
+            )
+            extracted_match = re.search(
+                r"\b(?:extracted|trích xuất(?:\s+thành|\s+được)?)\s+(?:into\s+)?(\d+)\s+(?:pages?|trang)\b|\bđược\s+trích\s+xuất\s+thành\s+(\d+)\s+trang\b",
+                content,
+                re.IGNORECASE,
+            )
+            declared_count = next(
+                (int(value) for value in declared_match.groups() if value), None
+            ) if declared_match else None
+            extracted_count = next(
+                (int(value) for value in extracted_match.groups() if value), None
+            ) if extracted_match else None
+            if (
+                declared_count is not None
+                and extracted_count is not None
+                and declared_count != extracted_count
+            ):
+                warnings.append(
+                    {
+                        "document_id": str(document_id),
+                        "reason_code": "DECLARED_PAGE_COUNT_MISMATCH",
+                        "declared_page_count": declared_count,
+                        "extracted_page_count": extracted_count,
+                        "message": (
+                            f"Nguồn ghi tổng số {declared_count} trang nhưng phần trích xuất "
+                            f"ghi {extracted_count} trang; cần đối soát trước khi kết luận "
+                            "đã đọc đủ tài liệu"
+                        ),
+                    }
+                )
     return warnings, truncated
 
 
@@ -636,6 +671,15 @@ def safe_in_import_duplicate_resolution(candidate_match, earlier_matches, resolu
     return "link_source", match
 
 
+@with_tool_access(
+    ("requirement", "test_design"),
+    "MUTATE",
+    "requirement_document.extract",
+    owner_domain="requirement",
+    label="Phân tích tài liệu yêu cầu",
+    draft_only=True,
+    description="Analyze an authorized source document and create traceable draft requirements and test cases",
+)
 async def process_ingested_requirement_document(
     project_id: Annotated[str, Field(description="Testing project identifier")],
     document_id: Annotated[str, Field(min_length=1, description="Verified uploaded requirement document identifier")],
@@ -735,17 +779,37 @@ async def process_ingested_requirement_document(
         return await require_operation(method, path, config, payload, timeout=timeout)
 
     templates = await require_operation("GET", f"{project_path}/mau-yeu-cau", config)
-    reusable_templates = [
+    reusable_candidates = [
         item
         for item in response_items(templates)
         if item.get("project_id") == project_id
         and sorted(set(map(str, item.get("source_document_ids", []))))
         == source_document_ids
         and item.get("status") == "DRAFT"
-        and requirement_template_source_snapshot_matches(
-            item, source_document_ids, source_documents
-        )
     ]
+    reusable_templates = []
+    for candidate in reusable_candidates:
+        template_detail = candidate
+        if not isinstance(
+            (candidate.get("synthesis") or {}).get("source_snapshot"), dict
+        ):
+            template_id = str(candidate.get("_id") or "")
+            if not template_id:
+                continue
+            template_detail = await require_operation(
+                "GET", f"{project_path}/mau-yeu-cau/{template_id}", config
+            )
+        if (
+            template_detail.get("_id") == candidate.get("_id")
+            and template_detail.get("project_id") == project_id
+            and template_detail.get("status") == "DRAFT"
+            and sorted(set(map(str, template_detail.get("source_document_ids", []))))
+            == source_document_ids
+            and requirement_template_source_snapshot_matches(
+                template_detail, source_document_ids, source_documents
+            )
+        ):
+            reusable_templates.append(template_detail)
     template = max(
         reusable_templates,
         key=lambda item: str(item.get("updated_at") or item.get("created_at") or ""),
@@ -783,12 +847,23 @@ async def process_ingested_requirement_document(
         ):
             raise RuntimeError("SOURCE_CONFLICT_READBACK_INVALID")
         template = conflict_template
+        verified_source_facts, verified_source_evidence = (
+            verified_requirement_source_citations(
+                template.get("requirements") or [],
+                source_documents,
+                source_document_ids,
+            )
+        )
         return json.dumps(
             {
                 "status": "awaiting_decision",
                 "reason_code": "SOURCE_CONFLICT",
                 "template_id": template["_id"],
                 "conflicts": conflicts,
+                "source_extraction_warnings": extraction_warnings,
+                "source_extraction_warnings_truncated": extraction_warnings_truncated,
+                "source_facts": verified_source_facts,
+                "source_evidence": verified_source_evidence,
                 "verification": {
                     "status": "COMPLETED",
                     "project_id": project_id,

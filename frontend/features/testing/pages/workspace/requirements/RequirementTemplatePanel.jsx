@@ -13,17 +13,17 @@ function templateError(reason) {
     DOCUMENT_AI_ACCESS_DISABLED: "Tài liệu nguồn chưa được cho phép AI đọc",
     TEMPLATE_SOURCE_NOT_DECLARED: "Nguồn trích dẫn chưa được chọn cho mẫu",
     TEMPLATE_NOT_EDITABLE: "Mẫu này không còn ở trạng thái cho phép sửa",
-    TEMPLATE_VERSION_CONFLICT: "Mẫu đã thay đổi. Hãy tải lại trước khi lưu.",
+    TEMPLATE_VERSION_CONFLICT: "Mẫu đã thay đổi. Hãy tải lại trước khi lưu",
     TEMPLATE_CONFLICT_RESOLUTION_REQUIRED: "Cần giải quyết mọi mâu thuẫn trước khi lưu",
     TEMPLATE_CONFLICT_REQUIRES_REVIEW: "Cần rà soát và lưu quyết định cho các mâu thuẫn",
     TEMPLATE_HAS_NO_REQUIREMENTS: "Mẫu chưa có yêu cầu để nhập",
     TEMPLATE_REQUIREMENT_INCOMPLETE: "Yêu cầu còn thiếu thông tin tối thiểu hoặc nguồn dẫn",
     TEMPLATE_SOURCE_TOO_LARGE: "Tài liệu nguồn vượt giới hạn xử lý",
     TEMPLATE_SOURCE_EMPTY: "Tài liệu nguồn không có nội dung phù hợp",
-    TEMPLATE_SYNTHESIS_UNAVAILABLE: "AI chưa thể tổng hợp mẫu. Hãy thử lại.",
+    TEMPLATE_SYNTHESIS_UNAVAILABLE: "AI chưa thể tổng hợp mẫu. Hãy thử lại",
     TEMPLATE_AI_NO_REQUIREMENTS: "AI chưa rút được yêu cầu có nguồn dẫn hợp lệ",
     TEMPLATE_AI_UNSUPPORTED_CONTEXT: "Bối cảnh AI đề xuất không có trong nguồn đã chọn",
-    TEMPLATE_REVIEW_UNAVAILABLE: "AI chưa thể kiểm tra mẫu. Hãy thử lại.",
+    TEMPLATE_REVIEW_UNAVAILABLE: "AI chưa thể kiểm tra mẫu. Hãy thử lại",
     TEMPLATE_REVIEW_INVALID: "Kết quả kiểm tra mẫu không hợp lệ",
     TEMPLATE_REVIEW_UNSUPPORTED_SUGGESTION: "Đề xuất của AI không khớp tài liệu được phép đọc",
     TEMPLATE_EVIDENCE_INVALID: "Trích dẫn AI trả về không khớp tài liệu nguồn",
@@ -95,7 +95,7 @@ function fromStored(item) {
     api_operations: details.api_operations || [],
     section_states: Object.fromEntries(
       Object.entries(item.section_states || {}).map(([key, state]) => [
-        key.startsWith("user_story.") ? key.slice("user_story.".length) : key,
+        key.startsWith("user_story") ? key.slice("user_story".length) : key,
         state,
       ]),
     ),
@@ -491,7 +491,7 @@ export default function RequirementTemplatePanel({
             </p>
           ) : templatesLoadFailed ? (
             <p className="py-2 text-sm text-danger" role="alert">
-              Không tải được danh sách mẫu.
+              Không tải được danh sách mẫu
             </p>
           ) : templates.length ? (
             templates.map((template) => (
@@ -520,7 +520,7 @@ export default function RequirementTemplatePanel({
             ))
           ) : (
             <p className="py-2 text-sm text-ink-muted">
-              Chưa có mẫu. Bạn có thể tạo mẫu mới hoặc tổng hợp từ tài liệu đã cho phép đọc.
+              Chưa có mẫu. Bạn có thể tạo mẫu mới hoặc tổng hợp từ tài liệu đã cho phép đọc
             </p>
           )}
         </div>
@@ -592,8 +592,8 @@ export default function RequirementTemplatePanel({
                         <div className="flex flex-wrap items-center gap-2 text-xs text-ink-muted">
                           <span>
                             {document.status === "READY"
-                              ? "Chưa có yêu cầu AI cho tài liệu này."
-                              : "Tài liệu đang được phân tích; AI chỉ xử lý khi bạn chủ động bắt đầu."}
+                              ? "Chưa có yêu cầu AI cho tài liệu này"
+                              : "Tài liệu đang được phân tích; AI chỉ xử lý khi bạn chủ động bắt đầu"}
                           </span>
                           <a
                             className="text-accent underline"
@@ -716,11 +716,11 @@ export default function RequirementTemplatePanel({
           {active.synthesis.warnings.map((warning, index) => (
             <p className="mt-1" key={index}>
               {warning === "SOURCE_TEMPLATES_HAVE_NO_REQUIREMENTS"
-                ? "Các mẫu nguồn chỉ có cấu trúc. Cần bổ sung yêu cầu trước khi nhập."
+                ? "Các mẫu nguồn chỉ có cấu trúc. Cần bổ sung yêu cầu trước khi nhập"
                 : warning === "TEMPLATE_CONTEXT_FIELD_IGNORED"
-                  ? "AI đề xuất một trường bối cảnh ngoài cấu trúc mẫu. Trường đó đã bị bỏ qua."
+                  ? "AI đề xuất một trường bối cảnh ngoài cấu trúc mẫu. Trường đó đã bị bỏ qua"
                   : warning === "TEMPLATE_CONTEXT_NOT_IN_SOURCE"
-                    ? "AI đề xuất bối cảnh không có trong tài liệu nguồn. Nội dung đó đã bị bỏ qua."
+                    ? "AI đề xuất bối cảnh không có trong tài liệu nguồn. Nội dung đó đã bị bỏ qua"
                     : warning}
             </p>
           ))}
@@ -746,7 +746,7 @@ export default function RequirementTemplatePanel({
                 <ContentOriginBadge origin="ai_generated" aiLabel="AI tổng hợp ban đầu" />
                 <p className="mt-2 text-violet-950">
                   Mẫu được tổng hợp từ tài liệu nguồn. Nội dung bạn chỉnh sửa vẫn được lưu trong
-                  phiên bản mẫu hiện tại.
+                  phiên bản mẫu hiện tại
                 </p>
               </div>
             )}
@@ -1076,7 +1076,7 @@ export default function RequirementTemplatePanel({
           </summary>
           <p className="mt-2 text-sm text-ink-muted">
             Bản công khai không được chứa nội dung hoặc định danh riêng của dự án. Cần có sự đồng ý
-            của chủ sở hữu tài liệu nguồn trước khi mẫu được duyệt.
+            của chủ sở hữu tài liệu nguồn trước khi mẫu được duyệt
           </p>
           <div className="mt-3 space-y-3">
             <label className="field-label block">

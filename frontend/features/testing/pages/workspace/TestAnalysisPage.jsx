@@ -341,7 +341,7 @@ export default function TestAnalysisPage({ project }) {
                   </h3>
                   <p className="mt-1 text-sm text-ink-muted">
                     Tạo điều kiện kiểm thử thủ công hoặc mở tab Đề xuất AI để tạo bản nháp có dẫn
-                    chứng.
+                    chứng
                   </p>
                 </div>
                 {can("requirement.read") && (
@@ -626,7 +626,7 @@ export default function TestAnalysisPage({ project }) {
           ) : conditions.length ? (
             <Panel title="Chi tiết điều kiện">
               <p className="px-4 py-5 text-sm text-ink-muted" role="status">
-                Chọn một điều kiện để xem căn cứ, kết quả phân tích và thao tác rà soát.
+                Chọn một điều kiện để xem căn cứ, kết quả phân tích và thao tác rà soát
               </p>
             </Panel>
           ) : null}
@@ -708,7 +708,7 @@ export default function TestAnalysisPage({ project }) {
                           </p>
                         </div>
                         <p className="whitespace-pre-wrap break-words text-sm leading-6 text-ink-muted">
-                          {item.description || "Chưa có mô tả chi tiết."}
+                          {item.description || "Chưa có mô tả chi tiết"}
                         </p>
                         {item.suggestion && (
                           <div className="rounded-control bg-surface-quiet p-3">

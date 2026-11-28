@@ -1,21 +1,28 @@
 import { useEffect, useRef, useState } from "react";
+import { LoaderCircle, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { Panel, ErrorState } from "./WorkspacePrimitives";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import { testingApi } from "../services/testing.service";
-import { docText, messageOf, valueLabel } from "../lib/testing";
+import { docText, isApprovedCurrentRequirement, messageOf, valueLabel } from "../lib/testing";
 
 function assessmentLabel(value) {
   return valueLabel(value || "unassessed");
 }
 
-export default function ManualTestGenerationPanel({ projectId, requirements, onSaved }) {
+export default function ManualTestGenerationPanel({
+  projectId,
+  requirements,
+  onSaved,
+  canGenerate = false,
+}) {
   const [versionId, setVersionId] = useState("");
   const [instruction, setInstruction] = useState("");
   const [limit, setLimit] = useState(10);
   const [preview, setPreview] = useState(null);
   const [selected, setSelected] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [busyAction, setBusyAction] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const inFlight = useRef(false);
@@ -25,11 +32,13 @@ export default function ManualTestGenerationPanel({ projectId, requirements, onS
     setPreview(null);
     setSelected([]);
   }, [projectId]);
-  const source = requirements.find((item) => item.current_version_id === versionId);
+  const approvedRequirements = requirements.filter(isApprovedCurrentRequirement);
+  const source = approvedRequirements.find((item) => item.current_version_id === versionId);
   const generate = async () => {
-    if (inFlight.current || !versionId) return;
+    if (inFlight.current || !versionId || !canGenerate) return;
     inFlight.current = true;
     setBusy(true);
+    setBusyAction("generate");
     setError("");
     setNotice("");
     setPreview(null);
@@ -43,20 +52,23 @@ export default function ManualTestGenerationPanel({ projectId, requirements, onS
       };
       const result = await testingApi.generateTestCases(versionId, payload);
       setPreview(result);
-      setSelected(
-        (result.items || []).flatMap((item, index) => (item.similar_cases?.length ? [] : [index])),
+      const eligibleIndexes = (result.items || []).flatMap((item, index) =>
+        item.similar_cases?.length ? [] : [index],
       );
+      setSelected(eligibleIndexes);
     } catch (reason) {
       setError(messageOf(reason));
     } finally {
       inFlight.current = false;
       setBusy(false);
+      setBusyAction("");
     }
   };
   const save = async () => {
     if (inFlight.current || !selected.length) return;
     inFlight.current = true;
     setBusy(true);
+    setBusyAction("save");
     setError("");
     try {
       const items = selected.map((index) => preview.items[index].draft);
@@ -65,17 +77,18 @@ export default function ManualTestGenerationPanel({ projectId, requirements, onS
       saveIdempotencyKey.current = null;
       setPreview(null);
       setSelected([]);
-      setNotice(`Đã lưu ${items.length} ca nháp để chỉnh sửa và duyệt.`);
+      setNotice(`Đã lưu ${items.length} ca nháp để chỉnh sửa và duyệt`);
       await onSaved();
     } catch (reason) {
       setError(messageOf(reason));
     } finally {
       inFlight.current = false;
       setBusy(false);
+      setBusyAction("");
     }
   };
   return (
-    <Panel title="Đề xuất ca kiểm thử bằng AI">
+    <Panel title="Tạo ca kiểm thử bằng AI">
       <div className="space-y-4 p-5">
         {error && <ErrorState message={error} />}
         {notice && (
@@ -99,7 +112,7 @@ export default function ManualTestGenerationPanel({ projectId, requirements, onS
               }}
             >
               <option value="">Chọn yêu cầu</option>
-              {requirements.map((item) => (
+              {approvedRequirements.map((item) => (
                 <option key={item._id} value={item.current_version_id}>
                   {item.requirement_key} · {item.current_version?.title || item.title}
                 </option>
@@ -119,14 +132,38 @@ export default function ManualTestGenerationPanel({ projectId, requirements, onS
             />
           </label>
           <button
-            className="secondary-button border-violet-300 text-violet-800"
+            className="apple-button"
             type="button"
-            disabled={busy || !versionId || limit < 1 || limit > 100}
+            disabled={!canGenerate || busy || !versionId || limit < 1 || limit > 100}
+            aria-busy={busy}
             onClick={generate}
           >
-            {busy ? "Đang xử lý" : "Tạo đề xuất"}
+            {busy ? (
+              <LoaderCircle aria-hidden="true" className="animate-spin" size={17} />
+            ) : (
+              <Sparkles aria-hidden="true" size={17} />
+            )}
+            {busyAction === "generate"
+              ? "Đang tạo bản xem trước…"
+              : busyAction === "save"
+                ? "Đang lưu bản nháp…"
+                : "Tạo bản xem trước bằng AI"}
           </button>
         </div>
+        {!canGenerate && (
+          <p className="-mt-2 text-sm text-warning" role="status">
+            Bạn chưa được cấp quyền tạo ca kiểm thử bằng AI trong dự án này
+          </p>
+        )}
+        {!approvedRequirements.length ? (
+          <p className="-mt-2 text-sm text-ink-muted">
+            Chưa có yêu cầu đã duyệt để AI tạo bản xem trước
+          </p>
+        ) : (
+          !versionId && (
+            <p className="-mt-2 text-sm text-ink-muted">Chọn yêu cầu đã duyệt để bật gợi ý</p>
+          )
+        )}
         {source && (
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
             <p className="min-w-0 truncate text-sm text-ink-muted">
@@ -143,8 +180,7 @@ export default function ManualTestGenerationPanel({ projectId, requirements, onS
         )}
         {source && !(source.current_version?.acceptance_criteria || []).length && (
           <p className="text-sm text-ink-muted">
-            Yêu cầu chưa có tiêu chí chấp nhận riêng. Đề xuất sẽ dựa trên nội dung yêu cầu và trích
-            dẫn nội dung làm căn cứ.
+            AI sẽ dựa trên nội dung yêu cầu và trích dẫn nội dung làm căn cứ
           </p>
         )}
         <label className="field-label block">
@@ -167,7 +203,7 @@ export default function ManualTestGenerationPanel({ projectId, requirements, onS
               </ul>
             )}
             {!preview.items?.length && (
-              <p className="text-sm text-ink-muted">Chưa có đề xuất phù hợp với nguồn đã chọn.</p>
+              <p className="text-sm text-ink-muted">Chưa có đề xuất phù hợp với nguồn đã chọn</p>
             )}
             {preview.items?.length > 0 && (
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-control border border-border bg-surface-quiet px-3 py-2">

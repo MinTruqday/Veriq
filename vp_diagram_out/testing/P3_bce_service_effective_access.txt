@@ -1,0 +1,8 @@
+UML Class Diagram (Boundary-Control-Entity analysis)
+Create the BCE class diagram for 'testing', group 'service_effective_access'. Use English PascalCase names. Use stereotypes <<boundary>>, <<control>>, <<entity>>. Do not connect boundaries directly to entities.
+Class 'Ctrl_EffectiveAccess' <<control>>: + ExplainProjectAccess(project : string, membership : string, user : string) : json; + GetEffectiveProjectAccess(projectId : string, user : string) : json.
+Class 'ProjectMember' <<entity>>: - ProjectMemberId : string; + FindMembership(projectId : string, userId : string, status : string, projection : string) : json; + ListMemberships(query : string, projection : string, limit : string, sort : string) : json; + MemberCounts(projectIds : string, limit : string) : json; + CountMembers(projectId : string, status : string) : json; + CountActiveMembers(projectId : string, userIds : string, status : string) : json; + FindActiveMember(projectId : string, userId : string, status : string) : json.
+Include EVERY class, attribute, operation and relationship listed above, exactly as named. Do not omit, merge, rename, simplify, summarize or add anything. Do not invent extra classes, attributes or relationships. If something does not fit, keep it and let the layout grow instead of dropping it. Totals: 2 classes, 0 relationships, 1 attributes.
+
+Checklist: classes=2; relationships=0; attributes=1.
+Correction prompt: Fix only the following items and keep everything else unchanged: [insert verified discrepancy].

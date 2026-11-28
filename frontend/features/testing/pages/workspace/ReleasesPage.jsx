@@ -141,7 +141,7 @@ export default function ReleasesPage({ project }) {
           ) {
             await load({ showLoading: false });
             throw new Error(
-              "Điều kiện phát hành vừa thay đổi. Đã tải lại trạng thái; vui lòng kiểm tra và thử đóng lại.",
+              "Điều kiện phát hành vừa thay đổi. Đã tải lại trạng thái; vui lòng kiểm tra và thử đóng lại",
             );
           }
           if (!current.can_close) {
@@ -303,9 +303,7 @@ export default function ReleasesPage({ project }) {
                             ) : current?.loading || !current?.data ? (
                               <p className="text-ink-muted">Đang kiểm tra điều kiện đóng…</p>
                             ) : stale ? (
-                              <p className="text-danger">
-                                Điều kiện đã thay đổi; cần kiểm tra lại.
-                              </p>
+                              <p className="text-danger">Điều kiện đã thay đổi; cần kiểm tra lại</p>
                             ) : (
                               <p
                                 className={`flex items-start gap-1.5 ${allowed ? "text-brand" : "text-danger"}`}
@@ -381,7 +379,7 @@ export default function ReleasesPage({ project }) {
                         ) : stale ? (
                           <div className="flex flex-wrap items-center justify-between gap-3">
                             <p className="text-sm text-danger">
-                              Điều kiện phát hành đã thay đổi; hãy kiểm tra lại trước khi đóng.
+                              Điều kiện phát hành đã thay đổi; hãy kiểm tra lại trước khi đóng
                             </p>
                             <button
                               className="secondary-button"
@@ -406,7 +404,7 @@ export default function ReleasesPage({ project }) {
                                 </ul>
                               ) : (
                                 <p className="mt-2 text-[13px] text-brand">
-                                  Không còn mục chặn phát hành.
+                                  Không còn mục chặn phát hành
                                 </p>
                               )}
                             </div>
@@ -458,7 +456,7 @@ export default function ReleasesPage({ project }) {
 function readinessBlockerMessage(readiness) {
   const blockers = readiness?.blockers || [];
   if (!blockers.length)
-    return "Chưa thể xác nhận điều kiện đóng phát hành. Vui lòng tải lại và thử lại.";
+    return "Chưa thể xác nhận điều kiện đóng phát hành. Vui lòng tải lại và thử lại";
   return `Chưa thể đóng phát hành: ${blockers
     .map((item) => `${readinessGateLabel(item.gate)} — ${readinessCodeLabel(item.code)}`)
     .join("; ")}`;

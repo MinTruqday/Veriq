@@ -19,7 +19,7 @@ function VerifyCodeContent() {
   return (
     <AuthFrame
       title="Xác minh mã khôi phục mật khẩu"
-      description={email ? `Nhập mã đã gửi đến ${email}.` : "Nhập mã khôi phục đã nhận qua Email."}
+      description={email ? `Nhập mã đã gửi đến ${email}` : "Nhập mã khôi phục đã nhận qua Email"}
       footer={
         <AuthFlowLinks
           links={[

@@ -73,7 +73,7 @@ export default function StructuredValueEditor({
           <option value="false">Sai</option>
         </select>
       )}
-      {type === "null" && <p className="text-xs text-ink-muted">Giá trị được lưu là null.</p>}
+      {type === "null" && <p className="text-xs text-ink-muted">Giá trị được lưu là null</p>}
       {type === "object" && (
         <div className="space-y-2">
           {Object.entries(value).map(([key, item]) => (

@@ -40,6 +40,10 @@ export function createTestCaseForm() {
     given: "",
     when: "",
     then: "",
+    origin: "manual",
+    sourceEvidence: [],
+    evidenceRefs: [],
+    evidenceQuotes: [],
   };
 }
 

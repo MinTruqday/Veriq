@@ -11,9 +11,9 @@ import SearchField from "@/shared/components/ui/SearchField";
 
 const ROLE_ORDER = ["BA", "TESTER", "SYSTEM_ADMIN"];
 const ROLE_LABELS = {
-  BA: "BA",
-  TESTER: "Tester",
-  SYSTEM_ADMIN: "Admin",
+  BA: "Chuyên viên nghiệp vụ",
+  TESTER: "Kiểm thử viên",
+  SYSTEM_ADMIN: "Quản trị hệ thống",
 };
 
 const PERMISSION_RESOURCES = {
@@ -235,19 +235,19 @@ const PERMISSION_LABEL_OVERRIDES = {
 };
 
 const permissionResource = (permission) =>
-  PERMISSION_RESOURCE_KEYS.find((resource) => permission.startsWith(`${resource}.`)) ||
-  permission.split(".")[0];
+  PERMISSION_RESOURCE_KEYS.find((resource) => permission.startsWith(`${resource}`)) ||
+  permission.split("")[0];
 
 const permissionLabel = (permission) => {
   if (PERMISSION_LABEL_OVERRIDES[permission]) return PERMISSION_LABEL_OVERRIDES[permission];
   const resource = permissionResource(permission);
   const action = permission.slice(resource.length + 1);
-  const resourceLabel = (
-    PERMISSION_RESOURCES[resource] || resource.replaceAll("_", " ")
-  ).toLocaleLowerCase("vi-VN");
+  const resourceLabel = (PERMISSION_RESOURCES[resource] || "nội dung khác").toLocaleLowerCase(
+    "vi-VN",
+  );
   if (action === "upload") return `Tải ${resourceLabel} lên`;
   if (action === "download") return `Tải ${resourceLabel} xuống`;
-  const actionLabel = PERMISSION_ACTIONS[action] || action.replaceAll("_", " ");
+  const actionLabel = PERMISSION_ACTIONS[action] || "Thao tác với";
   if (actionLabel.toLocaleLowerCase("vi-VN").includes(resourceLabel)) return actionLabel;
   return `${actionLabel} ${resourceLabel}`;
 };
@@ -318,8 +318,8 @@ export default function OperationsPage() {
           {roles && (
             <>
               <p className="max-w-[1050px] text-sm text-ink-muted">
-                Tên quyền đã được viết bằng tiếng Việt. Đánh dấu nghĩa là vai trò được cấp quyền;
-                Admin luôn có toàn quyền.
+                Tên quyền được diễn đạt bằng tiếng Việt. Đánh dấu nghĩa là vai trò được cấp quyền;
+                quản trị hệ thống luôn có toàn quyền
               </p>
               <div className="grid max-w-[1050px] gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                 <SearchField
@@ -360,7 +360,7 @@ export default function OperationsPage() {
                                 className="px-3 py-2 text-left text-xs font-semibold text-ink-muted"
                                 colSpan={4}
                               >
-                                {PERMISSION_RESOURCES[row.resource] || row.resource}
+                                {PERMISSION_RESOURCES[row.resource] || "Quyền khác"}
                               </th>
                             </tr>
                           )}
@@ -400,7 +400,7 @@ export default function OperationsPage() {
                 </div>
               ) : (
                 <p className="max-w-[1050px] rounded-control border border-border p-4 text-sm text-ink-muted">
-                  Không có quyền nào khớp với nội dung tìm kiếm.
+                  Không có quyền nào khớp với nội dung tìm kiếm
                 </p>
               )}
               <button
@@ -431,7 +431,7 @@ export default function OperationsPage() {
               >
                 {saving ? "Đang lưu…" : "Lưu phân quyền"}
               </button>
-              {saved && <p role="status">Đã lưu phân quyền.</p>}
+              {saved && <p role="status">Đã lưu phân quyền</p>}
             </>
           )}
         </div>

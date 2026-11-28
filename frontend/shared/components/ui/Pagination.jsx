@@ -1,3 +1,5 @@
+import { ChevronLeft, ChevronRight } from "lucide-react";
+
 export function Pagination({
   value,
   page,
@@ -66,21 +68,23 @@ export function Pagination({
         )}
         <button
           aria-label="Trang trước"
-          className="secondary-button"
+          className="icon-button h-9 w-9"
           disabled={pagination.page <= 1}
+          title="Trang trước"
           type="button"
           onClick={() => onChange(pagination.page - 1)}
         >
-          Trang trước
+          <ChevronLeft aria-hidden="true" size={16} />
         </button>
         <button
           aria-label="Trang sau"
-          className="secondary-button"
+          className="icon-button h-9 w-9"
           disabled={pagination.page >= totalPages}
+          title="Trang sau"
           type="button"
           onClick={() => onChange(pagination.page + 1)}
         >
-          Trang sau
+          <ChevronRight aria-hidden="true" size={16} />
         </button>
       </div>
     </nav>

@@ -1,0 +1,13 @@
+UML Class Diagram (Boundary-Control-Entity analysis)
+Create the BCE class diagram for 'notification', group 'router_announcement'. Use English PascalCase names. Use stereotypes <<boundary>>, <<control>>, <<entity>>. Do not connect boundaries directly to entities.
+Class 'Ctrl_Announcement' <<control>>: + GetAnnouncements(skip : int, limit : int, currentUser : json) : json; + MarkAsRead(notifId : string, currentUser : json) : json; + MarkAllAsRead(currentUser : json) : json; + DeleteAnnouncement(notifId : string, currentUser : json) : json; + CreateAnnouncement(data : json) : json; + GetSettings(currentUser : json) : json; + UpdateSettings(settings : json, currentUser : json) : json.
+Class 'Ctrl_AnnouncementService' <<control>>: + GetAnnouncements(userId : string, skip : int, limit : int) : json; + MarkAsRead(notifId : string, userId : string) : json; + MarkAllAsRead(userId : string) : json; + DeleteAnnouncement(notifId : string, userId : string) : json; + CreateAnnouncement(data : json) : json; + Settings(userId : string) : json; + UpdateSettings(userId : string, settings : json) : json.
+Control dependency: 'Ctrl_Announcement' to 'Ctrl_AnnouncementService', multiplicity at source: 1, multiplicity at target: 1, navigable from source to target.
+Class 'Notification' <<entity>>: - NotificationId : string; + Find(query : json) : json; + FindOne(query : json, projection : json) : json; + CountDocuments(query : json) : json; + InsertOne(document : json) : json; + UpdateOne(query : json, update : json) : json; + UpdateMany(query : json, update : json) : json; + DeleteOne(query : json) : json.
+Control dependency: 'Ctrl_AnnouncementService' to 'Notification', multiplicity at control: 1, multiplicity at entity: 1, navigable from control to entity.
+Class 'NotificationSetting' <<entity>>: - NotificationSettingId : string; + GetSettings(userId : string) : json; + UpdateSettings(userId : string, settings : json) : json.
+Control dependency: 'Ctrl_AnnouncementService' to 'NotificationSetting', multiplicity at control: 1, multiplicity at entity: 1, navigable from control to entity.
+Include EVERY class, attribute, operation and relationship listed above, exactly as named. Do not omit, merge, rename, simplify, summarize or add anything. Do not invent extra classes, attributes or relationships. If something does not fit, keep it and let the layout grow instead of dropping it. Totals: 4 classes, 3 relationships, 2 attributes.
+
+Checklist: classes=4; relationships=3; attributes=2.
+Correction prompt: Fix only the following items and keep everything else unchanged: [insert verified discrepancy].

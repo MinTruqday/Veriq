@@ -241,7 +241,7 @@ export default function RunExecutionWorkspace({
                 </button>
                 {!assignmentReady && (
                   <p className="max-w-64 text-right text-xs text-ink-muted" role="status">
-                    Phân công người thực hiện cho lần chạy trước khi bắt đầu.
+                    Phân công người thực hiện cho lần chạy trước khi bắt đầu
                   </p>
                 )}
               </div>
@@ -534,7 +534,7 @@ export default function RunExecutionWorkspace({
             </div>
             {!eligibleExecutors.length && (
               <p className="text-sm text-danger">
-                Không có thành viên đủ quyền thực hiện để phân công.
+                Không có thành viên đủ quyền thực hiện để phân công
               </p>
             )}
             <div className="flex flex-wrap justify-end gap-2">
@@ -625,12 +625,12 @@ export default function RunExecutionWorkspace({
                     );
                   })}
                   {!filteredCaseEntries.length && (
-                    <p className="p-4 text-sm text-ink-muted">Không có ca theo bộ lọc này.</p>
+                    <p className="p-4 text-sm text-ink-muted">Không có ca theo bộ lọc này</p>
                   )}
                 </nav>
               </>
             ) : (
-              <p className="p-4 text-sm text-ink-muted">Lần chạy chưa có ca kiểm thử.</p>
+              <p className="p-4 text-sm text-ink-muted">Lần chạy chưa có ca kiểm thử</p>
             )}
           </Panel>
         </aside>
@@ -716,7 +716,7 @@ export default function RunExecutionWorkspace({
                     </p>
                     {!result ? (
                       <p className="rounded-control bg-surface-raised px-3 py-2 text-sm text-ink-muted">
-                        Chưa có kết quả cho ca này.
+                        Chưa có kết quả cho ca này
                       </p>
                     ) : !["NOT_RUN", "IN_PROGRESS"].includes(result.status) ? (
                       <div className="space-y-3">
@@ -989,7 +989,7 @@ export default function RunExecutionWorkspace({
                         {pendingFail[result._id] && (
                           <p className="text-sm">
                             Nhập kết quả thực tế. Bạn có thể lưu kết quả hoặc tạo hay liên kết lỗi
-                            ngay bên dưới.
+                            ngay bên dưới
                           </p>
                         )}
                         <label className="field-label block">
@@ -1026,13 +1026,13 @@ export default function RunExecutionWorkspace({
                               onCreate={onCreateInlineDefect}
                               ensureFail={async () => {
                                 if (!(await onTransition(result, "FAIL", item)))
-                                  throw new Error("Chưa lưu được kết quả thất bại.");
+                                  throw new Error("Chưa lưu được kết quả thất bại");
                                 const refreshed = await testingApi.getRun(run._id);
                                 const updated = refreshed.results?.find(
                                   (entry) => entry._id === result._id,
                                 );
                                 if (!updated || updated.status !== "FAIL")
-                                  throw new Error("Không tìm thấy kết quả thất bại vừa lưu.");
+                                  throw new Error("Không tìm thấy kết quả thất bại vừa lưu");
                                 return updated;
                               }}
                             />
@@ -1194,7 +1194,7 @@ function InlineDefectForm({
             disabled={saving}
             onClick={async () => {
               if (title.trim().length < 2 || !severity) {
-                setError("Nhập tiêu đề và chọn mức độ nghiêm trọng.");
+                setError("Nhập tiêu đề và chọn mức độ nghiêm trọng");
                 return;
               }
               setError("");

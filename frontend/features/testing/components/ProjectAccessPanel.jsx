@@ -186,10 +186,10 @@ export default function ProjectAccessPanel({ project }) {
 
   const grouped = new Map();
   for (const capability of data?.capabilities || []) {
-    const [domain, ...parts] = capability.permission.split(".");
+    const [domain, ...parts] = capability.permission.split("");
     const label = groups[domain] || "Chức năng khác";
     const items = grouped.get(label) || [];
-    items.push({ ...capability, label: actions[parts.join(".")] || "Thao tác bổ sung" });
+    items.push({ ...capability, label: actions[parts.join("")] || "Thao tác bổ sung" });
     grouped.set(label, items);
   }
   const normalizedPermissionQuery = permissionQuery.trim().toLocaleLowerCase("vi");
@@ -254,7 +254,7 @@ export default function ProjectAccessPanel({ project }) {
                       </li>
                     ))
                   ) : (
-                    <li className="text-sm text-ink-muted">Chưa có vai trò được trả về.</li>
+                    <li className="text-sm text-ink-muted">Chưa có vai trò được trả về</li>
                   )}
                 </ul>
               </article>
@@ -278,7 +278,7 @@ export default function ProjectAccessPanel({ project }) {
                     Trách nhiệm được phân công
                   </h3>
                   <p className="mt-1 text-xs text-ink-muted">
-                    Một số thao tác còn phụ thuộc người phụ trách được giao.
+                    Một số thao tác còn phụ thuộc người phụ trách được giao
                   </p>
                 </div>
                 <ul className="grid gap-2 sm:grid-cols-2">
@@ -320,7 +320,7 @@ export default function ProjectAccessPanel({ project }) {
                   </h3>
                   <p className="mt-1 text-xs leading-5 text-ink-muted">
                     Thao tác trên từng mục còn phụ thuộc phân công, trạng thái và phiên bản đang xử
-                    lý.
+                    lý
                   </p>
                 </div>
                 <span className="text-xs text-ink-muted" aria-live="polite">
@@ -386,7 +386,7 @@ export default function ProjectAccessPanel({ project }) {
                   className="rounded-control bg-surface-quiet p-4 text-sm text-ink-muted"
                   role="status"
                 >
-                  Không có quyền nào khớp với bộ lọc.
+                  Không có quyền nào khớp với bộ lọc
                 </p>
               )}
             </section>

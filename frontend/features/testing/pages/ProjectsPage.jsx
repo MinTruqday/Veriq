@@ -2,7 +2,6 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CalendarDays, Grid2X2, List, Plus, RefreshCw, RotateCcw, Search } from "lucide-react";
-import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
 import { isSupportedTimeZone } from "@/shared/lib/timeZone.mjs";
@@ -18,11 +17,7 @@ import {
 } from "../components/WorkspacePrimitives";
 import { testingApi } from "../services/testing.service";
 import { messageOf, valueLabel } from "../lib/testing";
-import {
-  formatProjectDate,
-  invalidProjectDateRange,
-  minimumProjectEndDate,
-} from "../lib/projectSchedule.logic.mjs";
+import { formatProjectDate } from "../lib/projectSchedule.logic.mjs";
 
 function projectSchedule(project, locale) {
   const start = project.planned_start_at
@@ -79,28 +74,12 @@ export default function ProjectsPage() {
   const [status, setStatus] = useState("active");
   const [invitationError, setInvitationError] = useState("");
   const [invitationActionError, setInvitationActionError] = useState("");
-  const [form, setForm] = useState({
-    key: "",
-    name: "",
-    description: "",
-    project_type: "",
-    planned_start_at: "",
-    planned_end_at: "",
-  });
-  const [creating, setCreating] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [createError, setCreateError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [canCreateProject, setCanCreateProject] = useState(false);
   const [capabilityError, setCapabilityError] = useState("");
   const invitationActionInFlight = useRef(false);
   const requestSequence = useRef(0);
-  const minimumPlannedEndAt = minimumProjectEndDate(form.planned_start_at);
-  const plannedDateRangeInvalid = invalidProjectDateRange(
-    form.planned_start_at,
-    form.planned_end_at,
-  );
   const filteredItems = items.filter((item) => projectIncludesDate(item, scheduleDate));
   const projectPageSize = 15;
   const projectPageCount = Math.max(1, Math.ceil(filteredItems.length / projectPageSize));
@@ -108,10 +87,6 @@ export default function ProjectsPage() {
     (Math.min(projectPage, projectPageCount) - 1) * projectPageSize,
     Math.min(projectPage, projectPageCount) * projectPageSize,
   );
-  const openCreateModal = () => {
-    setCreateError("");
-    setCreating(true);
-  };
   const load = useCallback(async (value = "", statusValue = "active") => {
     const requestId = ++requestSequence.current;
     setLoading(true);
@@ -168,62 +143,21 @@ export default function ProjectsPage() {
     }
   };
   useEffect(() => {
-    void load("", "active");
-  }, [load]);
+    const timeout = window.setTimeout(() => void load(query, status), 250);
+    return () => window.clearTimeout(timeout);
+  }, [load, query, status]);
   useEffect(() => {
     void loadCapabilities();
   }, [loadCapabilities]);
-  const submit = async (event) => {
-    event.preventDefault();
-    if (saving) return;
-    if (plannedDateRangeInvalid) {
-      setCreateError("Ngày kết thúc phải sau ngày bắt đầu.");
-      return;
-    }
-    setCreateError("");
-    setSaving(true);
-    try {
-      await testingApi.createProject({
-        ...form,
-        project_owner_user_id: form.project_owner_user_id?.trim() || undefined,
-        key: form.key.trim().toUpperCase(),
-        name: form.name.trim(),
-        locale: user?.locale || "vi",
-        timezone: user?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
-        planned_start_at: form.planned_start_at
-          ? new Date(`${form.planned_start_at}T00:00:00.000Z`).toISOString()
-          : null,
-        planned_end_at: form.planned_end_at
-          ? new Date(`${form.planned_end_at}T00:00:00.000Z`).toISOString()
-          : null,
-      });
-      setForm({
-        key: "",
-        name: "",
-        description: "",
-        project_type: "",
-        planned_start_at: "",
-        planned_end_at: "",
-      });
-      setCreating(false);
-      setQuery("");
-      setStatus("active");
-      await load("", "active");
-    } catch (reason) {
-      setCreateError(messageOf(reason));
-    } finally {
-      setSaving(false);
-    }
-  };
   return (
     <WorkspacePage
       title="Dự án"
       actions={
         canCreateProject ? (
-          <button type="button" className="apple-button" onClick={openCreateModal}>
+          <Link href="/du-an/tao-moi" className="apple-button">
             <Plus size={16} />
             Tạo dự án
-          </button>
+          </Link>
         ) : null
       }
     >
@@ -256,159 +190,6 @@ export default function ProjectsPage() {
           </button>
         </div>
       )}
-      <Modal
-        isOpen={creating}
-        onClose={() => {
-          if (!saving) setCreating(false);
-        }}
-        ariaLabel="Tạo dự án"
-        className="max-w-xl max-h-[90dvh] overflow-y-auto"
-      >
-        <ModalHeader>
-          <ModalTitle>Tạo dự án</ModalTitle>
-        </ModalHeader>
-        <form onSubmit={submit} className="space-y-6 p-5">
-          {createError && (
-            <div>
-              <ErrorState message={createError} />
-            </div>
-          )}
-          <section aria-labelledby="project-create-basics" className="space-y-4">
-            <div>
-              <h3 id="project-create-basics" className="text-sm font-semibold text-ink">
-                Thông tin cơ bản
-              </h3>
-              <p className="mt-1 text-xs text-ink-muted">
-                Nhập mã, tên và loại dự án để tạo workspace.
-              </p>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="field-label block min-w-0">
-                Mã dự án
-                <input
-                  className="apple-input mt-2 w-full"
-                  required
-                  minLength={2}
-                  maxLength={30}
-                  pattern="[A-Za-z][A-Za-z0-9_\-]+"
-                  value={form.key}
-                  onChange={(event) => setForm({ ...form, key: event.target.value })}
-                  placeholder="THANHTOAN"
-                />
-              </label>
-              <label className="field-label block min-w-0">
-                Tên dự án
-                <input
-                  className="apple-input mt-2 w-full"
-                  required
-                  minLength={2}
-                  maxLength={200}
-                  value={form.name}
-                  onChange={(event) => setForm({ ...form, name: event.target.value })}
-                  placeholder="Tên dự án"
-                />
-              </label>
-              <label className="field-label block min-w-0">
-                Loại dự án
-                <input
-                  className="apple-input mt-2 w-full"
-                  required
-                  minLength={1}
-                  maxLength={100}
-                  value={form.project_type}
-                  onChange={(event) => setForm({ ...form, project_type: event.target.value })}
-                  placeholder="Nhập loại dự án"
-                />
-              </label>
-              {user?.system_role === "ADMIN" && (
-                <label className="field-label block min-w-0">
-                  Chủ dự án
-                  <input
-                    className="apple-input mt-2 w-full"
-                    value={form.project_owner_user_id || ""}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        project_owner_user_id: event.target.value,
-                      }))
-                    }
-                    placeholder="Để trống để tạm giao cho bạn"
-                  />
-                </label>
-              )}
-              <label className="field-label block min-w-0 md:col-span-2">
-                Mô tả
-                <textarea
-                  className="apple-input mt-2 min-h-24 w-full resize-y"
-                  maxLength={5000}
-                  value={form.description}
-                  onChange={(event) => setForm({ ...form, description: event.target.value })}
-                />
-              </label>
-            </div>
-          </section>
-          <section
-            aria-labelledby="project-create-schedule"
-            className="space-y-4 border-t border-border pt-5"
-          >
-            <div>
-              <h3 id="project-create-schedule" className="text-sm font-semibold text-ink">
-                Thời gian dự kiến
-              </h3>
-              <p className="mt-1 text-xs text-ink-muted">Có thể để trống khi lịch chưa xác định.</p>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="field-label block min-w-0">
-                Ngày bắt đầu dự kiến
-                <input
-                  className="apple-input mt-2 w-full"
-                  type="date"
-                  value={form.planned_start_at}
-                  onChange={(event) => setForm({ ...form, planned_start_at: event.target.value })}
-                />
-              </label>
-              <label className="field-label block min-w-0">
-                Ngày kết thúc dự kiến
-                <input
-                  className="apple-input mt-2 w-full"
-                  type="date"
-                  min={minimumPlannedEndAt}
-                  value={form.planned_end_at}
-                  aria-invalid={Boolean(plannedDateRangeInvalid)}
-                  aria-describedby={plannedDateRangeInvalid ? "project-date-range-help" : undefined}
-                  onChange={(event) => setForm({ ...form, planned_end_at: event.target.value })}
-                />
-                {plannedDateRangeInvalid && (
-                  <span
-                    className="mt-1 block text-xs text-danger"
-                    id="project-date-range-help"
-                    role="alert"
-                  >
-                    Ngày kết thúc phải sau ngày bắt đầu.
-                  </span>
-                )}
-              </label>
-            </div>
-          </section>
-          <div className="action-dialog-footer flex justify-end gap-3 border-t border-border pt-5">
-            <button
-              className="secondary-button"
-              type="button"
-              disabled={saving}
-              onClick={() => setCreating(false)}
-            >
-              Hủy
-            </button>
-            <button
-              className="apple-button"
-              type="submit"
-              disabled={saving || Boolean(plannedDateRangeInvalid)}
-            >
-              {saving ? "Đang lưu" : "Lưu dự án"}
-            </button>
-          </div>
-        </form>
-      </Modal>
       {(invitations.length > 0 || invitationError || invitationActionError) && (
         <Panel title="Lời mời tham gia dự án">
           {invitationError ? (
@@ -482,7 +263,7 @@ export default function ProjectsPage() {
             void load(query, status);
           }}
         >
-          <div className="flex min-w-0 gap-3 md:col-span-2 xl:col-span-1">
+          <div className="flex min-w-0 md:col-span-2 xl:col-span-1">
             <label className="relative block min-w-0 flex-1">
               <span className="sr-only">Tìm dự án</span>
               <Search
@@ -498,14 +279,6 @@ export default function ProjectsPage() {
                 placeholder="Tìm theo mã hoặc tên dự án"
               />
             </label>
-            <button
-              aria-label="Tìm dự án"
-              className="icon-button h-10 w-10 shrink-0"
-              title="Tìm dự án"
-              type="submit"
-            >
-              <Search aria-hidden="true" size={16} />
-            </button>
           </div>
           <select
             aria-label="Trạng thái dự án"
@@ -661,9 +434,7 @@ export default function ProjectsPage() {
                         {valueLabel(item.project_type)}
                       </small>
                     )}
-                    <small className="mt-2 block text-[12px] text-ink-muted">
-                      Trưởng dự án: {item.project_lead_label || "Chưa phân công"}
-                    </small>
+                    <small className="mt-2 block text-[12px] text-ink-muted"></small>
                   </div>
                   <div
                     className={`${projectView === "grid" ? "mt-4" : "lg:mt-0"} flex min-w-0 items-start gap-2 text-[12px] text-ink-muted`}
@@ -768,7 +539,7 @@ export default function ProjectsPage() {
         )}
         {!loading && items.length >= 200 && (
           <p className="border-t border-border px-4 py-3 text-xs text-ink-muted">
-            Đang hiển thị tối đa 200 dự án. Dùng ô tìm kiếm để thu hẹp danh sách.
+            Đang hiển thị tối đa 200 dự án. Dùng ô tìm kiếm để thu hẹp danh sách
           </p>
         )}
       </Panel>

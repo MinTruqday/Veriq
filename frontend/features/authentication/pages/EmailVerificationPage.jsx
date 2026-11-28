@@ -21,7 +21,7 @@ function EmailVerificationContent() {
         <InlineState
           title="Xác minh thành công"
           detail={
-            verifiedEmail ? `Email ${verifiedEmail} đã được xác minh.` : "Email đã được xác minh."
+            verifiedEmail ? `Email ${verifiedEmail} đã được xác minh` : "Email đã được xác minh"
           }
         />
         <Link className="apple-button mt-5 w-full justify-center" href="/dang-nhap">
@@ -57,7 +57,7 @@ function EmailVerificationContent() {
           required
           minLength={16}
           maxLength={256}
-          helper="Mã xác minh có ít nhất 16 ký tự."
+          helper="Mã xác minh có ít nhất 16 ký tự"
           value={token}
           onChange={(event) => setToken(event.target.value)}
         />

@@ -105,6 +105,7 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
     section[0] === PROJECT_SECTION_SLUGS.testCases &&
       section[1] &&
       section[1] !== "tao-moi" &&
+      section[1] !== "tao-bang-ai" &&
       !caseSubsectionItem,
   );
   const invalidSection = Boolean(

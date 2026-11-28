@@ -6,7 +6,7 @@ export default function NotFound() {
       code="404"
       eyebrow="Không tìm thấy trang"
       title="Đường dẫn này không còn khả dụng"
-      description="Kiểm tra lại địa chỉ hoặc quay về danh sách dự án để tiếp tục."
+      description="Kiểm tra lại địa chỉ hoặc quay về danh sách dự án để tiếp tục"
       primaryHref="/du-an"
       primaryLabel="Mở danh sách dự án"
     />

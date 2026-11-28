@@ -2,17 +2,17 @@
   "id": "req_import",
   "name": "01 - Nhập tài liệu và trích xuất yêu cầu",
   "file_name": "BPMN_Requirements_01_Nhap_tai_lieu_va_trich_xuat_yeu_cau_v1.drawio",
-  "scope": "Ranh giới bắt đầu ở thao tác nhập tệp/nội dung vào API nhập yêu cầu; không mô hình hóa riêng worker phân tích tài liệu nguồn vì đó là luồng xử lý tài liệu khác.",
+  "scope": "Ranh giới bắt đầu ở thao tác nhập tệp/nội dung vào chức năng nhập yêu cầu; không mô hình hóa riêng tiến trình phân tích tài liệu nguồn vì đó là luồng xử lý tài liệu khác.",
   "lanes": [
     {
       "id": "user",
-      "name": "Người nhập và rà soát",
+      "name": "BA",
       "fill": "#E8F3FF",
       "stroke": "#4A90C2"
     },
     {
       "id": "system",
-      "name": "Veriq",
+      "name": "Hệ thống",
       "fill": "#EFE8FF",
       "stroke": "#7956A8"
     }
@@ -48,7 +48,7 @@
       "id": "valid",
       "label": "Tài liệu hợp lệ?",
       "type": "gateway",
-      "lane": "system",
+      "lane": "user",
       "col": 3,
       "row": 0
     },
@@ -74,7 +74,7 @@
       "id": "has_items",
       "label": "Có yêu cầu đề xuất?",
       "type": "gateway",
-      "lane": "system",
+      "lane": "user",
       "col": 6,
       "row": 0
     },

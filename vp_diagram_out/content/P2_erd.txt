@@ -1,0 +1,13 @@
+Logical Entity Relationship Diagram of MongoDB collections: fields with types, _id as primary key, logical references shown with crow's foot
+Create the logical MongoDB ERD for service 'content'. Use the following PascalCase names for every collection and field. These are logical references, not enforced foreign keys.
+Table 'Document' (business/data): 'ArtifactMetadata' json [N]; 'Category' varchar(255) [N]; 'Content' json [N]; 'ContentFormat' json [N]; 'ContentHash' varchar(255); 'CoverUrl' varchar(255) [N]; 'CreatedAt' datetime [N]; 'CreatorId' varchar(255) [N]; 'DeletedAt' datetime [N]; 'Description' varchar(255) [N]; 'DraftContent' json [N]; 'FileUrl' varchar(255) [N]; 'FolderId' varchar(255) [N]; 'IndexingAttemptId' varchar(255) [N]; 'IndexingLeaseToken' varchar(255) [N]; 'IndexingLeaseUntil' datetime [N]; 'IsDeleted' boolean [N]; 'PagesCount' integer(10) [N]; 'PreviewPages' integer(10) [N]; 'PublisherName' varchar(255) [N]; 'ReadingTimeMinutes' integer(10) [N]; 'Slug' varchar(255) [N]; 'SourceUrl' json; 'Status' json [N]; 'Tags' json [N]; 'Title' varchar(255) [N]; 'Toc' json [N]; 'UpdatedAt' datetime [N]; 'Views' integer(10) [N]; 'Visibility' varchar(255) [N].
+Table 'Comment' (business/data): .
+Table 'EditorComment' (business/data): .
+Table 'DocumentVersion' (business/data): .
+Table 'DocumentIngestionOutbox' (technical): .
+Table 'WorkspaceFolder' (business/data): .
+Table 'DocumentRevision' (business/data): .
+Include EVERY table, field and relationship listed above, exactly as named. Do not omit, merge, rename, simplify, summarize or add anything. Do not invent extra tables, fields or relationships. If something does not fit, keep it and let the layout grow instead of dropping it. Totals: 7 MongoDB tables, 0 logical relationships, 30 MongoDB fields; 0 separate vector stores and 0 vector payload fields.
+
+Checklist: tables=7; relationships=0; fields=30.
+Correction prompt: Fix only the following items and keep everything else unchanged: [insert verified discrepancy].

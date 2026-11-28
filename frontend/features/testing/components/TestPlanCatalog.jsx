@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { MoreHorizontal } from "lucide-react";
+import AnchoredActionMenu from "./AnchoredActionMenu";
 import { StatusPill } from "./WorkspacePrimitives";
 import { PROJECT_SECTION_SLUGS, projectRoute } from "../routes";
 
@@ -19,7 +19,7 @@ export default function TestPlanCatalog({
   if (!items.length) {
     return (
       <div className="px-5 py-16 text-center text-sm text-ink-muted">
-        Chưa có kế hoạch phù hợp với bộ lọc.
+        Chưa có kế hoạch phù hợp với bộ lọc
       </div>
     );
   }
@@ -171,80 +171,74 @@ export default function TestPlanCatalog({
                 Mở kế hoạch
               </button>
               {hasActions && (
-                <details className="relative">
-                  <summary
-                    className="icon-button flex h-10 w-10 cursor-pointer list-none items-center justify-center [&::-webkit-details-marker]:hidden"
-                    aria-label={`Thao tác kế hoạch ${item.name}`}
-                    title="Thao tác"
-                  >
-                    <MoreHorizontal size={18} aria-hidden="true" />
-                  </summary>
-                  <div className="absolute right-0 top-11 z-50 w-52 rounded-control border border-border bg-surface p-1 shadow-panel">
-                    {["DRAFT", "READY"].includes(item.status) && can("testplan.update") && (
-                      <button
-                        className="w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
-                        type="button"
-                        onClick={() => onAction(item, "edit")}
-                      >
-                        Sửa kế hoạch
-                      </button>
-                    )}
-                    {can("testplan.read") && (
-                      <button
-                        className="w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
-                        type="button"
-                        onClick={() => onAction(item, "validate")}
-                      >
-                        Kiểm tra kế hoạch
-                      </button>
-                    )}
-                    {["DRAFT", "READY"].includes(item.status) && can("testplan.submit_review") && (
-                      <button
-                        className="w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
-                        type="button"
-                        onClick={() => onAction(item, "submit")}
-                      >
-                        {project.can_self_approve ? "Chốt kế hoạch" : "Gửi rà soát"}
-                      </button>
-                    )}
-                    {canApprove && (
-                      <button
-                        className="w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
-                        type="button"
-                        onClick={() => onAction(item, "approve")}
-                      >
-                        Phê duyệt kế hoạch
-                      </button>
-                    )}
-                    {canReview && can("testplan.review") && (
-                      <button
-                        className="w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
-                        type="button"
-                        onClick={() => onAction(item, "revise")}
-                      >
-                        Yêu cầu chỉnh sửa
-                      </button>
-                    )}
-                    {can("testplan.create") && (
-                      <button
-                        className="w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
-                        type="button"
-                        onClick={() => onAction(item, "duplicate")}
-                      >
-                        Nhân bản kế hoạch
-                      </button>
-                    )}
-                    {item.status !== "ARCHIVED" && can("testplan.archive") && (
-                      <button
-                        className="w-full rounded-control px-3 py-2 text-left text-sm text-danger hover:bg-danger-soft"
-                        type="button"
-                        onClick={() => onAction(item, "archive")}
-                      >
-                        Lưu trữ kế hoạch
-                      </button>
-                    )}
-                  </div>
-                </details>
+                <AnchoredActionMenu
+                  label={`Thao tác kế hoạch ${item.name}`}
+                  className="icon-button flex h-10 w-10 items-center justify-center"
+                >
+                  {["DRAFT", "READY"].includes(item.status) && can("testplan.update") && (
+                    <button
+                      className="w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
+                      type="button"
+                      onClick={() => onAction(item, "edit")}
+                    >
+                      Sửa kế hoạch
+                    </button>
+                  )}
+                  {can("testplan.read") && (
+                    <button
+                      className="w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
+                      type="button"
+                      onClick={() => onAction(item, "validate")}
+                    >
+                      Kiểm tra kế hoạch
+                    </button>
+                  )}
+                  {["DRAFT", "READY"].includes(item.status) && can("testplan.submit_review") && (
+                    <button
+                      className="w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
+                      type="button"
+                      onClick={() => onAction(item, "submit")}
+                    >
+                      {project.can_self_approve ? "Chốt kế hoạch" : "Gửi rà soát"}
+                    </button>
+                  )}
+                  {canApprove && (
+                    <button
+                      className="w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
+                      type="button"
+                      onClick={() => onAction(item, "approve")}
+                    >
+                      Phê duyệt kế hoạch
+                    </button>
+                  )}
+                  {canReview && can("testplan.review") && (
+                    <button
+                      className="w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
+                      type="button"
+                      onClick={() => onAction(item, "revise")}
+                    >
+                      Yêu cầu chỉnh sửa
+                    </button>
+                  )}
+                  {can("testplan.create") && (
+                    <button
+                      className="w-full rounded-control px-3 py-2 text-left text-sm hover:bg-surface-quiet"
+                      type="button"
+                      onClick={() => onAction(item, "duplicate")}
+                    >
+                      Nhân bản kế hoạch
+                    </button>
+                  )}
+                  {item.status !== "ARCHIVED" && can("testplan.archive") && (
+                    <button
+                      className="w-full rounded-control px-3 py-2 text-left text-sm text-danger hover:bg-danger-soft"
+                      type="button"
+                      onClick={() => onAction(item, "archive")}
+                    >
+                      Lưu trữ kế hoạch
+                    </button>
+                  )}
+                </AnchoredActionMenu>
               )}
             </div>
           </li>

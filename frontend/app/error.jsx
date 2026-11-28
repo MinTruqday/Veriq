@@ -10,7 +10,7 @@ export default function AppError({ error, reset }) {
       code="!"
       eyebrow="Có lỗi xảy ra"
       title="Không thể hiển thị trang này"
-      description="Thử tải lại trang hoặc quay về trang chủ để tiếp tục."
+      description="Thử tải lại trang hoặc quay về trang chủ để tiếp tục"
       onRetry={reset}
       primaryLabel="Thử lại"
       secondaryHref="/"

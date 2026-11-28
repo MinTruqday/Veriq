@@ -34,7 +34,7 @@ export default function HomePage() {
             Quản lý yêu cầu và kiểm thử
           </h1>
           <p className="mt-4 max-w-3xl text-[15px] leading-7 text-ink-muted">
-            Theo dõi Requirement, Test Case, lần chạy, lỗi và bản phát hành trong cùng dự án.
+            Theo dõi Requirement, Test Case, lần chạy, lỗi và bản phát hành trong cùng dự án
           </p>
           <div className="mt-9 flex flex-wrap gap-3">
             <Link href="/dang-nhap" className="apple-button px-6">

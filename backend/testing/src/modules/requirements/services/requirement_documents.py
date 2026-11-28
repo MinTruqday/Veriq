@@ -1845,6 +1845,8 @@ async def list_ai_requirement_document_page(project_id, cursor, limit, user):
                     "source_version_sequence",
                     "source_series_id",
                     "previous_source_version_id",
+                    "source_type",
+                    "format",
                     "authority",
                     "normalized_content",
                     "content_hash",

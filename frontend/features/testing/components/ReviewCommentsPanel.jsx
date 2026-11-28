@@ -78,7 +78,7 @@ export default function ReviewCommentsPanel({
     <Panel title={title || "Nhận xét rà soát"}>
       <div className="space-y-4 p-5">
         {error && <ErrorState message={error} />}
-        <label className="grid w-full max-w-xs gap-1 text-sm font-semibold text-ink">
+        <label className="grid w-full gap-1 text-sm font-semibold text-ink">
           Trạng thái nhận xét
           <select
             className="apple-input"
@@ -126,16 +126,16 @@ export default function ReviewCommentsPanel({
           <p className="text-[13px] text-ink-muted">Chưa có nhận xét rà soát</p>
         )}
         {canCreate && (
-          <form className="flex flex-col gap-3 sm:flex-row" onSubmit={create}>
+          <form className="flex flex-col gap-3" onSubmit={create}>
             <textarea
               aria-label="Nội dung nhận xét"
-              className="apple-input min-h-24 w-full min-w-0 flex-1 sm:w-auto"
+              className="apple-input min-h-24 w-full min-w-0"
               required
               value={body}
               onChange={(event) => setBody(event.target.value)}
               placeholder="Nhập nhận xét có thể kiểm chứng"
             />
-            <button className="apple-button self-end" type="submit" disabled={saving}>
+            <button className="apple-button self-start" type="submit" disabled={saving}>
               {saving ? "Đang lưu" : "Thêm nhận xét"}
             </button>
           </form>

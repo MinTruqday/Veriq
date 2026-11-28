@@ -51,7 +51,7 @@ export default function RequirementCoverageSelector({
       .catch(() => {
         if (active) {
           setItems([]);
-          setError("Không thể tải quy tắc nghiệp vụ của yêu cầu đã chọn.");
+          setError("Không thể tải quy tắc nghiệp vụ của yêu cầu đã chọn");
         }
       })
       .finally(() => {
@@ -77,7 +77,7 @@ export default function RequirementCoverageSelector({
     .map((id) => ({
       value: id,
       label: "Quy tắc đã liên kết",
-      description: "Nguồn không còn khả dụng.",
+      description: "Nguồn không còn khả dụng",
     }));
 
   return (

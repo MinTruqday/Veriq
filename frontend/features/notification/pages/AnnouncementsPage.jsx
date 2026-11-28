@@ -53,8 +53,7 @@ function notificationContent(item) {
   if (item.type === "DOCUMENT_UPDATE") {
     return {
       title: item.title || "Đã cập nhật tài liệu",
-      body:
-        item.message || item.body || "Nội dung tài liệu đã được đồng bộ và cập nhật thành công.",
+      body: item.message || item.body || "Nội dung tài liệu đã được đồng bộ và cập nhật thành công",
     };
   }
   return {

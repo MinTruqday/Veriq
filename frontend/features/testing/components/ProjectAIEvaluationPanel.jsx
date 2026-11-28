@@ -48,19 +48,19 @@ export default function ProjectAIEvaluationPanel({ analytics, loading }) {
         <div className="space-y-3 p-4 text-sm leading-6 text-ink-muted">
           <p>
             Số liệu được tổng hợp từ yêu cầu AI, kết quả đã lưu và quyết định rà soát trong dự án
-            này. Không dùng bộ câu hỏi mẫu cố định và không tự tạo đáp án chuẩn.
+            này. Không dùng bộ câu hỏi mẫu cố định và không tự tạo đáp án chuẩn
           </p>
           <p>
             Đây là đánh giá vận hành: mức độ sử dụng, tỷ lệ đề xuất được nhận hoặc chỉnh sửa, bằng
             chứng nguồn, lỗi và độ trễ. Các số liệu này không thay thế phép đánh giá độ chính xác có
-            nhãn độc lập.
+            nhãn độc lập
           </p>
           {requests.sample_truncated ||
           results.sample_truncated ||
           feedback.generated_draft_sample_truncated ? (
             <p className="text-warning">
               Một số thống kê bị giới hạn ở 10.000 bản ghi gần nhất; các thẻ bên dưới dùng đúng mẫu
-              dữ liệu mà hệ thống báo cáo.
+              dữ liệu mà hệ thống báo cáo
             </p>
           ) : null}
         </div>

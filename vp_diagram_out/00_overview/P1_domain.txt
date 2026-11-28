@@ -1,0 +1,103 @@
+Domain Model (UML class diagram: attributes only, no operations, no reference fields)
+Create the Veriq system-level business domain model. Use the exact PascalCase class and attribute names below. Each class has a primary key named '<ClassName>Id'. Include only listed classes and attributes.
+Class 'AuthCredential' (service 'authentication'): attributes 'AuthCredentialId' (PK), 'AvatarUrl', 'Bio', 'BlockedUsers', 'Bookmarks', 'CoverUrl', 'CreatedAt', 'CreatorStatus', 'DonationLink', 'Email', 'EmailVerified', 'EmailVerifiedAt', 'FullName', 'IsActive', 'IsKycVerified', 'IsShadowbanned', 'IsVerified', 'KycStatus', 'LastBankUpdate', 'LastPasswordChange', 'LastReadDate', 'Locale', 'Location', 'LoginSecurity', 'PasswordHash', 'PendingEmail', 'PendingEmailRequestedAt', 'Permissions', 'PinnedDocuments', 'Settings', 'Slug', 'SocialLinks', 'StorageLimit', 'SystemRole', 'Timezone', 'TosAcceptedAt', 'UpdatedAt', 'Website', 'WelcomeMessage'.
+Class 'Document' (service 'content'): attributes 'DocumentId' (PK), 'ArtifactMetadata', 'Category', 'Content', 'ContentFormat', 'ContentHash', 'CoverUrl', 'CreatedAt', 'DeletedAt', 'Description', 'DraftContent', 'FileUrl', 'IndexingLeaseToken', 'IndexingLeaseUntil', 'IsDeleted', 'PagesCount', 'PreviewPages', 'PublisherName', 'ReadingTimeMinutes', 'Slug', 'SourceUrl', 'Status', 'Tags', 'Title', 'Toc', 'UpdatedAt', 'Views', 'Visibility'.
+Class 'Comment' (service 'content'): attributes 'CommentId' (PK).
+Class 'EditorComment' (service 'content'): attributes 'EditorCommentId' (PK).
+Class 'DocumentVersion' (service 'content'): attributes 'DocumentVersionId' (PK).
+Class 'WorkspaceFolder' (service 'content'): attributes 'WorkspaceFolderId' (PK).
+Class 'DocumentRevision' (service 'content'): attributes 'DocumentRevisionId' (PK).
+Class 'StorageItem' (service 'cloud'): attributes 'StorageItemId' (PK), 'AiProcessed', 'BrokenLinks', 'Color', 'CreatedAt', 'Description', 'DuplicateOf', 'Entities', 'EnvironmentReady', 'IsDuplicate', 'IsFolder', 'IsLocked', 'IsPublic', 'IsShortcut', 'IsStarred', 'IsTrashed', 'LockedAt', 'LockedBy', 'MimeType', 'Name', 'ShareToken', 'SharedWith', 'Size', 'Tags', 'UpdatedAt', 'Url', 'Versions'.
+Class 'TempChatFile' (service 'cloud'): attributes 'TempChatFileId' (PK), 'Token'.
+Class 'StorageShareLink' (service 'cloud'): attributes 'StorageShareLinkId' (PK).
+Class 'StorageActivity' (service 'cloud'): attributes 'StorageActivityId' (PK).
+Class 'FileRequest' (service 'cloud'): attributes 'FileRequestId' (PK).
+Class 'Notification' (service 'notification'): attributes 'NotificationId' (PK), 'IdempotencyKey'.
+Class 'NotificationSetting' (service 'notification'): attributes 'NotificationSettingId' (PK), 'Settings'.
+Class 'RequirementVersion' (service 'testing'): attributes 'RequirementVersionId' (PK), 'Dependencies', 'IndexErrorCode', 'IndexStatus', 'ObsoleteAt', 'ObsoleteBy', 'ObsoleteReason', 'RestoreReason', 'RestoredAt', 'RestoredBy', 'Revision', 'SourceRefs', 'Status', 'StatusBeforeObsolete', 'SupersededAt', 'SupersededBy', 'UpdatedAt', 'Version'.
+Class 'TestCaseVersion' (service 'testing'): attributes 'TestCaseVersionId' (PK), 'ApprovalAuditErrorCode', 'ApprovalAuditStatus', 'CreatedAt', 'IndexErrorCode', 'IndexStatus', 'IndexedAt', 'Status', 'TestCaseKey', 'Title', 'TraceErrorCode', 'TraceStatus', 'Version'.
+Class 'NotificationSubscription' (service 'testing'): attributes 'NotificationSubscriptionId' (PK), 'ArtifactType'.
+Class 'ProjectNotificationPreference' (service 'testing'): attributes 'ProjectNotificationPreferenceId' (PK), 'Channels', 'DigestFrequency', 'MutedEvents'.
+Class 'TestResult' (service 'testing'): attributes 'TestResultId' (PK), 'CompletedAt', 'Note', 'Revision', 'Status', 'UpdatedAt'.
+Class 'Requirement' (service 'testing'): attributes 'RequirementId' (PK), 'ObsoleteAt', 'ObsoleteBy', 'ObsoleteReason', 'RequirementKey', 'RestoreReason', 'RestoredAt', 'RestoredBy', 'Status', 'StatusBeforeObsolete', 'SupersededAt', 'SupersededBy', 'Tags', 'Title', 'UpdatedAt'.
+Class 'Project' (service 'testing'): attributes 'ProjectId' (PK), 'Locale', 'Revision', 'Settings', 'TestCasePublicationRevision'.
+Class 'TestAnalysisFinding' (service 'testing'): attributes 'TestAnalysisFindingId' (PK), 'Revision'.
+Class 'TestCondition' (service 'testing'): attributes 'TestConditionId' (PK), 'Status'.
+Class 'TestPlan' (service 'testing'): attributes 'TestPlanId' (PK), 'ApprovedAt', 'CreatedAt', 'Name', 'Revision', 'Status', 'TestSuiteSnapshots'.
+Class 'TestCaseDraft' (service 'testing'): attributes 'TestCaseDraftId' (PK), 'ApprovedAt', 'ApprovedBy', 'ExpectedResultDoc', 'ObjectiveDoc', 'PreconditionsDoc', 'Revision', 'Status', 'Steps', 'TestCaseKey', 'Title', 'UpdatedAt'.
+Class 'TestCaseCustomField' (service 'testing'): attributes 'TestCaseCustomFieldId' (PK).
+Class 'TestRun' (service 'testing'): attributes 'TestRunId' (PK), 'IdempotencyKey', 'Name', 'Revision', 'Status', 'TestCaseAssignments', 'TestPlanScheduleSnapshot', 'UpdatedAt'.
+Class 'DocumentSummaryJob' (service 'testing'): attributes 'DocumentSummaryJobId' (PK), 'CancelRequested', 'DispatchGeneration', 'LockedSources', 'StartedAt', 'Status', 'UpdatedAt', 'WorkerStatus'.
+Class 'RequirementDocument' (service 'testing'): attributes 'RequirementDocumentId' (PK), 'ContentHash', 'RequirementImportStatus', 'Revision', 'Status', 'UpdatedAt'.
+Class 'RequirementImpactJob' (service 'testing'): attributes 'RequirementImpactJobId' (PK), 'Cases', 'Comparison', 'CreatedAt', 'ErrorCode', 'LeaseToken', 'LeaseUntil', 'Limitations', 'NewCandidates', 'Plans', 'RequestedBy', 'Runs', 'Status', 'UpdatedAt'.
+Class 'RequirementChangeSet' (service 'testing'): attributes 'RequirementChangeSetId' (PK), 'Changes', 'ModelVersion', 'Revision', 'Status', 'UpdatedAt'.
+Class 'ImportJob' (service 'testing'): attributes 'ImportJobId' (PK), 'ConfirmedAt', 'ConfirmedBy', 'ConfirmingBy', 'Preview', 'RejectedIndexes', 'Revision', 'SelectedIndexes', 'SourceContentHash', 'Status', 'TemplatePublicView', 'TemplateVersion', 'UpdatedAt'.
+Class 'TraceLink' (service 'testing'): attributes 'TraceLinkId' (PK), 'CreatedAt', 'CreatedBy', 'Revision', 'SourceType', 'Status', 'TargetType', 'UpdatedAt'.
+Class 'TestPeriod' (service 'testing'): attributes 'TestPeriodId' (PK), 'CarryOverItems', 'CloseNote', 'CloseSummary', 'ClosedAt', 'ClosedBy', 'Name', 'Revision', 'Sequence', 'Status', 'UpdatedAt'.
+Class 'ProjectMember' (service 'testing'): attributes 'ProjectMemberId' (PK), 'Status'.
+Class 'RequirementSourceBlock' (service 'testing'): attributes 'RequirementSourceBlockId' (PK).
+Class 'RequirementTemplate' (service 'testing'): attributes 'RequirementTemplateId' (PK), 'Revision', 'Version'.
+Class 'RequirementTemplateVersion' (service 'testing'): attributes 'RequirementTemplateVersionId' (PK), 'Snapshot', 'Version'.
+Class 'RequirementCustomField' (service 'testing'): attributes 'RequirementCustomFieldId' (PK).
+Class 'AcceptanceCriteria' (service 'testing'): attributes 'AcceptanceCriteriaId' (PK), 'ApprovedAt', 'ApprovedBy', 'Status'.
+Class 'RequirementTransformation' (service 'testing'): attributes 'RequirementTransformationId' (PK), 'Attempt', 'ConfirmedAt', 'ErrorCode', 'IdempotencyKey', 'Status', 'UpdatedAt'.
+Class 'RequirementDuplicateScan' (service 'testing'): attributes 'RequirementDuplicateScanId' (PK).
+Class 'TestScenario' (service 'testing'): attributes 'TestScenarioId' (PK).
+Class 'TestCaseTemplate' (service 'testing'): attributes 'TestCaseTemplateId' (PK), 'Revision', 'Status'.
+Class 'TestCase' (service 'testing'): attributes 'TestCaseId' (PK), 'ReviewRequiredBy', 'ReviewRequiredReason', 'Status', 'TestCaseKey', 'UpdatedAt'.
+Class 'AiResult' (service 'testing'): attributes 'AiResultId' (PK), 'ClaimToken', 'IdempotencyKey', 'ResultType', 'Revision', 'SourceFingerprint'.
+Class 'AiFinding' (service 'testing'): attributes 'AiFindingId' (PK), 'ArtifactType', 'Attempt', 'ClaimToken', 'ClaimedAt', 'LeaseExpiresAt', 'RequestFingerprint', 'ResultType'.
+Class 'CoverageSnapshot' (service 'testing'): attributes 'CoverageSnapshotId' (PK), 'IdempotencyKey'.
+Class 'ImpactAnalyse' (service 'testing'): attributes 'ImpactAnalyseId' (PK), 'ModelVersion', 'RerunRequestedAt', 'RerunRequestedBy', 'Revision', 'SnapshotNumber', 'SourceType', 'Status', 'UpdatedAt'.
+Class 'MaintenanceProposal' (service 'testing'): attributes 'MaintenanceProposalId' (PK), 'Revision', 'Status', 'SupersededBy', 'UpdatedAt'.
+Class 'RegressionRecommendation' (service 'testing'): attributes 'RegressionRecommendationId' (PK), 'Revision'.
+Class 'TestSuite' (service 'testing'): attributes 'TestSuiteId' (PK), 'Revision', 'Status', 'UpdatedAt'.
+Class 'ProjectNotificationRule' (service 'testing'): attributes 'ProjectNotificationRuleId' (PK).
+Class 'SecurityTestSuggestion' (service 'testing'): attributes 'SecurityTestSuggestionId' (PK), 'IdempotencyKey'.
+Class 'PerformancePlanDraft' (service 'testing'): attributes 'PerformancePlanDraftId' (PK), 'IdempotencyKey'.
+Class 'AutomationExecution' (service 'testing'): attributes 'AutomationExecutionId' (PK), 'IdempotencyKey', 'QueuedAt', 'Revision', 'StartIdempotencyKey', 'Status', 'UpdatedAt'.
+Class 'JunitResultImport' (service 'testing'): attributes 'JunitResultImportId' (PK), 'Revision', 'SourceHash', 'Status', 'Unresolved', 'UpdatedAt'.
+Class 'CollaborationSession' (service 'testing'): attributes 'CollaborationSessionId' (PK).
+Class 'CollaborationOperation' (service 'testing'): attributes 'CollaborationOperationId' (PK), 'ArtifactType', 'ResultRevision'.
+Class 'DraftConflict' (service 'testing'): attributes 'DraftConflictId' (PK), 'Revision', 'Status'.
+Class 'TestRunResumeEvent' (service 'testing'): attributes 'TestRunResumeEventId' (PK), 'IdempotencyKey'.
+Class 'Release' (service 'testing'): attributes 'ReleaseId' (PK), 'GateRevision', 'IsCurrent', 'Status'.
+Class 'Build' (service 'testing'): attributes 'BuildId' (PK), 'IsCurrent', 'Status'.
+Class 'TestEnvironment' (service 'testing'): attributes 'TestEnvironmentId' (PK), 'Status'.
+Class 'TestResultCorrection' (service 'testing'): attributes 'TestResultCorrectionId' (PK), 'IdempotencyKey'.
+Class 'Defect' (service 'testing'): attributes 'DefectId' (PK), 'CreatedBy', 'DefectKey', 'IdempotencyKey', 'Priority', 'Revision', 'Severity', 'Status', 'Title', 'UpdatedAt'.
+Class 'DefectRetest' (service 'testing'): attributes 'DefectRetestId' (PK), 'ApplicationStatus', 'IdempotencyKey'.
+Class 'TestExecutionUpdate' (service 'testing'): attributes 'TestExecutionUpdateId' (PK), 'IdempotencyKey'.
+Class 'ReviewComment' (service 'testing'): attributes 'ReviewCommentId' (PK), 'ArtifactType'.
+Class 'Attachment' (service 'testing'): attributes 'AttachmentId' (PK), 'ArtifactType', 'Revision', 'Status'.
+Class 'BreakGlassGrant' (service 'testing'): attributes 'BreakGlassGrantId' (PK), 'ExpiresAt', 'Permissions', 'Reason', 'Status', 'TtlMinutes'.
+Class 'ApiImport' (service 'testing'): attributes 'ApiImportId' (PK), 'Format', 'Status'.
+Class 'ApiOperation' (service 'testing'): attributes 'ApiOperationId' (PK).
+Class 'TestImport' (service 'testing'): attributes 'TestImportId' (PK), 'Status'.
+Class 'WorkerEvent' (service 'testing'): attributes 'WorkerEventId' (PK).
+Class 'BulkOperation' (service 'testing'): attributes 'BulkOperationId' (PK), 'CreatedAt', 'CreatedBy', 'IdempotencyKey', 'OperationType', 'RequestHash'.
+Class 'ProjectAccessControl' (service 'testing'): attributes 'ProjectAccessControlId' (PK), 'Capabilities', 'MigratedAt', 'MigrationSource', 'Revision', 'RoleGrants', 'RoleGrantsManagedByAdmin', 'SchemaVersion', 'SettingGrants', 'UpdatedAt'.
+Class 'SimpleTestReport' (service 'testing'): attributes 'SimpleTestReportId' (PK), 'CaseResults', 'Defects', 'Type'.
+Class 'TestPeriodCounter' (service 'testing'): attributes 'TestPeriodCounterId' (PK), 'Sequence'.
+Class 'AiRunAccessLease' (service 'testing'): attributes 'AiRunAccessLeaseId' (PK).
+Class 'Counter' (service 'testing'): attributes 'CounterId' (PK), 'Value'.
+Class 'AutomationScriptDraft' (service 'testing'): attributes 'AutomationScriptDraftId' (PK), 'Framework', 'IdempotencyKey', 'Status'.
+Class 'ImpactReviewPerspective' (service 'testing'): attributes 'ImpactReviewPerspectiveId' (PK).
+Class 'RuntimePolicy' (service 'testing'): attributes 'RuntimePolicyId' (PK).
+Class 'LongTermMemory' (service 'ai'): attributes 'LongTermMemoryId' (PK), 'CreatedAt', 'EvidenceRefs', 'Intent', 'Objective', 'Proposal', 'Trusted'.
+Class 'AiSession' (service 'ai'): attributes 'AiSessionId' (PK).
+Class 'AiMessage' (service 'ai'): attributes 'AiMessageId' (PK).
+Class 'AiWorkspace' (service 'ai'): attributes 'AiWorkspaceId' (PK).
+Class 'AiRun' (service 'ai'): attributes 'AiRunId' (PK), 'AutomaticRetryCount', 'ChangeSimulation', 'CheckpointSequence', 'Constraints', 'CreatedAt', 'ErrorCode', 'Evidence', 'ExecutionPermissions', 'ExecutionRole', 'Intent', 'IntentArguments', 'Kind', 'Objective', 'QueueDispatchLeaseExpiresAt', 'RequesterPermissions', 'RequesterRole', 'Result', 'Revision', 'SourceEventVerified', 'Status', 'Trigger', 'UpdatedAt', 'WorkerLeaseExpiresAt'.
+(1) 'BreakGlassGrant' association 'AuthCredential', source service 'testing', target service 'authentication', multiplicity at 'BreakGlassGrant': 0..*, multiplicity at 'AuthCredential': 1, navigable from 'BreakGlassGrant' to 'AuthCredential'; code field `actor_id` [SUY RA].
+(2) 'DocumentSummaryJob' association 'AuthCredential', source service 'testing', target service 'authentication', multiplicity at 'DocumentSummaryJob': 0..*, multiplicity at 'AuthCredential': 1, navigable from 'DocumentSummaryJob' to 'AuthCredential'; code field `requester_id` [SUY RA].
+(3) 'NotificationSubscription' association 'AuthCredential', source service 'testing', target service 'authentication', multiplicity at 'NotificationSubscription': 0..*, multiplicity at 'AuthCredential': 1, navigable from 'NotificationSubscription' to 'AuthCredential'; code field `user_id` [SUY RA].
+(4) 'ProjectNotificationPreference' association 'AuthCredential', source service 'testing', target service 'authentication', multiplicity at 'ProjectNotificationPreference': 0..*, multiplicity at 'AuthCredential': 1, navigable from 'ProjectNotificationPreference' to 'AuthCredential'; code field `user_id` [SUY RA].
+(5) 'ProjectMember' association 'AuthCredential', source service 'testing', target service 'authentication', multiplicity at 'ProjectMember': 0..*, multiplicity at 'AuthCredential': 1, navigable from 'ProjectMember' to 'AuthCredential'; code field `user_id` [SUY RA].
+(6) 'BreakGlassGrant' association 'AuthCredential', source service 'testing', target service 'authentication', multiplicity at 'BreakGlassGrant': 0..*, multiplicity at 'AuthCredential': 1, navigable from 'BreakGlassGrant' to 'AuthCredential'; code field `user_id` [SUY RA].
+(7) 'LongTermMemory' association 'Project', source service 'ai', target service 'testing', multiplicity at 'LongTermMemory': 0..*, multiplicity at 'Project': 1, navigable from 'LongTermMemory' to 'Project'; code field `project_id` [SUY RA].
+(8) 'AiRun' association 'Project', source service 'ai', target service 'testing', multiplicity at 'AiRun': 0..*, multiplicity at 'Project': 1, navigable from 'AiRun' to 'Project'; code field `project_id` [SUY RA].
+Include EVERY class, attribute and listed relationship, exactly as named. Do not omit, merge, rename, simplify, summarize or add anything. Do not invent extra classes, attributes or relationships. If something does not fit, keep it and let the layout grow instead of dropping it. Totals: 89 classes, 8 cross-service relationships, 474 attributes.
+
+Checklist: classes=89; relationships=8; attributes=474.
+Correction prompt: Fix only the following items and keep everything else unchanged: [insert verified discrepancy].

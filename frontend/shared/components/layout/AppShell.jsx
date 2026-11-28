@@ -228,7 +228,7 @@ export default function AppShell({ children, requireAuth }) {
         setProjectContext(null);
         setProjectPermissions(null);
         setPermissionsProjectId(null);
-        setProjectContextError("Không thể tải quyền và thông tin dự án. Hãy thử lại.");
+        setProjectContextError("Không thể tải quyền và thông tin dự án. Hãy thử lại");
       }
     },
     [redirectFromProject],

@@ -1,0 +1,53 @@
+# Rà soát đối chiếu 33 UC với mã tại commit 15c4a3f
+
+Phạm vi rà soát là các điểm vào giao diện và xử lý phía máy chủ trong bản mã tại commit `15c4a3f93dcc9145e4cb0846bd25a2b188cf3db1`. Đây là rà soát tĩnh; không suy diễn dữ liệu phân quyền đang chạy, cấu hình môi trường hay hành vi của dịch vụ ngoài khi chưa có bằng chứng.
+
+## Kết quả trọng yếu
+
+- Có 33 mã UC trong bảng đầu vào. UC32 có đặc tả riêng ở dạng bảng trường và luồng gạch đầu dòng, khác định dạng mà lần rà trước đã dùng để trích các bảng hai cột; lần rà đó đọc sót nội dung này. UC33 mới là UC không có luồng trong bảng nguồn.
+- UC32 là chức năng độc lập, có xử lý riêng nhận danh sách phiên bản yêu cầu và hướng dẫn. Chưa tìm thấy màn hình frontend gọi trực tiếp nó tại commit được rà. UC31 hiện gọi lại năng lực này khi xử lý tài liệu đủ điều kiện; kết quả ở nhánh đó được hiển thị trong Hoạt động AI ở trạng thái chưa lưu. Việc UC31 tái sử dụng không làm UC32 thành UC con.
+- UC33 có giao diện `ManualTestGenerationPanel`: người dùng xem đề xuất, chọn mục rồi lưu ca nháp. Bảng nguồn bỏ trống luồng, vì vậy đặc tả phải được dựng trực tiếp từ giao diện và ghi dấu căn cứ.
+- Trong đặc tả nghiệp vụ, đã bỏ tên hàm/lớp và cách gọi tầng phần mềm. Những tên thật chỉ được dùng riêng khi lập sơ đồ Sequence, sau khi truy được từ mã.
+- Không đưa “quản lý phiên đăng nhập” thành UC. UC đăng nhập/đăng xuất vẫn mô tả thao tác người dùng; phần lưu trạng thái đăng nhập là cách mã thực hiện bên trong.
+
+## Đối chiếu từng UC
+
+| Mã | Tên | Điểm vào mã nguồn liên quan | Kết quả rà soát tĩnh |
+|---|---|---|---|
+| UC01 | Đăng nhập | `frontend/features/authentication/pages/LoginPage.jsx; backend/authentication/src/api/session.py` | LoginPage gọi luồng đăng nhập; endpoint `login` chuyển tới `SessionService.login_user`. Luồng đăng nhập tạo trạng thái đăng nhập; UC không mô tả chức năng quản lý phiên. |
+| UC02 | Đăng xuất | `frontend/features/authentication/contexts/AuthContext.jsx; backend/authentication/src/api/session.py` | Có thao tác đăng xuất; backend có `logout` và thu hồi phiên hiện tại. Không mở rộng thành quản lý danh sách phiên. |
+| UC03 | Cập nhật thông tin cá nhân | `frontend/features/authentication/pages/AccountPage.jsx; backend/authentication/src/api/session.py` | Có cập nhật hồ sơ và đổi mật khẩu; kiểm tra riêng các mục cài đặt nào nằm trong phạm vi UC. |
+| UC04 | Khôi phục mật khẩu | `frontend/features/authentication/pages/ForgotPasswordPage.jsx; frontend/features/authentication/pages/ResetPasswordPage.jsx; backend/authentication/src/api/session.py` | Có gửi mã, xác minh mã, đặt mật khẩu mới; mã có thời hạn và hệ thống không tiết lộ email có tồn tại hay không. |
+| UC05 | Quản lý tài khoản | `backend/authentication/src/api/platform.py; frontend/features/testing/components/PlatformUsersPanel.jsx` | Có luồng quản trị tài khoản; xác minh các thao tác riêng theo từng nút trước khi đưa vào sơ đồ. |
+| UC06 | Kiểm soát truy cập | `backend/authentication/src/api/platform.py; backend/authentication/src/api/platform_controls.py` | Có khóa/mở khóa/vô hiệu hóa/kích hoạt/đổi vai trò và yêu cầu đặt lại mật khẩu. Dùng cách gọi “yêu cầu đặt lại mật khẩu”, không viết “buộc đặt lại”. |
+| UC07 | Phân quyền | `backend/testing/src/modules/projects/api/access.py; frontend/features/testing/components/ProjectAccessPanel.jsx` | Có xem và cập nhật quyền theo vai trò dự án; quyền thực tế phụ thuộc dữ liệu cấu hình và quyền người dùng. |
+| UC08 | Quản lý dự án | `backend/testing/src/modules/projects/api/projects.py; frontend/features/testing/pages/ProjectsPage.jsx` | Có danh sách, tạo, sửa, lưu trữ và khôi phục; xóa cứng thuộc chức năng quản trị nền tảng nếu giao diện/điều kiện tương ứng xác nhận. |
+| UC09 | Quản lý thành viên dự án | `backend/testing/src/modules/projects/api/projects.py; frontend/features/testing/pages/ProjectWorkspacePage.jsx` | Có danh sách thành viên, mời, chấp nhận/từ chối lời mời, cập nhật và rời dự án; cần giữ đúng tác nhân và quyền theo từng thao tác. |
+| UC10 | Quản lý yêu cầu | `backend/testing/src/modules/requirements/api/requirement_records.py; frontend/features/testing/pages/workspace/requirements` | Có danh sách, chi tiết, tạo, sửa nháp, lưu và phiên bản yêu cầu. |
+| UC11 | Trình duyệt yêu cầu | `backend/testing/src/modules/requirements/api/requirement_records.py; frontend/features/testing/pages/workspace/requirements` | Có gửi rà soát và mở lại chỉnh sửa; chỉ giữ các nhánh có nút và xử lý tương ứng. |
+| UC12 | Xét duyệt yêu cầu | `backend/testing/src/modules/requirements/api/requirement_records.py; backend/testing/src/modules/requirements/services/requirement_lifecycle.py` | Có phê duyệt và yêu cầu chỉnh sửa; kiểm tra điều kiện vai trò và trạng thái trong service. |
+| UC13 | Quản lý hiệu lực yêu cầu | `backend/testing/src/modules/requirements/api/requirement_records.py` | Có ngừng hiệu lực và khôi phục yêu cầu. |
+| UC14 | Tổ chức yêu cầu | `backend/testing/src/modules/requirements/api/requirement_records.py; backend/testing/src/modules/requirements/api/requirement_imports.py` | Có liên kết phụ thuộc; tách/gộp ứng viên nhập liệu ở luồng nhập. Không gán tên hàm chuyển sang UC khác. |
+| UC15 | Quản lý tài liệu nguồn | `backend/testing/src/modules/requirements/api/requirement_documents.py; frontend/features/testing/pages/workspace/requirements/RequirementSourceDocumentsPanel.jsx` | Có xem, cập nhật quyền, tải xuống, lưu trữ/khôi phục, chạy xử lý AI và trích xuất; gửi email/chia sẻ chỉ ghi nếu giao diện và service cho thấy. |
+| UC16 | Quản lý kế hoạch kiểm thử | `backend/testing/src/modules/execution/api/execution.py; backend/testing/src/modules/execution/services/test_plan.py` | Có danh sách, xem, tạo, sửa và kiểm tra kế hoạch. |
+| UC17 | Trình duyệt kế hoạch kiểm thử | `backend/testing/src/modules/execution/api/execution.py` | Có gửi kế hoạch để rà soát. |
+| UC18 | Xét duyệt kế hoạch kiểm thử | `backend/testing/src/modules/execution/api/execution.py; backend/testing/src/modules/execution/services/test_plan.py` | Có phê duyệt và yêu cầu chỉnh sửa kế hoạch. |
+| UC19 | Quản lý điều kiện kiểm thử | `backend/testing/src/modules/design/api/test_analysis.py` | Có liệt kê, tạo, xem, sửa, lưu trữ và các thao tác điều kiện kiểm thử. |
+| UC20 | Xét duyệt điều kiện kiểm thử | `backend/testing/src/modules/design/api/test_analysis.py` | Có gửi rà soát và phê duyệt; diễn đạt bước theo thao tác người dùng, không chèn tên hàm. |
+| UC21 | Quản lý ca kiểm thử | `backend/testing/src/modules/design/api/test_design.py` | Có liệt kê, tạo nháp, xem, sửa, kiểm tra và các thao tác ca kiểm thử. |
+| UC22 | Trình duyệt ca kiểm thử | `backend/testing/src/modules/design/api/test_design.py` | Có gửi ca kiểm thử để rà soát. |
+| UC23 | Xét duyệt ca kiểm thử | `backend/testing/src/modules/design/api/test_design.py; backend/testing/src/modules/design/services/test_case_lifecycle.py` | Có phê duyệt và yêu cầu chỉnh sửa; trạng thái và quyền được kiểm tra ở service. |
+| UC24 | Quản lý phiên bản ca kiểm thử | `backend/testing/src/modules/design/api/test_design.py` | Có xem danh sách phiên bản, tạo bản nháp phiên bản, so sánh, ngừng hiệu lực và khôi phục. |
+| UC25 | Quản lý bộ kiểm thử | `backend/testing/src/modules/execution/api/execution.py` | Có danh sách, tạo, xem, cập nhật, nhân bản và lưu trữ bộ kiểm thử. |
+| UC26 | Quản lý lần chạy kiểm thử | `backend/testing/src/modules/execution/api/execution.py; backend/testing/src/modules/execution/api/execution_context.py` | Có tạo, liệt kê, xem, phân công, bắt đầu, hoàn tất, hủy và chạy lại; cần phân biệt “lần chạy” với kết quả của từng ca. |
+| UC27 | Thực thi kiểm thử | `backend/testing/src/modules/execution/api/execution.py; backend/testing/src/modules/execution/api/execution_context.py` | Có cập nhật thực thi và ghi nhận kết quả; không gộp các thao tác riêng vào một bước sơ đồ. |
+| UC28 | Quản lý lỗi | `backend/testing/src/modules/execution/api/execution.py; backend/testing/src/modules/quality/services/defect_records.py` | Có tạo, liệt kê, xem chi tiết, cập nhật và tìm lỗi trùng nếu giao diện dùng thao tác đó. |
+| UC29 | Xử lý lỗi | `backend/testing/src/modules/execution/api/execution.py; backend/testing/src/modules/quality/services/defect_records.py; backend/testing/src/modules/quality/services/defect_lifecycle.py` | Có chuyển trạng thái và kiểm thử lại lỗi. |
+| UC30 | Quản lý báo cáo kiểm thử | `backend/testing/src/modules/execution/api/simple_reports.py; frontend/features/testing/components/SimpleTestReports.jsx` | Có xem báo cáo, lưu bản và xuất PDF/Word theo các thao tác hiển thị. |
+| UC31 | Tạo yêu cầu bằng AI | `backend/testing/src/modules/requirements/api/requirement_documents.py; backend/ai/src/tools/requirement_document_workflow.py` | Có chạy xử lý tài liệu nguồn để tạo ứng viên yêu cầu; cần mô tả riêng phần người dùng duyệt/lưu nếu luồng giao diện thể hiện. |
+| UC32 | Đề xuất kế hoạch kiểm thử bằng AI | `backend/testing/src/modules/execution/api/execution.py; backend/testing/src/modules/execution/services/test_plan_generation.py; backend/testing/src/schemas/contracts/planning.py; backend/ai/src/tools/requirement_document_workflow.py; frontend/features/testing/components/AIRunPanel.jsx` | UC32 có xử lý riêng nhận danh sách phiên bản yêu cầu và hướng dẫn. UC31 hiện gọi lại năng lực này trong một luồng cụ thể, rồi giao diện Hoạt động AI hiển thị đề xuất chưa lưu. Chưa thấy màn hình frontend gọi trực tiếp UC32. |
+| UC33 | Tạo ca kiểm thử bằng AI | `frontend/features/testing/components/ManualTestGenerationPanel.jsx; frontend/features/testing/services/testing.design.js; backend/testing/src/modules/design/api/test_design.py` | Có giao diện tạo đề xuất, xem trước, chọn đề xuất rồi lưu thành ca nháp. Bảng nguồn để trống cả ba luồng; có thể dựng lại từ thao tác đang có trên giao diện, nhưng phải ghi nguồn và không thêm lỗi không được thể hiện. |
+
+## Giới hạn cần giữ rõ
+
+Tên tệp và hàm trong bảng chứng minh có điểm xử lý trong mã, không tự chứng minh rằng mọi nhánh được trình bày trong bảng đặc tả đã được thực thi đúng. Phần nghiệp vụ của mỗi luồng cần đối chiếu thêm với giao diện, điều kiện trong hàm xử lý và kết quả trả về. UC32 có xử lý riêng và là UC độc lập; UC31 là một caller đã xác minh. Giao diện gọi trực tiếp UC32 chưa được tìm thấy; giao diện Hoạt động AI chỉ xác nhận cách hiển thị kết quả khi được gọi trong UC31. UC33 có bằng chứng giao diện để dựng luồng cơ bản, nhưng các tình huống lỗi chỉ được thêm khi thấy điều kiện hoặc thông báo tương ứng trong mã.

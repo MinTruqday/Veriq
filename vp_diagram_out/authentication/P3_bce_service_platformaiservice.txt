@@ -1,0 +1,13 @@
+UML Class Diagram (Boundary-Control-Entity analysis)
+Create the BCE class diagram for 'authentication', group 'service_PlatformAiService'. Use English PascalCase names. Use stereotypes <<boundary>>, <<control>>, <<entity>>. Do not connect boundaries directly to entities.
+Class 'Ctrl_PlatformAiService' <<control>>: + Providers() : json; + UpdateProvider(providerId : string, payload : json, currentUser : json) : json; + TestProvider(providerId : string, currentUser : json) : json; + Models() : json; + RegisterModel(payload : json, currentUser : json) : json; + UpdateModel(modelId : string, payload : json, currentUser : json) : json; + Defaults(currentUser : json) : json; + UpdateDefaults(payload : json, currentUser : json) : json; + Versions() : json.
+Class 'SystemConfig' <<entity>>: - SystemConfigId : string; + GetSystemConfigByType(configType : string, projection : json) : json; + UpdateSystemConfig(configType : string, update : json, upsert : Boolean) : json.
+Control dependency: 'Ctrl_PlatformAiService' to 'SystemConfig', multiplicity at control: 1, multiplicity at entity: 1, navigable from control to entity.
+Class 'AiProvider' <<entity>>: - AiProviderId : string; + ListAiProviders() : json; + UpsertAiProvider(providerId : string, changes : json, createdAt : string) : json.
+Control dependency: 'Ctrl_PlatformAiService' to 'AiProvider', multiplicity at control: 1, multiplicity at entity: 1, navigable from control to entity.
+Class 'AiModel' <<entity>>: - AiModelId : string; + ListAiModels(query : json) : json; + InsertAiModel(model : json) : json; + UpdateAiModel(modelId : string, changes : json) : json; + CountAiModels(modelIds : json, enabled : Boolean) : json.
+Control dependency: 'Ctrl_PlatformAiService' to 'AiModel', multiplicity at control: 1, multiplicity at entity: 1, navigable from control to entity.
+Include EVERY class, attribute, operation and relationship listed above, exactly as named. Do not omit, merge, rename, simplify, summarize or add anything. Do not invent extra classes, attributes or relationships. If something does not fit, keep it and let the layout grow instead of dropping it. Totals: 4 classes, 3 relationships, 3 attributes.
+
+Checklist: classes=4; relationships=3; attributes=3.
+Correction prompt: Fix only the following items and keep everything else unchanged: [insert verified discrepancy].

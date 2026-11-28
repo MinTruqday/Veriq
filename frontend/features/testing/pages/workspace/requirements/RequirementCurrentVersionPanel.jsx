@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { Archive, CalendarPlus, CheckCheck, FilePenLine, GitFork, RotateCcw } from "lucide-react";
 import { Panel, StatusPill } from "../../../components/WorkspacePrimitives";
 import Link from "next/link";
 import DocumentEditor from "../../../editor/DocumentEditor";
@@ -108,8 +109,8 @@ export default function RequirementCurrentVersionPanel({
     await ask({
       title,
       description: canSelfApprove
-        ? `${selected.requirement_key} sẽ được kiểm tra điều kiện và chốt ngay.`
-        : `${selected.requirement_key} sẽ được chuyển sang người rà soát. Bản nháp sẽ được lưu trước khi gửi.`,
+        ? `${selected.requirement_key} sẽ được kiểm tra điều kiện và chốt ngay`
+        : `${selected.requirement_key} sẽ được chuyển sang người rà soát. Bản nháp sẽ được lưu trước khi gửi`,
       confirmLabel: canSelfApprove ? "Chốt Requirement" : "Gửi rà soát",
       fields: [
         {
@@ -143,10 +144,12 @@ export default function RequirementCurrentVersionPanel({
         <div className="flex flex-wrap gap-2">
           {["READY", "BASELINED"].includes(current.status) && can("testplan.create") && (
             <Link
-              className="secondary-button"
+              className="icon-button h-9 w-9"
+              aria-label="Lập kế hoạch kiểm thử"
+              title="Lập kế hoạch kiểm thử"
               href={`/du-an/${projectId}/ke-hoach-kiem-thu?requirementVersionId=${encodeURIComponent(current._id)}`}
             >
-              Lập kế hoạch kiểm thử
+              <CalendarPlus aria-hidden="true" size={16} />
             </Link>
           )}
           {current.status === "READY" && can("requirement.submit_review") && (
@@ -165,7 +168,7 @@ export default function RequirementCurrentVersionPanel({
                   ask({
                     title: "Ghi nhận rà soát Requirement",
                     description:
-                      "Ghi nhận kết quả rà soát cho phiên bản này. Đây là bước riêng; thao tác này chưa chốt Requirement làm chuẩn.",
+                      "Ghi nhận kết quả rà soát cho phiên bản này. Đây là bước riêng; thao tác này chưa chốt Requirement làm chuẩn",
                     confirmLabel: "Ghi nhận rà soát",
                     fields: [
                       {
@@ -203,7 +206,7 @@ export default function RequirementCurrentVersionPanel({
                   ask({
                     title: "Yêu cầu chỉnh sửa",
                     description:
-                      "Phiên bản sẽ trở về bản nháp để người phụ trách cập nhật nội dung. Ghi rõ điểm cần sửa.",
+                      "Phiên bản sẽ trở về bản nháp để người phụ trách cập nhật nội dung. Ghi rõ điểm cần sửa",
                     confirmLabel: "Trả về bản nháp",
                     fields: [
                       {
@@ -226,7 +229,7 @@ export default function RequirementCurrentVersionPanel({
                         const detail = value?.response?.data?.detail || value?.detail;
                         if (detail?.code === "REQUIREMENT_LINT_BLOCKED") {
                           throw new Error(
-                            "Còn lỗi kiểm tra bắt buộc. Xem gợi ý hoàn thiện yêu cầu, sửa nội dung rồi gửi lại.",
+                            "Còn lỗi kiểm tra bắt buộc. Xem gợi ý hoàn thiện yêu cầu, sửa nội dung rồi gửi lại",
                           );
                         }
                         throw new Error(messageOf(value));
@@ -246,7 +249,7 @@ export default function RequirementCurrentVersionPanel({
                 ask({
                   title: "Mở lại để chỉnh sửa",
                   description:
-                    "Yêu cầu sẽ trở về bản nháp. Sau khi cập nhật, cần gửi rà soát lại trước khi chốt chuẩn.",
+                    "Yêu cầu sẽ trở về bản nháp. Sau khi cập nhật, cần gửi rà soát lại trước khi chốt chuẩn",
                   confirmLabel: "Mở bản nháp",
                   fields: [
                     {
@@ -279,12 +282,14 @@ export default function RequirementCurrentVersionPanel({
             (!isAuthor || canSelfApprove) &&
             can("requirement.approve") && (
               <button
-                className="apple-button"
+                className="icon-button h-9 w-9"
                 type="button"
+                aria-label="Rà soát và chấp nhận"
+                title="Rà soát và chấp nhận"
                 onClick={async () => {
                   await ask({
                     title: "Chấp nhận Requirement",
-                    description: `${selected.requirement_key} sẽ trở thành phiên bản chuẩn để các bước kiểm thử sử dụng. Cảnh báo nhẹ không chặn thao tác; các lỗi bắt buộc cần được xử lý trong nội dung yêu cầu trước khi chấp nhận.`,
+                    description: `${selected.requirement_key} sẽ trở thành phiên bản chuẩn để các bước kiểm thử sử dụng. Cảnh báo nhẹ không chặn thao tác; các lỗi bắt buộc cần được xử lý trong nội dung yêu cầu trước khi chấp nhận`,
                     confirmLabel: "Chấp nhận Requirement",
                     fields: [
                       {
@@ -309,23 +314,37 @@ export default function RequirementCurrentVersionPanel({
                   });
                 }}
               >
-                Rà soát và chấp nhận
+                <CheckCheck aria-hidden="true" size={16} />
               </button>
             )}
           {["BASELINED", "READY"].includes(current.status) && can("requirement.version.create") && (
-            <button className="secondary-button" type="button" onClick={onCreateVersion}>
-              Tạo bản nháp để chỉnh sửa
+            <button
+              className="icon-button h-9 w-9"
+              type="button"
+              aria-label="Tạo bản nháp để chỉnh sửa"
+              title="Tạo bản nháp để chỉnh sửa"
+              onClick={onCreateVersion}
+            >
+              <FilePenLine aria-hidden="true" size={16} />
             </button>
           )}
           {current.status === "BASELINED" && can("requirement.split") && (
-            <button className="secondary-button" type="button" onClick={onSplit}>
-              Tách yêu cầu
+            <button
+              className="icon-button h-9 w-9"
+              type="button"
+              aria-label="Tách yêu cầu"
+              title="Tách yêu cầu"
+              onClick={onSplit}
+            >
+              <GitFork aria-hidden="true" size={16} />
             </button>
           )}
           {current.status !== "OBSOLETE" && can("requirement.archive") && (
             <button
-              className="secondary-button"
+              className="icon-button h-9 w-9"
               type="button"
+              aria-label="Đánh dấu yêu cầu không còn hiệu lực"
+              title="Đánh dấu yêu cầu không còn hiệu lực"
               onClick={async () => {
                 await ask({
                   title: "Đánh dấu yêu cầu không còn hiệu lực",
@@ -356,13 +375,15 @@ export default function RequirementCurrentVersionPanel({
                 });
               }}
             >
-              Đánh dấu không còn hiệu lực
+              <Archive aria-hidden="true" size={16} />
             </button>
           )}
           {current.status === "OBSOLETE" && can("requirement.restore") && (
             <button
-              className="secondary-button"
+              className="icon-button h-9 w-9"
               type="button"
+              aria-label="Khôi phục yêu cầu"
+              title="Khôi phục yêu cầu"
               onClick={async () => {
                 await ask({
                   title: "Khôi phục yêu cầu",
@@ -392,7 +413,7 @@ export default function RequirementCurrentVersionPanel({
                 });
               }}
             >
-              Khôi phục yêu cầu
+              <RotateCcw aria-hidden="true" size={16} />
             </button>
           )}
         </div>
@@ -459,7 +480,7 @@ export default function RequirementCurrentVersionPanel({
                     {criterion.key || "Tiêu chí chấp nhận"}
                   </p>
                   <p className="mt-1 text-sm">
-                    {criterion.plain_text || "Không có nội dung văn bản để hiển thị."}
+                    {criterion.plain_text || "Không có nội dung văn bản để hiển thị"}
                   </p>
                 </div>
               ))}
@@ -468,7 +489,7 @@ export default function RequirementCurrentVersionPanel({
             ) && (
               <p className="mt-2 text-sm text-ink-muted">
                 Tiêu chí này không còn thuộc phiên bản yêu cầu đang mở. Hãy kiểm tra lại phiên bản
-                nguồn.
+                nguồn
               </p>
             )}
           </section>
@@ -722,13 +743,13 @@ export default function RequirementCurrentVersionPanel({
                         </span>
                         <span className="whitespace-pre-wrap text-sm">
                           {acceptanceCriterionContent(criterion.plain_text) ||
-                            "Không có nội dung văn bản để hiển thị."}
+                            "Không có nội dung văn bản để hiển thị"}
                         </span>
                       </li>
                     ))}
                   </ol>
                 ) : (
-                  <p className="mt-2 text-sm text-ink-muted">Chưa có tiêu chí chấp nhận.</p>
+                  <p className="mt-2 text-sm text-ink-muted">Chưa có tiêu chí chấp nhận</p>
                 )}
               </section>
               <section
@@ -753,7 +774,7 @@ export default function RequirementCurrentVersionPanel({
                     ))}
                   </ol>
                 ) : (
-                  <p className="mt-2 text-sm text-ink-muted">Chưa có quy tắc nghiệp vụ.</p>
+                  <p className="mt-2 text-sm text-ink-muted">Chưa có quy tắc nghiệp vụ</p>
                 )}
               </section>
             </div>
@@ -765,7 +786,7 @@ export default function RequirementCurrentVersionPanel({
                 <div>
                   <h3 className="text-sm font-semibold">Tài liệu nguồn</h3>
                   <p className="mt-1 text-xs text-ink-muted">
-                    Nguồn trích dẫn đã lưu cùng phiên bản yêu cầu.
+                    Nguồn trích dẫn đã lưu cùng phiên bản yêu cầu
                   </p>
                 </div>
                 {current.source_refs?.length > 0 && (
@@ -820,7 +841,7 @@ export default function RequirementCurrentVersionPanel({
                 </ul>
               ) : (
                 <p className="mt-3 rounded-control bg-surface-quiet/50 p-3 text-sm text-ink-muted">
-                  Yêu cầu này chưa có tài liệu nguồn được liên kết.
+                  Yêu cầu này chưa có tài liệu nguồn được liên kết
                 </p>
               )}
             </section>

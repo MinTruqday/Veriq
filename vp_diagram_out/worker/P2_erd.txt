@@ -1,0 +1,8 @@
+Logical Entity Relationship Diagram of MongoDB collections: fields with types, _id as primary key, logical references shown with crow's foot
+Create the logical MongoDB ERD for service 'worker'. Use the following PascalCase names for every collection and field. These are logical references, not enforced foreign keys.
+Table 'WorkerJob' (technical): 'WorkerJobId' varchar(255) [PK]; 'AttemptStartedAt' datetime [N]; 'CanceledAt' datetime [N]; 'DeliveryCount' integer(10) [N]; 'DispatchGeneration' integer(10) [N]; 'Error' varchar(255) [N]; 'ErrorCode' varchar(255) [N]; 'ExecutionLeaseToken' varchar(255) [N]; 'ExecutionLeaseUntil' datetime [N]; 'ManualRetryCount' integer(10) [N]; 'ReconciliationRequiredAt' datetime [N]; 'Request' json [N]; 'Status' varchar(255) [N]; 'UpdatedAt' datetime [N].
+Table 'WorkerJobOutbox' (technical): 'WorkerJobOutboxId' varchar(255) [PK]; 'AttemptCount' integer(10); 'CreatedAt' datetime; 'DispatchGeneration' varchar(255); 'ExpireAt' datetime [N]; 'JobId' varchar(255); 'LastError' varchar(255) [N]; 'LeaseToken' varchar(255) [N]; 'LeaseUntil' datetime [N]; 'NextAttemptAt' datetime; 'Payload' json; 'PublishedAt' datetime [N]; 'Status' varchar(255); 'UpdatedAt' datetime.
+Include EVERY table, field and relationship listed above, exactly as named. Do not omit, merge, rename, simplify, summarize or add anything. Do not invent extra tables, fields or relationships. If something does not fit, keep it and let the layout grow instead of dropping it. Totals: 2 MongoDB tables, 0 logical relationships, 28 MongoDB fields; 0 separate vector stores and 0 vector payload fields.
+
+Checklist: tables=2; relationships=0; fields=28.
+Correction prompt: Fix only the following items and keep everything else unchanged: [insert verified discrepancy].

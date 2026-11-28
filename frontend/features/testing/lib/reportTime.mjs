@@ -11,7 +11,7 @@ export function reportDateInput(date = new Date(), timeZone) {
 
 export function reportDateTime(value, timeZone) {
   const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value);
-  if (!match) throw new Error("Ngày giờ không hợp lệ.");
+  if (!match) throw new Error("Ngày giờ không hợp lệ");
   const [, year, month, day, hour, minute, second = "0"] = match;
   const expected = [year, month, day, hour, minute, second].map(Number);
   const wall = Date.UTC(expected[0], expected[1] - 1, ...expected.slice(2));
@@ -37,5 +37,5 @@ export function reportDateTime(value, timeZone) {
       return new Date(instant).toISOString();
     instant += wall - Date.UTC(actual[0], actual[1] - 1, ...actual.slice(2));
   }
-  throw new Error("Giờ đã chọn không tồn tại trong múi giờ dự án. Hãy chọn giờ khác.");
+  throw new Error("Giờ đã chọn không tồn tại trong múi giờ dự án. Hãy chọn giờ khác");
 }

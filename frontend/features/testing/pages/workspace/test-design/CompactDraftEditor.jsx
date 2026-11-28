@@ -32,7 +32,7 @@ export default function CompactDraftEditor({ draft, onChange, onSave, saveState 
       {steps.map((step, index) => (
         <div key={step.id || index} className="space-y-3 rounded-control border border-border p-4">
           <div className="flex items-center justify-between">
-            <span>{index + 1}.</span>
+            <span>{index + 1}</span>
             {steps.length > 1 && (
               <button
                 className="icon-button h-9 w-9 text-lg"

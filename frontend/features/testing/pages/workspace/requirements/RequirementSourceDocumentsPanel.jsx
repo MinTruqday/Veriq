@@ -253,11 +253,11 @@ export default function RequirementSourceDocumentsPanel({
       if (document.status !== "READY") {
         const message =
           document.parse_error_type === "TimeoutError"
-            ? "Đã hết thời gian phân tích tài liệu; bạn có thể thử lại sau."
-            : "Tệp vẫn chưa phân tích được; trạng thái và lỗi đã được cập nhật trong kho tài liệu.";
+            ? "Đã hết thời gian phân tích tài liệu; bạn có thể thử lại sau"
+            : "Tệp vẫn chưa phân tích được; trạng thái và lỗi đã được cập nhật trong kho tài liệu";
         onError(message);
       } else if (document.ai_enabled && !["INDEXED", "DEGRADED"].includes(document.index_status)) {
-        onError("Đã phân tích tệp nhưng lập chỉ mục AI chưa hoàn tất; có thể thử lại sau.");
+        onError("Đã phân tích tệp nhưng lập chỉ mục AI chưa hoàn tất; có thể thử lại sau");
       }
     } catch (reason) {
       onError(messageOf(reason));
@@ -320,7 +320,7 @@ export default function RequirementSourceDocumentsPanel({
       });
       await reload();
       setAiActivationNotice(
-        `Đã cho phép AI đọc “${item.filename}”. Bạn có thể chủ động bắt đầu sau khi tài liệu sẵn sàng.`,
+        `Đã cho phép AI đọc “${item.filename}”. Bạn có thể chủ động bắt đầu sau khi tài liệu sẵn sàng`,
       );
     } catch (reason) {
       onError(messageOf(reason));
@@ -340,7 +340,7 @@ export default function RequirementSourceDocumentsPanel({
       });
       await reload();
       setAiActivationNotice(
-        `Đã gửi yêu cầu xử lý “${item.filename}”. Theo dõi trạng thái trong Hoạt động AI.`,
+        `Đã gửi yêu cầu xử lý “${item.filename}”. Theo dõi trạng thái trong Hoạt động AI`,
       );
       return result;
     } catch (reason) {
@@ -475,20 +475,20 @@ export default function RequirementSourceDocumentsPanel({
       };
       setSummaryResult(result);
       if (current.status === "CANCELLED") {
-        setAiActivationNotice("Đã hủy yêu cầu tóm tắt.");
+        setAiActivationNotice("Đã hủy yêu cầu tóm tắt");
         return;
       }
       if (current.status === "FAILED") {
         onError(
           current.error_code
             ? messageOf({ code: current.error_code })
-            : "Không có tài liệu nào đủ điều kiện để tóm tắt. Kiểm tra quyền AI và trạng thái xử lý tài liệu.",
+            : "Không có tài liệu nào đủ điều kiện để tóm tắt. Kiểm tra quyền AI và trạng thái xử lý tài liệu",
         );
         return;
       }
       const skipped = result.excluded?.length || 0;
       setAiActivationNotice(
-        `${result.status === "COMPLETED" ? "Đã tóm tắt" : "Tóm tắt chưa đầy đủ"} ${result.results.length} tài liệu${skipped ? `; ${skipped} tài liệu bị bỏ qua` : ""}.`,
+        `${result.status === "COMPLETED" ? "Đã tóm tắt" : "Tóm tắt chưa đầy đủ"} ${result.results.length} tài liệu${skipped ? `; ${skipped} tài liệu bị bỏ qua` : ""}`,
       );
     } catch (reason) {
       if (requestSequence === summaryRequestSequenceRef.current) onError(messageOf(reason));
@@ -533,7 +533,7 @@ export default function RequirementSourceDocumentsPanel({
         onError(
           current.error_code
             ? messageOf({ code: current.error_code })
-            : "Không thể hoàn tất tóm tắt. Bạn có thể thử lại khi dịch vụ xử lý sẵn sàng.",
+            : "Không thể hoàn tất tóm tắt. Bạn có thể thử lại khi dịch vụ xử lý sẵn sàng",
         );
       }
     } catch (reason) {
@@ -734,8 +734,8 @@ export default function RequirementSourceDocumentsPanel({
           ) : (
             <p className="col-span-full rounded-control border border-dashed border-border p-8 text-center text-sm text-ink-muted">
               {items.length
-                ? "Không tìm thấy tài liệu phù hợp với bộ lọc."
-                : "Chưa có tài liệu nguồn."}
+                ? "Không tìm thấy tài liệu phù hợp với bộ lọc"
+                : "Chưa có tài liệu nguồn"}
             </p>
           )}
         </div>
@@ -747,7 +747,7 @@ export default function RequirementSourceDocumentsPanel({
           selectionLabel="Chọn tài liệu"
           selectionDisabled={!canSummarize}
           empty={
-            items.length ? "Không tìm thấy tài liệu phù hợp với bộ lọc." : "Chưa có tài liệu nguồn"
+            items.length ? "Không tìm thấy tài liệu phù hợp với bộ lọc" : "Chưa có tài liệu nguồn"
           }
           columns={[
             {
@@ -877,7 +877,7 @@ export default function RequirementSourceDocumentsPanel({
                             {issues.length > 20 && (
                               <li className="text-ink-muted">
                                 Còn {issues.length - 20} phần nội dung chưa đọc; tổng số phần được
-                                giữ trong báo cáo phân tích.
+                                giữ trong báo cáo phân tích
                               </li>
                             )}
                           </ul>

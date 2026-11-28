@@ -329,7 +329,7 @@ export default function TraceabilityPage({ project, embedded = false }) {
               onClick={() =>
                 void ask({
                   title: "Lưu mốc độ phủ",
-                  description: "Lưu các chỉ số hiện tại để đối chiếu về sau.",
+                  description: "Lưu các chỉ số hiện tại để đối chiếu về sau",
                   confirmLabel: "Lưu mốc độ phủ",
                   fields: [
                     {
@@ -530,7 +530,7 @@ export default function TraceabilityPage({ project, embedded = false }) {
           <div className="px-5 py-10 text-center">
             <p className="font-semibold">Chưa có liên kết truy vết</p>
             <p className="mt-2 text-sm text-ink-muted">
-              Tạo liên kết giữa yêu cầu và ca kiểm thử để theo dõi độ phủ.
+              Tạo liên kết giữa yêu cầu và ca kiểm thử để theo dõi độ phủ
             </p>
             {can("trace.create") && (
               <button className="apple-button mt-4" type="button" onClick={() => setCreating(true)}>
@@ -734,7 +734,7 @@ export default function TraceabilityPage({ project, embedded = false }) {
                       role="status"
                     >
                       Phiên bản nguồn hoặc ca kiểm thử đã cũ. Hãy rà soát liên kết trước khi dùng
-                      làm căn cứ.
+                      làm căn cứ
                     </p>
                   )}
                   {activeLink.evidence?.some((item) => item.text) && (
@@ -768,7 +768,7 @@ export default function TraceabilityPage({ project, embedded = false }) {
                 </div>
               ) : (
                 <p className="py-8 text-center text-sm text-ink-muted">
-                  Chọn một liên kết để xem chi tiết.
+                  Chọn một liên kết để xem chi tiết
                 </p>
               )}
             </aside>
@@ -789,9 +789,7 @@ export default function TraceabilityPage({ project, embedded = false }) {
                 </span>
               </div>
               {!Array.isArray(coverage.uncovered_requirements) ? (
-                <p className="mt-3 text-sm text-ink-muted">
-                  Chưa có dữ liệu yêu cầu chưa liên kết.
-                </p>
+                <p className="mt-3 text-sm text-ink-muted">Chưa có dữ liệu yêu cầu chưa liên kết</p>
               ) : unlinkedRequirements.length ? (
                 <ul className="mt-3 divide-y divide-border">
                   {unlinkedRequirements.slice(0, 8).map((item) => (
@@ -820,12 +818,12 @@ export default function TraceabilityPage({ project, embedded = false }) {
                 </ul>
               ) : (
                 <p className="mt-3 text-sm text-ink-muted">
-                  Tất cả yêu cầu hiện hành đã có liên kết.
+                  Tất cả yêu cầu hiện hành đã có liên kết
                 </p>
               )}
               {unlinkedRequirements.length > 8 && (
                 <p className="mt-2 text-xs text-ink-muted">
-                  Còn {unlinkedRequirements.length - 8} yêu cầu khác trong báo cáo độ phủ.
+                  Còn {unlinkedRequirements.length - 8} yêu cầu khác trong báo cáo độ phủ
                 </p>
               )}
             </section>
@@ -838,7 +836,7 @@ export default function TraceabilityPage({ project, embedded = false }) {
               </div>
               {!Array.isArray(coverage.unlinked_tests) ? (
                 <p className="mt-3 text-sm text-ink-muted">
-                  Chưa có dữ liệu ca kiểm thử chưa liên kết.
+                  Chưa có dữ liệu ca kiểm thử chưa liên kết
                 </p>
               ) : coverage.unlinked_tests.length ? (
                 <ul className="mt-3 divide-y divide-border">
@@ -868,12 +866,12 @@ export default function TraceabilityPage({ project, embedded = false }) {
                 </ul>
               ) : (
                 <p className="mt-3 text-sm text-ink-muted">
-                  Tất cả ca kiểm thử hiện hành đã được liên kết.
+                  Tất cả ca kiểm thử hiện hành đã được liên kết
                 </p>
               )}
               {(coverage.unlinked_tests?.length || 0) > 8 && (
                 <p className="mt-2 text-xs text-ink-muted">
-                  Còn {coverage.unlinked_tests.length - 8} ca kiểm thử khác trong báo cáo độ phủ.
+                  Còn {coverage.unlinked_tests.length - 8} ca kiểm thử khác trong báo cáo độ phủ
                 </p>
               )}
             </section>
@@ -915,7 +913,7 @@ export default function TraceabilityPage({ project, embedded = false }) {
                 ))}
               </div>
             ) : (
-              <p className="px-5 py-6 text-sm text-ink-muted">Chưa lưu mốc độ phủ nào.</p>
+              <p className="px-5 py-6 text-sm text-ink-muted">Chưa lưu mốc độ phủ nào</p>
             )}
           </div>
         </details>

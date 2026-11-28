@@ -66,7 +66,7 @@ export function AuthProvider({ children }) {
           return null;
         }
         setUser(null);
-        setAuthError("Không thể xác minh phiên đăng nhập. Hãy thử lại khi máy chủ hoạt động.");
+        setAuthError("Không thể xác minh phiên đăng nhập. Hãy thử lại khi máy chủ hoạt động");
         return null;
       } finally {
         if (showLoading) setIsLoading(false);
@@ -97,7 +97,7 @@ export function AuthProvider({ children }) {
       try {
         const verifiedUser = await fetchUser();
         if (!verifiedUser) {
-          throw new Error("Không thể xác minh phiên đăng nhập. Vui lòng thử lại.");
+          throw new Error("Không thể xác minh phiên đăng nhập. Vui lòng thử lại");
         }
       } catch (error) {
         clearAuth(token);

@@ -15,7 +15,7 @@ export default function RequirementLines({
             className="w-14 shrink-0 text-right font-mono text-xs text-ink-muted"
             aria-hidden="true"
           >
-            {identifierPrefix ? `${identifierPrefix}-${index + 1}` : `${index + 1}.`}
+            {identifierPrefix ? `${identifierPrefix}-${index + 1}` : `${index + 1}`}
           </span>
           <div className="relative min-w-0 flex-1">
             <input

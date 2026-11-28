@@ -73,7 +73,7 @@ export function TestDataEntries({ label, entries, onChange }) {
       {rows.map((entry, index) => (
         <div className="space-y-3 rounded-control border border-border p-4" key={entry.id || index}>
           <div className="flex items-center justify-between">
-            <span className="font-medium">{index + 1}.</span>
+            <span className="font-medium">{index + 1}</span>
             <div className="flex gap-2">
               <button
                 type="button"

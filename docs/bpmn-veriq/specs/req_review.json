@@ -2,23 +2,23 @@
   "id": "req_review",
   "name": "02 - Soạn thảo, rà soát và phê duyệt yêu cầu",
   "file_name": "BPMN_Requirements_02_Soan_thao_va_phe_duyet_yeu_cau_v1.drawio",
-  "scope": "Bao gồm soạn thảo, gửi rà soát, yêu cầu chỉnh sửa và phê duyệt thành baseline. Rà soát kỹ thuật là thao tác riêng trong API; chưa có bằng chứng rằng bước này luôn bắt buộc trong mọi lần phê duyệt.",
+  "scope": "Bao gồm soạn thảo, gửi rà soát, yêu cầu chỉnh sửa và phê duyệt thành phiên bản chuẩn. Rà soát kỹ thuật là thao tác riêng trong chức năng hệ thống; chưa có bằng chứng rằng bước này luôn bắt buộc trong mọi lần phê duyệt.",
   "lanes": [
     {
       "id": "author",
-      "name": "Người soạn yêu cầu",
+      "name": "BA",
       "fill": "#E8F3FF",
       "stroke": "#4A90C2"
     },
     {
       "id": "system",
-      "name": "Veriq",
+      "name": "Hệ thống",
       "fill": "#EFE8FF",
       "stroke": "#7956A8"
     },
     {
       "id": "reviewer",
-      "name": "Người có quyền rà soát",
+      "name": "Admin",
       "fill": "#FFF4DF",
       "stroke": "#C58A28"
     }
@@ -54,7 +54,7 @@
       "id": "complete",
       "label": "Nội dung đủ điều kiện gửi rà soát?",
       "type": "gateway",
-      "lane": "system",
+      "lane": "author",
       "col": 3,
       "row": 0
     },
@@ -114,7 +114,7 @@
       "id": "baseline_ok",
       "label": "Yêu cầu đạt kiểm định?",
       "type": "gateway",
-      "lane": "system",
+      "lane": "author",
       "col": 8,
       "row": 0
     },
@@ -128,7 +128,7 @@
     },
     {
       "id": "baseline",
-      "label": "Ghi nhận baseline và cập nhật chỉ mục",
+      "label": "Ghi nhận phiên bản chuẩn và cập nhật chỉ mục",
       "type": "service_task",
       "lane": "system",
       "col": 9,
@@ -155,7 +155,7 @@
       "id": "auto_approval",
       "label": "Người gửi được tự động phê duyệt?",
       "type": "gateway",
-      "lane": "system",
+      "lane": "author",
       "col": 5,
       "row": 0
     }
@@ -201,7 +201,8 @@
       "from": "submit",
       "to": "auto_approval",
       "type": "sequence",
-      "label": ""
+      "label": "",
+      "route": "lane_gap"
     },
     {
       "id": "e06a",

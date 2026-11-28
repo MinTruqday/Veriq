@@ -68,7 +68,7 @@ function DocumentAccessControl({ access, members, onChange, disabled = false }) 
               );
             })
           ) : (
-            <p className="text-sm text-ink-muted">Dự án chưa có thành viên để chia sẻ.</p>
+            <p className="text-sm text-ink-muted">Dự án chưa có thành viên để chia sẻ</p>
           )}
         </div>
       )}
@@ -152,7 +152,7 @@ export default function RequirementImportModal({
       <ModalHeader>
         <ModalTitle>Thêm tài liệu</ModalTitle>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-ink-muted">
-          Tệp được lưu làm nguồn tham khảo của dự án. Nội dung tệp không tự tạo Requirement.
+          Tệp được lưu làm nguồn tham khảo của dự án. Nội dung tệp không tự tạo Requirement
         </p>
       </ModalHeader>
       <form onSubmit={onUploadPreview} className="flex min-h-0 flex-1 flex-col">
@@ -164,7 +164,7 @@ export default function RequirementImportModal({
                 Tệp nguồn
               </h2>
               <p className="mt-1 text-sm text-ink-muted">
-                PDF, Word, văn bản, bảng tính hoặc đặc tả API.
+                PDF, Word, văn bản, bảng tính hoặc đặc tả API
               </p>
             </div>
             <FilePicker
@@ -210,7 +210,7 @@ export default function RequirementImportModal({
                 Nguồn và phiên bản
               </h2>
               <p className="mt-1 text-sm text-ink-muted">
-                Phân loại tài liệu và nối với nguồn trước nếu đây là phiên bản cập nhật.
+                Phân loại tài liệu và nối với nguồn trước nếu đây là phiên bản cập nhật
               </p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -249,7 +249,7 @@ export default function RequirementImportModal({
                 Quyền truy cập
               </h2>
               <p className="mt-1 text-sm text-ink-muted">
-                Chọn phạm vi người có thể xem và việc AI có được phép đọc nguồn này.
+                Chọn phạm vi người có thể xem và việc AI có được phép đọc nguồn này
               </p>
             </div>
             <DocumentAccessControl

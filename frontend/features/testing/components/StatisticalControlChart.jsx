@@ -16,7 +16,7 @@ export default function StatisticalControlChart({ analysis }) {
   if (!points.length || !chartValues.length) {
     return (
       <div className="rounded-xl border border-border px-4 py-8 text-center text-sm text-ink-muted">
-        Chưa có đủ số liệu để hiển thị biểu đồ kiểm soát.
+        Chưa có đủ số liệu để hiển thị biểu đồ kiểm soát
       </div>
     );
   }

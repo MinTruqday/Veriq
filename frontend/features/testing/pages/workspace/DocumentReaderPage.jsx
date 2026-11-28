@@ -180,7 +180,7 @@ function ApiSpecificationView({ format, content, query }) {
         </div>
       ) : (
         <p className="rounded-control border border-border p-4 text-sm text-ink-muted">
-          Không có thao tác API khớp nội dung tìm kiếm.
+          Không có thao tác API khớp nội dung tìm kiếm
         </p>
       )}
       <details className="rounded-control border border-border p-4">
@@ -234,7 +234,7 @@ export default function DocumentReaderPage({ project, section = [] }) {
     async (offset = 0, append = false, sheet = "", pageNo = null) => {
       const requestSequence = ++pageRequestSequenceRef.current;
       if (!documentId) {
-        setError("Hãy chọn một tài liệu trong danh sách để mở nội dung.");
+        setError("Hãy chọn một tài liệu trong danh sách để mở nội dung");
         setLoading(false);
         setLoadingMore(false);
         return;
@@ -263,9 +263,9 @@ export default function DocumentReaderPage({ project, section = [] }) {
         if (requestSequence === pageRequestSequenceRef.current) {
           setError(
             reason?.status === 404
-              ? "Không tìm thấy tài liệu hoặc bạn không còn quyền xem tài liệu này."
+              ? "Không tìm thấy tài liệu hoặc bạn không còn quyền xem tài liệu này"
               : reason?.status === 403
-                ? "Bạn không có quyền xem tài liệu này."
+                ? "Bạn không có quyền xem tài liệu này"
                 : messageOf(reason),
           );
         }
@@ -458,7 +458,7 @@ export default function DocumentReaderPage({ project, section = [] }) {
         setError(
           current.error_code
             ? messageOf({ code: current.error_code })
-            : "Không có tài liệu đủ điều kiện để tóm tắt.",
+            : "Không có tài liệu đủ điều kiện để tóm tắt",
         );
       }
     } catch (reason) {
@@ -501,7 +501,7 @@ export default function DocumentReaderPage({ project, section = [] }) {
         setError(
           current.error_code
             ? messageOf({ code: current.error_code })
-            : "Không thể hoàn tất tóm tắt. Bạn có thể thử lại.",
+            : "Không thể hoàn tất tóm tắt. Bạn có thể thử lại",
         );
       }
     } catch (reason) {
@@ -640,13 +640,13 @@ export default function DocumentReaderPage({ project, section = [] }) {
       )}
       {document?.unprocessed_blocks?.length > 0 && (
         <div role="status" className="rounded-xl border border-warning/30 bg-warning/5 p-3 text-sm">
-          Một phần tài liệu chưa đọc được. Nội dung và bản tóm tắt có thể chưa đầy đủ.
+          Một phần tài liệu chưa đọc được. Nội dung và bản tóm tắt có thể chưa đầy đủ
         </div>
       )}
       {documentFormat && !readableFormats.has(documentFormat) && (
         <div role="status" className="rounded-xl border border-warning/30 bg-warning/5 p-3 text-sm">
           Veriq chưa có trình đọc riêng cho định dạng này. Nội dung trích xuất (nếu có) vẫn hiển thị
-          bên dưới; bạn có thể tải tệp gốc để xem đầy đủ.
+          bên dưới; bạn có thể tải tệp gốc để xem đầy đủ
         </div>
       )}
       {documentFormat === "docx" && (
@@ -654,12 +654,12 @@ export default function DocumentReaderPage({ project, section = [] }) {
           role="status"
           className="rounded-xl border border-border bg-surface p-3 text-sm text-ink-muted"
         >
-          Đang hiển thị nội dung đã trích xuất. Bản xem trước giữ nguyên bố cục Word chưa khả dụng.
+          Đang hiển thị nội dung đã trích xuất. Bản xem trước giữ nguyên bố cục Word chưa khả dụng
         </div>
       )}
       {pdfPreviewError && (
         <div role="status" className="rounded-xl border border-warning/30 bg-warning/5 p-3 text-sm">
-          Không mở được bản PDF gốc; nội dung đã trích xuất vẫn có thể xem bên dưới.
+          Không mở được bản PDF gốc; nội dung đã trích xuất vẫn có thể xem bên dưới
         </div>
       )}
       <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start">
@@ -777,8 +777,8 @@ export default function DocumentReaderPage({ project, section = [] }) {
                   ) : (
                     <p className="py-3 text-sm text-ink-muted" role="status">
                       {sourceBlocks.some((block) => block.image_metadata)
-                        ? "Tài liệu chưa có văn bản trích xuất. Hình ảnh nguồn được giữ bên dưới để bạn đối chiếu."
-                        : "Chưa có nội dung văn bản để hiển thị. Hãy kiểm tra bản gốc hoặc trạng thái phân tích trong danh sách tài liệu."}
+                        ? "Tài liệu chưa có văn bản trích xuất. Hình ảnh nguồn được giữ bên dưới để bạn đối chiếu"
+                        : "Chưa có nội dung văn bản để hiển thị. Hãy kiểm tra bản gốc hoặc trạng thái phân tích trong danh sách tài liệu"}
                     </p>
                   )}
                 </article>
@@ -820,7 +820,7 @@ export default function DocumentReaderPage({ project, section = [] }) {
                         )}
                         {sourceImageErrors[key] && (
                           <p className="mt-2 text-sm text-danger" role="alert">
-                            Không tải được hình nguồn.
+                            Không tải được hình nguồn
                           </p>
                         )}
                       </figure>
@@ -828,7 +828,7 @@ export default function DocumentReaderPage({ project, section = [] }) {
                   })}
                 {sourceBlocks.some((block) => block.extraction_status === "NO_TEXT_EXTRACTED") && (
                   <p className="mt-4 rounded-lg bg-warning/5 p-3 text-sm text-warning">
-                    Trang này có nội dung chưa trích xuất được. Hãy đối chiếu bản gốc.
+                    Trang này có nội dung chưa trích xuất được. Hãy đối chiếu bản gốc
                   </p>
                 )}
               </div>
@@ -844,7 +844,7 @@ export default function DocumentReaderPage({ project, section = [] }) {
               )}
               {document?.extraction_warnings?.length > 0 && (
                 <p className="mt-3 text-sm text-ink-muted">
-                  Có cảnh báo khi đọc tệp. Kiểm tra bản gốc nếu thiếu nội dung.
+                  Có cảnh báo khi đọc tệp. Kiểm tra bản gốc nếu thiếu nội dung
                 </p>
               )}
             </div>
@@ -874,7 +874,7 @@ export default function DocumentReaderPage({ project, section = [] }) {
                 {summaryLoading && summary && (
                   <p role="status" className="text-sm text-ink-muted">
                     Đang tạo bản tóm tắt mới. Bản hiện tại vẫn được giữ cho đến khi kết quả mới hoàn
-                    tất.
+                    tất
                   </p>
                 )}
                 {summaryLoading && summaryJob && (
@@ -928,7 +928,7 @@ export default function DocumentReaderPage({ project, section = [] }) {
                     className="rounded-xl border border-border bg-surface p-3 text-sm"
                     role="status"
                   >
-                    Đã hủy yêu cầu tóm tắt.
+                    Đã hủy yêu cầu tóm tắt
                   </p>
                 )}
                 {summaryJob &&
@@ -948,7 +948,7 @@ export default function DocumentReaderPage({ project, section = [] }) {
               <div className="max-h-[70vh] space-y-4 overflow-y-auto p-4">
                 <div className="prose max-w-none">
                   <ReactMarkdown components={markdownComponents} remarkPlugins={[remarkGfm]}>
-                    {summary.summary || "Chưa tạo được nội dung tóm tắt."}
+                    {summary.summary || "Chưa tạo được nội dung tóm tắt"}
                   </ReactMarkdown>
                 </div>
                 {summary.results?.map((source) => (
@@ -968,19 +968,19 @@ export default function DocumentReaderPage({ project, section = [] }) {
                     {source.complete === false && (
                       <p className="text-sm text-warning">
                         Tài liệu còn phần chưa đọc được; nội dung tóm tắt từ nguồn này có thể chưa
-                        đầy đủ.
+                        đầy đủ
                       </p>
                     )}
                     {Number(source.unprocessed_blocks?.length || 0) > 0 && (
                       <p className="text-xs text-ink-muted">
-                        Chưa xử lý được {source.unprocessed_blocks.length} phần nội dung.
+                        Chưa xử lý được {source.unprocessed_blocks.length} phần nội dung
                       </p>
                     )}
                   </div>
                 ))}
                 {summary.excluded?.length > 0 && (
                   <p className="text-sm text-warning">
-                    {summary.excluded.length} tài liệu hoặc phần nội dung không thể đưa vào kết quả.
+                    {summary.excluded.length} tài liệu hoặc phần nội dung không thể đưa vào kết quả
                   </p>
                 )}
               </div>
@@ -1013,7 +1013,7 @@ export default function DocumentReaderPage({ project, section = [] }) {
             </dl>
             {document?.unprocessed_blocks?.length > 0 && (
               <p className="border-t border-border px-4 py-3 text-sm text-warning">
-                Còn {document.unprocessed_blocks.length} phần chưa đọc được.
+                Còn {document.unprocessed_blocks.length} phần chưa đọc được
               </p>
             )}
           </Panel>

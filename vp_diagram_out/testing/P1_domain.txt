@@ -1,0 +1,146 @@
+Domain Model (UML class diagram: attributes only, no operations, no reference fields)
+Create the testing domain model. Use PascalCase English names. Each class has a primary key named '<ClassName>Id'.
+Class 'RequirementVersion': attributes 'RequirementVersionId' (PK), 'Dependencies', 'IndexErrorCode', 'IndexStatus', 'ObsoleteAt', 'ObsoleteBy', 'ObsoleteReason', 'RestoreReason', 'RestoredAt', 'RestoredBy', 'Revision', 'SourceRefs', 'Status', 'StatusBeforeObsolete', 'SupersededAt', 'SupersededBy', 'UpdatedAt', 'Version'.
+Class 'TestCaseVersion': attributes 'TestCaseVersionId' (PK), 'ApprovalAuditErrorCode', 'ApprovalAuditStatus', 'CreatedAt', 'IndexErrorCode', 'IndexStatus', 'IndexedAt', 'Status', 'TestCaseKey', 'Title', 'TraceErrorCode', 'TraceStatus', 'Version'.
+Class 'NotificationSubscription': attributes 'NotificationSubscriptionId' (PK), 'ArtifactType'.
+Class 'ProjectNotificationPreference': attributes 'ProjectNotificationPreferenceId' (PK), 'Channels', 'DigestFrequency', 'MutedEvents'.
+Class 'TestResult': attributes 'TestResultId' (PK), 'CompletedAt', 'Note', 'Revision', 'Status', 'UpdatedAt'.
+Class 'Requirement': attributes 'RequirementId' (PK), 'ObsoleteAt', 'ObsoleteBy', 'ObsoleteReason', 'RequirementKey', 'RestoreReason', 'RestoredAt', 'RestoredBy', 'Status', 'StatusBeforeObsolete', 'SupersededAt', 'SupersededBy', 'Tags', 'Title', 'UpdatedAt'.
+Class 'Project': attributes 'ProjectId' (PK), 'Locale', 'Revision', 'Settings', 'TestCasePublicationRevision'.
+Class 'TestAnalysisFinding': attributes 'TestAnalysisFindingId' (PK), 'Revision'.
+Class 'TestCondition': attributes 'TestConditionId' (PK), 'Status'.
+Class 'TestPlan': attributes 'TestPlanId' (PK), 'ApprovedAt', 'CreatedAt', 'Name', 'Revision', 'Status', 'TestSuiteSnapshots'.
+Class 'TestCaseDraft': attributes 'TestCaseDraftId' (PK), 'ApprovedAt', 'ApprovedBy', 'ExpectedResultDoc', 'ObjectiveDoc', 'PreconditionsDoc', 'Revision', 'Status', 'Steps', 'TestCaseKey', 'Title', 'UpdatedAt'.
+Class 'TestCaseCustomField': attributes 'TestCaseCustomFieldId' (PK).
+Class 'TestRun': attributes 'TestRunId' (PK), 'IdempotencyKey', 'Name', 'Revision', 'Status', 'TestCaseAssignments', 'TestPlanScheduleSnapshot', 'UpdatedAt'.
+Class 'DocumentSummaryJob': attributes 'DocumentSummaryJobId' (PK), 'CancelRequested', 'DispatchGeneration', 'LockedSources', 'StartedAt', 'Status', 'UpdatedAt', 'WorkerStatus'.
+Class 'RequirementDocument': attributes 'RequirementDocumentId' (PK), 'ContentHash', 'RequirementImportStatus', 'Revision', 'Status', 'UpdatedAt'.
+Class 'RequirementImpactJob': attributes 'RequirementImpactJobId' (PK), 'Cases', 'Comparison', 'CreatedAt', 'ErrorCode', 'LeaseToken', 'LeaseUntil', 'Limitations', 'NewCandidates', 'Plans', 'RequestedBy', 'Runs', 'Status', 'UpdatedAt'.
+Class 'RequirementChangeSet': attributes 'RequirementChangeSetId' (PK), 'Changes', 'ModelVersion', 'Revision', 'Status', 'UpdatedAt'.
+Class 'ImportJob': attributes 'ImportJobId' (PK), 'ConfirmedAt', 'ConfirmedBy', 'ConfirmingBy', 'Preview', 'RejectedIndexes', 'Revision', 'SelectedIndexes', 'SourceContentHash', 'Status', 'TemplatePublicView', 'TemplateVersion', 'UpdatedAt'.
+Class 'TraceLink': attributes 'TraceLinkId' (PK), 'CreatedAt', 'CreatedBy', 'Revision', 'SourceType', 'Status', 'TargetType', 'UpdatedAt'.
+Class 'TestPeriod': attributes 'TestPeriodId' (PK), 'CarryOverItems', 'CloseNote', 'CloseSummary', 'ClosedAt', 'ClosedBy', 'Name', 'Revision', 'Sequence', 'Status', 'UpdatedAt'.
+Class 'ProjectMember': attributes 'ProjectMemberId' (PK), 'Status'.
+Class 'RequirementSourceBlock': attributes 'RequirementSourceBlockId' (PK).
+Class 'RequirementTemplate': attributes 'RequirementTemplateId' (PK), 'Revision', 'Version'.
+Class 'RequirementTemplateVersion': attributes 'RequirementTemplateVersionId' (PK), 'Snapshot', 'Version'.
+Class 'RequirementCustomField': attributes 'RequirementCustomFieldId' (PK).
+Class 'AcceptanceCriteria': attributes 'AcceptanceCriteriaId' (PK), 'ApprovedAt', 'ApprovedBy', 'Status'.
+Class 'RequirementTransformation': attributes 'RequirementTransformationId' (PK), 'Attempt', 'ConfirmedAt', 'ErrorCode', 'IdempotencyKey', 'Status', 'UpdatedAt'.
+Class 'RequirementDuplicateScan': attributes 'RequirementDuplicateScanId' (PK).
+Class 'TestScenario': attributes 'TestScenarioId' (PK).
+Class 'TestCaseTemplate': attributes 'TestCaseTemplateId' (PK), 'Revision', 'Status'.
+Class 'TestCase': attributes 'TestCaseId' (PK), 'ReviewRequiredBy', 'ReviewRequiredReason', 'Status', 'TestCaseKey', 'UpdatedAt'.
+Class 'AiResult': attributes 'AiResultId' (PK), 'ClaimToken', 'IdempotencyKey', 'ResultType', 'Revision', 'SourceFingerprint'.
+Class 'AiFinding': attributes 'AiFindingId' (PK), 'ArtifactType', 'Attempt', 'ClaimToken', 'ClaimedAt', 'LeaseExpiresAt', 'RequestFingerprint', 'ResultType'.
+Class 'CoverageSnapshot': attributes 'CoverageSnapshotId' (PK), 'IdempotencyKey'.
+Class 'ImpactAnalyse': attributes 'ImpactAnalyseId' (PK), 'ModelVersion', 'RerunRequestedAt', 'RerunRequestedBy', 'Revision', 'SnapshotNumber', 'SourceType', 'Status', 'UpdatedAt'.
+Class 'MaintenanceProposal': attributes 'MaintenanceProposalId' (PK), 'Revision', 'Status', 'SupersededBy', 'UpdatedAt'.
+Class 'RegressionRecommendation': attributes 'RegressionRecommendationId' (PK), 'Revision'.
+Class 'TestSuite': attributes 'TestSuiteId' (PK), 'Revision', 'Status', 'UpdatedAt'.
+Class 'ProjectNotificationRule': attributes 'ProjectNotificationRuleId' (PK).
+Class 'SecurityTestSuggestion': attributes 'SecurityTestSuggestionId' (PK), 'IdempotencyKey'.
+Class 'PerformancePlanDraft': attributes 'PerformancePlanDraftId' (PK), 'IdempotencyKey'.
+Class 'AutomationExecution': attributes 'AutomationExecutionId' (PK), 'IdempotencyKey', 'QueuedAt', 'Revision', 'StartIdempotencyKey', 'Status', 'UpdatedAt'.
+Class 'JunitResultImport': attributes 'JunitResultImportId' (PK), 'Revision', 'SourceHash', 'Status', 'Unresolved', 'UpdatedAt'.
+Class 'CollaborationSession': attributes 'CollaborationSessionId' (PK).
+Class 'CollaborationOperation': attributes 'CollaborationOperationId' (PK), 'ArtifactType', 'ResultRevision'.
+Class 'DraftConflict': attributes 'DraftConflictId' (PK), 'Revision', 'Status'.
+Class 'TestRunResumeEvent': attributes 'TestRunResumeEventId' (PK), 'IdempotencyKey'.
+Class 'Release': attributes 'ReleaseId' (PK), 'GateRevision', 'IsCurrent', 'Status'.
+Class 'Build': attributes 'BuildId' (PK), 'IsCurrent', 'Status'.
+Class 'TestEnvironment': attributes 'TestEnvironmentId' (PK), 'Status'.
+Class 'TestResultCorrection': attributes 'TestResultCorrectionId' (PK), 'IdempotencyKey'.
+Class 'Defect': attributes 'DefectId' (PK), 'CreatedBy', 'DefectKey', 'IdempotencyKey', 'Priority', 'Revision', 'Severity', 'Status', 'Title', 'UpdatedAt'.
+Class 'DefectRetest': attributes 'DefectRetestId' (PK), 'ApplicationStatus', 'IdempotencyKey'.
+Class 'TestExecutionUpdate': attributes 'TestExecutionUpdateId' (PK), 'IdempotencyKey'.
+Class 'ReviewComment': attributes 'ReviewCommentId' (PK), 'ArtifactType'.
+Class 'Attachment': attributes 'AttachmentId' (PK), 'ArtifactType', 'Revision', 'Status'.
+Class 'BreakGlassGrant': attributes 'BreakGlassGrantId' (PK), 'ExpiresAt', 'Permissions', 'Reason', 'Status', 'TtlMinutes'.
+Class 'ApiImport': attributes 'ApiImportId' (PK), 'Format', 'Status'.
+Class 'ApiOperation': attributes 'ApiOperationId' (PK).
+Class 'TestImport': attributes 'TestImportId' (PK), 'Status'.
+Class 'WorkerEvent': attributes 'WorkerEventId' (PK).
+Class 'BulkOperation': attributes 'BulkOperationId' (PK), 'CreatedAt', 'CreatedBy', 'IdempotencyKey', 'OperationType', 'RequestHash'.
+Class 'ProjectAccessControl': attributes 'ProjectAccessControlId' (PK), 'Capabilities', 'MigratedAt', 'MigrationSource', 'Revision', 'RoleGrants', 'RoleGrantsManagedByAdmin', 'SchemaVersion', 'SettingGrants', 'UpdatedAt'.
+Class 'SimpleTestReport': attributes 'SimpleTestReportId' (PK), 'CaseResults', 'Defects', 'Type'.
+Class 'TestPeriodCounter': attributes 'TestPeriodCounterId' (PK), 'Sequence'.
+Class 'AiRunAccessLease': attributes 'AiRunAccessLeaseId' (PK).
+Class 'Counter': attributes 'CounterId' (PK), 'Value'.
+Class 'AutomationScriptDraft': attributes 'AutomationScriptDraftId' (PK), 'Framework', 'IdempotencyKey', 'Status'.
+Class 'ImpactReviewPerspective': attributes 'ImpactReviewPerspectiveId' (PK).
+Class 'RuntimePolicy': attributes 'RuntimePolicyId' (PK).
+(1) 'DefectRetest' association 'Defect', multiplicity at 'DefectRetest': 0..*, multiplicity at 'Defect': 1, navigable from 'DefectRetest' to 'Defect'.
+(2) 'RequirementVersion' association 'Project', multiplicity at 'RequirementVersion': 0..*, multiplicity at 'Project': 1, navigable from 'RequirementVersion' to 'Project'.
+(3) 'TestCaseVersion' association 'Project', multiplicity at 'TestCaseVersion': 0..*, multiplicity at 'Project': 1, navigable from 'TestCaseVersion' to 'Project'.
+(4) 'NotificationSubscription' association 'Project', multiplicity at 'NotificationSubscription': 0..*, multiplicity at 'Project': 1, navigable from 'NotificationSubscription' to 'Project'.
+(5) 'ProjectNotificationPreference' association 'Project', multiplicity at 'ProjectNotificationPreference': 0..*, multiplicity at 'Project': 1, navigable from 'ProjectNotificationPreference' to 'Project'.
+(6) 'TestResult' association 'Project', multiplicity at 'TestResult': 0..*, multiplicity at 'Project': 1, navigable from 'TestResult' to 'Project'.
+(7) 'Requirement' association 'Project', multiplicity at 'Requirement': 0..*, multiplicity at 'Project': 1, navigable from 'Requirement' to 'Project'.
+(8) 'TestCondition' association 'Project', multiplicity at 'TestCondition': 0..*, multiplicity at 'Project': 1, navigable from 'TestCondition' to 'Project'.
+(9) 'TestPlan' association 'Project', multiplicity at 'TestPlan': 0..*, multiplicity at 'Project': 1, navigable from 'TestPlan' to 'Project'.
+(10) 'TestCaseDraft' association 'Project', multiplicity at 'TestCaseDraft': 0..*, multiplicity at 'Project': 1, navigable from 'TestCaseDraft' to 'Project'.
+(11) 'TestRun' association 'Project', multiplicity at 'TestRun': 0..*, multiplicity at 'Project': 1, navigable from 'TestRun' to 'Project'.
+(12) 'DocumentSummaryJob' association 'Project', multiplicity at 'DocumentSummaryJob': 0..*, multiplicity at 'Project': 1, navigable from 'DocumentSummaryJob' to 'Project'.
+(13) 'RequirementDocument' association 'Project', multiplicity at 'RequirementDocument': 0..*, multiplicity at 'Project': 1, navigable from 'RequirementDocument' to 'Project'.
+(14) 'RequirementImpactJob' association 'Project', multiplicity at 'RequirementImpactJob': 0..*, multiplicity at 'Project': 1, navigable from 'RequirementImpactJob' to 'Project'.
+(15) 'RequirementChangeSet' association 'Project', multiplicity at 'RequirementChangeSet': 0..*, multiplicity at 'Project': 1, navigable from 'RequirementChangeSet' to 'Project'.
+(16) 'ImportJob' association 'Project', multiplicity at 'ImportJob': 0..*, multiplicity at 'Project': 1, navigable from 'ImportJob' to 'Project'.
+(17) 'TraceLink' association 'Project', multiplicity at 'TraceLink': 0..*, multiplicity at 'Project': 1, navigable from 'TraceLink' to 'Project'.
+(18) 'TestPeriod' association 'Project', multiplicity at 'TestPeriod': 0..*, multiplicity at 'Project': 1, navigable from 'TestPeriod' to 'Project'.
+(19) 'ProjectMember' association 'Project', multiplicity at 'ProjectMember': 0..*, multiplicity at 'Project': 1, navigable from 'ProjectMember' to 'Project'.
+(20) 'RequirementTemplateVersion' association 'Project', multiplicity at 'RequirementTemplateVersion': 0..*, multiplicity at 'Project': 1, navigable from 'RequirementTemplateVersion' to 'Project'.
+(21) 'RequirementCustomField' association 'Project', multiplicity at 'RequirementCustomField': 0..*, multiplicity at 'Project': 1, navigable from 'RequirementCustomField' to 'Project'.
+(22) 'AcceptanceCriteria' association 'Project', multiplicity at 'AcceptanceCriteria': 0..*, multiplicity at 'Project': 1, navigable from 'AcceptanceCriteria' to 'Project'.
+(23) 'RequirementTransformation' association 'Project', multiplicity at 'RequirementTransformation': 0..*, multiplicity at 'Project': 1, navigable from 'RequirementTransformation' to 'Project'.
+(24) 'TestCaseTemplate' association 'Project', multiplicity at 'TestCaseTemplate': 0..*, multiplicity at 'Project': 1, navigable from 'TestCaseTemplate' to 'Project'.
+(25) 'TestCase' association 'Project', multiplicity at 'TestCase': 0..*, multiplicity at 'Project': 1, navigable from 'TestCase' to 'Project'.
+(26) 'AiResult' association 'Project', multiplicity at 'AiResult': 0..*, multiplicity at 'Project': 1, navigable from 'AiResult' to 'Project'.
+(27) 'AiFinding' association 'Project', multiplicity at 'AiFinding': 0..*, multiplicity at 'Project': 1, navigable from 'AiFinding' to 'Project'.
+(28) 'CoverageSnapshot' association 'Project', multiplicity at 'CoverageSnapshot': 0..*, multiplicity at 'Project': 1, navigable from 'CoverageSnapshot' to 'Project'.
+(29) 'ImpactAnalyse' association 'Project', multiplicity at 'ImpactAnalyse': 0..*, multiplicity at 'Project': 1, navigable from 'ImpactAnalyse' to 'Project'.
+(30) 'MaintenanceProposal' association 'Project', multiplicity at 'MaintenanceProposal': 0..*, multiplicity at 'Project': 1, navigable from 'MaintenanceProposal' to 'Project'.
+(31) 'RegressionRecommendation' association 'Project', multiplicity at 'RegressionRecommendation': 0..*, multiplicity at 'Project': 1, navigable from 'RegressionRecommendation' to 'Project'.
+(32) 'TestSuite' association 'Project', multiplicity at 'TestSuite': 0..*, multiplicity at 'Project': 1, navigable from 'TestSuite' to 'Project'.
+(33) 'SecurityTestSuggestion' association 'Project', multiplicity at 'SecurityTestSuggestion': 0..*, multiplicity at 'Project': 1, navigable from 'SecurityTestSuggestion' to 'Project'.
+(34) 'PerformancePlanDraft' association 'Project', multiplicity at 'PerformancePlanDraft': 0..*, multiplicity at 'Project': 1, navigable from 'PerformancePlanDraft' to 'Project'.
+(35) 'AutomationExecution' association 'Project', multiplicity at 'AutomationExecution': 0..*, multiplicity at 'Project': 1, navigable from 'AutomationExecution' to 'Project'.
+(36) 'JunitResultImport' association 'Project', multiplicity at 'JunitResultImport': 0..*, multiplicity at 'Project': 1, navigable from 'JunitResultImport' to 'Project'.
+(37) 'CollaborationOperation' association 'Project', multiplicity at 'CollaborationOperation': 0..*, multiplicity at 'Project': 1, navigable from 'CollaborationOperation' to 'Project'.
+(38) 'DraftConflict' association 'Project', multiplicity at 'DraftConflict': 0..*, multiplicity at 'Project': 1, navigable from 'DraftConflict' to 'Project'.
+(39) 'Release' association 'Project', multiplicity at 'Release': 0..*, multiplicity at 'Project': 1, navigable from 'Release' to 'Project'.
+(40) 'Build' association 'Project', multiplicity at 'Build': 0..*, multiplicity at 'Project': 1, navigable from 'Build' to 'Project'.
+(41) 'TestEnvironment' association 'Project', multiplicity at 'TestEnvironment': 0..*, multiplicity at 'Project': 1, navigable from 'TestEnvironment' to 'Project'.
+(42) 'Defect' association 'Project', multiplicity at 'Defect': 0..*, multiplicity at 'Project': 1, navigable from 'Defect' to 'Project'.
+(43) 'ReviewComment' association 'Project', multiplicity at 'ReviewComment': 0..*, multiplicity at 'Project': 1, navigable from 'ReviewComment' to 'Project'.
+(44) 'Attachment' association 'Project', multiplicity at 'Attachment': 0..*, multiplicity at 'Project': 1, navigable from 'Attachment' to 'Project'.
+(45) 'BreakGlassGrant' association 'Project', multiplicity at 'BreakGlassGrant': 0..*, multiplicity at 'Project': 1, navigable from 'BreakGlassGrant' to 'Project'.
+(46) 'ApiImport' association 'Project', multiplicity at 'ApiImport': 0..*, multiplicity at 'Project': 1, navigable from 'ApiImport' to 'Project'.
+(47) 'ApiOperation' association 'Project', multiplicity at 'ApiOperation': 0..*, multiplicity at 'Project': 1, navigable from 'ApiOperation' to 'Project'.
+(48) 'TestImport' association 'Project', multiplicity at 'TestImport': 0..*, multiplicity at 'Project': 1, navigable from 'TestImport' to 'Project'.
+(49) 'BulkOperation' association 'Project', multiplicity at 'BulkOperation': 0..*, multiplicity at 'Project': 1, navigable from 'BulkOperation' to 'Project'.
+(50) 'SimpleTestReport' association 'Project', multiplicity at 'SimpleTestReport': 0..*, multiplicity at 'Project': 1, navigable from 'SimpleTestReport' to 'Project'.
+(51) 'AutomationScriptDraft' association 'Project', multiplicity at 'AutomationScriptDraft': 0..*, multiplicity at 'Project': 1, navigable from 'AutomationScriptDraft' to 'Project'.
+(52) 'RequirementVersion' association 'Requirement', multiplicity at 'RequirementVersion': 0..*, multiplicity at 'Requirement': 1, navigable from 'RequirementVersion' to 'Requirement'.
+(53) 'RequirementImpactJob' association 'Requirement', multiplicity at 'RequirementImpactJob': 0..*, multiplicity at 'Requirement': 1, navigable from 'RequirementImpactJob' to 'Requirement'.
+(54) 'RequirementChangeSet' association 'Requirement', multiplicity at 'RequirementChangeSet': 0..*, multiplicity at 'Requirement': 1, navigable from 'RequirementChangeSet' to 'Requirement'.
+(55) 'AcceptanceCriteria' association 'RequirementVersion', multiplicity at 'AcceptanceCriteria': 0..*, multiplicity at 'RequirementVersion': 1, navigable from 'AcceptanceCriteria' to 'RequirementVersion'.
+(56) 'TestCaseVersion' association 'RequirementVersion', multiplicity at 'TestCaseVersion': 0..*, multiplicity at 'RequirementVersion': 1, navigable from 'TestCaseVersion' to 'RequirementVersion'.
+(57) 'TestPlan' association 'RequirementVersion', multiplicity at 'TestPlan': 0..*, multiplicity at 'RequirementVersion': 1, navigable from 'TestPlan' to 'RequirementVersion'.
+(58) 'TestCaseVersion' association 'TestCase', multiplicity at 'TestCaseVersion': 0..*, multiplicity at 'TestCase': 1, navigable from 'TestCaseVersion' to 'TestCase'.
+(59) 'TestResult' association 'TestCaseVersion', multiplicity at 'TestResult': 0..*, multiplicity at 'TestCaseVersion': 1, navigable from 'TestResult' to 'TestCaseVersion'.
+(60) 'TestPlan' association 'TestCaseVersion', multiplicity at 'TestPlan': 0..*, multiplicity at 'TestCaseVersion': 1, navigable from 'TestPlan' to 'TestCaseVersion'.
+(61) 'TestRun' association 'TestCaseVersion', multiplicity at 'TestRun': 0..*, multiplicity at 'TestCaseVersion': 1, navigable from 'TestRun' to 'TestCaseVersion'.
+(62) 'TestSuite' association 'TestCaseVersion', multiplicity at 'TestSuite': 0..*, multiplicity at 'TestCaseVersion': 1, navigable from 'TestSuite' to 'TestCaseVersion'.
+(63) 'TestPlan' association 'TestPeriod', multiplicity at 'TestPlan': 0..*, multiplicity at 'TestPeriod': 1, navigable from 'TestPlan' to 'TestPeriod'.
+(64) 'TestRun' association 'TestPeriod', multiplicity at 'TestRun': 0..*, multiplicity at 'TestPeriod': 1, navigable from 'TestRun' to 'TestPeriod'.
+(65) 'TestRun' association 'TestPlan', multiplicity at 'TestRun': 0..*, multiplicity at 'TestPlan': 1, navigable from 'TestRun' to 'TestPlan'.
+(66) 'TestResultCorrection' association 'TestResult', multiplicity at 'TestResultCorrection': 0..*, multiplicity at 'TestResult': 1, navigable from 'TestResultCorrection' to 'TestResult'.
+(67) 'TestExecutionUpdate' association 'TestResult', multiplicity at 'TestExecutionUpdate': 0..*, multiplicity at 'TestResult': 1, navigable from 'TestExecutionUpdate' to 'TestResult'.
+(68) 'TestResult' association 'TestRun', multiplicity at 'TestResult': 0..*, multiplicity at 'TestRun': 1, navigable from 'TestResult' to 'TestRun'.
+(69) 'JunitResultImport' association 'TestRun', multiplicity at 'JunitResultImport': 0..*, multiplicity at 'TestRun': 1, navigable from 'JunitResultImport' to 'TestRun'.
+(70) 'TestRunResumeEvent' association 'TestRun', multiplicity at 'TestRunResumeEvent': 0..*, multiplicity at 'TestRun': 1, navigable from 'TestRunResumeEvent' to 'TestRun'.
+Include EVERY class, attribute, operation and relationship listed above, exactly as named. Do not omit, merge, rename, simplify, summarize or add anything. Do not invent extra classes, attributes or relationships. If something does not fit, keep it and let the layout grow instead of dropping it. Totals: 70 classes, 70 relationships, 332 attributes.
+
+Checklist: classes=70; relationships=70; attributes=332.
+Correction prompt: Fix only the following items and keep everything else unchanged: [insert verified discrepancy].

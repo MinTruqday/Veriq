@@ -6,6 +6,7 @@ import { uploadAssetAPI } from "@/features/cloud/services/upload.service";
 import DataTable from "../../components/DataTable";
 import FilePicker from "../../components/FilePicker";
 import {
+  AIProcessingState,
   ErrorState,
   LoadingState,
   Panel,
@@ -308,7 +309,7 @@ export default function DefectsPage({ project }) {
         idempotency_key: defectCreateOperation.current.idempotencyKey,
       });
       defectCreateOperation.current = null;
-      setSuccess("Đã tạo lỗi. Danh sách đang được làm mới.");
+      setSuccess("Đã tạo lỗi. Danh sách đang được làm mới");
       setForm({
         title: "",
         severity: classificationOptions.severity[0] || "",
@@ -635,7 +636,7 @@ export default function DefectsPage({ project }) {
           <ModalHeader>
             <ModalTitle>Tạo lỗi</ModalTitle>
             <p className="mt-2 text-sm text-ink-muted">
-              Ghi nhận thông tin cần thiết để tái hiện, phân loại và theo dõi lỗi.
+              Ghi nhận thông tin cần thiết để tái hiện, phân loại và theo dõi lỗi
             </p>
           </ModalHeader>
           <form className="flex min-h-full flex-col" onSubmit={create}>
@@ -643,7 +644,7 @@ export default function DefectsPage({ project }) {
               {(!classificationOptions.severity.length ||
                 !classificationOptions.priority.length) && (
                 <p className="rounded-control bg-warning-soft p-3 text-sm text-warning">
-                  Thang mức độ và thang ưu tiên của dự án chưa được cấu hình.
+                  Thang mức độ và thang ưu tiên của dự án chưa được cấu hình
                 </p>
               )}
               <section aria-labelledby="defect-classification-heading" className="space-y-4">
@@ -652,7 +653,7 @@ export default function DefectsPage({ project }) {
                     Thông tin và phân loại
                   </h3>
                   <p className="mt-1 text-xs text-ink-muted">
-                    Tên, mức độ và ưu tiên giúp nhóm xử lý nhận biết lỗi ngay trong danh sách.
+                    Tên, mức độ và ưu tiên giúp nhóm xử lý nhận biết lỗi ngay trong danh sách
                   </p>
                 </div>
                 <label className="field-label block">
@@ -806,7 +807,7 @@ export default function DefectsPage({ project }) {
                     Tái hiện lỗi
                   </h3>
                   <p className="mt-1 text-xs text-ink-muted">
-                    Liệt kê các thao tác theo đúng thứ tự để người khác có thể lặp lại vấn đề.
+                    Liệt kê các thao tác theo đúng thứ tự để người khác có thể lặp lại vấn đề
                   </p>
                 </div>
                 <label className="field-label block">
@@ -931,7 +932,7 @@ export default function DefectsPage({ project }) {
           <ModalHeader>
             <ModalTitle>Gợi ý liên kết cho {traceReview.defect.defect_key}</ModalTitle>
             <p className="mt-2 text-sm text-ink-muted">
-              Gợi ý chưa thay đổi lỗi. Chỉ liên kết sau khi người có quyền xác nhận.
+              Gợi ý chưa thay đổi lỗi. Chỉ liên kết sau khi người có quyền xác nhận
             </p>
           </ModalHeader>
           <div className="flex flex-wrap items-center gap-2 border-b border-border px-5 py-3 text-sm font-semibold text-ink">
@@ -1116,7 +1117,7 @@ export default function DefectsPage({ project }) {
           <section aria-label="Bảng lỗi theo trạng thái" className="overflow-x-auto p-4">
             <p className="mb-3 text-xs text-ink-muted">
               Bảng phản ánh các lỗi trong trang hiện tại. Chuyển trạng thái vẫn yêu cầu thao tác có
-              xác nhận.
+              xác nhận
             </p>
             <div className="grid w-max min-w-full grid-cols-[repeat(9,minmax(14rem,1fr))] gap-3">
               {Object.keys(nextStates).map((status) => {
@@ -1392,6 +1393,14 @@ export default function DefectsPage({ project }) {
                       </span>
                     )}
                   </div>
+                  {traceGeneratingId === item._id && (
+                    <div className="mt-3">
+                      <AIProcessingState
+                        title={`AI đang tìm liên kết cho ${item.defect_key}`}
+                        description="Đang đối chiếu yêu cầu và ca kiểm thử có liên quan. Chưa có liên kết nào được tự động xác nhận"
+                      />
+                    </div>
+                  )}
                 </li>
               );
             })}
@@ -1415,8 +1424,8 @@ export default function DefectsPage({ project }) {
               filters.severity ||
               filters.priority ||
               filters.assignee
-                ? "Thử xóa bộ lọc hoặc tìm bằng mã, tiêu đề khác."
-                : "Lỗi được tạo từ kết quả thực thi hoặc từ nút Tạo lỗi ở đầu trang."
+                ? "Thử xóa bộ lọc hoặc tìm bằng mã, tiêu đề khác"
+                : "Lỗi được tạo từ kết quả thực thi hoặc từ nút Tạo lỗi ở đầu trang"
             }
             actionLabel={
               filters.q ||
@@ -1538,7 +1547,7 @@ export default function DefectsPage({ project }) {
               <section className="border-b border-border p-5" aria-label="Mô tả lỗi">
                 <h3 className="text-sm font-semibold">Mô tả</h3>
                 <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-ink-muted">
-                  {docText(selectedDefect.description) || "Chưa có mô tả."}
+                  {docText(selectedDefect.description) || "Chưa có mô tả"}
                 </p>
               </section>
               <section className="border-b border-border p-5" aria-label="Tái hiện lỗi">
@@ -1556,7 +1565,7 @@ export default function DefectsPage({ project }) {
                         <div className="min-w-0 space-y-2 text-sm">
                           <p className="whitespace-pre-wrap break-words">
                             {docText(step.action_doc || step.action || step.description) ||
-                              "Chưa có thao tác."}
+                              "Chưa có thao tác"}
                           </p>
                           {(step.expected_doc || step.expected) && (
                             <p className="whitespace-pre-wrap break-words text-ink-muted">
@@ -1568,20 +1577,20 @@ export default function DefectsPage({ project }) {
                     ))}
                   </ol>
                 ) : (
-                  <p className="mt-2 text-sm text-ink-muted">Chưa có bước tái hiện.</p>
+                  <p className="mt-2 text-sm text-ink-muted">Chưa có bước tái hiện</p>
                 )}
               </section>
               <section className="grid gap-4 border-b border-border p-5 sm:grid-cols-2">
                 <div>
                   <h3 className="text-sm font-semibold">Kết quả mong đợi</h3>
                   <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-ink-muted">
-                    {docText(selectedDefect.expected_result_doc) || "Chưa ghi nhận."}
+                    {docText(selectedDefect.expected_result_doc) || "Chưa ghi nhận"}
                   </p>
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold">Kết quả thực tế</h3>
                   <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-ink-muted">
-                    {docText(selectedDefect.actual_result_doc) || "Chưa ghi nhận."}
+                    {docText(selectedDefect.actual_result_doc) || "Chưa ghi nhận"}
                   </p>
                 </div>
               </section>
@@ -1674,7 +1683,7 @@ export default function DefectsPage({ project }) {
         ) : (
           <ModalContent>
             <p className="text-sm text-ink-muted">
-              Lỗi này không còn trong trang hiện tại. Đóng chi tiết để tiếp tục.
+              Lỗi này không còn trong trang hiện tại. Đóng chi tiết để tiếp tục
             </p>
           </ModalContent>
         )}

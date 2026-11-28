@@ -5,25 +5,25 @@
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="pool_veriq" value="Veriq" style="swimlane;horizontal=0;startSize=30;rounded=0;html=1;collapsible=0;fillColor=#F4F6F8;swimlaneFillColor=#FFFFFF;strokeColor=#667085;fontColor=#1F2937;fontSize=13;" vertex="1" parent="1" bpmnKind="pool">
+        <mxCell id="pool_veriq" value="Quy trình" style="swimlane;horizontal=0;startSize=30;rounded=0;html=1;collapsible=0;fillColor=#F4F6F8;swimlaneFillColor=#FFFFFF;strokeColor=#667085;fontColor=#1F2937;fontSize=13;" vertex="1" parent="1" bpmnKind="pool">
           <mxGeometry x="0" y="0" width="2430" height="1200" as="geometry" />
         </mxCell>
-        <mxCell id="lane_planner" value="Người lập kế hoạch" style="swimlane;horizontal=0;startSize=30;rounded=0;html=1;collapsible=0;fillColor=#E8F3FF;swimlaneFillColor=#FFFFFF;strokeColor=#4A90C2;fontColor=#172B4D;fontSize=12;" vertex="1" parent="pool_veriq" bpmnKind="lane">
+        <mxCell id="lane_planner" value="Tester" style="swimlane;horizontal=0;startSize=30;rounded=0;html=1;collapsible=0;fillColor=#E8F3FF;swimlaneFillColor=#FFFFFF;strokeColor=#4A90C2;fontColor=#172B4D;fontSize=12;" vertex="1" parent="pool_veriq" bpmnKind="lane">
           <mxGeometry x="30" y="0" width="2400" height="400" as="geometry" />
         </mxCell>
-        <mxCell id="lane_system" value="Veriq" style="swimlane;horizontal=0;startSize=30;rounded=0;html=1;collapsible=0;fillColor=#EFE8FF;swimlaneFillColor=#FFFFFF;strokeColor=#7956A8;fontColor=#172B4D;fontSize=12;" vertex="1" parent="pool_veriq" bpmnKind="lane">
+        <mxCell id="lane_system" value="Hệ thống" style="swimlane;horizontal=0;startSize=30;rounded=0;html=1;collapsible=0;fillColor=#EFE8FF;swimlaneFillColor=#FFFFFF;strokeColor=#7956A8;fontColor=#172B4D;fontSize=12;" vertex="1" parent="pool_veriq" bpmnKind="lane">
           <mxGeometry x="30" y="400" width="2400" height="400" as="geometry" />
         </mxCell>
-        <mxCell id="lane_reviewer" value="Người có quyền phê duyệt" style="swimlane;horizontal=0;startSize=30;rounded=0;html=1;collapsible=0;fillColor=#FFF4DF;swimlaneFillColor=#FFFFFF;strokeColor=#C58A28;fontColor=#172B4D;fontSize=12;" vertex="1" parent="pool_veriq" bpmnKind="lane">
+        <mxCell id="lane_reviewer" value="Admin" style="swimlane;horizontal=0;startSize=30;rounded=0;html=1;collapsible=0;fillColor=#FFF4DF;swimlaneFillColor=#FFFFFF;strokeColor=#C58A28;fontColor=#172B4D;fontSize=12;" vertex="1" parent="pool_veriq" bpmnKind="lane">
           <mxGeometry x="30" y="800" width="2400" height="400" as="geometry" />
         </mxCell>
         <mxCell id="node_start" value="Bắt đầu lập kế hoạch kiểm thử" style="shape=mxgraph.bpmn.shape;perimeter=ellipsePerimeter;outline=standard;symbol=general;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#27864B;strokeWidth=2;fontColor=#172B4D;fontSize=11;" vertex="1" parent="lane_planner" bpmnKind="start" specId="start">
           <mxGeometry x="180" y="60" width="40" height="40" as="geometry" />
         </mxCell>
-        <mxCell id="node_choose_ai" value="Dùng gợi ý AI để hỗ trợ lập kế hoạch?" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=none;symbol=none;gwType=exclusive;fillColor=#FFF2CC;strokeColor=#B8860B;strokeWidth=1.5;fontColor=#172B4D;fontSize=10;" vertex="1" parent="lane_planner" bpmnKind="gateway" specId="choose_ai">
+        <mxCell id="node_choose_ai" value="Dùng gợi ý từ trí tuệ nhân tạo để lập kế hoạch?" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=none;symbol=none;gwType=exclusive;fillColor=#FFF2CC;strokeColor=#B8860B;strokeWidth=1.5;fontColor=#172B4D;fontSize=10;" vertex="1" parent="lane_planner" bpmnKind="gateway" specId="choose_ai">
           <mxGeometry x="350" y="50" width="60" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="node_suggest" value="Tạo gợi ý kế hoạch bằng AI" style="shape=mxgraph.bpmn.task2;whiteSpace=wrap;rectStyle=rounded;size=10;html=1;container=1;expand=0;collapsible=0;taskMarker=service;fillColor=#EFE8FF;strokeColor=#7956A8;strokeWidth=1.5;fontColor=#172B4D;fontSize=11;" vertex="1" parent="lane_system" bpmnKind="service_task" specId="suggest">
+        <mxCell id="node_suggest" value="Tạo gợi ý kế hoạch bằng tự động" style="shape=mxgraph.bpmn.task2;whiteSpace=wrap;rectStyle=rounded;size=10;html=1;container=1;expand=0;collapsible=0;taskMarker=service;fillColor=#EFE8FF;strokeColor=#7956A8;strokeWidth=1.5;fontColor=#172B4D;fontSize=11;" vertex="1" parent="lane_system" bpmnKind="service_task" specId="suggest">
           <mxGeometry x="500" y="40" width="120" height="80" as="geometry" />
         </mxCell>
         <mxCell id="node_manual" value="Nhập phạm vi kế hoạch" style="shape=mxgraph.bpmn.task2;whiteSpace=wrap;rectStyle=rounded;size=10;html=1;container=1;expand=0;collapsible=0;taskMarker=user;fillColor=#E8F3FF;strokeColor=#4A90C2;strokeWidth=1.5;fontColor=#172B4D;fontSize=11;" vertex="1" parent="lane_planner" bpmnKind="user_task" specId="manual">
@@ -53,7 +53,7 @@
         <mxCell id="node_revise" value="Chỉnh sửa theo yêu cầu rà soát" style="shape=mxgraph.bpmn.task2;whiteSpace=wrap;rectStyle=rounded;size=10;html=1;container=1;expand=0;collapsible=0;taskMarker=user;fillColor=#E8F3FF;strokeColor=#4A90C2;strokeWidth=1.5;fontColor=#172B4D;fontSize=11;" vertex="1" parent="lane_planner" bpmnKind="user_task" specId="revise">
           <mxGeometry x="1760" y="160" width="120" height="80" as="geometry" />
         </mxCell>
-        <mxCell id="node_snapshot" value="Kiểm tra phạm vi đã duyệt và tạo snapshot" style="shape=mxgraph.bpmn.task2;whiteSpace=wrap;rectStyle=rounded;size=10;html=1;container=1;expand=0;collapsible=0;taskMarker=service;fillColor=#EFE8FF;strokeColor=#7956A8;strokeWidth=1.5;fontColor=#172B4D;fontSize=11;" vertex="1" parent="lane_system" bpmnKind="service_task" specId="snapshot">
+        <mxCell id="node_snapshot" value="Kiểm tra phạm vi đã duyệt và tạo ảnh chụp phạm vi" style="shape=mxgraph.bpmn.task2;whiteSpace=wrap;rectStyle=rounded;size=10;html=1;container=1;expand=0;collapsible=0;taskMarker=service;fillColor=#EFE8FF;strokeColor=#7956A8;strokeWidth=1.5;fontColor=#172B4D;fontSize=11;" vertex="1" parent="lane_system" bpmnKind="service_task" specId="snapshot">
           <mxGeometry x="1760" y="40" width="120" height="80" as="geometry" />
         </mxCell>
         <mxCell id="node_snapshot_ok" value="Snapshot kế hoạch hợp lệ?" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=none;symbol=none;gwType=exclusive;fillColor=#FFF2CC;strokeColor=#B8860B;strokeWidth=1.5;fontColor=#172B4D;fontSize=10;" vertex="1" parent="lane_system" bpmnKind="gateway" specId="snapshot_ok">
@@ -65,7 +65,7 @@
         <mxCell id="node_done" value="Kế hoạch kiểm thử đã được phê duyệt" style="shape=mxgraph.bpmn.shape;perimeter=ellipsePerimeter;outline=end;symbol=general;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#B42318;strokeWidth=3;fontColor=#172B4D;fontSize=11;" vertex="1" parent="lane_system" bpmnKind="end" specId="done">
           <mxGeometry x="2160" y="60" width="40" height="40" as="geometry" />
         </mxCell>
-        <mxCell id="node_process_data" value="Kế hoạch và snapshot đã duyệt" style="shape=datastore;html=1;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;fillColor=#F2F4F7;strokeColor=#667085;strokeWidth=1.5;fontColor=#344054;fontSize=10;" vertex="1" parent="lane_system" bpmnKind="data_store" specId="process_data">
+        <mxCell id="node_process_data" value="Kế hoạch và ảnh chụp phạm vi đã duyệt" style="shape=datastore;html=1;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;fillColor=#F2F4F7;strokeColor=#667085;strokeWidth=1.5;fontColor=#344054;fontSize=10;" vertex="1" parent="lane_system" bpmnKind="data_store" specId="process_data">
           <mxGeometry x="1790" y="170" width="60" height="60" as="geometry" />
         </mxCell>
         <mxCell id="node_auto_approval" value="Được tự phê duyệt và không lưu nháp?" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=none;symbol=none;gwType=exclusive;fillColor=#FFF2CC;strokeColor=#B8860B;strokeWidth=1.5;fontColor=#172B4D;fontSize=10;" vertex="1" parent="lane_system" bpmnKind="gateway" specId="auto_approval">

@@ -1,0 +1,11 @@
+Logical Entity Relationship Diagram of MongoDB collections: fields with types, _id as primary key, logical references shown with crow's foot
+Create the logical MongoDB ERD for service 'cloud'. Use the following PascalCase names for every collection and field. These are logical references, not enforced foreign keys.
+Table 'StorageItem' (business/data): 'AiProcessed' boolean [N]; 'BrokenLinks' json [N]; 'Color' varchar(255) [N]; 'CreatedAt' datetime [N]; 'Description' varchar(255) [N]; 'DuplicateOf' varchar(255) [N]; 'Entities' json [N]; 'EnvironmentReady' boolean [N]; 'IsDuplicate' boolean [N]; 'IsFolder' boolean [N]; 'IsLocked' boolean [N]; 'IsPublic' boolean [N]; 'IsShortcut' boolean [N]; 'IsStarred' boolean [N]; 'IsTrashed' boolean [N]; 'LockedAt' datetime [N]; 'LockedBy' varchar(255) [N]; 'MimeType' varchar(255) [N]; 'Name' varchar(255) [N]; 'OwnerId' varchar(255) [N]; 'ParentId' varchar(255) [N]; 'ShareToken' varchar(255) [N]; 'SharedWith' json [N]; 'Size' integer(10) [N]; 'Tags' json [N]; 'TargetId' varchar(255) [N]; 'UpdatedAt' datetime [N]; 'Url' varchar(255) [N]; 'Versions' json [N].
+Table 'TempChatFile' (business/data): 'TempChatFileId' varchar(255) [PK]; 'ItemId' varchar(255) [N]; 'OwnerId' varchar(255) [N]; 'Token' varchar(255) [N].
+Table 'StorageShareLink' (business/data): .
+Table 'StorageActivity' (business/data): .
+Table 'FileRequest' (business/data): .
+Include EVERY table, field and relationship listed above, exactly as named. Do not omit, merge, rename, simplify, summarize or add anything. Do not invent extra tables, fields or relationships. If something does not fit, keep it and let the layout grow instead of dropping it. Totals: 5 MongoDB tables, 0 logical relationships, 33 MongoDB fields; 0 separate vector stores and 0 vector payload fields.
+
+Checklist: tables=5; relationships=0; fields=33.
+Correction prompt: Fix only the following items and keep everything else unchanged: [insert verified discrepancy].

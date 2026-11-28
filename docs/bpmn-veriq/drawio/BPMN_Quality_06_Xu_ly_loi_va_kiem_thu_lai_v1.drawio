@@ -1,27 +1,24 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <mxfile host="app.diagrams.net" modified="2026-11-28T00:00:00.000Z" agent="Codex" version="26.0.0" type="device">
   <diagram id="defect_retest" name="06 - Phân loại, xử lý lỗi và kiểm thử lại">
-    <mxGraphModel dx="2610" dy="2100" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2610" pageHeight="2100" math="0" shadow="0">
+    <mxGraphModel dx="2610" dy="1700" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2610" pageHeight="1700" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="pool_veriq" value="Veriq" style="swimlane;horizontal=0;startSize=30;rounded=0;html=1;collapsible=0;fillColor=#F4F6F8;swimlaneFillColor=#FFFFFF;strokeColor=#667085;fontColor=#1F2937;fontSize=13;" vertex="1" parent="1" bpmnKind="pool">
-          <mxGeometry x="0" y="0" width="2250" height="2000" as="geometry" />
+        <mxCell id="pool_veriq" value="Quy trình" style="swimlane;horizontal=0;startSize=30;rounded=0;html=1;collapsible=0;fillColor=#F4F6F8;swimlaneFillColor=#FFFFFF;strokeColor=#667085;fontColor=#1F2937;fontSize=13;" vertex="1" parent="1" bpmnKind="pool">
+          <mxGeometry x="0" y="0" width="2250" height="1600" as="geometry" />
         </mxCell>
-        <mxCell id="lane_reporter" value="Người ghi nhận lỗi" style="swimlane;horizontal=0;startSize=30;rounded=0;html=1;collapsible=0;fillColor=#E8F3FF;swimlaneFillColor=#FFFFFF;strokeColor=#4A90C2;fontColor=#172B4D;fontSize=12;" vertex="1" parent="pool_veriq" bpmnKind="lane">
+        <mxCell id="lane_reporter" value="Tester" style="swimlane;horizontal=0;startSize=30;rounded=0;html=1;collapsible=0;fillColor=#E8F3FF;swimlaneFillColor=#FFFFFF;strokeColor=#4A90C2;fontColor=#172B4D;fontSize=12;" vertex="1" parent="pool_veriq" bpmnKind="lane">
           <mxGeometry x="30" y="0" width="2220" height="400" as="geometry" />
         </mxCell>
-        <mxCell id="lane_triage" value="Người có quyền phân loại lỗi" style="swimlane;horizontal=0;startSize=30;rounded=0;html=1;collapsible=0;fillColor=#FFF4DF;swimlaneFillColor=#FFFFFF;strokeColor=#C58A28;fontColor=#172B4D;fontSize=12;" vertex="1" parent="pool_veriq" bpmnKind="lane">
+        <mxCell id="lane_triage" value="Admin" style="swimlane;horizontal=0;startSize=30;rounded=0;html=1;collapsible=0;fillColor=#FFF4DF;swimlaneFillColor=#FFFFFF;strokeColor=#C58A28;fontColor=#172B4D;fontSize=12;" vertex="1" parent="pool_veriq" bpmnKind="lane">
           <mxGeometry x="30" y="400" width="2220" height="400" as="geometry" />
         </mxCell>
-        <mxCell id="lane_resolver" value="Người được giao xử lý lỗi" style="swimlane;horizontal=0;startSize=30;rounded=0;html=1;collapsible=0;fillColor=#EAF7EE;swimlaneFillColor=#FFFFFF;strokeColor=#43845A;fontColor=#172B4D;fontSize=12;" vertex="1" parent="pool_veriq" bpmnKind="lane">
+        <mxCell id="lane_resolver" value="Người được giao xử lý (BA/Tester/Admin)" style="swimlane;horizontal=0;startSize=30;rounded=0;html=1;collapsible=0;fillColor=#F3F4F6;swimlaneFillColor=#FFFFFF;strokeColor=#667085;fontColor=#172B4D;fontSize=12;" vertex="1" parent="pool_veriq" bpmnKind="lane">
           <mxGeometry x="30" y="800" width="2220" height="400" as="geometry" />
         </mxCell>
-        <mxCell id="lane_system" value="Veriq" style="swimlane;horizontal=0;startSize=30;rounded=0;html=1;collapsible=0;fillColor=#EFE8FF;swimlaneFillColor=#FFFFFF;strokeColor=#7956A8;fontColor=#172B4D;fontSize=12;" vertex="1" parent="pool_veriq" bpmnKind="lane">
+        <mxCell id="lane_system" value="Hệ thống" style="swimlane;horizontal=0;startSize=30;rounded=0;html=1;collapsible=0;fillColor=#EFE8FF;swimlaneFillColor=#FFFFFF;strokeColor=#7956A8;fontColor=#172B4D;fontSize=12;" vertex="1" parent="pool_veriq" bpmnKind="lane">
           <mxGeometry x="30" y="1200" width="2220" height="400" as="geometry" />
-        </mxCell>
-        <mxCell id="lane_tester" value="Người kiểm thử lại" style="swimlane;horizontal=0;startSize=30;rounded=0;html=1;collapsible=0;fillColor=#FFF4DF;swimlaneFillColor=#FFFFFF;strokeColor=#C58A28;fontColor=#172B4D;fontSize=12;" vertex="1" parent="pool_veriq" bpmnKind="lane">
-          <mxGeometry x="30" y="1600" width="2220" height="400" as="geometry" />
         </mxCell>
         <mxCell id="node_start" value="Bắt đầu khi ghi nhận lỗi" style="shape=mxgraph.bpmn.shape;perimeter=ellipsePerimeter;outline=standard;symbol=general;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#27864B;strokeWidth=2;fontColor=#172B4D;fontSize=11;" vertex="1" parent="lane_reporter" bpmnKind="start" specId="start">
           <mxGeometry x="180" y="60" width="40" height="40" as="geometry" />
@@ -38,28 +35,28 @@
         <mxCell id="node_duplicate" value="Đánh dấu lỗi trùng" style="shape=mxgraph.bpmn.task2;whiteSpace=wrap;rectStyle=rounded;size=10;html=1;container=1;expand=0;collapsible=0;taskMarker=user;fillColor=#FFF4DF;strokeColor=#C58A28;strokeWidth=1.5;fontColor=#172B4D;fontSize=11;" vertex="1" parent="lane_triage" bpmnKind="user_task" specId="duplicate">
           <mxGeometry x="860" y="160" width="120" height="80" as="geometry" />
         </mxCell>
-        <mxCell id="node_duplicate_end" value="Lỗi được ghi nhận là trùng" style="shape=mxgraph.bpmn.shape;perimeter=ellipsePerimeter;outline=end;symbol=general;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#B42318;strokeWidth=3;fontColor=#172B4D;fontSize=11;" vertex="1" parent="lane_system" bpmnKind="end" specId="duplicate_end">
+        <mxCell id="node_duplicate_end" value="Lỗi được ghi nhận là trùng" style="shape=mxgraph.bpmn.shape;perimeter=ellipsePerimeter;outline=end;symbol=general;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#B42318;strokeWidth=3;fontColor=#172B4D;fontSize=11;" vertex="1" parent="lane_triage" bpmnKind="end" specId="duplicate_end">
           <mxGeometry x="1080" y="180" width="40" height="40" as="geometry" />
         </mxCell>
         <mxCell id="node_rejected" value="Từ chối lỗi với lý do" style="shape=mxgraph.bpmn.task2;whiteSpace=wrap;rectStyle=rounded;size=10;html=1;container=1;expand=0;collapsible=0;taskMarker=user;fillColor=#FFF4DF;strokeColor=#C58A28;strokeWidth=1.5;fontColor=#172B4D;fontSize=11;" vertex="1" parent="lane_triage" bpmnKind="user_task" specId="rejected">
           <mxGeometry x="860" y="280" width="120" height="80" as="geometry" />
         </mxCell>
-        <mxCell id="node_rejected_end" value="Lỗi bị từ chối" style="shape=mxgraph.bpmn.shape;perimeter=ellipsePerimeter;outline=end;symbol=general;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#B42318;strokeWidth=3;fontColor=#172B4D;fontSize=11;" vertex="1" parent="lane_system" bpmnKind="end" specId="rejected_end">
+        <mxCell id="node_rejected_end" value="Lỗi bị từ chối" style="shape=mxgraph.bpmn.shape;perimeter=ellipsePerimeter;outline=end;symbol=general;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#B42318;strokeWidth=3;fontColor=#172B4D;fontSize=11;" vertex="1" parent="lane_triage" bpmnKind="end" specId="rejected_end">
           <mxGeometry x="1080" y="300" width="40" height="40" as="geometry" />
         </mxCell>
         <mxCell id="node_assign" value="Giao lỗi cho người xử lý" style="shape=mxgraph.bpmn.task2;whiteSpace=wrap;rectStyle=rounded;size=10;html=1;container=1;expand=0;collapsible=0;taskMarker=user;fillColor=#FFF4DF;strokeColor=#C58A28;strokeWidth=1.5;fontColor=#172B4D;fontSize=11;" vertex="1" parent="lane_triage" bpmnKind="user_task" specId="assign">
           <mxGeometry x="860" y="40" width="120" height="80" as="geometry" />
         </mxCell>
-        <mxCell id="node_resolve" value="Xử lý lỗi và cập nhật trạng thái" style="shape=mxgraph.bpmn.task2;whiteSpace=wrap;rectStyle=rounded;size=10;html=1;container=1;expand=0;collapsible=0;taskMarker=user;fillColor=#EAF7EE;strokeColor=#43845A;strokeWidth=1.5;fontColor=#172B4D;fontSize=11;" vertex="1" parent="lane_resolver" bpmnKind="user_task" specId="resolve">
+        <mxCell id="node_resolve" value="Xử lý lỗi và cập nhật trạng thái" style="shape=mxgraph.bpmn.task2;whiteSpace=wrap;rectStyle=rounded;size=10;html=1;container=1;expand=0;collapsible=0;taskMarker=user;fillColor=#F3F4F6;strokeColor=#667085;strokeWidth=1.5;fontColor=#172B4D;fontSize=11;" vertex="1" parent="lane_resolver" bpmnKind="user_task" specId="resolve">
           <mxGeometry x="1040" y="40" width="120" height="80" as="geometry" />
         </mxCell>
-        <mxCell id="node_ready" value="Đưa lỗi sang trạng thái sẵn sàng kiểm thử lại" style="shape=mxgraph.bpmn.task2;whiteSpace=wrap;rectStyle=rounded;size=10;html=1;container=1;expand=0;collapsible=0;taskMarker=user;fillColor=#EAF7EE;strokeColor=#43845A;strokeWidth=1.5;fontColor=#172B4D;fontSize=11;" vertex="1" parent="lane_resolver" bpmnKind="user_task" specId="ready">
+        <mxCell id="node_ready" value="Đưa lỗi sang trạng thái sẵn sàng kiểm thử lại" style="shape=mxgraph.bpmn.task2;whiteSpace=wrap;rectStyle=rounded;size=10;html=1;container=1;expand=0;collapsible=0;taskMarker=user;fillColor=#F3F4F6;strokeColor=#667085;strokeWidth=1.5;fontColor=#172B4D;fontSize=11;" vertex="1" parent="lane_resolver" bpmnKind="user_task" specId="ready">
           <mxGeometry x="1400" y="40" width="120" height="80" as="geometry" />
         </mxCell>
-        <mxCell id="node_retest" value="Thực thi kiểm thử lại bằng kết quả mới" style="shape=mxgraph.bpmn.task2;whiteSpace=wrap;rectStyle=rounded;size=10;html=1;container=1;expand=0;collapsible=0;taskMarker=user;fillColor=#FFF4DF;strokeColor=#C58A28;strokeWidth=1.5;fontColor=#172B4D;fontSize=11;" vertex="1" parent="lane_tester" bpmnKind="user_task" specId="retest">
-          <mxGeometry x="1400" y="40" width="120" height="80" as="geometry" />
+        <mxCell id="node_retest" value="Thực thi kiểm thử lại bằng kết quả mới" style="shape=mxgraph.bpmn.task2;whiteSpace=wrap;rectStyle=rounded;size=10;html=1;container=1;expand=0;collapsible=0;taskMarker=user;fillColor=#E8F3FF;strokeColor=#4A90C2;strokeWidth=1.5;fontColor=#172B4D;fontSize=11;" vertex="1" parent="lane_reporter" bpmnKind="user_task" specId="retest">
+          <mxGeometry x="1400" y="160" width="120" height="80" as="geometry" />
         </mxCell>
-        <mxCell id="node_result" value="Kết quả kiểm thử lại?" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=none;symbol=none;gwType=exclusive;fillColor=#FFF2CC;strokeColor=#B8860B;strokeWidth=1.5;fontColor=#172B4D;fontSize=10;" vertex="1" parent="lane_tester" bpmnKind="gateway" specId="result">
+        <mxCell id="node_result" value="Kết quả kiểm thử lại?" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=none;symbol=none;gwType=exclusive;fillColor=#FFF2CC;strokeColor=#B8860B;strokeWidth=1.5;fontColor=#172B4D;fontSize=10;" vertex="1" parent="lane_reporter" bpmnKind="gateway" specId="result">
           <mxGeometry x="1610" y="50" width="60" height="60" as="geometry" />
         </mxCell>
         <mxCell id="node_close" value="Đóng lỗi sau khi kiểm thử đạt" style="shape=mxgraph.bpmn.task2;whiteSpace=wrap;rectStyle=rounded;size=10;html=1;container=1;expand=0;collapsible=0;taskMarker=user;fillColor=#EFE8FF;strokeColor=#7956A8;strokeWidth=1.5;fontColor=#172B4D;fontSize=11;" vertex="1" parent="lane_system" bpmnKind="service_task" specId="close">
@@ -71,7 +68,7 @@
         <mxCell id="node_reopen" value="Mở lại lỗi khi kiểm thử không đạt" style="shape=mxgraph.bpmn.task2;whiteSpace=wrap;rectStyle=rounded;size=10;html=1;container=1;expand=0;collapsible=0;taskMarker=user;fillColor=#EFE8FF;strokeColor=#7956A8;strokeWidth=1.5;fontColor=#172B4D;fontSize=11;" vertex="1" parent="lane_system" bpmnKind="service_task" specId="reopen">
           <mxGeometry x="1760" y="160" width="120" height="80" as="geometry" />
         </mxCell>
-        <mxCell id="node_continue" value="Tiếp tục xử lý lỗi đã mở lại" style="shape=mxgraph.bpmn.task2;whiteSpace=wrap;rectStyle=rounded;size=10;html=1;container=1;expand=0;collapsible=0;taskMarker=user;fillColor=#EAF7EE;strokeColor=#43845A;strokeWidth=1.5;fontColor=#172B4D;fontSize=11;" vertex="1" parent="lane_resolver" bpmnKind="user_task" specId="continue">
+        <mxCell id="node_continue" value="Tiếp tục xử lý lỗi đã mở lại" style="shape=mxgraph.bpmn.task2;whiteSpace=wrap;rectStyle=rounded;size=10;html=1;container=1;expand=0;collapsible=0;taskMarker=user;fillColor=#F3F4F6;strokeColor=#667085;strokeWidth=1.5;fontColor=#172B4D;fontSize=11;" vertex="1" parent="lane_resolver" bpmnKind="user_task" specId="continue">
           <mxGeometry x="1940" y="160" width="120" height="80" as="geometry" />
         </mxCell>
         <mxCell id="node_process_data" value="Lỗi và kết quả kiểm thử lại" style="shape=datastore;html=1;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;fillColor=#F2F4F7;strokeColor=#667085;strokeWidth=1.5;fontColor=#344054;fontSize=10;" vertex="1" parent="lane_system" bpmnKind="data_store" specId="process_data">
@@ -80,7 +77,7 @@
         <mxCell id="node_ready_decision" value="Đưa lỗi sang kiểm thử lại hay mở lại xử lý?" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=none;symbol=none;gwType=exclusive;fillColor=#FFF2CC;strokeColor=#B8860B;strokeWidth=1.5;fontColor=#172B4D;fontSize=10;" vertex="1" parent="lane_resolver" bpmnKind="gateway" specId="ready_decision">
           <mxGeometry x="1250" y="50" width="60" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="node_reopen_direct" value="Mở lại lỗi để tiếp tục xử lý" style="shape=mxgraph.bpmn.task2;whiteSpace=wrap;rectStyle=rounded;size=10;html=1;container=1;expand=0;collapsible=0;taskMarker=user;fillColor=#FFF4DF;strokeColor=#C58A28;strokeWidth=1.5;fontColor=#172B4D;fontSize=11;" vertex="1" parent="lane_triage" bpmnKind="user_task" specId="reopen_direct">
+        <mxCell id="node_reopen_direct" value="Mở lại lỗi để tiếp tục xử lý" style="shape=mxgraph.bpmn.task2;whiteSpace=wrap;rectStyle=rounded;size=10;html=1;container=1;expand=0;collapsible=0;taskMarker=user;fillColor=#F3F4F6;strokeColor=#667085;strokeWidth=1.5;fontColor=#172B4D;fontSize=11;" vertex="1" parent="lane_resolver" bpmnKind="user_task" specId="reopen_direct">
           <mxGeometry x="1220" y="160" width="120" height="80" as="geometry" />
         </mxCell>
         <mxCell id="edge_e01" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#344054;strokeWidth=1.5;labelBackgroundColor=#FFFFFF;fontColor=#172B4D;fontSize=10;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="node_start" target="node_record" edgeKind="sequence" specId="e01">
@@ -115,20 +112,10 @@
           </mxGeometry>
         </mxCell>
         <mxCell id="edge_e07" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#344054;strokeWidth=1.5;labelBackgroundColor=#FFFFFF;fontColor=#172B4D;fontSize=10;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="node_duplicate" target="node_duplicate_end" edgeKind="sequence" specId="e07">
-          <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="1060" y="600" />
-              <mxPoint x="1060" y="1400" />
-            </Array>
-          </mxGeometry>
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="edge_e08" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#344054;strokeWidth=1.5;labelBackgroundColor=#FFFFFF;fontColor=#172B4D;fontSize=10;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="node_rejected" target="node_rejected_end" edgeKind="sequence" specId="e08">
-          <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="1060" y="720" />
-              <mxPoint x="1060" y="1520" />
-            </Array>
-          </mxGeometry>
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="edge_e09" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#344054;strokeWidth=1.5;labelBackgroundColor=#FFFFFF;fontColor=#172B4D;fontSize=10;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="node_assign" target="node_resolve" edgeKind="sequence" specId="e09">
           <mxGeometry relative="1" as="geometry">
@@ -144,24 +131,28 @@
         <mxCell id="edge_e10a" value="Sẵn sàng kiểm thử lại" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#344054;strokeWidth=1.5;labelBackgroundColor=#FFFFFF;fontColor=#172B4D;fontSize=10;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="node_ready_decision" target="node_ready" edgeKind="sequence" specId="e10a">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="edge_e10b" value="Cần xử lý tiếp" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#344054;strokeWidth=1.5;labelBackgroundColor=#FFFFFF;fontColor=#172B4D;fontSize=10;exitX=0.5;exitY=0;entryX=0.5;entryY=1;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="node_ready_decision" target="node_reopen_direct" edgeKind="sequence" specId="e10b">
+        <mxCell id="edge_e10b" value="Cần xử lý tiếp" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#344054;strokeWidth=1.5;labelBackgroundColor=#FFFFFF;fontColor=#172B4D;fontSize=10;exitX=0.5;exitY=1;entryX=0.5;entryY=0;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="node_ready_decision" target="node_reopen_direct" edgeKind="sequence" specId="e10b">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="edge_e10c" value="Đã mở lại" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#344054;strokeWidth=1.5;labelBackgroundColor=#FFFFFF;fontColor=#172B4D;fontSize=10;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="node_reopen_direct" target="node_continue" edgeKind="sequence" specId="e10c">
+        <mxCell id="edge_e10c" value="Đã mở lại" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#344054;strokeWidth=1.5;labelBackgroundColor=#FFFFFF;fontColor=#172B4D;fontSize=10;exitX=0.5;exitY=1;entryX=0.5;entryY=1;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="node_reopen_direct" target="node_continue" edgeKind="sequence" specId="e10c">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="1670" y="600" />
-              <mxPoint x="1670" y="1000" />
+              <mxPoint x="1310" y="1180" />
+              <mxPoint x="2030" y="1180" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="edge_e11" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#344054;strokeWidth=1.5;labelBackgroundColor=#FFFFFF;fontColor=#172B4D;fontSize=10;exitX=0.5;exitY=1;entryX=0.5;entryY=0;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="node_ready" target="node_retest" edgeKind="sequence" specId="e11">
+        <mxCell id="edge_e11" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#344054;strokeWidth=1.5;labelBackgroundColor=#FFFFFF;fontColor=#172B4D;fontSize=10;exitX=0.5;exitY=0;entryX=0.5;entryY=1;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="node_ready" target="node_retest" edgeKind="sequence" specId="e11">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="edge_e12" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#344054;strokeWidth=1.5;labelBackgroundColor=#FFFFFF;fontColor=#172B4D;fontSize=10;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="node_retest" target="node_result" edgeKind="sequence" specId="e12">
-          <mxGeometry relative="1" as="geometry" />
+        <mxCell id="edge_e12" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#344054;strokeWidth=1.5;labelBackgroundColor=#FFFFFF;fontColor=#172B4D;fontSize=10;exitX=1;exitY=0.5;entryX=0.5;entryY=1;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="node_retest" target="node_result" edgeKind="sequence" specId="e12">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1670" y="200" />
+            </Array>
+          </mxGeometry>
         </mxCell>
-        <mxCell id="edge_e13" value="Đạt" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#344054;strokeWidth=1.5;labelBackgroundColor=#FFFFFF;fontColor=#172B4D;fontSize=10;exitX=0.5;exitY=0;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="node_result" target="node_close" edgeKind="sequence" specId="e13">
+        <mxCell id="edge_e13" value="Đạt" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#344054;strokeWidth=1.5;labelBackgroundColor=#FFFFFF;fontColor=#172B4D;fontSize=10;exitX=0.5;exitY=1;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="node_result" target="node_close" edgeKind="sequence" specId="e13">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
               <mxPoint x="1670" y="1280" />
@@ -171,7 +162,7 @@
         <mxCell id="edge_e14" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#344054;strokeWidth=1.5;labelBackgroundColor=#FFFFFF;fontColor=#172B4D;fontSize=10;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="node_close" target="node_closed" edgeKind="sequence" specId="e14">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="edge_e15" value="Không đạt" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#344054;strokeWidth=1.5;labelBackgroundColor=#FFFFFF;fontColor=#172B4D;fontSize=10;exitX=0.5;exitY=0;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="node_result" target="node_reopen" edgeKind="sequence" specId="e15">
+        <mxCell id="edge_e15" value="Không đạt" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#344054;strokeWidth=1.5;labelBackgroundColor=#FFFFFF;fontColor=#172B4D;fontSize=10;exitX=0.5;exitY=1;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="node_result" target="node_reopen" edgeKind="sequence" specId="e15">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
               <mxPoint x="1670" y="1400" />

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { testingApi } from "../../../services/testing.service";
 import { messageOf } from "../../../lib/testing";
-import { Panel } from "../../../components/WorkspacePrimitives";
+import { AIProcessingState, Panel } from "../../../components/WorkspacePrimitives";
 import RequirementVersionDiff from "./RequirementVersionDiff";
 
 const labels = {
@@ -14,9 +14,9 @@ const labels = {
   INSUFFICIENT_EVIDENCE: "Thiếu dữ liệu để kết luận",
 };
 const limitationLabels = {
-  NO_LINKED_CASES: "Không tìm thấy ca kiểm thử đang hiệu lực liên kết với yêu cầu trước.",
-  REQUIREMENT_CHANGE_TOO_LONG: "Phần nội dung thay đổi vượt giới hạn phân tích tự động.",
-  AI_UNAVAILABLE: "AI chưa trả được kết quả; cần rà soát thủ công hoặc phân tích lại.",
+  NO_LINKED_CASES: "Không tìm thấy ca kiểm thử đang hiệu lực liên kết với yêu cầu trước",
+  REQUIREMENT_CHANGE_TOO_LONG: "Phần nội dung thay đổi vượt giới hạn phân tích tự động",
+  AI_UNAVAILABLE: "AI chưa trả được kết quả; cần rà soát thủ công hoặc phân tích lại",
 };
 const sections = {
   title: "Tên yêu cầu",
@@ -91,9 +91,18 @@ export default function RequirementImpactPanel({ version, project }) {
         {error && <p role="alert">{error}</p>}
         {loading && !impact && !error && <p role="status">Đang tải phân tích ảnh hưởng…</p>}
         {!loading && !impact && !error && (
-          <p className="text-ink-muted">Chưa có dữ liệu phân tích ảnh hưởng cho phiên bản này.</p>
+          <p className="text-ink-muted">Chưa có dữ liệu phân tích ảnh hưởng cho phiên bản này</p>
         )}
-        {["PENDING", "RUNNING"].includes(impact?.status) && <p>Đang phân tích thay đổi…</p>}
+        {(retrying || ["PENDING", "RUNNING"].includes(impact?.status)) && (
+          <AIProcessingState
+            title={retrying ? "Đang gửi yêu cầu phân tích" : "AI đang phân tích ảnh hưởng"}
+            description={
+              retrying
+                ? "AI sẽ đối chiếu thay đổi yêu cầu với kế hoạch và ca kiểm thử liên quan"
+                : "Đang so sánh phiên bản yêu cầu mới với kế hoạch và ca kiểm thử có liên kết"
+            }
+          />
+        )}
         {impact?.status === "FAILED" && (
           <p className="rounded-control border border-danger/30 bg-danger/5 p-3" role="alert">
             Chưa thể phân tích tự động. Mã lỗi: {impact.error_code}
@@ -101,7 +110,7 @@ export default function RequirementImpactPanel({ version, project }) {
         )}
         {impact?.status === "STALE" && (
           <p className="rounded-control border border-border bg-surface-quiet p-3">
-            Dữ liệu đã thay đổi sau khi bắt đầu phân tích. Hãy chạy lại để đối chiếu phiên bản mới.
+            Dữ liệu đã thay đổi sau khi bắt đầu phân tích. Hãy chạy lại để đối chiếu phiên bản mới
           </p>
         )}
         {["FAILED", "PARTIAL", "STALE"].includes(impact?.status) &&
@@ -110,7 +119,7 @@ export default function RequirementImpactPanel({ version, project }) {
               {retrying ? "Đang gửi…" : "Phân tích lại"}
             </button>
           )}
-        {impact?.status === "NO_CONTENT_CHANGE" && <p>Không có thay đổi nội dung cần phân tích.</p>}
+        {impact?.status === "NO_CONTENT_CHANGE" && <p>Không có thay đổi nội dung cần phân tích</p>}
         {["COMPLETED", "PARTIAL"].includes(impact?.status) && (
           <>
             <div className="grid gap-3 sm:grid-cols-3" aria-label="Tóm tắt ảnh hưởng">
@@ -130,7 +139,7 @@ export default function RequirementImpactPanel({ version, project }) {
               </div>
             </div>
             {impact.status === "PARTIAL" && (
-              <p>Phân tích chưa đầy đủ. Hãy xem các ca cần xem xét.</p>
+              <p>Phân tích chưa đầy đủ. Hãy xem các ca cần xem xét</p>
             )}
             {impact.limitations?.length > 0 && (
               <ul className="list-disc space-y-1 pl-5">
@@ -158,12 +167,12 @@ export default function RequirementImpactPanel({ version, project }) {
                   ...change,
                   label: sections[change.field] || change.field,
                 }))}
-                empty="Không có nội dung thay đổi để so sánh."
+                empty="Không có nội dung thay đổi để so sánh"
               />
             </section>
             <p className="font-medium">Ca kiểm thử liên quan ({impact.cases?.length || 0})</p>
             {!impact.cases?.length && (
-              <p>Chưa có ca kiểm thử đang hiệu lực được liên kết với phiên bản trước.</p>
+              <p>Chưa có ca kiểm thử đang hiệu lực được liên kết với phiên bản trước</p>
             )}
             {impact.cases?.map((item) => (
               <div key={item.version_id} className="rounded-control border border-border p-3">
@@ -181,19 +190,19 @@ export default function RequirementImpactPanel({ version, project }) {
                       Yêu cầu trước:{" "}
                       {item.evidence.requirement_before_quote ||
                         (item.evidence.requirement_before_absent
-                          ? "Không có đoạn tương ứng trong phần thay đổi."
-                          : "Chưa có trích dẫn được xác nhận.")}
+                          ? "Không có đoạn tương ứng trong phần thay đổi"
+                          : "Chưa có trích dẫn được xác nhận")}
                     </p>
                     <p className="mt-2">
                       Yêu cầu sau:{" "}
                       {item.evidence.requirement_after_quote ||
                         (item.evidence.requirement_after_absent
-                          ? "Không có đoạn tương ứng trong phần thay đổi."
-                          : "Chưa có trích dẫn được xác nhận.")}
+                          ? "Không có đoạn tương ứng trong phần thay đổi"
+                          : "Chưa có trích dẫn được xác nhận")}
                     </p>
                     <p className="mt-2">
                       Ca kiểm thử:{" "}
-                      {item.evidence.test_case_quote || "Chưa có trích dẫn được xác nhận."}
+                      {item.evidence.test_case_quote || "Chưa có trích dẫn được xác nhận"}
                     </p>
                   </details>
                 )}
@@ -220,7 +229,7 @@ export default function RequirementImpactPanel({ version, project }) {
                 {project.current_permissions?.includes("testcase.version.create") &&
                   (drafts[item.case_id] ? (
                     <p className="mt-2">
-                      Đã tạo bản nháp. Mở mục Ca kiểm thử để chỉnh sửa và đối chiếu đề xuất.
+                      Đã tạo bản nháp. Mở mục Ca kiểm thử để chỉnh sửa và đối chiếu đề xuất
                     </p>
                   ) : (
                     <button
@@ -247,15 +256,15 @@ export default function RequirementImpactPanel({ version, project }) {
                       Yêu cầu trước:{" "}
                       {item.requirement_before_quote ||
                         (item.requirement_before_absent
-                          ? "Không có đoạn tương ứng trong phần thay đổi."
-                          : "Chưa có trích dẫn được xác nhận.")}
+                          ? "Không có đoạn tương ứng trong phần thay đổi"
+                          : "Chưa có trích dẫn được xác nhận")}
                     </p>
                     <p className="mt-1">
                       Yêu cầu sau:{" "}
                       {item.requirement_after_quote ||
                         (item.requirement_after_absent
-                          ? "Không có đoạn tương ứng trong phần thay đổi."
-                          : "Chưa có trích dẫn được xác nhận.")}
+                          ? "Không có đoạn tương ứng trong phần thay đổi"
+                          : "Chưa có trích dẫn được xác nhận")}
                     </p>
                     {(item.patch?.steps || []).map((step, stepIndex) => (
                       <p key={stepIndex} className="mt-2">

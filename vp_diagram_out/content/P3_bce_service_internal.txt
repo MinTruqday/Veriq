@@ -1,0 +1,10 @@
+UML Class Diagram (Boundary-Control-Entity analysis)
+Create the BCE class diagram for 'content', group 'service_internal'. Use English PascalCase names. Use stereotypes <<boundary>>, <<control>>, <<entity>>. Do not connect boundaries directly to entities.
+Class 'Ctrl_Internal' <<control>>: + SerializeInternal(value : json) : json; + IndexingStatusFromReport(indexReport : json) : string; + InternalDocumentData(req : json) : json; + GetInternalDocument(req : json) : json; + GetInternalDocumentStats(req : json) : json; + ExchangeInternalDocument(req : json) : json.
+Class 'Document' <<entity>>: - DocumentId : string; + UpdateOne() : json; + FindOne() : json; + InsertOne() : json; + InsertOneIfUnique(document : json) : json; + FindOneAndUpdate(query : json, update : json, upsert : Boolean) : json; + UpdateMany() : json; + DeleteOne() : json; + CountDocuments() : json; + Find() : json.
+Class 'DocumentVersion' <<entity>>: - DocumentVersionId : string; + InsertVersion() : json; + FindVersion() : json; + FindVersions() : json.
+Class 'WorkspaceFolder' <<entity>>: - WorkspaceFolderId : string; + FindOne() : json; + InsertOne() : json; + DeleteOne() : json.
+Include EVERY class, attribute, operation and relationship listed above, exactly as named. Do not omit, merge, rename, simplify, summarize or add anything. Do not invent extra classes, attributes or relationships. If something does not fit, keep it and let the layout grow instead of dropping it. Totals: 4 classes, 0 relationships, 3 attributes.
+
+Checklist: classes=4; relationships=0; attributes=3.
+Correction prompt: Fix only the following items and keep everything else unchanged: [insert verified discrepancy].

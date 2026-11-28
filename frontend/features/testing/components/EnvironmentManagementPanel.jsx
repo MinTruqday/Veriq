@@ -164,7 +164,7 @@ export default function EnvironmentManagementPanel({ project }) {
   const archive = async (item) => {
     const answer = await ask({
       title: "Lưu trữ môi trường",
-      description: `Môi trường ${item.name} sẽ không còn xuất hiện trong lựa chọn mới. Lịch sử lần chạy vẫn được giữ.`,
+      description: `Môi trường ${item.name} sẽ không còn xuất hiện trong lựa chọn mới. Lịch sử lần chạy vẫn được giữ`,
       confirmLabel: "Lưu trữ",
       fields: [{ name: "reason", label: "Lý do", required: true, multiline: true }],
     });
@@ -202,7 +202,7 @@ export default function EnvironmentManagementPanel({ project }) {
       >
         <div className="space-y-4 p-5">
           <p className="text-sm text-ink-muted">
-            Tạo môi trường để chọn trong kế hoạch và lần chạy.
+            Tạo môi trường để chọn trong kế hoạch và lần chạy
           </p>
           {error && <ErrorState message={error} />}
           {loading ? (
@@ -249,7 +249,7 @@ export default function EnvironmentManagementPanel({ project }) {
           ) : (
             <div className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-ink-muted">
               Chưa có môi trường kiểm thử. Người có quyền có thể tạo môi trường để dùng trong kế
-              hoạch và lần chạy.
+              hoạch và lần chạy
             </div>
           )}
           <Modal

@@ -1,0 +1,14 @@
+UML Class Diagram (Boundary-Control-Entity analysis)
+Create the BCE class diagram for 'cloud', group 'router_file_request'. Use English PascalCase names. Use stereotypes <<boundary>>, <<control>>, <<entity>>. Do not connect boundaries directly to entities.
+Class 'Ctrl_FileRequest' <<control>>: + CreateFileRequest(req : json, currentUser : json, db : string) : json; + ValidateFileRequest(token : string, password : string, db : string) : json.
+Class 'Ctrl_FileRequestService' <<control>>: + CreateRequest(req : json, ownerId : string) : json; + ValidateRequest(token : string, password : string) : json.
+Control dependency: 'Ctrl_FileRequest' to 'Ctrl_FileRequestService', multiplicity at source: 1, multiplicity at target: 1, navigable from source to target.
+Class 'Ctrl_StorageService' <<control>>: + GetItem(itemId : string, ownerId : string) : json.
+Control dependency: 'Ctrl_FileRequest' to 'Ctrl_StorageService', multiplicity at source: 1, multiplicity at target: 1, navigable from source to target.
+Class 'TempChatFile' <<entity>>: - TempChatFileId : string; + FindOne(query : json, projection : json) : json; + FindMany(query : json, projection : json, sort : json, limit : int) : json; + Insert(document : json) : json; + UpdateOne(query : json, update : json) : json; + UpdateMany(query : json, update : json) : json; + FindOneAndUpdate(query : json, update : json) : json; + DeleteOne(query : json) : json; + DeleteMany(query : json) : json; + Count(query : json) : int; + Aggregate(pipeline : json) : json; + ReplaceVersion(itemId : string, ownerId : string, update : json, registeredId : json) : void; + Insert(document : json) : json; + ListForItem(itemId : string, limit : int) : json; + Insert(document : json) : json; + Find(token : string) : json; + Delete(token : string) : json; + Insert(document : json) : json; + Find(token : string) : json; + Insert(document : json) : json.
+Control dependency: 'Ctrl_FileRequestService' to 'TempChatFile', multiplicity at control: 1, multiplicity at entity: 1, navigable from control to entity.
+Control dependency: 'Ctrl_StorageService' to 'TempChatFile', multiplicity at control: 1, multiplicity at entity: 1, navigable from control to entity.
+Include EVERY class, attribute, operation and relationship listed above, exactly as named. Do not omit, merge, rename, simplify, summarize or add anything. Do not invent extra classes, attributes or relationships. If something does not fit, keep it and let the layout grow instead of dropping it. Totals: 4 classes, 4 relationships, 1 attributes.
+
+Checklist: classes=4; relationships=4; attributes=1.
+Correction prompt: Fix only the following items and keep everything else unchanged: [insert verified discrepancy].

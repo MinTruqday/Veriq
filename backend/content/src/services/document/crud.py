@@ -178,15 +178,18 @@ class DocumentCrudService:
 
         await DocumentRepository.update_one({"_id": document_id}, {"$set": update_dict})
 
-        try:
-            await notification_client.send(
-                target_user_id=user_id,
-                title="Đã cập nhật tài liệu",
-                body="Nội dung tài liệu đã được đồng bộ và cập nhật thành công.",
-                notification_type="DOCUMENT_UPDATE",
-            )
-        except Exception:
-            logger.exception("Document update notification dispatch failed")
+        document_owner_id = str(document.get("creator_id") or "")
+        if document_owner_id and document_owner_id != user_id:
+            try:
+                await notification_client.send(
+                    target_user_id=document_owner_id,
+                    title="Tài liệu đã được cập nhật",
+                    body="Một thành viên quản trị đã thay đổi nội dung tài liệu của bạn",
+                    notification_type="DOCUMENT_UPDATE",
+                    idempotency_key=f"document-update:{document_id}:{update_dict['updated_at'].isoformat()}:{document_owner_id}",
+                )
+            except Exception:
+                logger.exception("Document update notification dispatch failed")
 
         await DocumentCacheRepository.invalidate_document(document_id, document.get("slug"))
 

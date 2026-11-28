@@ -7,7 +7,6 @@ import DataTable from "../../components/DataTable";
 import {
   ErrorState,
   LoadingState,
-  Metric,
   Panel,
   WorkspacePage,
   StatusPill,
@@ -169,15 +168,6 @@ export default function DashboardPage({ project }) {
   const hasOverviewMetrics =
     Boolean(dashboard && (can("requirement.read") || can("testcase.read") || can("defect.read"))) ||
     Boolean(can("coverage.read") && coverage?.requirement_coverage != null);
-  const hasDetailedCoverage =
-    can("coverage.read") &&
-    [
-      coverage?.acceptance_criterion_coverage,
-      coverage?.fresh_coverage,
-      coverage?.execution_coverage,
-    ].some((metric) => metric != null);
-  const hasQualityMetrics =
-    Boolean(dashboard && (can("testcase.read") || can("testrun.read"))) || hasDetailedCoverage;
   const hasRecentChanges = Boolean(dashboard && can("requirement.read"));
   return (
     <WorkspacePage
@@ -246,23 +236,10 @@ export default function DashboardPage({ project }) {
                     permission: "testrun.read",
                   },
                   {
-                    label: "Báo cáo và phát hành",
-                    count:
-                      can("testcompletion.read") || can("release.read")
-                        ? (can("testcompletion.read")
-                            ? Number(dashboard?.completion_reports || 0)
-                            : 0) + (can("release.read") ? Number(dashboard?.releases || 0) : 0)
-                        : null,
-                    detail: [
-                      can("testcompletion.read")
-                        ? `${dashboard?.completion_reports ?? 0} báo cáo`
-                        : null,
-                      can("release.read") ? `${dashboard?.releases ?? 0} bản phát hành` : null,
-                    ]
-                      .filter(Boolean)
-                      .join(" · "),
+                    label: "Báo cáo",
+                    count: can("testcompletion.read") ? dashboard?.completion_reports : null,
                     href: projectRoute(project._id, PROJECT_SECTION_SLUGS.reports),
-                    permissions: ["testcompletion.read", "release.read"],
+                    permission: "testcompletion.read",
                   },
                 ]
                   .filter((stage) =>
@@ -428,13 +405,6 @@ export default function DashboardPage({ project }) {
                 </dd>
               </div>
               <div className="grid min-w-0 gap-2 py-3 sm:grid-cols-[7rem_minmax(0,1fr)]">
-                <dt className="text-[13px] text-ink-muted">Trưởng dự án</dt>
-                <dd className="min-w-0 break-words text-[13px]">
-                  {projectMembers.find((member) => member.is_project_owner)?.user_label ||
-                    (can("project.members.read") ? "Chưa phân công" : "Không có quyền xem")}
-                </dd>
-              </div>
-              <div className="grid min-w-0 gap-2 py-3 sm:grid-cols-[7rem_minmax(0,1fr)]">
                 <dt className="text-[13px] text-ink-muted">Thời gian dự án</dt>
                 <dd className="min-w-0 break-words text-[13px]">
                   {[projectDetails.planned_start_at, projectDetails.planned_end_at]
@@ -574,43 +544,6 @@ export default function DashboardPage({ project }) {
                 </Panel>
               )}
             </div>
-          )}
-          {(dashboard || coverage) && hasQualityMetrics && (
-            <details className="border-y border-border">
-              <summary className="cursor-pointer py-3 text-sm font-medium">
-                Số liệu kiểm thử chi tiết
-              </summary>
-              <div className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(min(100%,220px),1fr))] gap-3">
-                {can("testcase.read") && dashboard && (
-                  <Metric label="Ca kiểm thử cần rà soát" value={dashboard.tests_needing_update} />
-                )}
-                {can("coverage.read") && coverage && (
-                  <>
-                    {coverage.acceptance_criterion_coverage != null && (
-                      <Metric
-                        label="Tiêu chí chấp nhận có liên kết kiểm thử"
-                        value={`${coverage.acceptance_criterion_coverage}%`}
-                      />
-                    )}
-                    {coverage.fresh_coverage != null && (
-                      <Metric
-                        label="Yêu cầu có liên kết kiểm thử còn hiệu lực"
-                        value={`${coverage.fresh_coverage}%`}
-                      />
-                    )}
-                    {coverage.execution_coverage != null && (
-                      <Metric
-                        label="Phạm vi đã có kết quả thực thi"
-                        value={`${coverage.execution_coverage}%`}
-                      />
-                    )}
-                  </>
-                )}
-                {can("testrun.read") && dashboard && (
-                  <Metric label="Lượt chạy kiểm thử chưa kết thúc" value={dashboard.current_runs} />
-                )}
-              </div>
-            </details>
           )}
         </>
       )}

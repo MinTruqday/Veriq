@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import TraceabilityPage from "./TraceabilityPage";
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
 import ReviewCommentsPanel from "../../components/ReviewCommentsPanel";
@@ -34,6 +34,7 @@ import {
 } from "./requirements/requirements.model";
 
 export default function RequirementsPage({ project, section, workspaceView }) {
+  const router = useRouter();
   const { user } = useAuth();
   const searchParams = useSearchParams();
   const { ask, dialog } = useActionDialog();
@@ -121,7 +122,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
       .join("\n");
     const result = await ask({
       title: "Tìm thấy tài liệu trùng hoặc tương tự",
-      description: `Tài liệu “${filename}” có ${matches.length} kết quả để đối chiếu:\n${details}\nChọn tài liệu có sẵn để mở dự án chứa bản đó; việc này không tạo bản sao hay chạy AI lại.`,
+      description: `Tài liệu “${filename}” có ${matches.length} kết quả để đối chiếu:\n${details}\nChọn tài liệu có sẵn để mở dự án chứa bản đó; việc này không tạo bản sao hay chạy AI lại`,
       confirmLabel: "Tiếp tục",
       fields: [
         {
@@ -137,7 +138,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
       const documentId = action.slice("reuse:".length);
       const match = reusable.find((item) => item.document_id === documentId);
       if (match) {
-        window.location.assign(
+        router.push(
           projectRoute(match.project_id, PROJECT_SECTION_SLUGS.documentReader, documentId),
         );
       }
@@ -199,8 +200,8 @@ export default function RequirementsPage({ project, section, workspaceView }) {
         if (document.status === "PARSE_FAILED") {
           setError(
             document.parse_error_type === "TimeoutError"
-              ? "Đã hết thời gian phân tích tài liệu; tệp gốc vẫn được lưu để bạn thử lại."
-              : "Tệp gốc đã được lưu nhưng bộ phân tích không đọc được nội dung.",
+              ? "Đã hết thời gian phân tích tài liệu; tệp gốc vẫn được lưu để bạn thử lại"
+              : "Tệp gốc đã được lưu nhưng bộ phân tích không đọc được nội dung",
           );
           rememberPendingExtraction("");
           return;
@@ -365,7 +366,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
     const params = new URLSearchParams(searchParams.toString());
     params.delete("view");
     const queryString = params.toString();
-    window.location.replace(queryString ? `${target}?${queryString}` : target);
+    router.replace(queryString ? `${target}?${queryString}` : target);
   }, [
     documentsView,
     forceLinksView,
@@ -373,6 +374,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
     loading,
     project._id,
     projectDataReady,
+    router,
     searchParams,
     sectionKey,
     visibleItems,
@@ -552,11 +554,11 @@ export default function RequirementsPage({ project, section, workspaceView }) {
     if (saving) return;
     const saveAsDraft = event.nativeEvent.submitter?.value === "draft";
     if (form.title.trim().length < 2) {
-      setError("Tên yêu cầu phải có ít nhất 2 ký tự.");
+      setError("Tên yêu cầu phải có ít nhất 2 ký tự");
       return;
     }
     if (!saveAsDraft && !docText(form.content_doc).trim()) {
-      setError("Nhập nội dung yêu cầu trước khi lưu.");
+      setError("Nhập nội dung yêu cầu trước khi lưu");
       return;
     }
     setSaving(true);
@@ -590,7 +592,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
       });
       setForm(createInitialRequirementForm());
       await load();
-      window.location.assign(projectRoute(project._id, PROJECT_SECTION_SLUGS.requirements));
+      router.push(projectRoute(project._id, PROJECT_SECTION_SLUGS.requirements));
     } catch (reason) {
       setError(messageOf(reason));
     } finally {
@@ -604,7 +606,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
   const createVersion = async () => {
     await ask({
       title: "Mở bản nháp để chỉnh sửa yêu cầu",
-      description: `${selected.requirement_key} sẽ được tạo thành phiên bản nháp tiếp theo. Phiên bản hiện tại được giữ lại để truy vết.`,
+      description: `${selected.requirement_key} sẽ được tạo thành phiên bản nháp tiếp theo. Phiên bản hiện tại được giữ lại để truy vết`,
       confirmLabel: "Mở bản nháp",
       fields: [
         {
@@ -659,7 +661,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
     setUploadingSource(true);
     const requestedProjectId = project._id;
     const formats = uploads.map((file) => {
-      const extension = file.name.split(".").pop().toLowerCase();
+      const extension = file.name.split("").pop().toLowerCase();
       return ["json", "yaml", "yml"].includes(extension) && uploadAccess.source_type === "API_SPEC"
         ? uploadAccess.api_format || "openapi"
         : extension;
@@ -700,7 +702,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
           const match = projectMatches.find(
             (item) => item.project_id === projectChoice.action.slice("open:".length),
           );
-          if (match) window.location.assign(`/du-an/${encodeURIComponent(match.project_id)}`);
+          if (match) router.push(`/du-an/${encodeURIComponent(match.project_id)}`);
           return;
         }
         if (projectChoice?.action !== "keep") return;
@@ -752,7 +754,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
             title: "Tệp tương tự trong lô import",
             description: `Tệp “${uploads[index].name}” tương tự ${similarBatchMatches
               .map((match) => `${match.similarity_percent}% với “${match.filename}”`)
-              .join(", ")}.`,
+              .join(", ")}`,
             confirmLabel: "Tiếp tục",
             fields: [
               {
@@ -845,7 +847,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
       if (document.status === "PARSE_FAILED") {
         setError(
           document.parse_error_type === "TimeoutError"
-            ? "Đã hết thời gian phân tích tài liệu; tệp gốc vẫn được lưu để bạn thử lại."
+            ? "Đã hết thời gian phân tích tài liệu; tệp gốc vẫn được lưu để bạn thử lại"
             : "Tệp gốc đã được lưu nhưng bộ phân tích không đọc được nội dung",
         );
         return;
@@ -973,7 +975,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
             })),
           });
           const first = result.requirements?.[0];
-          window.location.assign(
+          router.push(
             first ? `/du-an/${project._id}/yeu-cau/${first._id}` : `/du-an/${project._id}/yeu-cau`,
           );
         } catch (reason) {
@@ -1083,7 +1085,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
           });
           setSelectedIds([]);
           const merged = result.requirements?.[0];
-          window.location.assign(
+          router.push(
             merged
               ? `/du-an/${project._id}/yeu-cau/${merged._id}`
               : `/du-an/${project._id}/yeu-cau`,
@@ -1196,9 +1198,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
               type="button"
               disabled={saving}
               onClick={() =>
-                window.location.assign(
-                  projectRoute(project._id, PROJECT_SECTION_SLUGS.requirements),
-                )
+                router.push(projectRoute(project._id, PROJECT_SECTION_SLUGS.requirements))
               }
             >
               Hủy
@@ -1236,7 +1236,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
             onSubmit={create}
           />
         ) : (
-          <p>Đang tải dữ liệu hoặc bạn không có quyền tạo yêu cầu.</p>
+          <p>Đang tải dữ liệu hoặc bạn không có quyền tạo yêu cầu</p>
         )}
       </WorkspacePage>
     );
@@ -1263,7 +1263,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
               className="secondary-button"
               type="button"
               onClick={() =>
-                window.location.assign(
+                router.push(
                   `${projectRoute(project._id, PROJECT_SECTION_SLUGS.requirements)}?view=list`,
                 )
               }
@@ -1276,7 +1276,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
               className="secondary-button"
               type="button"
               onClick={() =>
-                window.location.assign(
+                router.push(
                   projectRoute(
                     project._id,
                     PROJECT_SECTION_SLUGS.requirements,
@@ -1305,7 +1305,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
               className="secondary-button"
               type="button"
               onClick={() => {
-                window.location.assign(
+                router.push(
                   `${projectRoute(project._id, PROJECT_SECTION_SLUGS.requirements)}?view=links`,
                 );
               }}
@@ -1319,9 +1319,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
               className="apple-button"
               onClick={() => {
                 setError("");
-                window.location.assign(
-                  projectRoute(project._id, PROJECT_SECTION_SLUGS.requirements, "new"),
-                );
+                router.push(projectRoute(project._id, PROJECT_SECTION_SLUGS.requirements, "new"));
               }}
             >
               Tạo yêu cầu
@@ -1333,7 +1331,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
       {pendingExtractionDocumentId && pendingExtractionProjectId === project._id && (
         <div className="status-banner" role="status" aria-live="polite">
           Tài liệu đã được lưu. Đang phân tích và chuẩn bị bản xem trước; bạn có thể rời trang, hệ
-          thống vẫn tiếp tục xử lý.
+          thống vẫn tiếp tục xử lý
         </div>
       )}
       {error && !importing && !creating && (
@@ -1373,7 +1371,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
               selectedId={routeSelected._id}
               onSelect={(item) => {
                 if (item._id !== requirementId) {
-                  window.location.assign(
+                  router.push(
                     projectRoute(project._id, PROJECT_SECTION_SLUGS.requirements, item._id),
                   );
                 }
@@ -1492,7 +1490,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
               onMerge={mergeBaselines}
               onBulkArchive={bulkArchiveRequirements}
               onSelect={(item) => {
-                window.location.assign(
+                router.push(
                   projectRoute(project._id, PROJECT_SECTION_SLUGS.requirements, item._id),
                 );
               }}

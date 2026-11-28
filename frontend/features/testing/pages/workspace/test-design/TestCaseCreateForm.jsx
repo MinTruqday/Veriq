@@ -27,8 +27,6 @@ export default function TestCaseCreateForm({
   onSubmit,
   error = "",
   saving = false,
-  onCancel,
-  cancelLabel = "Hủy",
 }) {
   const update = (patch) => setForm((value) => ({ ...value, ...patch }));
   const updateStep = (index, patch) =>
@@ -70,7 +68,6 @@ export default function TestCaseCreateForm({
       const condition = testConditions.find((item) => item._id === conditionId);
       return condition && matchesConditionScope(condition, scopedRequirements, scopedCriteria);
     });
-
   return (
     <form id="test-case-create-form" onSubmit={onSubmit} className="test-design-form space-y-6 p-5">
       <section aria-labelledby="test-case-basics-heading" className="space-y-4">
@@ -116,7 +113,7 @@ export default function TestCaseCreateForm({
                 Các bước kiểm thử
               </h3>
               <p className="mt-1 text-xs text-ink-muted">
-                Mỗi bước gồm thao tác, dữ liệu thực hiện và kết quả mong đợi.
+                Mỗi bước gồm thao tác, dữ liệu thực hiện và kết quả mong đợi
               </p>
             </div>
             <button
@@ -143,7 +140,7 @@ export default function TestCaseCreateForm({
           {form.steps.map((step, index) => (
             <div className="space-y-3 rounded-control border border-border p-4" key={step.id}>
               <div className="flex items-center justify-between">
-                <span className="font-medium">{index + 1}.</span>
+                <span className="font-medium">{index + 1}</span>
                 {form.steps.length > 1 && (
                   <button
                     className="icon-button h-9 w-9 text-lg"
@@ -223,7 +220,7 @@ export default function TestCaseCreateForm({
         <h3 id="test-case-requirements-heading" className="text-sm font-semibold text-ink">
           Liên kết yêu cầu
         </h3>
-        <p className="text-sm text-ink-muted">Chọn phiên bản yêu cầu mà ca này kiểm thử.</p>
+        <p className="text-sm text-ink-muted">Chọn phiên bản yêu cầu mà ca này kiểm thử</p>
         <MultiSelect
           showSearch={false}
           label={
@@ -434,7 +431,7 @@ export default function TestCaseCreateForm({
                   {membersUnavailable && (
                     <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-amber-800">
                       <span role="status">
-                        Không tải được thành viên dự án nên chưa thể chọn người phụ trách.
+                        Không tải được thành viên dự án nên chưa thể chọn người phụ trách
                       </span>
                       {onRetryMembers && (
                         <button
@@ -525,34 +522,6 @@ export default function TestCaseCreateForm({
           )}
         </div>
       </details>
-      <footer className="action-dialog-footer sticky bottom-0 z-20 -mx-5 flex flex-wrap items-center justify-between gap-3 border-t border-border px-5 py-3">
-        {error ? (
-          <p className="min-w-0 flex-1 text-sm text-danger" role="alert">
-            {error}
-          </p>
-        ) : (
-          <p className="min-w-0 flex-1 text-xs text-ink-muted">
-            Lưu nháp để tiếp tục hoàn thiện, hoặc lưu ca khi đã đủ thông tin bắt buộc.
-          </p>
-        )}
-        <div className="ml-auto flex flex-wrap justify-end gap-2">
-          <button className="secondary-button" disabled={saving} onClick={onCancel} type="button">
-            {cancelLabel}
-          </button>
-          <button
-            className="secondary-button"
-            disabled={saving}
-            formNoValidate
-            type="submit"
-            value="draft"
-          >
-            {saving ? "Đang lưu…" : "Lưu nháp"}
-          </button>
-          <button className="apple-button" disabled={saving} type="submit" value="ready">
-            {saving ? "Đang lưu…" : "Lưu ca kiểm thử"}
-          </button>
-        </div>
-      </footer>
     </form>
   );
 }

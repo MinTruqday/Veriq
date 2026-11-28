@@ -5,22 +5,22 @@
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="pool_veriq" value="Veriq" style="swimlane;horizontal=0;startSize=30;rounded=0;html=1;collapsible=0;fillColor=#F4F6F8;swimlaneFillColor=#FFFFFF;strokeColor=#667085;fontColor=#1F2937;fontSize=13;" vertex="1" parent="1" bpmnKind="pool">
+        <mxCell id="pool_veriq" value="Quy trình" style="swimlane;horizontal=0;startSize=30;rounded=0;html=1;collapsible=0;fillColor=#F4F6F8;swimlaneFillColor=#FFFFFF;strokeColor=#667085;fontColor=#1F2937;fontSize=13;" vertex="1" parent="1" bpmnKind="pool">
           <mxGeometry x="0" y="0" width="2610" height="1200" as="geometry" />
         </mxCell>
-        <mxCell id="lane_designer" value="Người thiết kế ca kiểm thử" style="swimlane;horizontal=0;startSize=30;rounded=0;html=1;collapsible=0;fillColor=#E8F3FF;swimlaneFillColor=#FFFFFF;strokeColor=#4A90C2;fontColor=#172B4D;fontSize=12;" vertex="1" parent="pool_veriq" bpmnKind="lane">
+        <mxCell id="lane_designer" value="Tester" style="swimlane;horizontal=0;startSize=30;rounded=0;html=1;collapsible=0;fillColor=#E8F3FF;swimlaneFillColor=#FFFFFF;strokeColor=#4A90C2;fontColor=#172B4D;fontSize=12;" vertex="1" parent="pool_veriq" bpmnKind="lane">
           <mxGeometry x="30" y="0" width="2580" height="400" as="geometry" />
         </mxCell>
-        <mxCell id="lane_system" value="Veriq" style="swimlane;horizontal=0;startSize=30;rounded=0;html=1;collapsible=0;fillColor=#EFE8FF;swimlaneFillColor=#FFFFFF;strokeColor=#7956A8;fontColor=#172B4D;fontSize=12;" vertex="1" parent="pool_veriq" bpmnKind="lane">
+        <mxCell id="lane_system" value="Hệ thống" style="swimlane;horizontal=0;startSize=30;rounded=0;html=1;collapsible=0;fillColor=#EFE8FF;swimlaneFillColor=#FFFFFF;strokeColor=#7956A8;fontColor=#172B4D;fontSize=12;" vertex="1" parent="pool_veriq" bpmnKind="lane">
           <mxGeometry x="30" y="400" width="2580" height="400" as="geometry" />
         </mxCell>
-        <mxCell id="lane_reviewer" value="Người có quyền rà soát" style="swimlane;horizontal=0;startSize=30;rounded=0;html=1;collapsible=0;fillColor=#FFF4DF;swimlaneFillColor=#FFFFFF;strokeColor=#C58A28;fontColor=#172B4D;fontSize=12;" vertex="1" parent="pool_veriq" bpmnKind="lane">
+        <mxCell id="lane_reviewer" value="Admin" style="swimlane;horizontal=0;startSize=30;rounded=0;html=1;collapsible=0;fillColor=#FFF4DF;swimlaneFillColor=#FFFFFF;strokeColor=#C58A28;fontColor=#172B4D;fontSize=12;" vertex="1" parent="pool_veriq" bpmnKind="lane">
           <mxGeometry x="30" y="800" width="2580" height="400" as="geometry" />
         </mxCell>
         <mxCell id="node_start" value="Bắt đầu tạo ca kiểm thử" style="shape=mxgraph.bpmn.shape;perimeter=ellipsePerimeter;outline=standard;symbol=general;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#27864B;strokeWidth=2;fontColor=#172B4D;fontSize=11;" vertex="1" parent="lane_designer" bpmnKind="start" specId="start">
           <mxGeometry x="180" y="60" width="40" height="40" as="geometry" />
         </mxCell>
-        <mxCell id="node_choose_ai" value="Sinh bản nháp bằng AI?" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=none;symbol=none;gwType=exclusive;fillColor=#FFF2CC;strokeColor=#B8860B;strokeWidth=1.5;fontColor=#172B4D;fontSize=10;" vertex="1" parent="lane_designer" bpmnKind="gateway" specId="choose_ai">
+        <mxCell id="node_choose_ai" value="Tạo bản nháp bằng trí tuệ nhân tạo?" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=none;symbol=none;gwType=exclusive;fillColor=#FFF2CC;strokeColor=#B8860B;strokeWidth=1.5;fontColor=#172B4D;fontSize=10;" vertex="1" parent="lane_designer" bpmnKind="gateway" specId="choose_ai">
           <mxGeometry x="350" y="50" width="60" height="60" as="geometry" />
         </mxCell>
         <mxCell id="node_generate" value="Sinh bản nháp từ phiên bản yêu cầu" style="shape=mxgraph.bpmn.task2;whiteSpace=wrap;rectStyle=rounded;size=10;html=1;container=1;expand=0;collapsible=0;taskMarker=service;fillColor=#EFE8FF;strokeColor=#7956A8;strokeWidth=1.5;fontColor=#172B4D;fontSize=11;" vertex="1" parent="lane_system" bpmnKind="service_task" specId="generate">
@@ -140,10 +140,11 @@
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="edge_e11" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#344054;strokeWidth=1.5;labelBackgroundColor=#FFFFFF;fontColor=#172B4D;fontSize=10;exitX=1;exitY=0.5;entryX=0.5;entryY=0;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="node_submit" target="node_auto_approval" edgeKind="sequence" specId="e11">
+        <mxCell id="edge_e11" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#344054;strokeWidth=1.5;labelBackgroundColor=#FFFFFF;fontColor=#172B4D;fontSize=10;exitX=0.5;exitY=1;entryX=0.5;entryY=0;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="node_submit" target="node_auto_approval" edgeKind="sequence" specId="e11">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="1490" y="80" />
+              <mxPoint x="1310" y="380" />
+              <mxPoint x="1490" y="380" />
             </Array>
           </mxGeometry>
         </mxCell>

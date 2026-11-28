@@ -1,0 +1,6309 @@
+{
+  "service": "cloud",
+  "collections": {
+    "storage_items": {
+      "fields": {
+        "ai_processed": {
+          "type": {
+            "raw": "Optional[bool]",
+            "type": "Boolean",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/cloud/src/schemas/storage.py:32"
+          ]
+        },
+        "broken_links": {
+          "type": {
+            "raw": "Optional[List[str]]",
+            "type": "json",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/cloud/src/schemas/storage.py:34"
+          ]
+        },
+        "color": {
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/cloud/src/schemas/storage.py:24"
+          ]
+        },
+        "created_at": {
+          "type": {
+            "raw": "datetime",
+            "type": "date",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/cloud/src/schemas/storage.py:123"
+          ]
+        },
+        "description": {
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/cloud/src/schemas/storage.py:23"
+          ]
+        },
+        "duplicate_of": {
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/cloud/src/schemas/storage.py:30"
+          ]
+        },
+        "entities": {
+          "type": {
+            "raw": "Optional[dict]",
+            "type": "json",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/cloud/src/schemas/storage.py:33"
+          ]
+        },
+        "environment_ready": {
+          "type": {
+            "raw": "Optional[bool]",
+            "type": "Boolean",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/cloud/src/schemas/storage.py:31"
+          ]
+        },
+        "is_duplicate": {
+          "type": {
+            "raw": "Optional[bool]",
+            "type": "Boolean",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/cloud/src/schemas/storage.py:29"
+          ]
+        },
+        "is_folder": {
+          "type": {
+            "raw": "bool",
+            "type": "Boolean",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/cloud/src/schemas/storage.py:114"
+          ]
+        },
+        "is_locked": {
+          "type": {
+            "raw": "bool",
+            "type": "Boolean",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/cloud/src/schemas/storage.py:35"
+          ]
+        },
+        "is_public": {
+          "type": {
+            "raw": "bool",
+            "type": "Boolean",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/cloud/src/schemas/storage.py:120"
+          ]
+        },
+        "is_shortcut": {
+          "type": {
+            "raw": "bool",
+            "type": "Boolean",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/cloud/src/schemas/storage.py:27"
+          ]
+        },
+        "is_starred": {
+          "type": {
+            "raw": "bool",
+            "type": "Boolean",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/cloud/src/schemas/storage.py:119"
+          ]
+        },
+        "is_trashed": {
+          "type": {
+            "raw": "bool",
+            "type": "Boolean",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/cloud/src/schemas/storage.py:118"
+          ]
+        },
+        "locked_at": {
+          "type": {
+            "raw": "Optional[datetime]",
+            "type": "date",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/cloud/src/schemas/storage.py:37"
+          ]
+        },
+        "locked_by": {
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/cloud/src/schemas/storage.py:36"
+          ]
+        },
+        "mime_type": {
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/cloud/src/schemas/storage.py:116"
+          ]
+        },
+        "name": {
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/cloud/src/schemas/storage.py:21"
+          ]
+        },
+        "owner_id": {
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/cloud/src/schemas/storage.py:113"
+          ]
+        },
+        "parent_id": {
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/cloud/src/schemas/storage.py:22"
+          ]
+        },
+        "share_token": {
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/cloud/src/schemas/storage.py:121"
+          ]
+        },
+        "shared_with": {
+          "type": {
+            "raw": "List[ShareAccess]",
+            "type": "json",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/cloud/src/schemas/storage.py:26"
+          ]
+        },
+        "size": {
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/cloud/src/schemas/storage.py:115"
+          ]
+        },
+        "tags": {
+          "type": {
+            "raw": "List[str]",
+            "type": "json",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/cloud/src/schemas/storage.py:25"
+          ]
+        },
+        "target_id": {
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/cloud/src/schemas/storage.py:28"
+          ]
+        },
+        "updated_at": {
+          "type": {
+            "raw": "datetime",
+            "type": "date",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/cloud/src/schemas/storage.py:124"
+          ]
+        },
+        "url": {
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/cloud/src/schemas/storage.py:117"
+          ]
+        },
+        "versions": {
+          "type": {
+            "raw": "List[FileVersion]",
+            "type": "json",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/cloud/src/schemas/storage.py:122"
+          ]
+        }
+      },
+      "sources": [
+        "backend/cloud/src/core/infrastructure/database.py:35",
+        "backend/cloud/src/core/infrastructure/database.py:38",
+        "backend/cloud/src/core/infrastructure/database.py:41",
+        "backend/cloud/src/core/infrastructure/database.py:42",
+        "backend/cloud/src/core/infrastructure/database.py:48",
+        "backend/cloud/src/core/infrastructure/database.py:49",
+        "backend/cloud/src/repositories/storage.py:12"
+      ],
+      "indexes": []
+    },
+    "temp_chat_files": {
+      "fields": {
+        "_id": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/cloud/src/repositories/storage.py:102",
+            "backend/cloud/src/repositories/storage.py:105",
+            "backend/cloud/src/repositories/storage.py:69",
+            "backend/cloud/src/repositories/storage.py:75"
+          ]
+        },
+        "item_id": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/cloud/src/repositories/storage.py:89"
+          ]
+        },
+        "owner_id": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/cloud/src/repositories/storage.py:69",
+            "backend/cloud/src/repositories/storage.py:75"
+          ]
+        },
+        "token": {
+          "type": {
+            "raw": "inferred from value/key",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/cloud/src/repositories/storage.py:117"
+          ]
+        }
+      },
+      "sources": [
+        "backend/cloud/src/core/infrastructure/database.py:52",
+        "backend/cloud/src/repositories/storage.py:102",
+        "backend/cloud/src/repositories/storage.py:105",
+        "backend/cloud/src/repositories/storage.py:114",
+        "backend/cloud/src/repositories/storage.py:117",
+        "backend/cloud/src/repositories/storage.py:123",
+        "backend/cloud/src/repositories/storage.py:126",
+        "backend/cloud/src/repositories/storage.py:15",
+        "backend/cloud/src/repositories/storage.py:24",
+        "backend/cloud/src/repositories/storage.py:32",
+        "backend/cloud/src/repositories/storage.py:35",
+        "backend/cloud/src/repositories/storage.py:38",
+        "backend/cloud/src/repositories/storage.py:41",
+        "backend/cloud/src/repositories/storage.py:48",
+        "backend/cloud/src/repositories/storage.py:51",
+        "backend/cloud/src/repositories/storage.py:54",
+        "backend/cloud/src/repositories/storage.py:57",
+        "backend/cloud/src/repositories/storage.py:68",
+        "backend/cloud/src/repositories/storage.py:74",
+        "backend/cloud/src/repositories/storage.py:86",
+        "backend/cloud/src/repositories/storage.py:89",
+        "backend/cloud/src/repositories/storage.py:99"
+      ],
+      "indexes": []
+    },
+    "storage_share_links": {
+      "fields": {},
+      "sources": [
+        "backend/cloud/src/core/infrastructure/database.py:53",
+        "backend/cloud/src/repositories/storage.py:96"
+      ],
+      "indexes": []
+    },
+    "storage_activities": {
+      "fields": {},
+      "sources": [
+        "backend/cloud/src/repositories/storage.py:83"
+      ],
+      "indexes": []
+    },
+    "file_requests": {
+      "fields": {},
+      "sources": [
+        "backend/cloud/src/repositories/storage.py:111"
+      ],
+      "indexes": []
+    }
+  },
+  "stores": [],
+  "models": [
+    {
+      "name": "Settings",
+      "bases": [],
+      "file": "backend/cloud/src/core/infrastructure/configuration.py",
+      "fields": [
+        {
+          "code": "VERSION",
+          "diagram": "VERSION",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/core/infrastructure/configuration.py:5"
+        },
+        {
+          "code": "INTERNAL_API_URL",
+          "diagram": "INTERNALAPIURL",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/core/infrastructure/configuration.py:6"
+        },
+        {
+          "code": "SECRET_KEY",
+          "diagram": "SECRETKEY",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/core/infrastructure/configuration.py:7"
+        },
+        {
+          "code": "CORS_ALLOWED_ORIGINS",
+          "diagram": "CORSALLOWEDORIGINS",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/core/infrastructure/configuration.py:8"
+        },
+        {
+          "code": "MONGODB_URI",
+          "diagram": "MONGODBURI",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/core/infrastructure/configuration.py:9"
+        },
+        {
+          "code": "REDIS_URI",
+          "diagram": "REDISURI",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/core/infrastructure/configuration.py:10"
+        },
+        {
+          "code": "OBJECT_STORAGE_ENDPOINT",
+          "diagram": "OBJECTSTORAGEENDPOINT",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/core/infrastructure/configuration.py:11"
+        },
+        {
+          "code": "OBJECT_STORAGE_ACCESS_KEY",
+          "diagram": "OBJECTSTORAGEACCESSKEY",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/core/infrastructure/configuration.py:12"
+        },
+        {
+          "code": "OBJECT_STORAGE_SECRET_KEY",
+          "diagram": "OBJECTSTORAGESECRETKEY",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/core/infrastructure/configuration.py:13"
+        },
+        {
+          "code": "OBJECT_STORAGE_PRIVATE_BUCKET",
+          "diagram": "OBJECTSTORAGEPRIVATEBUCKET",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/core/infrastructure/configuration.py:14"
+        },
+        {
+          "code": "OBJECT_STORAGE_PUBLIC_BUCKET",
+          "diagram": "OBJECTSTORAGEPUBLICBUCKET",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/core/infrastructure/configuration.py:15"
+        },
+        {
+          "code": "OBJECT_STORAGE_LEGACY_BUCKET",
+          "diagram": "OBJECTSTORAGELEGACYBUCKET",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/core/infrastructure/configuration.py:16"
+        },
+        {
+          "code": "OBJECT_STORAGE_REGION",
+          "diagram": "OBJECTSTORAGEREGION",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/core/infrastructure/configuration.py:17"
+        },
+        {
+          "code": "OBJECT_STORAGE_PUBLIC_URL",
+          "diagram": "OBJECTSTORAGEPUBLICURL",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/core/infrastructure/configuration.py:18"
+        },
+        {
+          "code": "AUTHENTICATION_URL",
+          "diagram": "AUTHENTICATIONURL",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/core/infrastructure/configuration.py:19"
+        },
+        {
+          "code": "CLOUD_DB_NAME",
+          "diagram": "CLOUDDBNAME",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/core/infrastructure/configuration.py:20"
+        },
+        {
+          "code": "COMPRESSIBLE_TEXT_EXTENSIONS",
+          "diagram": "COMPRESSIBLETEXTEXTENSIONS",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/core/infrastructure/configuration.py:21"
+        },
+        {
+          "code": "MAX_UPLOAD_SIZE_BYTES",
+          "diagram": "MAXUPLOADSIZEBYTES",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/core/infrastructure/configuration.py:22"
+        },
+        {
+          "code": "MIN_UPLOAD_SIZE_BYTES",
+          "diagram": "MINUPLOADSIZEBYTES",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/core/infrastructure/configuration.py:23"
+        }
+      ]
+    },
+    {
+      "name": "CurrentUser",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/cloud/src/schemas/common.py",
+      "fields": [
+        {
+          "code": "email",
+          "diagram": "Email",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/common.py:16"
+        },
+        {
+          "code": "system_role",
+          "diagram": "SystemRole",
+          "type": {
+            "raw": "SystemRole",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/common.py:17"
+        },
+        {
+          "code": "permissions",
+          "diagram": "Permissions",
+          "type": {
+            "raw": "List[str]",
+            "type": "json",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/common.py:18"
+        },
+        {
+          "code": "is_active",
+          "diagram": "IsActive",
+          "type": {
+            "raw": "bool",
+            "type": "Boolean",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/common.py:19"
+        },
+        {
+          "code": "full_name",
+          "diagram": "FullName",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/common.py:20"
+        },
+        {
+          "code": "slug",
+          "diagram": "Slug",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/common.py:21"
+        },
+        {
+          "code": "session_id",
+          "diagram": "SessionId",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/common.py:22"
+        }
+      ]
+    },
+    {
+      "name": "APIResponse",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/cloud/src/schemas/common.py",
+      "fields": [
+        {
+          "code": "data",
+          "diagram": "Data",
+          "type": {
+            "raw": "Optional[T]",
+            "type": "json",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/common.py:34"
+        },
+        {
+          "code": "message",
+          "diagram": "Message",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/common.py:35"
+        },
+        {
+          "code": "status",
+          "diagram": "Status",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/common.py:36"
+        }
+      ]
+    },
+    {
+      "name": "ShareAccess",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/cloud/src/schemas/storage.py",
+      "fields": [
+        {
+          "code": "user_id",
+          "diagram": "UserId",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:9"
+        },
+        {
+          "code": "role",
+          "diagram": "Role",
+          "type": {
+            "raw": "Literal['editor']",
+            "type": "json",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:10"
+        }
+      ]
+    },
+    {
+      "name": "ProtectedShareCreate",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/cloud/src/schemas/storage.py",
+      "fields": [
+        {
+          "code": "item_id",
+          "diagram": "ItemId",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:14"
+        },
+        {
+          "code": "password",
+          "diagram": "Password",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:15"
+        },
+        {
+          "code": "expires_in_hours",
+          "diagram": "ExpiresInHours",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:16"
+        }
+      ]
+    },
+    {
+      "name": "StorageItemBase",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/cloud/src/schemas/storage.py",
+      "fields": [
+        {
+          "code": "name",
+          "diagram": "Name",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:21"
+        },
+        {
+          "code": "parent_id",
+          "diagram": "ParentId",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:22"
+        },
+        {
+          "code": "description",
+          "diagram": "Description",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:23"
+        },
+        {
+          "code": "color",
+          "diagram": "Color",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:24"
+        },
+        {
+          "code": "tags",
+          "diagram": "Tags",
+          "type": {
+            "raw": "List[str]",
+            "type": "json",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:25"
+        },
+        {
+          "code": "shared_with",
+          "diagram": "SharedWith",
+          "type": {
+            "raw": "List[ShareAccess]",
+            "type": "json",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:26"
+        },
+        {
+          "code": "is_shortcut",
+          "diagram": "IsShortcut",
+          "type": {
+            "raw": "bool",
+            "type": "Boolean",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:27"
+        },
+        {
+          "code": "target_id",
+          "diagram": "TargetId",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:28"
+        },
+        {
+          "code": "is_duplicate",
+          "diagram": "IsDuplicate",
+          "type": {
+            "raw": "Optional[bool]",
+            "type": "Boolean",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:29"
+        },
+        {
+          "code": "duplicate_of",
+          "diagram": "DuplicateOf",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:30"
+        },
+        {
+          "code": "environment_ready",
+          "diagram": "EnvironmentReady",
+          "type": {
+            "raw": "Optional[bool]",
+            "type": "Boolean",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:31"
+        },
+        {
+          "code": "ai_processed",
+          "diagram": "AiProcessed",
+          "type": {
+            "raw": "Optional[bool]",
+            "type": "Boolean",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:32"
+        },
+        {
+          "code": "entities",
+          "diagram": "Entities",
+          "type": {
+            "raw": "Optional[dict]",
+            "type": "json",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:33"
+        },
+        {
+          "code": "broken_links",
+          "diagram": "BrokenLinks",
+          "type": {
+            "raw": "Optional[List[str]]",
+            "type": "json",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:34"
+        },
+        {
+          "code": "is_locked",
+          "diagram": "IsLocked",
+          "type": {
+            "raw": "bool",
+            "type": "Boolean",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:35"
+        },
+        {
+          "code": "locked_by",
+          "diagram": "LockedBy",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:36"
+        },
+        {
+          "code": "locked_at",
+          "diagram": "LockedAt",
+          "type": {
+            "raw": "Optional[datetime]",
+            "type": "date",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:37"
+        }
+      ]
+    },
+    {
+      "name": "StorageItemCreate",
+      "bases": [
+        "StorageItemBase"
+      ],
+      "file": "backend/cloud/src/schemas/storage.py",
+      "fields": [
+        {
+          "code": "is_folder",
+          "diagram": "IsFolder",
+          "type": {
+            "raw": "bool",
+            "type": "Boolean",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:41"
+        },
+        {
+          "code": "size",
+          "diagram": "Size",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:42"
+        },
+        {
+          "code": "mime_type",
+          "diagram": "MimeType",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:43"
+        },
+        {
+          "code": "url",
+          "diagram": "Url",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:44"
+        }
+      ]
+    },
+    {
+      "name": "StorageItemUpdate",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/cloud/src/schemas/storage.py",
+      "fields": [
+        {
+          "code": "name",
+          "diagram": "Name",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:50"
+        },
+        {
+          "code": "parent_id",
+          "diagram": "ParentId",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:51"
+        },
+        {
+          "code": "description",
+          "diagram": "Description",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:52"
+        },
+        {
+          "code": "color",
+          "diagram": "Color",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:53"
+        },
+        {
+          "code": "tags",
+          "diagram": "Tags",
+          "type": {
+            "raw": "Optional[List[str]]",
+            "type": "json",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:54"
+        },
+        {
+          "code": "is_trashed",
+          "diagram": "IsTrashed",
+          "type": {
+            "raw": "Optional[bool]",
+            "type": "Boolean",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:55"
+        },
+        {
+          "code": "is_starred",
+          "diagram": "IsStarred",
+          "type": {
+            "raw": "Optional[bool]",
+            "type": "Boolean",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:56"
+        },
+        {
+          "code": "is_public",
+          "diagram": "IsPublic",
+          "type": {
+            "raw": "Optional[bool]",
+            "type": "Boolean",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:57"
+        },
+        {
+          "code": "share_token",
+          "diagram": "ShareToken",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:58"
+        },
+        {
+          "code": "shared_with",
+          "diagram": "SharedWith",
+          "type": {
+            "raw": "Optional[List[ShareAccess]]",
+            "type": "json",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:59"
+        },
+        {
+          "code": "is_duplicate",
+          "diagram": "IsDuplicate",
+          "type": {
+            "raw": "Optional[bool]",
+            "type": "Boolean",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:60"
+        },
+        {
+          "code": "duplicate_of",
+          "diagram": "DuplicateOf",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:61"
+        },
+        {
+          "code": "environment_ready",
+          "diagram": "EnvironmentReady",
+          "type": {
+            "raw": "Optional[bool]",
+            "type": "Boolean",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:62"
+        },
+        {
+          "code": "ai_processed",
+          "diagram": "AiProcessed",
+          "type": {
+            "raw": "Optional[bool]",
+            "type": "Boolean",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:63"
+        },
+        {
+          "code": "entities",
+          "diagram": "Entities",
+          "type": {
+            "raw": "Optional[dict]",
+            "type": "json",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:64"
+        },
+        {
+          "code": "broken_links",
+          "diagram": "BrokenLinks",
+          "type": {
+            "raw": "Optional[List[str]]",
+            "type": "json",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:65"
+        },
+        {
+          "code": "is_locked",
+          "diagram": "IsLocked",
+          "type": {
+            "raw": "Optional[bool]",
+            "type": "Boolean",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:67"
+        },
+        {
+          "code": "locked_by",
+          "diagram": "LockedBy",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:68"
+        },
+        {
+          "code": "locked_at",
+          "diagram": "LockedAt",
+          "type": {
+            "raw": "Optional[datetime]",
+            "type": "date",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:69"
+        }
+      ]
+    },
+    {
+      "name": "BulkActionRequest",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/cloud/src/schemas/storage.py",
+      "fields": [
+        {
+          "code": "action",
+          "diagram": "Action",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:73"
+        },
+        {
+          "code": "item_ids",
+          "diagram": "ItemIds",
+          "type": {
+            "raw": "List[str]",
+            "type": "json",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:74"
+        },
+        {
+          "code": "target_parent_id",
+          "diagram": "TargetParentId",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:75"
+        }
+      ]
+    },
+    {
+      "name": "FileRequestCreate",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/cloud/src/schemas/storage.py",
+      "fields": [
+        {
+          "code": "target_folder_id",
+          "diagram": "TargetFolderId",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:79"
+        },
+        {
+          "code": "password",
+          "diagram": "Password",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:80"
+        },
+        {
+          "code": "expires_in_hours",
+          "diagram": "ExpiresInHours",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:81"
+        },
+        {
+          "code": "description",
+          "diagram": "Description",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:82"
+        }
+      ]
+    },
+    {
+      "name": "FileRequestResponse",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/cloud/src/schemas/storage.py",
+      "fields": [
+        {
+          "code": "token",
+          "diagram": "Token",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:86"
+        },
+        {
+          "code": "target_folder_id",
+          "diagram": "TargetFolderId",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:87"
+        },
+        {
+          "code": "owner_id",
+          "diagram": "OwnerId",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:88"
+        },
+        {
+          "code": "description",
+          "diagram": "Description",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:89"
+        },
+        {
+          "code": "expires_at",
+          "diagram": "ExpiresAt",
+          "type": {
+            "raw": "datetime",
+            "type": "date",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:90"
+        },
+        {
+          "code": "is_protected",
+          "diagram": "IsProtected",
+          "type": {
+            "raw": "bool",
+            "type": "Boolean",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:91"
+        }
+      ]
+    },
+    {
+      "name": "ItemActivityResponse",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/cloud/src/schemas/storage.py",
+      "fields": [
+        {
+          "code": "id",
+          "diagram": "Id",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:95"
+        },
+        {
+          "code": "item_id",
+          "diagram": "ItemId",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:96"
+        },
+        {
+          "code": "actor_id",
+          "diagram": "ActorId",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:97"
+        },
+        {
+          "code": "action",
+          "diagram": "Action",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:98"
+        },
+        {
+          "code": "ip_address",
+          "diagram": "IpAddress",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:99"
+        },
+        {
+          "code": "user_agent",
+          "diagram": "UserAgent",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:100"
+        },
+        {
+          "code": "timestamp",
+          "diagram": "Timestamp",
+          "type": {
+            "raw": "datetime",
+            "type": "date",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:101"
+        }
+      ]
+    },
+    {
+      "name": "FileVersion",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/cloud/src/schemas/storage.py",
+      "fields": [
+        {
+          "code": "version_id",
+          "diagram": "VersionId",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:105"
+        },
+        {
+          "code": "url",
+          "diagram": "Url",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:106"
+        },
+        {
+          "code": "size",
+          "diagram": "Size",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:107"
+        },
+        {
+          "code": "created_at",
+          "diagram": "CreatedAt",
+          "type": {
+            "raw": "datetime",
+            "type": "date",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:108"
+        }
+      ]
+    },
+    {
+      "name": "StorageItemInDB",
+      "bases": [
+        "StorageItemBase"
+      ],
+      "file": "backend/cloud/src/schemas/storage.py",
+      "fields": [
+        {
+          "code": "owner_id",
+          "diagram": "OwnerId",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:113"
+        },
+        {
+          "code": "is_folder",
+          "diagram": "IsFolder",
+          "type": {
+            "raw": "bool",
+            "type": "Boolean",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:114"
+        },
+        {
+          "code": "size",
+          "diagram": "Size",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:115"
+        },
+        {
+          "code": "mime_type",
+          "diagram": "MimeType",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:116"
+        },
+        {
+          "code": "url",
+          "diagram": "Url",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:117"
+        },
+        {
+          "code": "is_trashed",
+          "diagram": "IsTrashed",
+          "type": {
+            "raw": "bool",
+            "type": "Boolean",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:118"
+        },
+        {
+          "code": "is_starred",
+          "diagram": "IsStarred",
+          "type": {
+            "raw": "bool",
+            "type": "Boolean",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:119"
+        },
+        {
+          "code": "is_public",
+          "diagram": "IsPublic",
+          "type": {
+            "raw": "bool",
+            "type": "Boolean",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:120"
+        },
+        {
+          "code": "share_token",
+          "diagram": "ShareToken",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:121"
+        },
+        {
+          "code": "versions",
+          "diagram": "Versions",
+          "type": {
+            "raw": "List[FileVersion]",
+            "type": "json",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:122"
+        },
+        {
+          "code": "created_at",
+          "diagram": "CreatedAt",
+          "type": {
+            "raw": "datetime",
+            "type": "date",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:123"
+        },
+        {
+          "code": "updated_at",
+          "diagram": "UpdatedAt",
+          "type": {
+            "raw": "datetime",
+            "type": "date",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:124"
+        }
+      ]
+    },
+    {
+      "name": "StorageItemResponse",
+      "bases": [
+        "StorageItemBase"
+      ],
+      "file": "backend/cloud/src/schemas/storage.py",
+      "fields": [
+        {
+          "code": "owner_id",
+          "diagram": "OwnerId",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:131"
+        },
+        {
+          "code": "is_folder",
+          "diagram": "IsFolder",
+          "type": {
+            "raw": "bool",
+            "type": "Boolean",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:132"
+        },
+        {
+          "code": "size",
+          "diagram": "Size",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:133"
+        },
+        {
+          "code": "mime_type",
+          "diagram": "MimeType",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:134"
+        },
+        {
+          "code": "url",
+          "diagram": "Url",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:135"
+        },
+        {
+          "code": "color",
+          "diagram": "Color",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:136"
+        },
+        {
+          "code": "is_trashed",
+          "diagram": "IsTrashed",
+          "type": {
+            "raw": "bool",
+            "type": "Boolean",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:137"
+        },
+        {
+          "code": "is_starred",
+          "diagram": "IsStarred",
+          "type": {
+            "raw": "bool",
+            "type": "Boolean",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:138"
+        },
+        {
+          "code": "is_public",
+          "diagram": "IsPublic",
+          "type": {
+            "raw": "bool",
+            "type": "Boolean",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:139"
+        },
+        {
+          "code": "share_token",
+          "diagram": "ShareToken",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:140"
+        },
+        {
+          "code": "versions",
+          "diagram": "Versions",
+          "type": {
+            "raw": "List[FileVersion]",
+            "type": "json",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:141"
+        },
+        {
+          "code": "created_at",
+          "diagram": "CreatedAt",
+          "type": {
+            "raw": "datetime",
+            "type": "date",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:142"
+        },
+        {
+          "code": "updated_at",
+          "diagram": "UpdatedAt",
+          "type": {
+            "raw": "datetime",
+            "type": "date",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:143"
+        },
+        {
+          "code": "thumbnail_url",
+          "diagram": "ThumbnailUrl",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:144"
+        },
+        {
+          "code": "preview_url",
+          "diagram": "PreviewUrl",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:145"
+        }
+      ]
+    },
+    {
+      "name": "StarredUpdateRequest",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/cloud/src/schemas/storage.py",
+      "fields": [
+        {
+          "code": "is_starred",
+          "diagram": "IsStarred",
+          "type": {
+            "raw": "bool",
+            "type": "Boolean",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:149"
+        }
+      ]
+    },
+    {
+      "name": "TagColorUpdateRequest",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/cloud/src/schemas/storage.py",
+      "fields": [
+        {
+          "code": "tags",
+          "diagram": "Tags",
+          "type": {
+            "raw": "Optional[List[str]]",
+            "type": "json",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:153"
+        },
+        {
+          "code": "color",
+          "diagram": "Color",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/cloud/src/schemas/storage.py:154"
+        }
+      ]
+    },
+    {
+      "name": "InternalShareRequest",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/cloud/src/schemas/storage.py",
+      "fields": [
+        {
+          "code": "email",
+          "diagram": "Email",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:158"
+        },
+        {
+          "code": "role",
+          "diagram": "Role",
+          "type": {
+            "raw": "Literal['editor']",
+            "type": "json",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:159"
+        }
+      ]
+    },
+    {
+      "name": "CategoryBreakdown",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/cloud/src/schemas/storage.py",
+      "fields": [
+        {
+          "code": "count",
+          "diagram": "Count",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:163"
+        },
+        {
+          "code": "size",
+          "diagram": "Size",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:164"
+        },
+        {
+          "code": "percentage",
+          "diagram": "Percentage",
+          "type": {
+            "raw": "float",
+            "type": "float",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:165"
+        }
+      ]
+    },
+    {
+      "name": "QuotaAnalyticsResponse",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/cloud/src/schemas/storage.py",
+      "fields": [
+        {
+          "code": "total_quota_bytes",
+          "diagram": "TotalQuotaBytes",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:169"
+        },
+        {
+          "code": "used_quota_bytes",
+          "diagram": "UsedQuotaBytes",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:170"
+        },
+        {
+          "code": "free_quota_bytes",
+          "diagram": "FreeQuotaBytes",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:171"
+        },
+        {
+          "code": "usage_percentage",
+          "diagram": "UsagePercentage",
+          "type": {
+            "raw": "float",
+            "type": "float",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:172"
+        },
+        {
+          "code": "total_files_count",
+          "diagram": "TotalFilesCount",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:173"
+        },
+        {
+          "code": "total_folders_count",
+          "diagram": "TotalFoldersCount",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:174"
+        },
+        {
+          "code": "trashed_files_count",
+          "diagram": "TrashedFilesCount",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:175"
+        },
+        {
+          "code": "trashed_bytes",
+          "diagram": "TrashedBytes",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:176"
+        },
+        {
+          "code": "breakdown",
+          "diagram": "Breakdown",
+          "type": {
+            "raw": "dict",
+            "type": "json",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:177"
+        }
+      ]
+    },
+    {
+      "name": "FileVersionResponse",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/cloud/src/schemas/storage.py",
+      "fields": [
+        {
+          "code": "version_id",
+          "diagram": "VersionId",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:181"
+        },
+        {
+          "code": "url",
+          "diagram": "Url",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:182"
+        },
+        {
+          "code": "size",
+          "diagram": "Size",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:183"
+        },
+        {
+          "code": "created_at",
+          "diagram": "CreatedAt",
+          "type": {
+            "raw": "datetime",
+            "type": "date",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:184"
+        },
+        {
+          "code": "is_active",
+          "diagram": "IsActive",
+          "type": {
+            "raw": "bool",
+            "type": "Boolean",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/storage.py:185"
+        }
+      ]
+    },
+    {
+      "name": "PresignedUrlRequest",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/cloud/src/schemas/upload.py",
+      "fields": [
+        {
+          "code": "filename",
+          "diagram": "Filename",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/upload.py:6"
+        },
+        {
+          "code": "size",
+          "diagram": "Size",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/upload.py:7"
+        },
+        {
+          "code": "content_type",
+          "diagram": "ContentType",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/upload.py:8"
+        },
+        {
+          "code": "is_system",
+          "diagram": "IsSystem",
+          "type": {
+            "raw": "bool",
+            "type": "Boolean",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/upload.py:9"
+        },
+        {
+          "code": "is_message_attachment",
+          "diagram": "IsMessageAttachment",
+          "type": {
+            "raw": "bool",
+            "type": "Boolean",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/upload.py:10"
+        }
+      ]
+    },
+    {
+      "name": "ConfirmUploadRequest",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/cloud/src/schemas/upload.py",
+      "fields": [
+        {
+          "code": "file_path",
+          "diagram": "FilePath",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/upload.py:15"
+        },
+        {
+          "code": "filename",
+          "diagram": "Filename",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/upload.py:16"
+        },
+        {
+          "code": "size",
+          "diagram": "Size",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/upload.py:17"
+        },
+        {
+          "code": "content_type",
+          "diagram": "ContentType",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/upload.py:18"
+        },
+        {
+          "code": "is_system",
+          "diagram": "IsSystem",
+          "type": {
+            "raw": "bool",
+            "type": "Boolean",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/upload.py:19"
+        },
+        {
+          "code": "is_message_attachment",
+          "diagram": "IsMessageAttachment",
+          "type": {
+            "raw": "bool",
+            "type": "Boolean",
+            "nullable": false
+          },
+          "line": "backend/cloud/src/schemas/upload.py:20"
+        }
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "method": "POST",
+      "path": "",
+      "name": "upload_chunk",
+      "args": [
+        "file : json",
+        "uploadId : string",
+        "chunkIndex : int",
+        "totalChunks : int",
+        "filename : string",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/chunk.py:16",
+      "calls": [
+        "create_file_record",
+        "get",
+        "post",
+        "read_limited",
+        "save_chunk",
+        "validate_filename"
+      ],
+      "call_targets": [
+        "ChunkService.save_chunk",
+        "FileService.create_file_record",
+        "UploadService.read_limited",
+        "UploadService.validate_filename",
+        "res.get",
+        "router.post"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/{file_id}/duong-dan",
+      "name": "get_download_url",
+      "args": [
+        "fileId : string",
+        "expiresIn : int",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/download.py:13",
+      "calls": [
+        "generate_download_url",
+        "get"
+      ],
+      "call_targets": [
+        "DownloadService.generate_download_url",
+        "router.get"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "",
+      "name": "create_file_record",
+      "args": [
+        "item : json",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/file.py:14",
+      "calls": [
+        "create_file_record",
+        "model_dump",
+        "post"
+      ],
+      "call_targets": [
+        "FileService.create_file_record",
+        "result.model_dump",
+        "router.post"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/dung-luong",
+      "name": "get_storage_quota",
+      "args": [
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/file.py:26",
+      "calls": [
+        "get",
+        "get_storage_quota"
+      ],
+      "call_targets": [
+        "FileService.get_storage_quota",
+        "router.get"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/{file_id}",
+      "name": "get_file_metadata",
+      "args": [
+        "fileId : string",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/file.py:35",
+      "calls": [
+        "get",
+        "get_file_by_id",
+        "model_dump"
+      ],
+      "call_targets": [
+        "FileService.get_file_by_id",
+        "result.model_dump",
+        "router.get"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/{file_id}",
+      "name": "update_file_metadata",
+      "args": [
+        "fileId : string",
+        "updateData : json",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/file.py:47",
+      "calls": [
+        "model_dump",
+        "patch",
+        "update_file_metadata"
+      ],
+      "call_targets": [
+        "FileService.update_file_metadata",
+        "result.model_dump",
+        "router.patch"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/{file_id}/doi-ten",
+      "name": "rename_file",
+      "args": [
+        "fileId : string",
+        "req : json",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/file.py:58",
+      "calls": [
+        "get",
+        "patch",
+        "rename_file"
+      ],
+      "call_targets": [
+        "FileService.rename_file",
+        "req.get",
+        "router.patch"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/{file_id}/di-chuyen",
+      "name": "move_file",
+      "args": [
+        "fileId : string",
+        "req : json",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/file.py:72",
+      "calls": [
+        "get",
+        "move_file",
+        "patch"
+      ],
+      "call_targets": [
+        "FileService.move_file",
+        "req.get",
+        "router.patch"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/yeu-cau-tai-len",
+      "name": "create_file_request",
+      "args": [
+        "req : json",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/file_request.py:14",
+      "calls": [
+        "create_request",
+        "get_item",
+        "post"
+      ],
+      "call_targets": [
+        "FileRequestService.create_request",
+        "StorageService.get_item",
+        "router.post"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/yeu-cau-tai-len/{token}",
+      "name": "validate_file_request",
+      "args": [
+        "token : string",
+        "password : string",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/file_request.py:33",
+      "calls": [
+        "get",
+        "validate_request"
+      ],
+      "call_targets": [
+        "FileRequestService.validate_request",
+        "router.get"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "",
+      "name": "create_folder",
+      "args": [
+        "req : json",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/folder.py:13",
+      "calls": [
+        "create_folder",
+        "get",
+        "model_dump",
+        "post"
+      ],
+      "call_targets": [
+        "FolderService.create_folder",
+        "folder.model_dump",
+        "req.get",
+        "router.post"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/noi-dung",
+      "name": "get_folder_contents",
+      "args": [
+        "folderId : string",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/folder.py:29",
+      "calls": [
+        "get",
+        "get_folder_contents"
+      ],
+      "call_targets": [
+        "FolderService.get_folder_contents",
+        "router.get"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/cay-thu-muc",
+      "name": "get_folder_tree",
+      "args": [
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/folder.py:39",
+      "calls": [
+        "get",
+        "get_folder_tree"
+      ],
+      "call_targets": [
+        "FolderService.get_folder_tree",
+        "router.get"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/{folder_id}/doi-ten",
+      "name": "rename_folder",
+      "args": [
+        "folderId : string",
+        "req : json",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/folder.py:48",
+      "calls": [
+        "get",
+        "patch",
+        "rename_folder"
+      ],
+      "call_targets": [
+        "FolderService.rename_folder",
+        "req.get",
+        "router.patch"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/{folder_id}/di-chuyen",
+      "name": "move_folder",
+      "args": [
+        "folderId : string",
+        "req : json",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/folder.py:62",
+      "calls": [
+        "get",
+        "move_folder",
+        "patch"
+      ],
+      "call_targets": [
+        "FolderService.move_folder",
+        "req.get",
+        "router.patch"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/kiem-thu/nguon-yeu-cau",
+      "name": "store_qa_requirement_source",
+      "args": [
+        "projectId : string",
+        "documentId : string",
+        "file : json"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/internal.py:18",
+      "calls": [
+        "hexdigest",
+        "post",
+        "read",
+        "sha256",
+        "strip",
+        "sub"
+      ],
+      "call_targets": [
+        "file.read",
+        "hashlib.sha256",
+        "re.sub",
+        "router.post"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/kiem-thu/nguon-yeu-cau",
+      "name": "read_qa_requirement_source",
+      "args": [
+        "projectId : string",
+        "documentId : string",
+        "objectKey : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/internal.py:47",
+      "calls": [
+        "get",
+        "startswith"
+      ],
+      "call_targets": [
+        "object_key.startswith",
+        "router.get"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/kiem-thu/nguon-yeu-cau",
+      "name": "delete_qa_requirement_source",
+      "args": [
+        "projectId : string",
+        "documentId : string",
+        "objectKey : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/internal.py:63",
+      "calls": [
+        "delete",
+        "startswith"
+      ],
+      "call_targets": [
+        "object_key.startswith",
+        "router.delete"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/luu-tru",
+      "name": "internal_storage_data",
+      "args": [
+        "req : json"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/internal.py:72",
+      "calls": [
+        "execute",
+        "post"
+      ],
+      "call_targets": [
+        "InternalStorageService.execute",
+        "router.post"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/kiem-thu/bao-cao/tep",
+      "name": "store_report_asset",
+      "args": [
+        "projectId : string",
+        "artifactId : string",
+        "file : json"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/internal.py:83",
+      "calls": [
+        "hexdigest",
+        "post",
+        "read",
+        "sha256",
+        "strip",
+        "sub"
+      ],
+      "call_targets": [
+        "file.read",
+        "hashlib.sha256",
+        "re.sub",
+        "router.post"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/kiem-thu/bao-cao/tep",
+      "name": "read_report_asset",
+      "args": [
+        "projectId : string",
+        "artifactId : string",
+        "objectKey : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/internal.py:96",
+      "calls": [
+        "get",
+        "startswith"
+      ],
+      "call_targets": [
+        "object_key.startswith",
+        "router.get"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/nhan-ban/{item_id}",
+      "name": "duplicate_item",
+      "args": [
+        "itemId : string",
+        "currentUser : json"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/search.py:13",
+      "calls": [
+        "duplicate_item",
+        "post"
+      ],
+      "call_targets": [
+        "SearchService.duplicate_item",
+        "router.post"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/thu-muc/{folder_id}/mau-sac",
+      "name": "set_folder_color",
+      "args": [
+        "folderId : string",
+        "colorHex : string",
+        "currentUser : json"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/search.py:22",
+      "calls": [
+        "post",
+        "set_folder_color"
+      ],
+      "call_targets": [
+        "SearchService.set_folder_color",
+        "router.post"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/phieu-nhan/{item_id}",
+      "name": "update_item_tags",
+      "args": [
+        "itemId : string",
+        "tags : json",
+        "currentUser : json"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/search.py:32",
+      "calls": [
+        "post",
+        "update_item_tags"
+      ],
+      "call_targets": [
+        "SearchService.update_item_tags",
+        "router.post"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/lien-ket-chia-se/tao",
+      "name": "create_protected_share_link",
+      "args": [
+        "req : json",
+        "currentUser : json"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/share.py:14",
+      "calls": [
+        "create_protected_share_link",
+        "post"
+      ],
+      "call_targets": [
+        "ShareService.create_protected_share_link",
+        "router.post"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/lien-ket-chia-se/xac-thuc/{token}",
+      "name": "validate_protected_share_link",
+      "args": [
+        "token : string",
+        "password : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/share.py:25",
+      "calls": [
+        "get",
+        "validate_protected_share_link"
+      ],
+      "call_targets": [
+        "ShareService.validate_protected_share_link",
+        "router.get"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/danh-dau-sao/{item_id}",
+      "name": "toggle_star_item",
+      "args": [
+        "itemId : string",
+        "currentUser : json"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/star.py:13",
+      "calls": [
+        "post",
+        "toggle_star_item"
+      ],
+      "call_targets": [
+        "StarService.toggle_star_item",
+        "router.post"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/danh-dau-sao/danh-sach",
+      "name": "get_starred_items",
+      "args": [
+        "currentUser : json"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/star.py:22",
+      "calls": [
+        "get",
+        "get_starred_items"
+      ],
+      "call_targets": [
+        "StarService.get_starred_items",
+        "router.get"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/thu-muc",
+      "name": "create_folder",
+      "args": [
+        "data : json",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/storage.py:28",
+      "calls": [
+        "create_item",
+        "dict",
+        "post"
+      ],
+      "call_targets": [
+        "StorageService.create_item",
+        "item.dict",
+        "router.post"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/tap-tin",
+      "name": "create_file",
+      "args": [
+        "data : json",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/storage.py:43",
+      "calls": [
+        "create_item",
+        "dict",
+        "get_storage_quota",
+        "post"
+      ],
+      "call_targets": [
+        "StorageService.create_item",
+        "StorageService.get_storage_quota",
+        "item.dict",
+        "router.post"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/danh-sach",
+      "name": "list_items",
+      "args": [
+        "parentId : string",
+        "isTrashed : Boolean",
+        "isStarred : Boolean",
+        "tag : string",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/storage.py:63",
+      "calls": [
+        "dict",
+        "get",
+        "get_items_by_parent"
+      ],
+      "call_targets": [
+        "StorageService.get_items_by_parent",
+        "item.dict",
+        "router.get"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/tim-kiem",
+      "name": "search_items",
+      "args": [
+        "q : string",
+        "type : string",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/storage.py:81",
+      "calls": [
+        "dict",
+        "get",
+        "search_items"
+      ],
+      "call_targets": [
+        "StorageService.search_items",
+        "item.dict",
+        "router.get"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/gan-day",
+      "name": "get_recent_items",
+      "args": [
+        "limit : int",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/storage.py:96",
+      "calls": [
+        "dict",
+        "get",
+        "get_recent_items"
+      ],
+      "call_targets": [
+        "StorageService.get_recent_items",
+        "item.dict",
+        "router.get"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/han-muc",
+      "name": "get_storage_quota",
+      "args": [
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/storage.py:110",
+      "calls": [
+        "get",
+        "get_storage_quota"
+      ],
+      "call_targets": [
+        "StorageService.get_storage_quota",
+        "router.get"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/tap-tin/{item_id}/loi-tat",
+      "name": "create_shortcut",
+      "args": [
+        "itemId : string",
+        "targetParentId : string",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/storage.py:123",
+      "calls": [
+        "create_shortcut",
+        "dict",
+        "post"
+      ],
+      "call_targets": [
+        "StorageService.create_shortcut",
+        "item.dict",
+        "router.post"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/tai-xuong-zip",
+      "name": "download_zip",
+      "args": [
+        "ids : string",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/storage.py:140",
+      "calls": [
+        "BytesIO",
+        "ZipFile",
+        "add",
+        "exception",
+        "fromkeys",
+        "get",
+        "get_accessible_item",
+        "replace",
+        "seek",
+        "split",
+        "strip",
+        "writestr"
+      ],
+      "call_targets": [
+        "StorageService.get_accessible_item",
+        "dict.fromkeys",
+        "i.strip",
+        "ids.split",
+        "io.BytesIO",
+        "logger.exception",
+        "router.get",
+        "used_names.add",
+        "zip_buffer.seek",
+        "zip_file.writestr",
+        "zipfile.ZipFile"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/tap-tin/{item_id}",
+      "name": "update_item",
+      "args": [
+        "itemId : string",
+        "data : json",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/storage.py:191",
+      "calls": [
+        "dict",
+        "get_item",
+        "model_dump",
+        "put",
+        "token_urlsafe",
+        "update_item"
+      ],
+      "call_targets": [
+        "StorageService.get_item",
+        "StorageService.update_item",
+        "data.model_dump",
+        "item.dict",
+        "router.put",
+        "secrets.token_urlsafe"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/tap-tin/{item_id}",
+      "name": "delete_item",
+      "args": [
+        "itemId : string",
+        "hardDelete : Boolean",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/storage.py:221",
+      "calls": [
+        "delete",
+        "delete_item",
+        "update_item"
+      ],
+      "call_targets": [
+        "StorageService.delete_item",
+        "StorageService.update_item",
+        "router.delete"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/tap-tin/{item_id}/sao-chep",
+      "name": "copy_item",
+      "args": [
+        "itemId : string",
+        "targetParentId : string",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/storage.py:252",
+      "calls": [
+        "copy_item",
+        "dict",
+        "post"
+      ],
+      "call_targets": [
+        "StorageService.copy_item",
+        "item.dict",
+        "router.post"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/tap-tin/{item_id}/phien-ban",
+      "name": "add_version",
+      "args": [
+        "itemId : string",
+        "url : string",
+        "size : int",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/storage.py:269",
+      "calls": [
+        "add_version",
+        "dict",
+        "post"
+      ],
+      "call_targets": [
+        "StorageService.add_version",
+        "item.dict",
+        "router.post"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/tap-tin/{item_id}/chia-se",
+      "name": "share_archive",
+      "args": [
+        "itemId : string",
+        "email : string",
+        "role : string",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/storage.py:287",
+      "calls": [
+        "post",
+        "share_item"
+      ],
+      "call_targets": [
+        "StorageService.share_item",
+        "router.post"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/chia-se/{share_token}",
+      "name": "get_public_item",
+      "args": [
+        "shareToken : string",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/storage.py:299",
+      "calls": [
+        "get",
+        "get_presigned_url",
+        "get_public_item",
+        "model_dump",
+        "update"
+      ],
+      "call_targets": [
+        "StorageService.get_public_item",
+        "UploadService.get_presigned_url",
+        "data.update",
+        "item.model_dump",
+        "router.get"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/thao-tac-hang-loat",
+      "name": "bulk_action",
+      "args": [
+        "req : json",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/storage.py:314",
+      "calls": [
+        "bulk_action",
+        "post"
+      ],
+      "call_targets": [
+        "StorageService.bulk_action",
+        "router.post"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/tap-tin/{item_id}/khoa",
+      "name": "lock_item",
+      "args": [
+        "itemId : string",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/storage.py:329",
+      "calls": [
+        "dict",
+        "lock_item",
+        "post"
+      ],
+      "call_targets": [
+        "StorageService.lock_item",
+        "item.dict",
+        "router.post"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/tap-tin/{item_id}/mo-khoa",
+      "name": "unlock_item",
+      "args": [
+        "itemId : string",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/storage.py:343",
+      "calls": [
+        "dict",
+        "post",
+        "unlock_item"
+      ],
+      "call_targets": [
+        "StorageService.unlock_item",
+        "item.dict",
+        "router.post"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/tap-tin/{item_id}/xem-truoc",
+      "name": "get_preview_url",
+      "args": [
+        "itemId : string",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/storage.py:357",
+      "calls": [
+        "error",
+        "generate_presigned_url",
+        "get",
+        "get_accessible_item"
+      ],
+      "call_targets": [
+        "StorageService.get_accessible_item",
+        "client.generate_presigned_url",
+        "logger.error",
+        "router.get"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/tap-tin/{item_id}/nhat-ky",
+      "name": "get_item_activities",
+      "args": [
+        "itemId : string",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/storage.py:390",
+      "calls": [
+        "get",
+        "get_accessible_item",
+        "get_item_activities"
+      ],
+      "call_targets": [
+        "ActivityService.get_item_activities",
+        "StorageService.get_accessible_item",
+        "router.get"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/tap-tin/{item_id}/phien-ban",
+      "name": "get_file_versions",
+      "args": [
+        "itemId : string",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/storage.py:408",
+      "calls": [
+        "get",
+        "get_versions"
+      ],
+      "call_targets": [
+        "StorageService.get_versions",
+        "router.get"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/tap-tin/{item_id}/phien-ban/{version_id}/khoi-phuc",
+      "name": "rollback_file_version",
+      "args": [
+        "itemId : string",
+        "versionId : string",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/storage.py:425",
+      "calls": [
+        "dict",
+        "post",
+        "rollback_version"
+      ],
+      "call_targets": [
+        "StorageService.rollback_version",
+        "item.dict",
+        "router.post"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/tap-tin/{item_id}/yeu-thich",
+      "name": "toggle_starred",
+      "args": [
+        "itemId : string",
+        "req : json",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/storage.py:442",
+      "calls": [
+        "dict",
+        "patch",
+        "set_starred"
+      ],
+      "call_targets": [
+        "StorageService.set_starred",
+        "item.dict",
+        "router.patch"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/tap-tin/{item_id}/nhan-dan",
+      "name": "update_tags_and_color",
+      "args": [
+        "itemId : string",
+        "req : json",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/storage.py:459",
+      "calls": [
+        "dict",
+        "patch",
+        "set_tags_and_color"
+      ],
+      "call_targets": [
+        "StorageService.set_tags_and_color",
+        "item.dict",
+        "router.patch"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/thung-rac",
+      "name": "get_trashed_items",
+      "args": [
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/storage.py:476",
+      "calls": [
+        "dict",
+        "get",
+        "get_trashed_items"
+      ],
+      "call_targets": [
+        "StorageService.get_trashed_items",
+        "item.dict",
+        "router.get"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/thung-rac/{item_id}/khoi-phuc",
+      "name": "restore_trash_item",
+      "args": [
+        "itemId : string",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/storage.py:489",
+      "calls": [
+        "dict",
+        "post",
+        "restore_from_trash"
+      ],
+      "call_targets": [
+        "StorageService.restore_from_trash",
+        "item.dict",
+        "router.post"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/thung-rac/don-sach",
+      "name": "empty_trash",
+      "args": [
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/storage.py:505",
+      "calls": [
+        "delete",
+        "empty_trash"
+      ],
+      "call_targets": [
+        "StorageService.empty_trash",
+        "router.delete"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/dung-luong/phan-tich",
+      "name": "get_quota_analytics",
+      "args": [
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/storage.py:514",
+      "calls": [
+        "get",
+        "get_quota_analytics"
+      ],
+      "call_targets": [
+        "StorageService.get_quota_analytics",
+        "router.get"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/tap-tin/{item_id}/chia-se-noi-bo",
+      "name": "share_internal",
+      "args": [
+        "itemId : string",
+        "req : json",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/storage.py:527",
+      "calls": [
+        "post",
+        "share_internal"
+      ],
+      "call_targets": [
+        "StorageService.share_internal",
+        "router.post"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/tap-tin/{item_id}/chia-se-noi-bo/{target_user_id}",
+      "name": "revoke_internal_share",
+      "args": [
+        "itemId : string",
+        "targetUserId : string",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/storage.py:540",
+      "calls": [
+        "delete",
+        "revoke_internal_share"
+      ],
+      "call_targets": [
+        "StorageService.revoke_internal_share",
+        "router.delete"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/duoc-chia-se-voi-toi",
+      "name": "get_shared_with_me",
+      "args": [
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/storage.py:553",
+      "calls": [
+        "dict",
+        "get",
+        "get_shared_with_me_items"
+      ],
+      "call_targets": [
+        "StorageService.get_shared_with_me_items",
+        "item.dict",
+        "router.get"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/{item_id}/chuyen-vao",
+      "name": "move_to_trash",
+      "args": [
+        "itemId : string",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/trash.py:13",
+      "calls": [
+        "move_to_trash",
+        "post"
+      ],
+      "call_targets": [
+        "TrashService.move_to_trash",
+        "router.post"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/{item_id}/khoi-phuc",
+      "name": "restore_from_trash",
+      "args": [
+        "itemId : string",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/trash.py:23",
+      "calls": [
+        "post",
+        "restore_from_trash"
+      ],
+      "call_targets": [
+        "TrashService.restore_from_trash",
+        "router.post"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/don-sach",
+      "name": "empty_trash",
+      "args": [
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/trash.py:33",
+      "calls": [
+        "delete",
+        "empty_trash"
+      ],
+      "call_targets": [
+        "TrashService.empty_trash",
+        "router.delete"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/tu-dong-don",
+      "name": "auto_purge_trash",
+      "args": [
+        "days : int",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/trash.py:42",
+      "calls": [
+        "auto_purge_expired_trash",
+        "delete"
+      ],
+      "call_targets": [
+        "TrashService.auto_purge_expired_trash",
+        "router.delete"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/hinh-anh",
+      "name": "upload_image",
+      "args": [
+        "file : json",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/upload.py:26",
+      "calls": [
+        "post",
+        "upload_image",
+        "validate_svg"
+      ],
+      "call_targets": [
+        "UploadService.upload_image",
+        "UploadService.validate_svg",
+        "router.post"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/tai-lieu",
+      "name": "upload_document",
+      "args": [
+        "file : json",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/upload.py:37",
+      "calls": [
+        "post",
+        "upload_document"
+      ],
+      "call_targets": [
+        "UploadService.upload_document",
+        "router.post"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/tap-tin",
+      "name": "upload_asset",
+      "args": [
+        "file : json",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/upload.py:47",
+      "calls": [
+        "enforce_quota",
+        "file_size",
+        "post",
+        "register_item",
+        "upload_document"
+      ],
+      "call_targets": [
+        "UploadService.enforce_quota",
+        "UploadService.file_size",
+        "UploadService.register_item",
+        "UploadService.upload_document",
+        "router.post"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/duong-dan-ky-truoc",
+      "name": "get_presigned_url_for_upload",
+      "args": [
+        "req : json",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/upload.py:62",
+      "calls": [
+        "enforce_quota",
+        "get_presigned_upload_url",
+        "post",
+        "reserve"
+      ],
+      "call_targets": [
+        "UploadService.enforce_quota",
+        "UploadService.get_presigned_upload_url",
+        "UploadService.reserve",
+        "router.post"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/xac-nhan",
+      "name": "confirm_upload",
+      "args": [
+        "req : json",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/upload.py:95",
+      "calls": [
+        "confirm_reservation",
+        "enforce_quota",
+        "post",
+        "record_temporary_file",
+        "register_item",
+        "verify_stored_object"
+      ],
+      "call_targets": [
+        "UploadService.confirm_reservation",
+        "UploadService.enforce_quota",
+        "UploadService.record_temporary_file",
+        "UploadService.register_item",
+        "UploadService.verify_stored_object",
+        "router.post"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/luu-tru/xem-truoc/{file_path:path}",
+      "name": "get_presigned_preview_url",
+      "args": [
+        "filePath : string",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/upload.py:134",
+      "calls": [
+        "can_download",
+        "get",
+        "get_presigned_url"
+      ],
+      "call_targets": [
+        "UploadService.can_download",
+        "UploadService.get_presigned_url",
+        "router.get"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/luu-tru/{file_path:path}",
+      "name": "get_presigned_download_url",
+      "args": [
+        "filePath : string",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/upload.py:150",
+      "calls": [
+        "can_download",
+        "get",
+        "get_presigned_url"
+      ],
+      "call_targets": [
+        "UploadService.can_download",
+        "UploadService.get_presigned_url",
+        "router.get"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/noi-dung/{file_path:path}",
+      "name": "get_message_attachment_content",
+      "args": [
+        "filePath : string",
+        "currentUser : json"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/upload.py:164",
+      "calls": [
+        "can_download",
+        "get"
+      ],
+      "call_targets": [
+        "UploadService.can_download",
+        "router.get"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/phan-doan",
+      "name": "upload_chunk",
+      "args": [
+        "file : json",
+        "uploadId : string",
+        "chunkIndex : int",
+        "totalChunks : int",
+        "filename : string",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/upload.py:177",
+      "calls": [
+        "enforce_quota",
+        "extend",
+        "is_file",
+        "lower",
+        "mkdir",
+        "object_path",
+        "open",
+        "post",
+        "read",
+        "read_limited",
+        "register_item",
+        "rmtree",
+        "rsplit",
+        "stat",
+        "validate_filename",
+        "validate_size",
+        "write"
+      ],
+      "call_targets": [
+        "UploadService.enforce_quota",
+        "UploadService.object_path",
+        "UploadService.read_limited",
+        "UploadService.register_item",
+        "UploadService.validate_filename",
+        "UploadService.validate_size",
+        "aiofiles.open",
+        "chunk_dir.mkdir",
+        "content.extend",
+        "filename.rsplit",
+        "part.is_file",
+        "part.stat",
+        "router.post",
+        "shutil.rmtree",
+        "stream.read",
+        "stream.write"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/yeu-cau/{token}",
+      "name": "upload_via_request",
+      "args": [
+        "token : string",
+        "file : json",
+        "password : string",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/upload.py:236",
+      "calls": [
+        "enforce_quota",
+        "file_size",
+        "post",
+        "register_item",
+        "upload_document",
+        "validate_request"
+      ],
+      "call_targets": [
+        "FileRequestService.validate_request",
+        "UploadService.enforce_quota",
+        "UploadService.file_size",
+        "UploadService.register_item",
+        "UploadService.upload_document",
+        "router.post"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/phien-ban/{file_id}",
+      "name": "create_file_version",
+      "args": [
+        "fileId : string",
+        "newUrl : string",
+        "newSize : int",
+        "currentUser : json"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/version.py:13",
+      "calls": [
+        "create_file_version",
+        "post"
+      ],
+      "call_targets": [
+        "VersionService.create_file_version",
+        "router.post"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/phien-ban/{file_id}",
+      "name": "get_file_versions",
+      "args": [
+        "fileId : string",
+        "currentUser : json"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/version.py:24",
+      "calls": [
+        "get",
+        "get_file_versions"
+      ],
+      "call_targets": [
+        "VersionService.get_file_versions",
+        "router.get"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/phien-ban/{file_id}/khoi-phuc/{version_id}",
+      "name": "restore_file_version",
+      "args": [
+        "fileId : string",
+        "versionId : string",
+        "currentUser : json"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/api/version.py:33",
+      "calls": [
+        "post",
+        "restore_file_version"
+      ],
+      "call_targets": [
+        "VersionService.restore_file_version",
+        "router.post"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/suc-khoe",
+      "name": "health_check",
+      "args": [],
+      "return": "json",
+      "line": "backend/cloud/src/main.py:73",
+      "calls": [
+        "get"
+      ],
+      "call_targets": [
+        "app.get"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/san-sang",
+      "name": "readiness_check",
+      "args": [],
+      "return": "json",
+      "line": "backend/cloud/src/main.py:78",
+      "calls": [
+        "command",
+        "exception",
+        "get",
+        "head_bucket",
+        "ping"
+      ],
+      "call_targets": [
+        "app.get",
+        "logger.exception",
+        "redis.ping",
+        "storage.head_bucket"
+      ]
+    }
+  ],
+  "service_methods": [
+    {
+      "name": "log_activity",
+      "args": [
+        "itemId : string",
+        "actorId : string",
+        "action : string",
+        "ipAddress : string",
+        "userAgent : string"
+      ],
+      "return": "Boolean",
+      "line": "backend/cloud/src/services/activity.py:13",
+      "file": "services/activity.py",
+      "owner": "ActivityService",
+      "calls": [
+        "error",
+        "insert",
+        "now",
+        "uuid4"
+      ],
+      "call_targets": [
+        "activity_repository.insert",
+        "datetime.now",
+        "logger.error",
+        "uuid.uuid4"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "get_item_activities",
+      "args": [
+        "itemId : string",
+        "limit : int"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/activity.py:37",
+      "file": "services/activity.py",
+      "owner": "ActivityService",
+      "calls": [
+        "append",
+        "list_for_item",
+        "pop"
+      ],
+      "call_targets": [
+        "a.pop",
+        "activity_repository.list_for_item",
+        "results.append"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "save_chunk",
+      "args": [
+        "uploadId : string",
+        "chunkIndex : int",
+        "totalChunks : int",
+        "filename : string",
+        "content : json",
+        "contentType : string",
+        "userId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/chunk.py:16",
+      "file": "services/chunk.py",
+      "owner": "ChunkService",
+      "calls": [
+        "extend",
+        "get_storage_quota",
+        "is_file",
+        "lower",
+        "mkdir",
+        "object_path",
+        "open",
+        "read",
+        "rmtree",
+        "rsplit",
+        "stat",
+        "write"
+      ],
+      "call_targets": [
+        "FileService.get_storage_quota",
+        "UploadService.object_path",
+        "aiofiles.open",
+        "chunk_dir.mkdir",
+        "combined.extend",
+        "filename.rsplit",
+        "part.is_file",
+        "part.stat",
+        "shutil.rmtree",
+        "stream.read",
+        "stream.write"
+      ],
+      "collections": []
+    },
+    {
+      "name": "generate_download_url",
+      "args": [
+        "fileId : string",
+        "ownerId : string",
+        "expiresIn : int"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/download.py:9",
+      "file": "services/download.py",
+      "owner": "DownloadService",
+      "calls": [
+        "find_one",
+        "generate_presigned_url",
+        "get"
+      ],
+      "call_targets": [
+        "client.generate_presigned_url",
+        "item.get",
+        "storage_repository.find_one"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "create_file_record",
+      "args": [
+        "item : json",
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/file.py:14",
+      "file": "services/file.py",
+      "owner": "FileService",
+      "calls": [
+        "find_one",
+        "insert",
+        "model_dump",
+        "startswith"
+      ],
+      "call_targets": [
+        "db_item.model_dump",
+        "item.model_dump",
+        "storage_repository.find_one",
+        "storage_repository.insert"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "get_file_by_id",
+      "args": [
+        "fileId : string",
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/file.py:43",
+      "file": "services/file.py",
+      "owner": "FileService",
+      "calls": [
+        "find_one"
+      ],
+      "call_targets": [
+        "storage_repository.find_one"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "update_file_metadata",
+      "args": [
+        "fileId : string",
+        "updateData : json",
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/file.py:52",
+      "file": "services/file.py",
+      "owner": "FileService",
+      "calls": [
+        "find_one_and_update",
+        "model_dump",
+        "now"
+      ],
+      "call_targets": [
+        "datetime.now",
+        "storage_repository.find_one_and_update",
+        "update_data.model_dump"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "rename_file",
+      "args": [
+        "fileId : string",
+        "newName : string",
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/file.py:65",
+      "file": "services/file.py",
+      "owner": "FileService",
+      "calls": [
+        "now",
+        "update_one"
+      ],
+      "call_targets": [
+        "datetime.now",
+        "storage_repository.update_one"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "move_file",
+      "args": [
+        "fileId : string",
+        "newParentId : string",
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/file.py:75",
+      "file": "services/file.py",
+      "owner": "FileService",
+      "calls": [
+        "find_one",
+        "now",
+        "update_one"
+      ],
+      "call_targets": [
+        "datetime.now",
+        "storage_repository.find_one",
+        "storage_repository.update_one"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "get_storage_quota",
+      "args": [
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/file.py:96",
+      "file": "services/file.py",
+      "owner": "FileService",
+      "calls": [],
+      "call_targets": [],
+      "collections": []
+    },
+    {
+      "name": "create_request",
+      "args": [
+        "req : json",
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/file_request.py:13",
+      "file": "services/file_request.py",
+      "owner": "FileRequestService",
+      "calls": [
+        "error",
+        "insert",
+        "now",
+        "token_urlsafe"
+      ],
+      "call_targets": [
+        "datetime.now",
+        "file_request_repository.insert",
+        "logger.error",
+        "secrets.token_urlsafe"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "validate_request",
+      "args": [
+        "token : string",
+        "password : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/file_request.py:45",
+      "file": "services/file_request.py",
+      "owner": "FileRequestService",
+      "calls": [
+        "error",
+        "find",
+        "get",
+        "now",
+        "replace"
+      ],
+      "call_targets": [
+        "datetime.now",
+        "doc.get",
+        "file_request_repository.find",
+        "logger.error"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "create_folder",
+      "args": [
+        "name : string",
+        "parentId : string",
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/folder.py:12",
+      "file": "services/folder.py",
+      "owner": "FolderService",
+      "calls": [
+        "find_one",
+        "insert",
+        "model_dump",
+        "now"
+      ],
+      "call_targets": [
+        "datetime.now",
+        "folder_item.model_dump",
+        "storage_repository.find_one",
+        "storage_repository.insert"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "get_folder_contents",
+      "args": [
+        "folderId : string",
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/folder.py:39",
+      "file": "services/folder.py",
+      "owner": "FolderService",
+      "calls": [
+        "find_many"
+      ],
+      "call_targets": [
+        "storage_repository.find_many"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "get_folder_tree",
+      "args": [
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/folder.py:44",
+      "file": "services/folder.py",
+      "owner": "FolderService",
+      "calls": [
+        "find_many"
+      ],
+      "call_targets": [
+        "storage_repository.find_many"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "rename_folder",
+      "args": [
+        "folderId : string",
+        "newName : string",
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/folder.py:49",
+      "file": "services/folder.py",
+      "owner": "FolderService",
+      "calls": [
+        "now",
+        "update_one"
+      ],
+      "call_targets": [
+        "datetime.now",
+        "storage_repository.update_one"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "move_folder",
+      "args": [
+        "folderId : string",
+        "newParentId : string",
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/folder.py:59",
+      "file": "services/folder.py",
+      "owner": "FolderService",
+      "calls": [
+        "find_one",
+        "get",
+        "now",
+        "update_one"
+      ],
+      "call_targets": [
+        "ancestor.get",
+        "datetime.now",
+        "storage_repository.find_one",
+        "storage_repository.update_one"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "serialize_internal",
+      "args": [
+        "value : json"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/internal_storage.py:10",
+      "file": "services/internal_storage.py",
+      "owner": null,
+      "calls": [
+        "isoformat",
+        "items"
+      ],
+      "call_targets": [
+        "value.isoformat",
+        "value.items"
+      ],
+      "collections": []
+    },
+    {
+      "name": "execute",
+      "args": [
+        "request : json"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/internal_storage.py:24",
+      "file": "services/internal_storage.py",
+      "owner": "InternalStorageService",
+      "calls": [
+        "find_many",
+        "find_one",
+        "get"
+      ],
+      "call_targets": [
+        "item.get",
+        "request.get",
+        "storage_repository.find_many",
+        "storage_repository.find_one"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "duplicate_item",
+      "args": [
+        "itemId : string",
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/search.py:13",
+      "file": "services/search.py",
+      "owner": "SearchService",
+      "calls": [
+        "find_one",
+        "get",
+        "insert",
+        "now",
+        "uuid4"
+      ],
+      "call_targets": [
+        "datetime.now",
+        "item.get",
+        "storage_repository.find_one",
+        "storage_repository.insert",
+        "uuid.uuid4"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "set_folder_color",
+      "args": [
+        "folderId : string",
+        "ownerId : string",
+        "colorHex : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/search.py:33",
+      "file": "services/search.py",
+      "owner": "SearchService",
+      "calls": [
+        "find_one",
+        "fullmatch",
+        "update_one"
+      ],
+      "call_targets": [
+        "re.fullmatch",
+        "storage_repository.find_one",
+        "storage_repository.update_one"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "update_item_tags",
+      "args": [
+        "itemId : string",
+        "ownerId : string",
+        "tags : json"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/search.py:47",
+      "file": "services/search.py",
+      "owner": "SearchService",
+      "calls": [
+        "find_one",
+        "fromkeys",
+        "lower",
+        "strip",
+        "update_one"
+      ],
+      "call_targets": [
+        "dict.fromkeys",
+        "storage_repository.find_one",
+        "storage_repository.update_one",
+        "t.strip"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "create_protected_share_link",
+      "args": [
+        "itemId : string",
+        "ownerId : string",
+        "password : string",
+        "expiresInHours : int"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/share.py:15",
+      "file": "services/share.py",
+      "owner": "ShareService",
+      "calls": [
+        "encode",
+        "find_one",
+        "hex",
+        "insert",
+        "now",
+        "scrypt",
+        "token_bytes",
+        "token_urlsafe"
+      ],
+      "call_targets": [
+        "datetime.now",
+        "hashlib.scrypt",
+        "password.encode",
+        "password_salt.hex",
+        "secrets.token_bytes",
+        "secrets.token_urlsafe",
+        "share_link_repository.insert",
+        "storage_repository.find_one"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "validate_protected_share_link",
+      "args": [
+        "token : string",
+        "password : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/share.py:46",
+      "file": "services/share.py",
+      "owner": "ShareService",
+      "calls": [
+        "compare_digest",
+        "delete",
+        "encode",
+        "find",
+        "find_one",
+        "fromhex",
+        "get",
+        "get_presigned_url",
+        "hex",
+        "now",
+        "replace",
+        "scrypt",
+        "update"
+      ],
+      "call_targets": [
+        "UploadService.get_presigned_url",
+        "bytes.fromhex",
+        "datetime.now",
+        "expires_at.replace",
+        "hashlib.scrypt",
+        "hmac.compare_digest",
+        "item.get",
+        "item.update",
+        "link.get",
+        "password.encode",
+        "share_link_repository.delete",
+        "share_link_repository.find",
+        "storage_repository.find_one"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "toggle_star_item",
+      "args": [
+        "itemId : string",
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/star.py:8",
+      "file": "services/star.py",
+      "owner": "StarService",
+      "calls": [
+        "find_one",
+        "get",
+        "update_one"
+      ],
+      "call_targets": [
+        "item.get",
+        "storage_repository.find_one",
+        "storage_repository.update_one"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "get_starred_items",
+      "args": [
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/star.py:21",
+      "file": "services/star.py",
+      "owner": "StarService",
+      "calls": [
+        "find_many"
+      ],
+      "call_targets": [
+        "storage_repository.find_many"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "create_item",
+      "args": [
+        "item : json",
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/storage.py:34",
+      "file": "services/storage.py",
+      "owner": "StorageService",
+      "calls": [
+        "find_one",
+        "get_item",
+        "head_object",
+        "insert",
+        "model_dump",
+        "startswith"
+      ],
+      "call_targets": [
+        "StorageService.get_item",
+        "client.head_object",
+        "db_item.model_dump",
+        "item.model_dump",
+        "storage_repository.find_one",
+        "storage_repository.insert"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "create_shortcut",
+      "args": [
+        "itemId : string",
+        "parentId : string",
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/storage.py:69",
+      "file": "services/storage.py",
+      "owner": "StorageService",
+      "calls": [
+        "get_accessible_item",
+        "get_item",
+        "insert",
+        "model_dump"
+      ],
+      "call_targets": [
+        "StorageService.get_accessible_item",
+        "StorageService.get_item",
+        "shortcut.model_dump",
+        "storage_repository.insert"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "get_items_by_parent",
+      "args": [
+        "parentId : string",
+        "ownerId : string",
+        "isTrashed : Boolean",
+        "isStarred : Boolean",
+        "tag : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/storage.py:93",
+      "file": "services/storage.py",
+      "owner": "StorageService",
+      "calls": [
+        "find_many",
+        "get_accessible_item"
+      ],
+      "call_targets": [
+        "StorageService.get_accessible_item",
+        "storage_repository.find_many"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "search_items",
+      "args": [
+        "queryStr : string",
+        "ownerId : string",
+        "typeFilter : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/storage.py:118",
+      "file": "services/storage.py",
+      "owner": "StorageService",
+      "calls": [
+        "find_many"
+      ],
+      "call_targets": [
+        "storage_repository.find_many"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "get_item",
+      "args": [
+        "itemId : string",
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/storage.py:134",
+      "file": "services/storage.py",
+      "owner": "StorageService",
+      "calls": [
+        "find_one"
+      ],
+      "call_targets": [
+        "storage_repository.find_one"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "get_accessible_item",
+      "args": [
+        "itemId : string",
+        "userId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/storage.py:144",
+      "file": "services/storage.py",
+      "owner": "StorageService",
+      "calls": [
+        "find_one"
+      ],
+      "call_targets": [
+        "storage_repository.find_one"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "update_item",
+      "args": [
+        "itemId : string",
+        "ownerId : string",
+        "updateData : json"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/storage.py:155",
+      "file": "services/storage.py",
+      "owner": "StorageService",
+      "calls": [
+        "extend",
+        "find_many",
+        "find_one_and_update",
+        "get_item",
+        "model_dump",
+        "now",
+        "update_many"
+      ],
+      "call_targets": [
+        "StorageService.get_item",
+        "datetime.now",
+        "descendant_ids.extend",
+        "storage_repository.find_many",
+        "storage_repository.find_one_and_update",
+        "storage_repository.update_many",
+        "update_data.model_dump"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "copy_item",
+      "args": [
+        "itemId : string",
+        "ownerId : string",
+        "targetParentId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/storage.py:228",
+      "file": "services/storage.py",
+      "owner": "StorageService",
+      "calls": [
+        "_copy_children",
+        "get_item",
+        "insert",
+        "model_dump",
+        "pop"
+      ],
+      "call_targets": [
+        "StorageService._copy_children",
+        "StorageService.get_item",
+        "item.model_dump",
+        "new_item.model_dump",
+        "new_item_dict.pop",
+        "storage_repository.insert"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "bulk_action",
+      "args": [
+        "action : string",
+        "itemIds : json",
+        "targetParentId : string",
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/storage.py:261",
+      "file": "services/storage.py",
+      "owner": "StorageService",
+      "calls": [
+        "copy_item",
+        "update_item"
+      ],
+      "call_targets": [
+        "StorageService.copy_item",
+        "StorageService.update_item"
+      ],
+      "collections": []
+    },
+    {
+      "name": "set_starred",
+      "args": [
+        "itemId : string",
+        "isStarred : Boolean",
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/storage.py:298",
+      "file": "services/storage.py",
+      "owner": "StorageService",
+      "calls": [
+        "find_one_and_update",
+        "get_item",
+        "log_activity",
+        "now"
+      ],
+      "call_targets": [
+        "ActivityService.log_activity",
+        "StorageService.get_item",
+        "datetime.now",
+        "storage_repository.find_one_and_update"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "set_tags_and_color",
+      "args": [
+        "itemId : string",
+        "tags : json",
+        "color : string",
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/storage.py:315",
+      "file": "services/storage.py",
+      "owner": "StorageService",
+      "calls": [
+        "find_one_and_update",
+        "get_item",
+        "log_activity",
+        "now"
+      ],
+      "call_targets": [
+        "ActivityService.log_activity",
+        "StorageService.get_item",
+        "datetime.now",
+        "storage_repository.find_one_and_update"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "get_storage_quota",
+      "args": [
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/storage_analytics.py:4",
+      "file": "services/storage_analytics.py",
+      "owner": null,
+      "calls": [
+        "aggregate",
+        "get"
+      ],
+      "call_targets": [
+        "storage_repository.aggregate"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "get_quota_analytics",
+      "args": [
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/storage_analytics.py:38",
+      "file": "services/storage_analytics.py",
+      "owner": null,
+      "calls": [
+        "count",
+        "endswith",
+        "find_many",
+        "get",
+        "items",
+        "lower"
+      ],
+      "call_targets": [
+        "categories.items",
+        "file.get",
+        "item.get",
+        "name.endswith",
+        "storage_repository.count",
+        "storage_repository.find_many",
+        "version.get"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "object_prefixes",
+      "args": [
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/storage_paths.py:1",
+      "file": "services/storage_paths.py",
+      "owner": null,
+      "calls": [],
+      "call_targets": [],
+      "collections": []
+    },
+    {
+      "name": "get_public_item",
+      "args": [
+        "shareToken : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/storage_sharing.py:11",
+      "file": "services/storage_sharing.py",
+      "owner": null,
+      "calls": [
+        "find_one"
+      ],
+      "call_targets": [
+        "storage_repository.find_one"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "share_item",
+      "args": [
+        "itemId : string",
+        "email : string",
+        "role : string",
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/storage_sharing.py:18",
+      "file": "services/storage_sharing.py",
+      "owner": null,
+      "calls": [
+        "find_one",
+        "get_by_email",
+        "update_one"
+      ],
+      "call_targets": [
+        "AccountClient.get_by_email",
+        "storage_repository.find_one",
+        "storage_repository.update_one"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "get_recent_items",
+      "args": [
+        "ownerId : string",
+        "limit : int"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/storage_sharing.py:46",
+      "file": "services/storage_sharing.py",
+      "owner": null,
+      "calls": [
+        "find_many"
+      ],
+      "call_targets": [
+        "storage_repository.find_many"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "share_internal",
+      "args": [
+        "itemId : string",
+        "email : string",
+        "role : string",
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/storage_sharing.py:59",
+      "file": "services/storage_sharing.py",
+      "owner": null,
+      "calls": [],
+      "call_targets": [],
+      "collections": []
+    },
+    {
+      "name": "revoke_internal_share",
+      "args": [
+        "itemId : string",
+        "targetUserId : string",
+        "ownerId : string"
+      ],
+      "return": "Boolean",
+      "line": "backend/cloud/src/services/storage_sharing.py:63",
+      "file": "services/storage_sharing.py",
+      "owner": null,
+      "calls": [
+        "find_one",
+        "log_activity",
+        "update_one"
+      ],
+      "call_targets": [
+        "ActivityService.log_activity",
+        "storage_repository.find_one",
+        "storage_repository.update_one"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "get_shared_with_me_items",
+      "args": [
+        "userId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/storage_sharing.py:75",
+      "file": "services/storage_sharing.py",
+      "owner": null,
+      "calls": [
+        "find_many"
+      ],
+      "call_targets": [
+        "storage_repository.find_many"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "delete_item",
+      "args": [
+        "itemId : string",
+        "ownerId : string"
+      ],
+      "return": "Boolean",
+      "line": "backend/cloud/src/services/storage_trash.py:35",
+      "file": "services/storage_trash.py",
+      "owner": null,
+      "calls": [
+        "append",
+        "delete_many",
+        "find_many"
+      ],
+      "call_targets": [
+        "items.append",
+        "pending.append",
+        "storage_repository.delete_many",
+        "storage_repository.find_many"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "get_trashed_items",
+      "args": [
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/storage_trash.py:66",
+      "file": "services/storage_trash.py",
+      "owner": null,
+      "calls": [
+        "find_many"
+      ],
+      "call_targets": [
+        "storage_repository.find_many"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "restore_from_trash",
+      "args": [
+        "itemId : string",
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/storage_trash.py:74",
+      "file": "services/storage_trash.py",
+      "owner": null,
+      "calls": [
+        "extend",
+        "find_many",
+        "find_one",
+        "get",
+        "log_activity",
+        "now",
+        "update_many"
+      ],
+      "call_targets": [
+        "ActivityService.log_activity",
+        "child.get",
+        "datetime.now",
+        "identifiers.extend",
+        "storage_repository.find_many",
+        "storage_repository.find_one",
+        "storage_repository.update_many"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "empty_trash",
+      "args": [
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/storage_trash.py:99",
+      "file": "services/storage_trash.py",
+      "owner": null,
+      "calls": [
+        "delete_many",
+        "find_many",
+        "log_activity"
+      ],
+      "call_targets": [
+        "ActivityService.log_activity",
+        "storage_repository.delete_many",
+        "storage_repository.find_many"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "add_version",
+      "args": [
+        "itemId : string",
+        "ownerId : string",
+        "url : string",
+        "size : int"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/storage_versions.py:32",
+      "file": "services/storage_versions.py",
+      "owner": null,
+      "calls": [
+        "find_one",
+        "get",
+        "head_object",
+        "model_dump",
+        "now",
+        "replace_version",
+        "startswith"
+      ],
+      "call_targets": [
+        "client.head_object",
+        "datetime.now",
+        "old_version.model_dump",
+        "registered.get",
+        "storage_repository.find_one",
+        "storage_repository.replace_version",
+        "url.startswith"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "lock_item",
+      "args": [
+        "itemId : string",
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/storage_versions.py:81",
+      "file": "services/storage_versions.py",
+      "owner": null,
+      "calls": [
+        "find_one_and_update",
+        "now"
+      ],
+      "call_targets": [
+        "datetime.now",
+        "storage_repository.find_one_and_update"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "unlock_item",
+      "args": [
+        "itemId : string",
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/storage_versions.py:102",
+      "file": "services/storage_versions.py",
+      "owner": null,
+      "calls": [
+        "find_one_and_update"
+      ],
+      "call_targets": [
+        "storage_repository.find_one_and_update"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "get_versions",
+      "args": [
+        "itemId : string",
+        "userId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/storage_versions.py:119",
+      "file": "services/storage_versions.py",
+      "owner": null,
+      "calls": [
+        "extend"
+      ],
+      "call_targets": [
+        "results.extend"
+      ],
+      "collections": []
+    },
+    {
+      "name": "rollback_version",
+      "args": [
+        "itemId : string",
+        "versionId : string",
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/storage_versions.py:148",
+      "file": "services/storage_versions.py",
+      "owner": null,
+      "calls": [
+        "append",
+        "find_one_and_update",
+        "insert",
+        "log_activity",
+        "model_dump",
+        "now"
+      ],
+      "call_targets": [
+        "ActivityService.log_activity",
+        "datetime.now",
+        "remaining_versions.append",
+        "remaining_versions.insert",
+        "storage_repository.find_one_and_update",
+        "version.model_dump"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "move_to_trash",
+      "args": [
+        "itemId : string",
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/trash.py:10",
+      "file": "services/trash.py",
+      "owner": "TrashService",
+      "calls": [
+        "now",
+        "update_one"
+      ],
+      "call_targets": [
+        "datetime.now",
+        "storage_repository.update_one"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "restore_from_trash",
+      "args": [
+        "itemId : string",
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/trash.py:22",
+      "file": "services/trash.py",
+      "owner": "TrashService",
+      "calls": [
+        "update_one"
+      ],
+      "call_targets": [
+        "storage_repository.update_one"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "empty_trash",
+      "args": [
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/trash.py:32",
+      "file": "services/trash.py",
+      "owner": "TrashService",
+      "calls": [
+        "delete_many"
+      ],
+      "call_targets": [
+        "storage_repository.delete_many"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "auto_purge_expired_trash",
+      "args": [
+        "ownerId : string",
+        "days : int"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/trash.py:43",
+      "file": "services/trash.py",
+      "owner": "TrashService",
+      "calls": [
+        "delete_many",
+        "now"
+      ],
+      "call_targets": [
+        "datetime.now",
+        "storage_repository.delete_many"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "validate_filename",
+      "args": [
+        "filename : string",
+        "contentType : string",
+        "imageOnly : Boolean"
+      ],
+      "return": "string",
+      "line": "backend/cloud/src/services/upload.py:59",
+      "file": "services/upload.py",
+      "owner": "UploadService",
+      "calls": [
+        "basename",
+        "lower",
+        "rsplit",
+        "startswith"
+      ],
+      "call_targets": [
+        "content_type.lower",
+        "filename.rsplit"
+      ],
+      "collections": []
+    },
+    {
+      "name": "read_limited",
+      "args": [
+        "file : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/upload.py:77",
+      "file": "services/upload.py",
+      "owner": "UploadService",
+      "calls": [
+        "read"
+      ],
+      "call_targets": [
+        "file.read"
+      ],
+      "collections": []
+    },
+    {
+      "name": "object_path",
+      "args": [
+        "ext : string",
+        "contentType : string",
+        "ownerId : string",
+        "isSystem : Boolean",
+        "isMessageAttachment : Boolean",
+        "isTemporary : Boolean"
+      ],
+      "return": "string",
+      "line": "backend/cloud/src/services/upload.py:86",
+      "file": "services/upload.py",
+      "owner": "UploadService",
+      "calls": [
+        "lower",
+        "startswith",
+        "uuid4"
+      ],
+      "call_targets": [
+        "content_type.lower",
+        "normalized_type.startswith",
+        "uuid.uuid4"
+      ],
+      "collections": []
+    },
+    {
+      "name": "upload_image",
+      "args": [
+        "file : string",
+        "ownerId : string",
+        "isSystem : Boolean"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/upload.py:113",
+      "file": "services/upload.py",
+      "owner": "UploadService",
+      "calls": [
+        "exception",
+        "object_path",
+        "read_limited",
+        "validate_filename"
+      ],
+      "call_targets": [
+        "UploadService.object_path",
+        "UploadService.read_limited",
+        "UploadService.validate_filename",
+        "logger.exception"
+      ],
+      "collections": []
+    },
+    {
+      "name": "upload_document",
+      "args": [
+        "file : string",
+        "ownerId : string",
+        "isSystem : Boolean",
+        "isMessageAttachment : Boolean",
+        "isTemporary : Boolean"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/upload.py:133",
+      "file": "services/upload.py",
+      "owner": "UploadService",
+      "calls": [
+        "exception",
+        "object_path",
+        "read_limited",
+        "validate_filename"
+      ],
+      "call_targets": [
+        "UploadService.object_path",
+        "UploadService.read_limited",
+        "UploadService.validate_filename",
+        "logger.exception"
+      ],
+      "collections": []
+    },
+    {
+      "name": "get_presigned_url",
+      "args": [
+        "filePath : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/upload.py:162",
+      "file": "services/upload.py",
+      "owner": "UploadService",
+      "calls": [
+        "exception",
+        "startswith"
+      ],
+      "call_targets": [
+        "file_path.startswith",
+        "logger.exception"
+      ],
+      "collections": []
+    },
+    {
+      "name": "get_presigned_upload_url",
+      "args": [
+        "filename : string",
+        "contentType : string",
+        "ownerId : string",
+        "isSystem : Boolean",
+        "isMessageAttachment : Boolean",
+        "isTemporary : Boolean"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/upload.py:172",
+      "file": "services/upload.py",
+      "owner": "UploadService",
+      "calls": [
+        "exception",
+        "object_path",
+        "validate_filename"
+      ],
+      "call_targets": [
+        "UploadService.object_path",
+        "UploadService.validate_filename",
+        "logger.exception"
+      ],
+      "collections": []
+    },
+    {
+      "name": "validate_svg",
+      "args": [
+        "file : string"
+      ],
+      "return": "void",
+      "line": "backend/cloud/src/services/upload.py:194",
+      "file": "services/upload.py",
+      "owner": "UploadService",
+      "calls": [
+        "decode",
+        "endswith",
+        "lower",
+        "read",
+        "search",
+        "seek"
+      ],
+      "call_targets": [
+        "content.decode",
+        "file.read",
+        "file.seek",
+        "re.search"
+      ],
+      "collections": []
+    },
+    {
+      "name": "file_size",
+      "args": [
+        "file : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/upload.py:205",
+      "file": "services/upload.py",
+      "owner": "UploadService",
+      "calls": [
+        "seek",
+        "tell",
+        "validate_size"
+      ],
+      "call_targets": [
+        "UploadService.validate_size",
+        "file.seek"
+      ],
+      "collections": []
+    },
+    {
+      "name": "validate_size",
+      "args": [
+        "size : int"
+      ],
+      "return": "void",
+      "line": "backend/cloud/src/services/upload.py:214",
+      "file": "services/upload.py",
+      "owner": "UploadService",
+      "calls": [],
+      "call_targets": [],
+      "collections": []
+    },
+    {
+      "name": "enforce_quota",
+      "args": [
+        "userId : string",
+        "additionalSize : int"
+      ],
+      "return": "void",
+      "line": "backend/cloud/src/services/upload.py:221",
+      "file": "services/upload.py",
+      "owner": "UploadService",
+      "calls": [
+        "get_storage_quota"
+      ],
+      "call_targets": [
+        "StorageService.get_storage_quota"
+      ],
+      "collections": []
+    },
+    {
+      "name": "register_item",
+      "args": [
+        "result : json",
+        "userId : string",
+        "parentId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/upload.py:227",
+      "file": "services/upload.py",
+      "owner": "UploadService",
+      "calls": [
+        "create_item"
+      ],
+      "call_targets": [
+        "StorageService.create_item"
+      ],
+      "collections": []
+    },
+    {
+      "name": "can_download",
+      "args": [
+        "filePath : string",
+        "userId : string",
+        "isSystemAdmin : Boolean"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/upload.py:241",
+      "file": "services/upload.py",
+      "owner": "UploadService",
+      "calls": [
+        "find_one",
+        "startswith"
+      ],
+      "call_targets": [
+        "file_path.startswith",
+        "storage_repository.find_one"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "reserve",
+      "args": [
+        "filePath : string",
+        "reservation : json"
+      ],
+      "return": "void",
+      "line": "backend/cloud/src/services/upload.py:261",
+      "file": "services/upload.py",
+      "owner": "UploadService",
+      "calls": [
+        "reserve"
+      ],
+      "call_targets": [
+        "upload_reservation_repository.reserve"
+      ],
+      "collections": []
+    },
+    {
+      "name": "confirm_reservation",
+      "args": [
+        "filePath : string",
+        "expected : json"
+      ],
+      "return": "void",
+      "line": "backend/cloud/src/services/upload.py:265",
+      "file": "services/upload.py",
+      "owner": "UploadService",
+      "calls": [
+        "consume",
+        "loads"
+      ],
+      "call_targets": [
+        "json.loads",
+        "upload_reservation_repository.consume"
+      ],
+      "collections": []
+    },
+    {
+      "name": "verify_stored_object",
+      "args": [
+        "filePath : string",
+        "size : int",
+        "contentType : string"
+      ],
+      "return": "void",
+      "line": "backend/cloud/src/services/upload.py:275",
+      "file": "services/upload.py",
+      "owner": "UploadService",
+      "calls": [
+        "delete_object",
+        "get",
+        "head_object",
+        "lower",
+        "split"
+      ],
+      "call_targets": [
+        "content_type.lower",
+        "metadata.get",
+        "storage.delete_object",
+        "storage.head_object"
+      ],
+      "collections": []
+    },
+    {
+      "name": "record_temporary_file",
+      "args": [
+        "ownerId : string",
+        "filePath : string",
+        "filename : string"
+      ],
+      "return": "void",
+      "line": "backend/cloud/src/services/upload.py:287",
+      "file": "services/upload.py",
+      "owner": "UploadService",
+      "calls": [
+        "insert",
+        "now"
+      ],
+      "call_targets": [
+        "datetime.now",
+        "temporary_file_repository.insert"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "create_file_version",
+      "args": [
+        "fileId : string",
+        "ownerId : string",
+        "newUrl : string",
+        "newSize : int"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/version.py:8",
+      "file": "services/version.py",
+      "owner": "VersionService",
+      "calls": [
+        "add_version"
+      ],
+      "call_targets": [
+        "StorageService.add_version"
+      ],
+      "collections": []
+    },
+    {
+      "name": "get_file_versions",
+      "args": [
+        "fileId : string",
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/version.py:13",
+      "file": "services/version.py",
+      "owner": "VersionService",
+      "calls": [
+        "get_item",
+        "model_dump"
+      ],
+      "call_targets": [
+        "StorageService.get_item",
+        "version.model_dump"
+      ],
+      "collections": []
+    },
+    {
+      "name": "restore_file_version",
+      "args": [
+        "fileId : string",
+        "versionId : string",
+        "ownerId : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/services/version.py:20",
+      "file": "services/version.py",
+      "owner": "VersionService",
+      "calls": [
+        "add_version",
+        "get_item"
+      ],
+      "call_targets": [
+        "StorageService.add_version",
+        "StorageService.get_item"
+      ],
+      "collections": []
+    }
+  ],
+  "repository_methods": [
+    {
+      "name": "collection",
+      "args": [],
+      "return": "json",
+      "line": "backend/cloud/src/repositories/storage.py:11",
+      "file": "repositories/storage.py",
+      "owner": "StorageRepository",
+      "calls": [],
+      "call_targets": [],
+      "collections": []
+    },
+    {
+      "name": "find_one",
+      "args": [
+        "query : json",
+        "projection : json"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/repositories/storage.py:14",
+      "file": "repositories/storage.py",
+      "owner": "StorageRepository",
+      "calls": [
+        "find_one"
+      ],
+      "call_targets": [],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "find_many",
+      "args": [
+        "query : json",
+        "projection : json",
+        "sort : json",
+        "limit : int"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/repositories/storage.py:17",
+      "file": "repositories/storage.py",
+      "owner": "StorageRepository",
+      "calls": [
+        "find",
+        "limit",
+        "sort",
+        "to_list"
+      ],
+      "call_targets": [
+        "cursor.limit",
+        "cursor.sort",
+        "cursor.to_list"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "insert",
+      "args": [
+        "document : json"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/repositories/storage.py:31",
+      "file": "repositories/storage.py",
+      "owner": "StorageRepository",
+      "calls": [
+        "insert_one"
+      ],
+      "call_targets": [],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "update_one",
+      "args": [
+        "query : json",
+        "update : json"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/repositories/storage.py:34",
+      "file": "repositories/storage.py",
+      "owner": "StorageRepository",
+      "calls": [
+        "update_one"
+      ],
+      "call_targets": [],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "update_many",
+      "args": [
+        "query : json",
+        "update : json"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/repositories/storage.py:37",
+      "file": "repositories/storage.py",
+      "owner": "StorageRepository",
+      "calls": [
+        "update_many"
+      ],
+      "call_targets": [],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "find_one_and_update",
+      "args": [
+        "query : json",
+        "update : json"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/repositories/storage.py:40",
+      "file": "repositories/storage.py",
+      "owner": "StorageRepository",
+      "calls": [
+        "find_one_and_update"
+      ],
+      "call_targets": [],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "delete_one",
+      "args": [
+        "query : json"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/repositories/storage.py:47",
+      "file": "repositories/storage.py",
+      "owner": "StorageRepository",
+      "calls": [
+        "delete_one"
+      ],
+      "call_targets": [],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "delete_many",
+      "args": [
+        "query : json"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/repositories/storage.py:50",
+      "file": "repositories/storage.py",
+      "owner": "StorageRepository",
+      "calls": [
+        "delete_many"
+      ],
+      "call_targets": [],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "count",
+      "args": [
+        "query : json"
+      ],
+      "return": "int",
+      "line": "backend/cloud/src/repositories/storage.py:53",
+      "file": "repositories/storage.py",
+      "owner": "StorageRepository",
+      "calls": [
+        "count_documents"
+      ],
+      "call_targets": [],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "aggregate",
+      "args": [
+        "pipeline : json"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/repositories/storage.py:56",
+      "file": "repositories/storage.py",
+      "owner": "StorageRepository",
+      "calls": [
+        "aggregate",
+        "to_list"
+      ],
+      "call_targets": [],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "replace_version",
+      "args": [
+        "itemId : string",
+        "ownerId : string",
+        "update : json",
+        "registeredId : json"
+      ],
+      "return": "void",
+      "line": "backend/cloud/src/repositories/storage.py:59",
+      "file": "repositories/storage.py",
+      "owner": "StorageRepository",
+      "calls": [
+        "delete_one",
+        "start_session",
+        "start_transaction",
+        "update_one"
+      ],
+      "call_targets": [
+        "session.start_transaction"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "collection",
+      "args": [],
+      "return": "json",
+      "line": "backend/cloud/src/repositories/storage.py:82",
+      "file": "repositories/storage.py",
+      "owner": "ActivityRepository",
+      "calls": [],
+      "call_targets": [],
+      "collections": []
+    },
+    {
+      "name": "insert",
+      "args": [
+        "document : json"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/repositories/storage.py:85",
+      "file": "repositories/storage.py",
+      "owner": "ActivityRepository",
+      "calls": [
+        "insert_one"
+      ],
+      "call_targets": [],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "list_for_item",
+      "args": [
+        "itemId : string",
+        "limit : int"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/repositories/storage.py:88",
+      "file": "repositories/storage.py",
+      "owner": "ActivityRepository",
+      "calls": [
+        "find",
+        "limit",
+        "sort",
+        "to_list"
+      ],
+      "call_targets": [
+        "cursor.to_list"
+      ],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "collection",
+      "args": [],
+      "return": "json",
+      "line": "backend/cloud/src/repositories/storage.py:95",
+      "file": "repositories/storage.py",
+      "owner": "ShareLinkRepository",
+      "calls": [],
+      "call_targets": [],
+      "collections": []
+    },
+    {
+      "name": "insert",
+      "args": [
+        "document : json"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/repositories/storage.py:98",
+      "file": "repositories/storage.py",
+      "owner": "ShareLinkRepository",
+      "calls": [
+        "insert_one"
+      ],
+      "call_targets": [],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "find",
+      "args": [
+        "token : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/repositories/storage.py:101",
+      "file": "repositories/storage.py",
+      "owner": "ShareLinkRepository",
+      "calls": [
+        "find_one"
+      ],
+      "call_targets": [],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "delete",
+      "args": [
+        "token : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/repositories/storage.py:104",
+      "file": "repositories/storage.py",
+      "owner": "ShareLinkRepository",
+      "calls": [
+        "delete_one"
+      ],
+      "call_targets": [],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "collection",
+      "args": [],
+      "return": "json",
+      "line": "backend/cloud/src/repositories/storage.py:110",
+      "file": "repositories/storage.py",
+      "owner": "FileRequestRepository",
+      "calls": [],
+      "call_targets": [],
+      "collections": []
+    },
+    {
+      "name": "insert",
+      "args": [
+        "document : json"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/repositories/storage.py:113",
+      "file": "repositories/storage.py",
+      "owner": "FileRequestRepository",
+      "calls": [
+        "insert_one"
+      ],
+      "call_targets": [],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "find",
+      "args": [
+        "token : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/repositories/storage.py:116",
+      "file": "repositories/storage.py",
+      "owner": "FileRequestRepository",
+      "calls": [
+        "find_one"
+      ],
+      "call_targets": [],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "collection",
+      "args": [],
+      "return": "json",
+      "line": "backend/cloud/src/repositories/storage.py:122",
+      "file": "repositories/storage.py",
+      "owner": "TemporaryFileRepository",
+      "calls": [],
+      "call_targets": [],
+      "collections": []
+    },
+    {
+      "name": "insert",
+      "args": [
+        "document : json"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/repositories/storage.py:125",
+      "file": "repositories/storage.py",
+      "owner": "TemporaryFileRepository",
+      "calls": [
+        "insert_one"
+      ],
+      "call_targets": [],
+      "collections": [
+        "temp_chat_files"
+      ]
+    },
+    {
+      "name": "key",
+      "args": [
+        "filePath : string"
+      ],
+      "return": "string",
+      "line": "backend/cloud/src/repositories/storage.py:131",
+      "file": "repositories/storage.py",
+      "owner": "UploadReservationRepository",
+      "calls": [],
+      "call_targets": [],
+      "collections": []
+    },
+    {
+      "name": "reserve",
+      "args": [
+        "filePath : string",
+        "ttlSeconds : int",
+        "reservation : json"
+      ],
+      "return": "void",
+      "line": "backend/cloud/src/repositories/storage.py:134",
+      "file": "repositories/storage.py",
+      "owner": "UploadReservationRepository",
+      "calls": [
+        "dumps",
+        "key",
+        "setex"
+      ],
+      "call_targets": [
+        "json.dumps",
+        "redis.setex",
+        "self.key"
+      ],
+      "collections": []
+    },
+    {
+      "name": "consume",
+      "args": [
+        "filePath : string"
+      ],
+      "return": "json",
+      "line": "backend/cloud/src/repositories/storage.py:137",
+      "file": "repositories/storage.py",
+      "owner": "UploadReservationRepository",
+      "calls": [
+        "execute_command",
+        "get_client",
+        "key"
+      ],
+      "call_targets": [
+        "redis.get_client",
+        "self.key"
+      ],
+      "collections": []
+    }
+  ],
+  "frontend": {
+    "pages": [],
+    "service_functions": [
+      {
+        "name": "uploadAssetAPI",
+        "file": "frontend/features/cloud/services/upload.service.js"
+      }
+    ],
+    "page_calls": []
+  },
+  "references": [],
+  "indexes": [
+    {
+      "at": "backend/cloud/src/core/infrastructure/database.py:35",
+      "expression": "db['storage_items'].create_index([('owner_id', 1), ('parent_id', 1), ('is_trashed', 1)], background=True)"
+    },
+    {
+      "at": "backend/cloud/src/core/infrastructure/database.py:38",
+      "expression": "db['storage_items'].create_index([('shared_with.user_id', 1), ('parent_id', 1), ('is_trashed', 1)], background=True)"
+    },
+    {
+      "at": "backend/cloud/src/core/infrastructure/database.py:41",
+      "expression": "db['storage_items'].create_index([('url', 1)], background=True)"
+    },
+    {
+      "at": "backend/cloud/src/core/infrastructure/database.py:42",
+      "expression": "db['storage_items'].create_index([('share_token', 1)], unique=True, partialFilterExpression={'share_token': {'$type': 'string'}}, background=True)"
+    },
+    {
+      "at": "backend/cloud/src/core/infrastructure/database.py:48",
+      "expression": "db['storage_items'].create_index([('target_id', 1)], background=True)"
+    },
+    {
+      "at": "backend/cloud/src/core/infrastructure/database.py:49",
+      "expression": "db['storage_items'].create_index([('owner_id', 1), ('is_trashed', 1), ('updated_at', -1)], background=True)"
+    },
+    {
+      "at": "backend/cloud/src/core/infrastructure/database.py:52",
+      "expression": "db['temp_chat_files'].create_index('expires_at', expireAfterSeconds=0)"
+    },
+    {
+      "at": "backend/cloud/src/core/infrastructure/database.py:53",
+      "expression": "db['storage_share_links'].create_index('expires_at', expireAfterSeconds=0)"
+    }
+  ],
+  "external_references": []
+}

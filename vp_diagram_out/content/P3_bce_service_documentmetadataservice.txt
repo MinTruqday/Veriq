@@ -1,0 +1,11 @@
+UML Class Diagram (Boundary-Control-Entity analysis)
+Create the BCE class diagram for 'content', group 'service_DocumentMetadataService'. Use English PascalCase names. Use stereotypes <<boundary>>, <<control>>, <<entity>>. Do not connect boundaries directly to entities.
+Class 'Ctrl_DocumentMetadataService' <<control>>: + GetDocumentAnalytics(documentId : string, currentUser : string) : json; + GetDocumentAcademic(documentId : string, currentUser : string) : json; + GetApprovalQueue(cursor : string, limit : int) : json; + GetTrendingDocuments(limit : int) : json; + GetSuggestedDocuments(limit : int) : json; + FormatDate(value : string) : json.
+Class 'Document' <<entity>>: - DocumentId : string; + UpdateOne() : json; + FindOne() : json; + InsertOne() : json; + InsertOneIfUnique(document : json) : json; + FindOneAndUpdate(query : json, update : json, upsert : Boolean) : json; + UpdateMany() : json; + DeleteOne() : json; + CountDocuments() : json; + Find() : json.
+Control dependency: 'Ctrl_DocumentMetadataService' to 'Document', multiplicity at control: 1, multiplicity at entity: 1, navigable from control to entity.
+Class 'WorkspaceFolder' <<entity>>: - WorkspaceFolderId : string; + FindOne() : json; + InsertOne() : json; + DeleteOne() : json.
+Control dependency: 'Ctrl_DocumentMetadataService' to 'WorkspaceFolder', multiplicity at control: 1, multiplicity at entity: 1, navigable from control to entity.
+Include EVERY class, attribute, operation and relationship listed above, exactly as named. Do not omit, merge, rename, simplify, summarize or add anything. Do not invent extra classes, attributes or relationships. If something does not fit, keep it and let the layout grow instead of dropping it. Totals: 3 classes, 2 relationships, 2 attributes.
+
+Checklist: classes=3; relationships=2; attributes=2.
+Correction prompt: Fix only the following items and keep everything else unchanged: [insert verified discrepancy].

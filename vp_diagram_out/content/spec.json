@@ -1,0 +1,4442 @@
+{
+  "service": "content",
+  "collections": {
+    "documents": {
+      "fields": {
+        "artifact_metadata": {
+          "type": {
+            "raw": "Optional[ArtifactMetadata]",
+            "type": "json",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/content/src/schemas/document.py:76"
+          ]
+        },
+        "category": {
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/content/src/schemas/document.py:66"
+          ]
+        },
+        "content": {
+          "type": {
+            "raw": "Optional[Any]",
+            "type": "json",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/content/src/schemas/document.py:63"
+          ]
+        },
+        "content_format": {
+          "type": {
+            "raw": "Optional[DocumentContentFormat]",
+            "type": "json",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/content/src/schemas/document.py:64"
+          ]
+        },
+        "content_hash": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "string",
+            "nullable": false
+          },
+          "evidence": [
+            "backend/content/src/core/infrastructure/database.py:75"
+          ]
+        },
+        "cover_url": {
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/content/src/schemas/document.py:60"
+          ]
+        },
+        "created_at": {
+          "type": {
+            "raw": "datetime",
+            "type": "date",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/content/src/schemas/document.py:151"
+          ]
+        },
+        "creator_id": {
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/content/src/schemas/document.py:149"
+          ]
+        },
+        "deleted_at": {
+          "type": {
+            "raw": "Optional[datetime]",
+            "type": "date",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/content/src/schemas/document.py:70"
+          ]
+        },
+        "description": {
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/content/src/schemas/document.py:59"
+          ]
+        },
+        "draft_content": {
+          "type": {
+            "raw": "Optional[Any]",
+            "type": "json",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/content/src/schemas/document.py:73"
+          ]
+        },
+        "file_url": {
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/content/src/schemas/document.py:61"
+          ]
+        },
+        "folder_id": {
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/content/src/schemas/document.py:72"
+          ]
+        },
+        "indexing_attempt_id": {
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/content/src/schemas/document.py:154"
+          ]
+        },
+        "indexing_lease_token": {
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/content/src/schemas/document.py:155"
+          ]
+        },
+        "indexing_lease_until": {
+          "type": {
+            "raw": "Optional[datetime]",
+            "type": "date",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/content/src/schemas/document.py:156"
+          ]
+        },
+        "is_deleted": {
+          "type": {
+            "raw": "bool",
+            "type": "Boolean",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/content/src/schemas/document.py:69"
+          ]
+        },
+        "pages_count": {
+          "type": {
+            "raw": "Optional[int]",
+            "type": "int",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/content/src/schemas/document.py:67"
+          ]
+        },
+        "preview_pages": {
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/content/src/schemas/document.py:68"
+          ]
+        },
+        "publisher_name": {
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/content/src/schemas/document.py:71"
+          ]
+        },
+        "reading_time_minutes": {
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/content/src/schemas/document.py:75"
+          ]
+        },
+        "slug": {
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/content/src/schemas/document.py:56"
+          ]
+        },
+        "source_url": {
+          "type": {
+            "raw": "inferred from value/key",
+            "type": "json",
+            "nullable": false
+          },
+          "evidence": [
+            "backend/content/src/core/infrastructure/database.py:75"
+          ]
+        },
+        "status": {
+          "type": {
+            "raw": "DocumentStatus",
+            "type": "json",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/content/src/schemas/document.py:150"
+          ]
+        },
+        "tags": {
+          "type": {
+            "raw": "List[str]",
+            "type": "json",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/content/src/schemas/document.py:62"
+          ]
+        },
+        "title": {
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/content/src/schemas/document.py:55"
+          ]
+        },
+        "toc": {
+          "type": {
+            "raw": "List[dict]",
+            "type": "json",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/content/src/schemas/document.py:74"
+          ]
+        },
+        "updated_at": {
+          "type": {
+            "raw": "datetime",
+            "type": "date",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/content/src/schemas/document.py:152"
+          ]
+        },
+        "views": {
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/content/src/schemas/document.py:153"
+          ]
+        },
+        "visibility": {
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/content/src/schemas/document.py:65"
+          ]
+        }
+      },
+      "sources": [
+        "backend/content/src/core/infrastructure/database.py:55",
+        "backend/content/src/core/infrastructure/database.py:58",
+        "backend/content/src/core/infrastructure/database.py:59",
+        "backend/content/src/core/infrastructure/database.py:60",
+        "backend/content/src/core/infrastructure/database.py:61",
+        "backend/content/src/core/infrastructure/database.py:65",
+        "backend/content/src/core/infrastructure/database.py:69",
+        "backend/content/src/core/infrastructure/database.py:72",
+        "backend/content/src/core/infrastructure/database.py:81",
+        "backend/content/src/core/infrastructure/database.py:82",
+        "backend/content/src/core/infrastructure/database.py:85",
+        "backend/content/src/core/infrastructure/database.py:88",
+        "backend/content/src/core/infrastructure/database.py:92",
+        "backend/content/src/core/infrastructure/database.py:95",
+        "backend/content/src/repositories/document.py:31",
+        "backend/content/src/repositories/document.py:35",
+        "backend/content/src/repositories/document.py:55",
+        "backend/content/src/repositories/document.py:60",
+        "backend/content/src/repositories/document.py:67",
+        "backend/content/src/repositories/document.py:80",
+        "backend/content/src/repositories/document.py:84",
+        "backend/content/src/repositories/document.py:92",
+        "backend/content/src/repositories/document.py:96",
+        "backend/content/src/repositories/document_ingestion_outbox.py:134"
+      ],
+      "indexes": []
+    },
+    "comments": {
+      "fields": {},
+      "sources": [
+        "backend/content/src/core/infrastructure/database.py:97",
+        "backend/content/src/core/infrastructure/database.py:98"
+      ],
+      "indexes": []
+    },
+    "editor_comments": {
+      "fields": {},
+      "sources": [
+        "backend/content/src/core/infrastructure/database.py:100"
+      ],
+      "indexes": []
+    },
+    "document_versions": {
+      "fields": {},
+      "sources": [
+        "backend/content/src/core/infrastructure/database.py:104",
+        "backend/content/src/repositories/document.py:43",
+        "backend/content/src/repositories/document.py:47",
+        "backend/content/src/repositories/document.py:51"
+      ],
+      "indexes": []
+    },
+    "document_ingestion_outbox": {
+      "fields": {},
+      "sources": [
+        "backend/content/src/core/infrastructure/database.py:107",
+        "backend/content/src/core/infrastructure/database.py:111"
+      ],
+      "indexes": []
+    },
+    "workspace_folders": {
+      "fields": {},
+      "sources": [
+        "backend/content/src/core/infrastructure/database.py:115",
+        "backend/content/src/repositories/folder.py:11",
+        "backend/content/src/repositories/folder.py:15",
+        "backend/content/src/repositories/folder.py:7"
+      ],
+      "indexes": []
+    },
+    "document_revisions": {
+      "fields": {},
+      "sources": [
+        "backend/content/src/repositories/document.py:39"
+      ],
+      "indexes": []
+    }
+  },
+  "stores": [],
+  "models": [
+    {
+      "name": "Settings",
+      "bases": [],
+      "file": "backend/content/src/core/infrastructure/configuration.py",
+      "fields": [
+        {
+          "code": "VERSION",
+          "diagram": "VERSION",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/core/infrastructure/configuration.py:5"
+        },
+        {
+          "code": "INTERNAL_API_URL",
+          "diagram": "INTERNALAPIURL",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/core/infrastructure/configuration.py:6"
+        },
+        {
+          "code": "SECRET_KEY",
+          "diagram": "SECRETKEY",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/core/infrastructure/configuration.py:7"
+        },
+        {
+          "code": "CORS_ALLOWED_ORIGINS",
+          "diagram": "CORSALLOWEDORIGINS",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/core/infrastructure/configuration.py:8"
+        },
+        {
+          "code": "MONGODB_URI",
+          "diagram": "MONGODBURI",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/core/infrastructure/configuration.py:9"
+        },
+        {
+          "code": "REDIS_URI",
+          "diagram": "REDISURI",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/core/infrastructure/configuration.py:10"
+        },
+        {
+          "code": "RABBITMQ_URI",
+          "diagram": "RABBITMQURI",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/core/infrastructure/configuration.py:11"
+        },
+        {
+          "code": "AUTHENTICATION_URL",
+          "diagram": "AUTHENTICATIONURL",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/core/infrastructure/configuration.py:12"
+        },
+        {
+          "code": "AI_URL",
+          "diagram": "AIURL",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/core/infrastructure/configuration.py:13"
+        },
+        {
+          "code": "NOTIFICATION_URL",
+          "diagram": "NOTIFICATIONURL",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/core/infrastructure/configuration.py:14"
+        },
+        {
+          "code": "CONTENT_DB_NAME",
+          "diagram": "CONTENTDBNAME",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/core/infrastructure/configuration.py:15"
+        },
+        {
+          "code": "OBJECT_STORAGE_ENDPOINT",
+          "diagram": "OBJECTSTORAGEENDPOINT",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/core/infrastructure/configuration.py:16"
+        },
+        {
+          "code": "OBJECT_STORAGE_PUBLIC_URL",
+          "diagram": "OBJECTSTORAGEPUBLICURL",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/core/infrastructure/configuration.py:17"
+        },
+        {
+          "code": "DOCUMENT_INDEXING_LEASE_SECONDS",
+          "diagram": "DOCUMENTINDEXINGLEASESECONDS",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/content/src/core/infrastructure/configuration.py:18"
+        },
+        {
+          "code": "DOCUMENT_INDEX_CONTRACT_VERSION",
+          "diagram": "DOCUMENTINDEXCONTRACTVERSION",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/content/src/core/infrastructure/configuration.py:21"
+        },
+        {
+          "code": "DOCUMENT_INGESTION_OUTBOX_LEASE_SECONDS",
+          "diagram": "DOCUMENTINGESTIONOUTBOXLEASESECONDS",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/content/src/core/infrastructure/configuration.py:24"
+        },
+        {
+          "code": "DOCUMENT_INGESTION_RETRY_BASE_SECONDS",
+          "diagram": "DOCUMENTINGESTIONRETRYBASESECONDS",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/content/src/core/infrastructure/configuration.py:27"
+        },
+        {
+          "code": "DOCUMENT_INGESTION_RETRY_MAX_SECONDS",
+          "diagram": "DOCUMENTINGESTIONRETRYMAXSECONDS",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/content/src/core/infrastructure/configuration.py:30"
+        },
+        {
+          "code": "DOCUMENT_INGESTION_RECONCILE_INTERVAL_SECONDS",
+          "diagram": "DOCUMENTINGESTIONRECONCILEINTERVALSECONDS",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/content/src/core/infrastructure/configuration.py:33"
+        },
+        {
+          "code": "DOCUMENT_INGESTION_POLL_INTERVAL_SECONDS",
+          "diagram": "DOCUMENTINGESTIONPOLLINTERVALSECONDS",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/content/src/core/infrastructure/configuration.py:36"
+        }
+      ]
+    },
+    {
+      "name": "CurrentUser",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/content/src/schemas/common.py",
+      "fields": [
+        {
+          "code": "email",
+          "diagram": "Email",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/common.py:16"
+        },
+        {
+          "code": "system_role",
+          "diagram": "SystemRole",
+          "type": {
+            "raw": "SystemRole",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/common.py:17"
+        },
+        {
+          "code": "permissions",
+          "diagram": "Permissions",
+          "type": {
+            "raw": "List[str]",
+            "type": "json",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/common.py:18"
+        },
+        {
+          "code": "is_active",
+          "diagram": "IsActive",
+          "type": {
+            "raw": "bool",
+            "type": "Boolean",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/common.py:19"
+        },
+        {
+          "code": "full_name",
+          "diagram": "FullName",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/common.py:20"
+        },
+        {
+          "code": "slug",
+          "diagram": "Slug",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/common.py:21"
+        },
+        {
+          "code": "session_id",
+          "diagram": "SessionId",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/common.py:22"
+        }
+      ]
+    },
+    {
+      "name": "APIResponse",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/content/src/schemas/common.py",
+      "fields": [
+        {
+          "code": "data",
+          "diagram": "Data",
+          "type": {
+            "raw": "Optional[T]",
+            "type": "json",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/common.py:34"
+        },
+        {
+          "code": "message",
+          "diagram": "Message",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/common.py:35"
+        },
+        {
+          "code": "status",
+          "diagram": "Status",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/common.py:36"
+        }
+      ]
+    },
+    {
+      "name": "ArtifactMetadata",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/content/src/schemas/document.py",
+      "fields": [
+        {
+          "code": "project_id",
+          "diagram": "ProjectId",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document.py:38"
+        },
+        {
+          "code": "artifact_type",
+          "diagram": "ArtifactType",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document.py:39"
+        },
+        {
+          "code": "artifact_id",
+          "diagram": "ArtifactId",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:40"
+        },
+        {
+          "code": "artifact_version_id",
+          "diagram": "ArtifactVersionId",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:41"
+        },
+        {
+          "code": "module",
+          "diagram": "Module",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:42"
+        },
+        {
+          "code": "status",
+          "diagram": "Status",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document.py:43"
+        },
+        {
+          "code": "authority",
+          "diagram": "Authority",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document.py:44"
+        },
+        {
+          "code": "source_type",
+          "diagram": "SourceType",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document.py:45"
+        },
+        {
+          "code": "source_version",
+          "diagram": "SourceVersion",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:46"
+        },
+        {
+          "code": "content_type",
+          "diagram": "ContentType",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:47"
+        },
+        {
+          "code": "conflict_key",
+          "diagram": "ConflictKey",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:48"
+        },
+        {
+          "code": "claim_value",
+          "diagram": "ClaimValue",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:49"
+        }
+      ]
+    },
+    {
+      "name": "DocumentBase",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/content/src/schemas/document.py",
+      "fields": [
+        {
+          "code": "title",
+          "diagram": "Title",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:55"
+        },
+        {
+          "code": "slug",
+          "diagram": "Slug",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:56"
+        },
+        {
+          "code": "description",
+          "diagram": "Description",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:59"
+        },
+        {
+          "code": "cover_url",
+          "diagram": "CoverUrl",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:60"
+        },
+        {
+          "code": "file_url",
+          "diagram": "FileUrl",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:61"
+        },
+        {
+          "code": "tags",
+          "diagram": "Tags",
+          "type": {
+            "raw": "List[str]",
+            "type": "json",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:62"
+        },
+        {
+          "code": "content",
+          "diagram": "Content",
+          "type": {
+            "raw": "Optional[Any]",
+            "type": "json",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:63"
+        },
+        {
+          "code": "content_format",
+          "diagram": "ContentFormat",
+          "type": {
+            "raw": "Optional[DocumentContentFormat]",
+            "type": "json",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:64"
+        },
+        {
+          "code": "visibility",
+          "diagram": "Visibility",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:65"
+        },
+        {
+          "code": "category",
+          "diagram": "Category",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:66"
+        },
+        {
+          "code": "pages_count",
+          "diagram": "PagesCount",
+          "type": {
+            "raw": "Optional[int]",
+            "type": "int",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:67"
+        },
+        {
+          "code": "preview_pages",
+          "diagram": "PreviewPages",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:68"
+        },
+        {
+          "code": "is_deleted",
+          "diagram": "IsDeleted",
+          "type": {
+            "raw": "bool",
+            "type": "Boolean",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:69"
+        },
+        {
+          "code": "deleted_at",
+          "diagram": "DeletedAt",
+          "type": {
+            "raw": "Optional[datetime]",
+            "type": "date",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:70"
+        },
+        {
+          "code": "publisher_name",
+          "diagram": "PublisherName",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:71"
+        },
+        {
+          "code": "folder_id",
+          "diagram": "FolderId",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:72"
+        },
+        {
+          "code": "draft_content",
+          "diagram": "DraftContent",
+          "type": {
+            "raw": "Optional[Any]",
+            "type": "json",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:73"
+        },
+        {
+          "code": "toc",
+          "diagram": "Toc",
+          "type": {
+            "raw": "List[dict]",
+            "type": "json",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:74"
+        },
+        {
+          "code": "reading_time_minutes",
+          "diagram": "ReadingTimeMinutes",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:75"
+        },
+        {
+          "code": "artifact_metadata",
+          "diagram": "ArtifactMetadata",
+          "type": {
+            "raw": "Optional[ArtifactMetadata]",
+            "type": "json",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:76"
+        }
+      ]
+    },
+    {
+      "name": "DocumentContentUpdate",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/content/src/schemas/document.py",
+      "fields": [
+        {
+          "code": "content",
+          "diagram": "Content",
+          "type": {
+            "raw": "Any",
+            "type": "json",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document.py:80"
+        },
+        {
+          "code": "content_format",
+          "diagram": "ContentFormat",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document.py:81"
+        },
+        {
+          "code": "expected_version",
+          "diagram": "ExpectedVersion",
+          "type": {
+            "raw": "Optional[datetime]",
+            "type": "date",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:82"
+        }
+      ]
+    },
+    {
+      "name": "DocumentUpdate",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/content/src/schemas/document.py",
+      "fields": [
+        {
+          "code": "title",
+          "diagram": "Title",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:88"
+        },
+        {
+          "code": "slug",
+          "diagram": "Slug",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:89"
+        },
+        {
+          "code": "description",
+          "diagram": "Description",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:90"
+        },
+        {
+          "code": "cover_url",
+          "diagram": "CoverUrl",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:91"
+        },
+        {
+          "code": "tags",
+          "diagram": "Tags",
+          "type": {
+            "raw": "Optional[List[str]]",
+            "type": "json",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:92"
+        },
+        {
+          "code": "category",
+          "diagram": "Category",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:93"
+        },
+        {
+          "code": "folder_id",
+          "diagram": "FolderId",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:94"
+        },
+        {
+          "code": "expected_version",
+          "diagram": "ExpectedVersion",
+          "type": {
+            "raw": "Optional[datetime]",
+            "type": "date",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:95"
+        },
+        {
+          "code": "file_url",
+          "diagram": "FileUrl",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:96"
+        },
+        {
+          "code": "content_format",
+          "diagram": "ContentFormat",
+          "type": {
+            "raw": "Optional[DocumentContentFormat]",
+            "type": "json",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:97"
+        },
+        {
+          "code": "artifact_metadata",
+          "diagram": "ArtifactMetadata",
+          "type": {
+            "raw": "Optional[ArtifactMetadata]",
+            "type": "json",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:98"
+        }
+      ]
+    },
+    {
+      "name": "DocumentIndexingProgressUpdate",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/content/src/schemas/document.py",
+      "fields": [
+        {
+          "code": "indexing_attempt_id",
+          "diagram": "IndexingAttemptId",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document.py:104"
+        },
+        {
+          "code": "indexing_lease_token",
+          "diagram": "IndexingLeaseToken",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document.py:105"
+        },
+        {
+          "code": "phase",
+          "diagram": "Phase",
+          "type": {
+            "raw": "Literal['parsing']",
+            "type": "json",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document.py:106"
+        },
+        {
+          "code": "processed_pages",
+          "diagram": "ProcessedPages",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document.py:107"
+        },
+        {
+          "code": "total_pages",
+          "diagram": "TotalPages",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document.py:108"
+        },
+        {
+          "code": "unprocessed_pages",
+          "diagram": "UnprocessedPages",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document.py:109"
+        }
+      ]
+    },
+    {
+      "name": "DocumentIndexingClaimRequest",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/content/src/schemas/document.py",
+      "fields": [
+        {
+          "code": "indexing_attempt_id",
+          "diagram": "IndexingAttemptId",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document.py:123"
+        },
+        {
+          "code": "indexing_lease_token",
+          "diagram": "IndexingLeaseToken",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document.py:124"
+        },
+        {
+          "code": "dispatch_event_id",
+          "diagram": "DispatchEventId",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document.py:125"
+        }
+      ]
+    },
+    {
+      "name": "DocumentIndexingLeaseRequest",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/content/src/schemas/document.py",
+      "fields": [
+        {
+          "code": "indexing_attempt_id",
+          "diagram": "IndexingAttemptId",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document.py:131"
+        },
+        {
+          "code": "indexing_lease_token",
+          "diagram": "IndexingLeaseToken",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document.py:132"
+        }
+      ]
+    },
+    {
+      "name": "DocumentIndexingClaimResponse",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/content/src/schemas/document.py",
+      "fields": [
+        {
+          "code": "status",
+          "diagram": "Status",
+          "type": {
+            "raw": "Literal['claimed', 'busy', 'superseded', 'already_indexed', 'not_claimable']",
+            "type": "json",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document.py:138"
+        },
+        {
+          "code": "updated",
+          "diagram": "Updated",
+          "type": {
+            "raw": "bool",
+            "type": "Boolean",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document.py:139"
+        },
+        {
+          "code": "lease_until",
+          "diagram": "LeaseUntil",
+          "type": {
+            "raw": "Optional[datetime]",
+            "type": "date",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:140"
+        }
+      ]
+    },
+    {
+      "name": "DocumentCreate",
+      "bases": [
+        "DocumentBase"
+      ],
+      "file": "backend/content/src/schemas/document.py",
+      "fields": [
+        {
+          "code": "password",
+          "diagram": "Password",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:144"
+        }
+      ]
+    },
+    {
+      "name": "DocumentInDB",
+      "bases": [
+        "DocumentBase"
+      ],
+      "file": "backend/content/src/schemas/document.py",
+      "fields": [
+        {
+          "code": "creator_id",
+          "diagram": "CreatorId",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:149"
+        },
+        {
+          "code": "status",
+          "diagram": "Status",
+          "type": {
+            "raw": "DocumentStatus",
+            "type": "json",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:150"
+        },
+        {
+          "code": "created_at",
+          "diagram": "CreatedAt",
+          "type": {
+            "raw": "datetime",
+            "type": "date",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:151"
+        },
+        {
+          "code": "updated_at",
+          "diagram": "UpdatedAt",
+          "type": {
+            "raw": "datetime",
+            "type": "date",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:152"
+        },
+        {
+          "code": "views",
+          "diagram": "Views",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:153"
+        },
+        {
+          "code": "indexing_attempt_id",
+          "diagram": "IndexingAttemptId",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:154"
+        },
+        {
+          "code": "indexing_lease_token",
+          "diagram": "IndexingLeaseToken",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:155"
+        },
+        {
+          "code": "indexing_lease_until",
+          "diagram": "IndexingLeaseUntil",
+          "type": {
+            "raw": "Optional[datetime]",
+            "type": "date",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:156"
+        }
+      ]
+    },
+    {
+      "name": "DocumentResponse",
+      "bases": [
+        "DocumentBase"
+      ],
+      "file": "backend/content/src/schemas/document.py",
+      "fields": [
+        {
+          "code": "creator_id",
+          "diagram": "CreatorId",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document.py:163"
+        },
+        {
+          "code": "status",
+          "diagram": "Status",
+          "type": {
+            "raw": "DocumentStatus",
+            "type": "json",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document.py:164"
+        },
+        {
+          "code": "created_at",
+          "diagram": "CreatedAt",
+          "type": {
+            "raw": "datetime",
+            "type": "date",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document.py:165"
+        },
+        {
+          "code": "views",
+          "diagram": "Views",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document.py:166"
+        }
+      ]
+    },
+    {
+      "name": "DocumentPasswordRequest",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/content/src/schemas/document.py",
+      "fields": [
+        {
+          "code": "password",
+          "diagram": "Password",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document.py:170"
+        }
+      ]
+    },
+    {
+      "name": "FolderCreate",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/content/src/schemas/document.py",
+      "fields": [
+        {
+          "code": "name",
+          "diagram": "Name",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document.py:174"
+        },
+        {
+          "code": "parent_id",
+          "diagram": "ParentId",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/content/src/schemas/document.py:175"
+        }
+      ]
+    },
+    {
+      "name": "TagsUpdate",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/content/src/schemas/document.py",
+      "fields": [
+        {
+          "code": "tags",
+          "diagram": "Tags",
+          "type": {
+            "raw": "List[str]",
+            "type": "json",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document.py:179"
+        }
+      ]
+    },
+    {
+      "name": "DocumentIngestionDispatch",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/content/src/schemas/document_ingestion_outbox.py",
+      "fields": [
+        {
+          "code": "event_id",
+          "diagram": "EventId",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document_ingestion_outbox.py:16"
+        },
+        {
+          "code": "document_id",
+          "diagram": "DocumentId",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document_ingestion_outbox.py:17"
+        },
+        {
+          "code": "user_id",
+          "diagram": "UserId",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document_ingestion_outbox.py:18"
+        },
+        {
+          "code": "superseded_document_id",
+          "diagram": "SupersededDocumentId",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document_ingestion_outbox.py:19"
+        },
+        {
+          "code": "status",
+          "diagram": "Status",
+          "type": {
+            "raw": "DocumentIngestionDispatchStatus",
+            "type": "json",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document_ingestion_outbox.py:20"
+        },
+        {
+          "code": "attempts",
+          "diagram": "Attempts",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document_ingestion_outbox.py:21"
+        },
+        {
+          "code": "available_at",
+          "diagram": "AvailableAt",
+          "type": {
+            "raw": "datetime",
+            "type": "date",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document_ingestion_outbox.py:22"
+        },
+        {
+          "code": "created_at",
+          "diagram": "CreatedAt",
+          "type": {
+            "raw": "datetime",
+            "type": "date",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document_ingestion_outbox.py:23"
+        },
+        {
+          "code": "updated_at",
+          "diagram": "UpdatedAt",
+          "type": {
+            "raw": "datetime",
+            "type": "date",
+            "nullable": false
+          },
+          "line": "backend/content/src/schemas/document_ingestion_outbox.py:24"
+        }
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "method": "POST",
+      "path": "/thao-tac-hang-loat/xoa",
+      "name": "bulk_delete_documents",
+      "args": [
+        "req : json",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/api/document/bulk.py:13",
+      "calls": [
+        "bulk_delete_documents",
+        "get",
+        "post"
+      ],
+      "call_targets": [
+        "DocumentService.bulk_delete_documents",
+        "req.get",
+        "router.post"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/thao-tac-hang-loat/khoi-phuc",
+      "name": "bulk_restore_documents",
+      "args": [
+        "req : json",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/api/document/bulk.py:22",
+      "calls": [
+        "bulk_restore_documents",
+        "get",
+        "post"
+      ],
+      "call_targets": [
+        "DocumentService.bulk_restore_documents",
+        "req.get",
+        "router.post"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/thao-tac-hang-loat/di-chuyen",
+      "name": "bulk_move_documents",
+      "args": [
+        "req : json",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/api/document/bulk.py:31",
+      "calls": [
+        "bulk_move_documents",
+        "get",
+        "post"
+      ],
+      "call_targets": [
+        "DocumentService.bulk_move_documents",
+        "req.get",
+        "router.post"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/thao-tac-hang-loat/xuat",
+      "name": "bulk_export_documents",
+      "args": [
+        "req : json",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/api/document/bulk.py:41",
+      "calls": [
+        "bulk_export_documents",
+        "get",
+        "post"
+      ],
+      "call_targets": [
+        "DocumentService.bulk_export_documents",
+        "req.get",
+        "router.post"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "",
+      "name": "create_document",
+      "args": [
+        "docIn : json",
+        "currentUser : json"
+      ],
+      "return": "json",
+      "line": "backend/content/src/api/document/crud.py:20",
+      "calls": [
+        "create_document",
+        "post"
+      ],
+      "call_targets": [
+        "DocumentService.create_document",
+        "router.post"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/ca-nhan",
+      "name": "get_my_documents",
+      "args": [
+        "q : string",
+        "cursor : string",
+        "limit : int",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/api/document/crud.py:32",
+      "calls": [
+        "get",
+        "get_my_documents"
+      ],
+      "call_targets": [
+        "DocumentService.get_my_documents",
+        "router.get"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/thung-rac",
+      "name": "get_trash",
+      "args": [
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/api/document/crud.py:46",
+      "calls": [
+        "get",
+        "get_trash"
+      ],
+      "call_targets": [
+        "DocumentService.get_trash",
+        "router.get"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "",
+      "name": "list_documents",
+      "args": [
+        "limit : int",
+        "cursor : string",
+        "q : string",
+        "sortBy : string",
+        "category : string",
+        "tag : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/api/document/crud.py:52",
+      "calls": [
+        "get",
+        "list_documents"
+      ],
+      "call_targets": [
+        "DocumentService.list_documents",
+        "router.get"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/{document_id}/khoi-phuc",
+      "name": "restore_document",
+      "args": [
+        "documentId : string",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/api/document/crud.py:70",
+      "calls": [
+        "post",
+        "restore_document"
+      ],
+      "call_targets": [
+        "DocumentService.restore_document",
+        "router.post"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/tai-lieu/{slug}",
+      "name": "get_document_by_slug",
+      "args": [
+        "slug : string",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/api/document/crud.py:78",
+      "calls": [
+        "get",
+        "get_document_by_slug"
+      ],
+      "call_targets": [
+        "DocumentService.get_document_by_slug",
+        "router.get"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/xem-truoc/{slug}",
+      "name": "get_document_preview",
+      "args": [
+        "slug : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/api/document/crud.py:86",
+      "calls": [
+        "get",
+        "get_document_preview"
+      ],
+      "call_targets": [
+        "DocumentService.get_document_preview",
+        "router.get"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/{document_id}",
+      "name": "get_document",
+      "args": [
+        "documentId : string",
+        "password : string",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/api/document/crud.py:94",
+      "calls": [
+        "get",
+        "get_document_by_id"
+      ],
+      "call_targets": [
+        "DocumentService.get_document_by_id",
+        "router.get"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/{document_id}/noi-dung",
+      "name": "update_document_content",
+      "args": [
+        "documentId : string",
+        "updateData : json",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/api/document/crud.py:106",
+      "calls": [
+        "put",
+        "update_document_content"
+      ],
+      "call_targets": [
+        "DocumentService.update_document_content",
+        "router.put"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/{document_id}",
+      "name": "update_document",
+      "args": [
+        "documentId : string",
+        "docUpdate : json",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/api/document/crud.py:116",
+      "calls": [
+        "put",
+        "update_document"
+      ],
+      "call_targets": [
+        "DocumentService.update_document",
+        "router.put"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/{document_id}/lap-chi-muc-lai",
+      "name": "retry_document_indexing",
+      "args": [
+        "documentId : string",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/api/document/crud.py:126",
+      "calls": [
+        "post",
+        "retry_document_indexing"
+      ],
+      "call_targets": [
+        "DocumentService.retry_document_indexing",
+        "router.post"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/{document_id}",
+      "name": "delete_document",
+      "args": [
+        "documentId : string",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/api/document/crud.py:139",
+      "calls": [
+        "delete",
+        "soft_delete_document"
+      ],
+      "call_targets": [
+        "DocumentService.soft_delete_document",
+        "router.delete"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/{document_id}/bao-ve",
+      "name": "set_document_password",
+      "args": [
+        "documentId : string",
+        "body : json",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/api/document/crud.py:150",
+      "calls": [
+        "post",
+        "set_document_password"
+      ],
+      "call_targets": [
+        "DocumentService.set_document_password",
+        "router.post"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/{document_id}/mo-khoa",
+      "name": "unlock_document",
+      "args": [
+        "documentId : string",
+        "password : string",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/api/document/crud.py:160",
+      "calls": [
+        "get_document_by_id",
+        "post"
+      ],
+      "call_targets": [
+        "DocumentService.get_document_by_id",
+        "router.post"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/thu-muc",
+      "name": "get_folders",
+      "args": [
+        "parentId : string",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/api/document/hierarchy.py:14",
+      "calls": [
+        "get",
+        "get_folders"
+      ],
+      "call_targets": [
+        "DocumentService.get_folders",
+        "router.get"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/thu-muc",
+      "name": "create_folder",
+      "args": [
+        "folderIn : json",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/api/document/hierarchy.py:22",
+      "calls": [
+        "create_folder",
+        "post"
+      ],
+      "call_targets": [
+        "DocumentService.create_folder",
+        "router.post"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/thu-muc/{folder_id}",
+      "name": "delete_folder",
+      "args": [
+        "folderId : string",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/api/document/hierarchy.py:31",
+      "calls": [
+        "delete",
+        "delete_folder"
+      ],
+      "call_targets": [
+        "DocumentService.delete_folder",
+        "router.delete"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/{document_id}/di-chuyen",
+      "name": "move_document_to_folder",
+      "args": [
+        "documentId : string",
+        "req : json",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/api/document/hierarchy.py:39",
+      "calls": [
+        "get",
+        "move_document_to_folder",
+        "post"
+      ],
+      "call_targets": [
+        "DocumentService.move_document_to_folder",
+        "req.get",
+        "router.post"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/{document_id}/chuyen-nhuong",
+      "name": "transfer_document",
+      "args": [
+        "documentId : string",
+        "req : json",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/api/document/hierarchy.py:50",
+      "calls": [
+        "get",
+        "post",
+        "transfer_document"
+      ],
+      "call_targets": [
+        "DocumentService.transfer_document",
+        "req.get",
+        "router.post"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/noi-bo/tai-lieu",
+      "name": "internal_document_data",
+      "args": [],
+      "return": "unknown",
+      "line": "backend/content/src/api/document/internal.py:14",
+      "dynamic": true
+    },
+    {
+      "method": "POST",
+      "path": "/noi-bo/truy-cap",
+      "name": "get_internal_document",
+      "args": [],
+      "return": "unknown",
+      "line": "backend/content/src/api/document/internal.py:20",
+      "dynamic": true
+    },
+    {
+      "method": "POST",
+      "path": "/noi-bo/thong-ke",
+      "name": "get_internal_document_stats",
+      "args": [],
+      "return": "unknown",
+      "line": "backend/content/src/api/document/internal.py:26",
+      "dynamic": true
+    },
+    {
+      "method": "POST",
+      "path": "/noi-bo/trao-doi",
+      "name": "exchange_internal_document",
+      "args": [],
+      "return": "unknown",
+      "line": "backend/content/src/api/document/internal.py:32",
+      "dynamic": true
+    },
+    {
+      "method": "GET",
+      "path": "/{document_id}/thong-ke",
+      "name": "get_document_analytics",
+      "args": [
+        "documentId : string",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/api/document/metadata.py:13",
+      "calls": [
+        "get",
+        "get_document_analytics"
+      ],
+      "call_targets": [
+        "DocumentService.get_document_analytics",
+        "router.get"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/{document_id}/chi-so-hoc-thuat",
+      "name": "get_document_academic",
+      "args": [
+        "documentId : string",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/api/document/metadata.py:21",
+      "calls": [
+        "get",
+        "get_document_academic"
+      ],
+      "call_targets": [
+        "DocumentService.get_document_academic",
+        "router.get"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/hang-doi-duyet",
+      "name": "get_approval_queue",
+      "args": [
+        "cursor : string",
+        "limit : int"
+      ],
+      "return": "json",
+      "line": "backend/content/src/api/document/metadata.py:33",
+      "calls": [
+        "get",
+        "get_approval_queue"
+      ],
+      "call_targets": [
+        "DocumentService.get_approval_queue",
+        "router.get"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/thinh-hanh",
+      "name": "get_trending_documents",
+      "args": [
+        "limit : int"
+      ],
+      "return": "json",
+      "line": "backend/content/src/api/document/metadata.py:41",
+      "calls": [
+        "get",
+        "get_trending_documents"
+      ],
+      "call_targets": [
+        "DocumentService.get_trending_documents",
+        "router.get"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/goi-y",
+      "name": "get_suggested_documents",
+      "args": [
+        "limit : int"
+      ],
+      "return": "json",
+      "line": "backend/content/src/api/document/metadata.py:49",
+      "calls": [
+        "get",
+        "get_suggested_documents"
+      ],
+      "call_targets": [
+        "DocumentService.get_suggested_documents",
+        "router.get"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/the-loai-va-nhan",
+      "name": "get_tags_categories",
+      "args": [],
+      "return": "json",
+      "line": "backend/content/src/api/document/tag.py:14",
+      "calls": [
+        "get",
+        "get_tags_categories"
+      ],
+      "call_targets": [
+        "DocumentService.get_tags_categories",
+        "router.get"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/nhan-thinh-hanh",
+      "name": "get_trending_tags",
+      "args": [
+        "limit : int"
+      ],
+      "return": "json",
+      "line": "backend/content/src/api/document/tag.py:22",
+      "calls": [
+        "get",
+        "get_trending_tags"
+      ],
+      "call_targets": [
+        "DocumentService.get_trending_tags",
+        "router.get"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/{document_id}/danh-dau",
+      "name": "toggle_star_document",
+      "args": [
+        "documentId : string",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/api/document/tag.py:30",
+      "calls": [
+        "post",
+        "toggle_star_document"
+      ],
+      "call_targets": [
+        "DocumentService.toggle_star_document",
+        "router.post"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/{document_id}/the",
+      "name": "update_tags",
+      "args": [
+        "documentId : string",
+        "req : json",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/api/document/tag.py:38",
+      "calls": [
+        "put",
+        "update_document"
+      ],
+      "call_targets": [
+        "DocumentService.update_document",
+        "router.put"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/luu/{document_id}",
+      "name": "save_version",
+      "args": [
+        "documentId : string",
+        "versionNote : string",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/api/version.py:13",
+      "calls": [
+        "post",
+        "save_version"
+      ],
+      "call_targets": [
+        "VersionService.save_version",
+        "router.post"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/tai-lieu/{document_id}",
+      "name": "get_document_versions",
+      "args": [
+        "documentId : string",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/api/version.py:27",
+      "calls": [
+        "get",
+        "get_versions"
+      ],
+      "call_targets": [
+        "VersionService.get_versions",
+        "router.get"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/{version_id}/khoi-phuc",
+      "name": "restore_version",
+      "args": [
+        "versionId : string",
+        "currentUser : json",
+        "db : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/api/version.py:37",
+      "calls": [
+        "post",
+        "restore_version"
+      ],
+      "call_targets": [
+        "VersionService.restore_version",
+        "router.post"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/suc-khoe",
+      "name": "health_check",
+      "args": [],
+      "return": "json",
+      "line": "backend/content/src/main.py:47",
+      "calls": [
+        "get"
+      ],
+      "call_targets": [
+        "app.get"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/san-sang",
+      "name": "readiness_check",
+      "args": [],
+      "return": "json",
+      "line": "backend/content/src/main.py:52",
+      "calls": [
+        "command",
+        "exception",
+        "get",
+        "health_check",
+        "ping"
+      ],
+      "call_targets": [
+        "app.get",
+        "logger.exception",
+        "mq.health_check",
+        "redis.ping"
+      ]
+    }
+  ],
+  "service_methods": [
+    {
+      "name": "serialize_document",
+      "args": [
+        "document : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/base.py:10",
+      "file": "services/document/base.py",
+      "owner": null,
+      "calls": [
+        "get",
+        "now",
+        "pop"
+      ],
+      "call_targets": [
+        "datetime.now",
+        "document.get",
+        "document.pop"
+      ],
+      "collections": []
+    },
+    {
+      "name": "is_admin",
+      "args": [
+        "currentUser : string"
+      ],
+      "return": "Boolean",
+      "line": "backend/content/src/services/document/base.py:28",
+      "file": "services/document/base.py",
+      "owner": null,
+      "calls": [],
+      "call_targets": [],
+      "collections": []
+    },
+    {
+      "name": "can_read_full",
+      "args": [
+        "document : json",
+        "currentUser : string"
+      ],
+      "return": "Boolean",
+      "line": "backend/content/src/services/document/base.py:34",
+      "file": "services/document/base.py",
+      "owner": null,
+      "calls": [
+        "get"
+      ],
+      "call_targets": [
+        "document.get"
+      ],
+      "collections": []
+    },
+    {
+      "name": "bulk_delete_documents",
+      "args": [
+        "documentIds : json",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/bulk.py:18",
+      "file": "services/document/bulk.py",
+      "owner": "DocumentBulkService",
+      "calls": [
+        "delete_document",
+        "find",
+        "now",
+        "strip",
+        "to_list",
+        "update_many"
+      ],
+      "call_targets": [
+        "DocumentRepository.find",
+        "DocumentRepository.update_many",
+        "datetime.now",
+        "document_id.strip",
+        "knowledge_client.delete_document"
+      ],
+      "collections": [
+        "documents"
+      ]
+    },
+    {
+      "name": "bulk_restore_documents",
+      "args": [
+        "documentIds : json",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/bulk.py:41",
+      "file": "services/document/bulk.py",
+      "owner": "DocumentBulkService",
+      "calls": [
+        "find",
+        "get",
+        "retry_document_indexing",
+        "strip",
+        "to_list",
+        "update_many"
+      ],
+      "call_targets": [
+        "DocumentCrudService.retry_document_indexing",
+        "DocumentRepository.find",
+        "DocumentRepository.update_many",
+        "document.get",
+        "document_id.strip"
+      ],
+      "collections": [
+        "documents"
+      ]
+    },
+    {
+      "name": "bulk_move_documents",
+      "args": [
+        "documentIds : json",
+        "folderId : string",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/bulk.py:71",
+      "file": "services/document/bulk.py",
+      "owner": "DocumentBulkService",
+      "calls": [
+        "find_one",
+        "now",
+        "update_many"
+      ],
+      "call_targets": [
+        "DocumentRepository.update_many",
+        "FolderRepository.find_one",
+        "datetime.now"
+      ],
+      "collections": [
+        "documents",
+        "workspace_folders"
+      ]
+    },
+    {
+      "name": "bulk_export_documents",
+      "args": [
+        "documentIds : json",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/bulk.py:92",
+      "file": "services/document/bulk.py",
+      "owner": "DocumentBulkService",
+      "calls": [
+        "BytesIO",
+        "ZipFile",
+        "dumps",
+        "find",
+        "get",
+        "getvalue",
+        "seek",
+        "strip",
+        "sub",
+        "to_list",
+        "writestr"
+      ],
+      "call_targets": [
+        "DocumentRepository.find",
+        "doc.get",
+        "io.BytesIO",
+        "json.dumps",
+        "re.sub",
+        "title.strip",
+        "zf.writestr",
+        "zip_buffer.getvalue",
+        "zip_buffer.seek",
+        "zipfile.ZipFile"
+      ],
+      "collections": [
+        "documents"
+      ]
+    },
+    {
+      "name": "create_document",
+      "args": [
+        "docIn : json",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/crud.py:24",
+      "file": "services/document/crud.py",
+      "owner": "DocumentCrudService",
+      "calls": [
+        "decode",
+        "encode",
+        "enqueue",
+        "exception",
+        "find_one",
+        "get",
+        "hash",
+        "insert_one",
+        "lower",
+        "model_dump",
+        "normalize",
+        "now",
+        "strip",
+        "sub",
+        "uuid4"
+      ],
+      "call_targets": [
+        "DocumentRepository.find_one",
+        "DocumentRepository.insert_one",
+        "datetime.now",
+        "doc_data.get",
+        "doc_dict.get",
+        "doc_doc.model_dump",
+        "doc_in.model_dump",
+        "document_ingestion_outbox.enqueue",
+        "logger.exception",
+        "pwd_context.hash",
+        "re.sub",
+        "unicodedata.normalize",
+        "uuid.uuid4"
+      ],
+      "collections": [
+        "workspace_folders"
+      ]
+    },
+    {
+      "name": "get_my_documents",
+      "args": [
+        "currentUser : string",
+        "q : string",
+        "cursor : string",
+        "limit : int"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/crud.py:70",
+      "file": "services/document/crud.py",
+      "owner": "DocumentCrudService",
+      "calls": [
+        "escape",
+        "find",
+        "get",
+        "isoformat",
+        "limit",
+        "sort",
+        "to_list"
+      ],
+      "call_targets": [
+        "DocumentRepository.find",
+        "cursor_db.to_list",
+        "document.get",
+        "re.escape"
+      ],
+      "collections": [
+        "documents"
+      ]
+    },
+    {
+      "name": "update_document_content",
+      "args": [
+        "documentId : string",
+        "updateData : json",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/crud.py:125",
+      "file": "services/document/crud.py",
+      "owner": "DocumentCrudService",
+      "calls": [
+        "exception",
+        "find_one",
+        "get",
+        "insert_revision",
+        "invalidate_document",
+        "isoformat",
+        "now",
+        "send",
+        "split",
+        "update_one"
+      ],
+      "call_targets": [
+        "DocumentCacheRepository.invalidate_document",
+        "DocumentRepository.find_one",
+        "DocumentRepository.insert_revision",
+        "DocumentRepository.update_one",
+        "datetime.now",
+        "document.get",
+        "logger.exception",
+        "new_content.split",
+        "notification_client.send"
+      ],
+      "collections": [
+        "document_revisions",
+        "documents",
+        "workspace_folders"
+      ]
+    },
+    {
+      "name": "update_document",
+      "args": [
+        "documentId : string",
+        "docUpdate : string",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/crud.py:200",
+      "file": "services/document/crud.py",
+      "owner": "DocumentCrudService",
+      "calls": [
+        "enqueue",
+        "exception",
+        "find_one",
+        "get",
+        "hash",
+        "invalidate_document",
+        "model_dump",
+        "now",
+        "pop",
+        "split",
+        "update_one"
+      ],
+      "call_targets": [
+        "DocumentCacheRepository.invalidate_document",
+        "DocumentRepository.find_one",
+        "DocumentRepository.update_one",
+        "datetime.now",
+        "doc_update.model_dump",
+        "document.get",
+        "document_ingestion_outbox.enqueue",
+        "logger.exception",
+        "pwd_context.hash",
+        "update_data.get",
+        "update_data.pop"
+      ],
+      "collections": [
+        "documents",
+        "workspace_folders"
+      ]
+    },
+    {
+      "name": "retry_document_indexing",
+      "args": [
+        "documentId : string",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/crud.py:281",
+      "file": "services/document/crud.py",
+      "owner": "DocumentCrudService",
+      "calls": [
+        "enqueue",
+        "exception",
+        "find_one",
+        "get"
+      ],
+      "call_targets": [
+        "DocumentRepository.find_one",
+        "document.get",
+        "document_ingestion_outbox.enqueue",
+        "logger.exception"
+      ],
+      "collections": [
+        "workspace_folders"
+      ]
+    },
+    {
+      "name": "list_documents",
+      "args": [
+        "limit : int",
+        "cursor : string",
+        "q : string",
+        "sortBy : string",
+        "category : string",
+        "tag : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/crud.py:323",
+      "file": "services/document/crud.py",
+      "owner": "DocumentCrudService",
+      "calls": [
+        "find",
+        "get",
+        "limit",
+        "sort",
+        "to_list"
+      ],
+      "call_targets": [
+        "DocumentRepository.find",
+        "cursor_db.to_list",
+        "sort_mapping.get"
+      ],
+      "collections": [
+        "documents"
+      ]
+    },
+    {
+      "name": "get_document_by_id",
+      "args": [
+        "documentId : string",
+        "currentUser : string",
+        "password : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/crud.py:353",
+      "file": "services/document/crud.py",
+      "owner": "DocumentCrudService",
+      "calls": [
+        "clear_password_failures",
+        "find_one",
+        "get",
+        "password_attempts",
+        "record_password_failure",
+        "verify"
+      ],
+      "call_targets": [
+        "DocumentCacheRepository.clear_password_failures",
+        "DocumentCacheRepository.password_attempts",
+        "DocumentCacheRepository.record_password_failure",
+        "DocumentRepository.find_one",
+        "document.get",
+        "pwd_context.verify"
+      ],
+      "collections": [
+        "workspace_folders"
+      ]
+    },
+    {
+      "name": "get_document_by_slug",
+      "args": [
+        "slug : string",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/crud.py:413",
+      "file": "services/document/crud.py",
+      "owner": "DocumentCrudService",
+      "calls": [
+        "find_one",
+        "get_document_by_id"
+      ],
+      "call_targets": [
+        "DocumentCrudService.get_document_by_id",
+        "DocumentRepository.find_one"
+      ],
+      "collections": [
+        "workspace_folders"
+      ]
+    },
+    {
+      "name": "soft_delete_document",
+      "args": [
+        "documentId : string",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/crud.py:429",
+      "file": "services/document/crud.py",
+      "owner": "DocumentCrudService",
+      "calls": [
+        "delete_document",
+        "find_one",
+        "info",
+        "now",
+        "update_one"
+      ],
+      "call_targets": [
+        "DocumentRepository.find_one",
+        "DocumentRepository.update_one",
+        "datetime.now",
+        "knowledge_client.delete_document",
+        "logger.info"
+      ],
+      "collections": [
+        "documents",
+        "workspace_folders"
+      ]
+    },
+    {
+      "name": "restore_document",
+      "args": [
+        "documentId : string",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/crud.py:452",
+      "file": "services/document/crud.py",
+      "owner": "DocumentCrudService",
+      "calls": [
+        "find_one",
+        "get",
+        "info",
+        "retry_document_indexing",
+        "update_one"
+      ],
+      "call_targets": [
+        "DocumentCrudService.retry_document_indexing",
+        "DocumentRepository.find_one",
+        "DocumentRepository.update_one",
+        "logger.info",
+        "restored.get"
+      ],
+      "collections": [
+        "documents",
+        "workspace_folders"
+      ]
+    },
+    {
+      "name": "get_trash",
+      "args": [
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/crud.py:470",
+      "file": "services/document/crud.py",
+      "owner": "DocumentCrudService",
+      "calls": [
+        "find",
+        "get",
+        "isoformat",
+        "sort",
+        "to_list"
+      ],
+      "call_targets": [
+        "DocumentRepository.find",
+        "b.get"
+      ],
+      "collections": [
+        "documents"
+      ]
+    },
+    {
+      "name": "toggle_star_document",
+      "args": [
+        "documentId : string",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/crud.py:490",
+      "file": "services/document/crud.py",
+      "owner": "DocumentCrudService",
+      "calls": [
+        "find_one",
+        "get",
+        "now",
+        "update_one"
+      ],
+      "call_targets": [
+        "DocumentRepository.find_one",
+        "DocumentRepository.update_one",
+        "datetime.now",
+        "document.get"
+      ],
+      "collections": [
+        "documents",
+        "workspace_folders"
+      ]
+    },
+    {
+      "name": "set_document_password",
+      "args": [
+        "documentId : string",
+        "password : string",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/crud.py:506",
+      "file": "services/document/crud.py",
+      "owner": "DocumentCrudService",
+      "calls": [
+        "find_one",
+        "hash",
+        "info",
+        "now",
+        "update_one"
+      ],
+      "call_targets": [
+        "DocumentRepository.find_one",
+        "DocumentRepository.update_one",
+        "datetime.now",
+        "logger.info",
+        "pwd_context.hash"
+      ],
+      "collections": [
+        "documents",
+        "workspace_folders"
+      ]
+    },
+    {
+      "name": "get_document_preview",
+      "args": [
+        "slug : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/crud.py:529",
+      "file": "services/document/crud.py",
+      "owner": "DocumentCrudService",
+      "calls": [
+        "dumps",
+        "find_one",
+        "get",
+        "loads"
+      ],
+      "call_targets": [
+        "DocumentRepository.find_one",
+        "doc.get",
+        "json.dumps",
+        "json.loads"
+      ],
+      "collections": [
+        "workspace_folders"
+      ]
+    },
+    {
+      "name": "get_folders",
+      "args": [
+        "parentId : string",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/hierarchy.py:14",
+      "file": "services/document/hierarchy.py",
+      "owner": "DocumentHierarchyService",
+      "calls": [
+        "filter",
+        "query",
+        "sort"
+      ],
+      "call_targets": [
+        "FolderRepository.query"
+      ],
+      "collections": []
+    },
+    {
+      "name": "create_folder",
+      "args": [
+        "name : string",
+        "parentId : string",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/hierarchy.py:25",
+      "file": "services/document/hierarchy.py",
+      "owner": "DocumentHierarchyService",
+      "calls": [
+        "insert_one",
+        "now"
+      ],
+      "call_targets": [
+        "FolderRepository.insert_one",
+        "datetime.now"
+      ],
+      "collections": [
+        "workspace_folders"
+      ]
+    },
+    {
+      "name": "delete_folder",
+      "args": [
+        "folderId : string",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/hierarchy.py:38",
+      "file": "services/document/hierarchy.py",
+      "owner": "DocumentHierarchyService",
+      "calls": [
+        "delete_one",
+        "find_one",
+        "update_many"
+      ],
+      "call_targets": [
+        "DocumentRepository.update_many",
+        "FolderRepository.delete_one",
+        "FolderRepository.find_one"
+      ],
+      "collections": [
+        "documents",
+        "workspace_folders"
+      ]
+    },
+    {
+      "name": "move_document_to_folder",
+      "args": [
+        "documentId : string",
+        "folderId : string",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/hierarchy.py:51",
+      "file": "services/document/hierarchy.py",
+      "owner": "DocumentHierarchyService",
+      "calls": [
+        "find_one",
+        "now",
+        "update_one"
+      ],
+      "call_targets": [
+        "DocumentRepository.find_one",
+        "DocumentRepository.update_one",
+        "FolderRepository.find_one",
+        "datetime.now"
+      ],
+      "collections": [
+        "documents",
+        "workspace_folders"
+      ]
+    },
+    {
+      "name": "transfer_document",
+      "args": [
+        "documentId : string",
+        "newOwnerId : string",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/hierarchy.py:78",
+      "file": "services/document/hierarchy.py",
+      "owner": "DocumentHierarchyService",
+      "calls": [
+        "exception",
+        "find_one",
+        "get_account",
+        "now",
+        "update_one"
+      ],
+      "call_targets": [
+        "AuthenticationClient.get_account",
+        "DocumentRepository.find_one",
+        "DocumentRepository.update_one",
+        "datetime.now",
+        "logger.exception"
+      ],
+      "collections": [
+        "documents",
+        "workspace_folders"
+      ]
+    },
+    {
+      "name": "serialize_internal",
+      "args": [
+        "value : json"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/internal.py:63",
+      "file": "services/document/internal.py",
+      "owner": null,
+      "calls": [
+        "isoformat",
+        "items"
+      ],
+      "call_targets": [
+        "value.isoformat",
+        "value.items"
+      ],
+      "collections": []
+    },
+    {
+      "name": "indexing_status_from_report",
+      "args": [
+        "indexReport : json"
+      ],
+      "return": "string",
+      "line": "backend/content/src/services/document/internal.py:75",
+      "file": "services/document/internal.py",
+      "owner": null,
+      "calls": [
+        "get"
+      ],
+      "call_targets": [
+        "index_report.get"
+      ],
+      "collections": []
+    },
+    {
+      "name": "internal_document_data",
+      "args": [
+        "req : json"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/internal.py:88",
+      "file": "services/document/internal.py",
+      "owner": null,
+      "calls": [
+        "aggregate",
+        "find",
+        "find_one",
+        "get",
+        "limit",
+        "normalize_query",
+        "sort",
+        "to_list",
+        "update_one"
+      ],
+      "call_targets": [
+        "DocumentRepository.normalize_query",
+        "cursor.limit",
+        "cursor.sort",
+        "data.get",
+        "documents.aggregate",
+        "documents.find",
+        "documents.find_one",
+        "documents.update_one",
+        "req.get"
+      ],
+      "collections": [
+        "documents",
+        "workspace_folders"
+      ]
+    },
+    {
+      "name": "get_internal_document",
+      "args": [
+        "req : json"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/internal.py:154",
+      "file": "services/document/internal.py",
+      "owner": null,
+      "calls": [
+        "find_one",
+        "get"
+      ],
+      "call_targets": [
+        "DocumentRepository.find_one",
+        "document.get",
+        "req.get"
+      ],
+      "collections": [
+        "workspace_folders"
+      ]
+    },
+    {
+      "name": "get_internal_document_stats",
+      "args": [
+        "req : json"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/internal.py:182",
+      "file": "services/document/internal.py",
+      "owner": null,
+      "calls": [
+        "append",
+        "count_documents",
+        "find",
+        "get",
+        "limit",
+        "sort",
+        "to_list"
+      ],
+      "call_targets": [
+        "documents.count_documents",
+        "documents.find",
+        "req.get"
+      ],
+      "collections": [
+        "documents"
+      ]
+    },
+    {
+      "name": "exchange_internal_document",
+      "args": [
+        "req : json"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/internal.py:208",
+      "file": "services/document/internal.py",
+      "owner": null,
+      "calls": [
+        "append",
+        "enqueue",
+        "find",
+        "find_one",
+        "find_one_and_update",
+        "find_versions",
+        "fromhex",
+        "fromkeys",
+        "get",
+        "hex",
+        "identifiers",
+        "insert_one_if_unique",
+        "insert_version",
+        "isoformat",
+        "items",
+        "limit",
+        "model_dump",
+        "model_validate",
+        "now",
+        "pop",
+        "replace",
+        "setdefault",
+        "strip",
+        "to_list",
+        "update_one",
+        "uuid4"
+      ],
+      "call_targets": [
+        "DocumentIndexingClaimRequest.model_validate",
+        "DocumentIndexingLeaseRequest.model_validate",
+        "DocumentIndexingProgressUpdate.model_validate",
+        "DocumentRepository.find_versions",
+        "DocumentRepository.identifiers",
+        "DocumentRepository.insert_version",
+        "access.append",
+        "bytes.fromhex",
+        "current.get",
+        "current_lease_until.replace",
+        "datetime.now",
+        "dict.fromkeys",
+        "document.pop",
+        "document_ingestion_outbox.enqueue",
+        "documents.find",
+        "documents.find_one",
+        "documents.find_one_and_update",
+        "documents.insert_one_if_unique",
+        "documents.update_one",
+        "lease_until.isoformat",
+        "payload.get",
+        "payload.setdefault",
+        "previous.get",
+        "progress.model_dump",
+        "req.get",
+        "response.model_dump",
+        "result.append",
+        "row.get",
+        "source_snapshot.items",
+        "uuid.uuid4"
+      ],
+      "collections": [
+        "document_versions",
+        "documents",
+        "workspace_folders"
+      ]
+    },
+    {
+      "name": "get_document_analytics",
+      "args": [
+        "documentId : string",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/metadata.py:14",
+      "file": "services/document/metadata.py",
+      "owner": "DocumentMetadataService",
+      "calls": [
+        "dumps",
+        "find_one",
+        "get",
+        "split"
+      ],
+      "call_targets": [
+        "DocumentRepository.find_one",
+        "doc.get",
+        "json.dumps",
+        "text_content.split"
+      ],
+      "collections": [
+        "workspace_folders"
+      ]
+    },
+    {
+      "name": "get_document_academic",
+      "args": [
+        "documentId : string",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/metadata.py:37",
+      "file": "services/document/metadata.py",
+      "owner": "DocumentMetadataService",
+      "calls": [
+        "count",
+        "dumps",
+        "find_one",
+        "get",
+        "split"
+      ],
+      "call_targets": [
+        "DocumentRepository.find_one",
+        "doc.get",
+        "json.dumps",
+        "text_content.count",
+        "text_content.split"
+      ],
+      "collections": [
+        "workspace_folders"
+      ]
+    },
+    {
+      "name": "get_approval_queue",
+      "args": [
+        "cursor : string",
+        "limit : int"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/metadata.py:66",
+      "file": "services/document/metadata.py",
+      "owner": "DocumentMetadataService",
+      "calls": [
+        "find",
+        "fromisoformat",
+        "get",
+        "isoformat",
+        "limit",
+        "now",
+        "replace",
+        "sort",
+        "to_list"
+      ],
+      "call_targets": [
+        "DocumentRepository.find",
+        "cursor.replace",
+        "datetime.fromisoformat",
+        "datetime.now",
+        "document.get",
+        "value.isoformat"
+      ],
+      "collections": [
+        "documents"
+      ]
+    },
+    {
+      "name": "get_trending_documents",
+      "args": [
+        "limit : int"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/metadata.py:99",
+      "file": "services/document/metadata.py",
+      "owner": "DocumentMetadataService",
+      "calls": [
+        "find",
+        "limit",
+        "sort",
+        "to_list"
+      ],
+      "call_targets": [
+        "cursor.to_list",
+        "docs_col.find"
+      ],
+      "collections": [
+        "documents"
+      ]
+    },
+    {
+      "name": "get_suggested_documents",
+      "args": [
+        "limit : int"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/metadata.py:112",
+      "file": "services/document/metadata.py",
+      "owner": "DocumentMetadataService",
+      "calls": [
+        "find",
+        "get",
+        "limit",
+        "sort",
+        "to_list"
+      ],
+      "call_targets": [
+        "b.get",
+        "cursor.to_list",
+        "docs_col.find"
+      ],
+      "collections": [
+        "documents"
+      ]
+    },
+    {
+      "name": "format_date",
+      "args": [
+        "value : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/metadata.py:77",
+      "file": "services/document/metadata.py",
+      "owner": "DocumentMetadataService",
+      "calls": [
+        "isoformat",
+        "now"
+      ],
+      "call_targets": [
+        "datetime.now",
+        "value.isoformat"
+      ],
+      "collections": []
+    },
+    {
+      "name": "get_tags_categories",
+      "args": [],
+      "return": "json",
+      "line": "backend/content/src/services/document/tag.py:10",
+      "file": "services/document/tag.py",
+      "owner": "DocumentTagService",
+      "calls": [
+        "aggregate",
+        "get",
+        "to_list"
+      ],
+      "call_targets": [
+        "DocumentRepository.aggregate",
+        "data.get"
+      ],
+      "collections": []
+    },
+    {
+      "name": "get_trending_tags",
+      "args": [
+        "limit : int"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/document/tag.py:43",
+      "file": "services/document/tag.py",
+      "owner": "DocumentTagService",
+      "calls": [
+        "aggregate",
+        "to_list"
+      ],
+      "call_targets": [
+        "DocumentRepository.aggregate"
+      ],
+      "collections": []
+    },
+    {
+      "name": "start",
+      "args": [],
+      "return": "void",
+      "line": "backend/content/src/services/document_ingestion_dispatcher.py:21",
+      "file": "services/document_ingestion_dispatcher.py",
+      "owner": "DocumentIngestionDispatcher",
+      "calls": [
+        "_run",
+        "create_task",
+        "done"
+      ],
+      "call_targets": [
+        "asyncio.create_task",
+        "self._run"
+      ],
+      "collections": []
+    },
+    {
+      "name": "stop",
+      "args": [],
+      "return": "void",
+      "line": "backend/content/src/services/document_ingestion_dispatcher.py:27",
+      "file": "services/document_ingestion_dispatcher.py",
+      "owner": "DocumentIngestionDispatcher",
+      "calls": [
+        "cancel",
+        "done"
+      ],
+      "call_targets": [
+        "task.cancel",
+        "task.done"
+      ],
+      "collections": []
+    },
+    {
+      "name": "save_version",
+      "args": [
+        "documentId : string",
+        "versionNote : string",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/version.py:11",
+      "file": "services/version.py",
+      "owner": "VersionService",
+      "calls": [
+        "find_one",
+        "get",
+        "info",
+        "insert_version",
+        "now"
+      ],
+      "call_targets": [
+        "DocumentRepository.find_one",
+        "DocumentRepository.insert_version",
+        "datetime.now",
+        "doc.get",
+        "logger.info"
+      ],
+      "collections": [
+        "document_versions",
+        "workspace_folders"
+      ]
+    },
+    {
+      "name": "get_versions",
+      "args": [
+        "documentId : string",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/version.py:37",
+      "file": "services/version.py",
+      "owner": "VersionService",
+      "calls": [
+        "find_versions",
+        "isoformat",
+        "sort",
+        "to_list"
+      ],
+      "call_targets": [
+        "DocumentRepository.find_versions",
+        "cursor.to_list"
+      ],
+      "collections": [
+        "document_versions"
+      ]
+    },
+    {
+      "name": "restore_version",
+      "args": [
+        "versionId : string",
+        "currentUser : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/services/version.py:48",
+      "file": "services/version.py",
+      "owner": "VersionService",
+      "calls": [
+        "find_version",
+        "get",
+        "info",
+        "now",
+        "update_one"
+      ],
+      "call_targets": [
+        "DocumentRepository.find_version",
+        "DocumentRepository.update_one",
+        "datetime.now",
+        "logger.info",
+        "version.get"
+      ],
+      "collections": [
+        "document_versions",
+        "documents"
+      ]
+    }
+  ],
+  "repository_methods": [
+    {
+      "name": "invalidate_document",
+      "args": [
+        "documentId : string",
+        "slug : string"
+      ],
+      "return": "void",
+      "line": "backend/content/src/repositories/cache.py:6",
+      "file": "repositories/cache.py",
+      "owner": "DocumentCacheRepository",
+      "calls": [
+        "delete"
+      ],
+      "call_targets": [
+        "redis.delete"
+      ],
+      "collections": []
+    },
+    {
+      "name": "password_attempts",
+      "args": [
+        "documentId : string",
+        "userId : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/repositories/cache.py:16",
+      "file": "repositories/cache.py",
+      "owner": "DocumentCacheRepository",
+      "calls": [
+        "_unlock_key",
+        "get"
+      ],
+      "call_targets": [
+        "DocumentCacheRepository._unlock_key",
+        "redis.get"
+      ],
+      "collections": []
+    },
+    {
+      "name": "record_password_failure",
+      "args": [
+        "documentId : string",
+        "userId : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/repositories/cache.py:21",
+      "file": "repositories/cache.py",
+      "owner": "DocumentCacheRepository",
+      "calls": [
+        "_unlock_key",
+        "expire",
+        "incr"
+      ],
+      "call_targets": [
+        "DocumentCacheRepository._unlock_key",
+        "redis.expire",
+        "redis.incr"
+      ],
+      "collections": []
+    },
+    {
+      "name": "clear_password_failures",
+      "args": [
+        "documentId : string",
+        "userId : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/repositories/cache.py:27",
+      "file": "repositories/cache.py",
+      "owner": "DocumentCacheRepository",
+      "calls": [
+        "_unlock_key",
+        "delete"
+      ],
+      "call_targets": [
+        "DocumentCacheRepository._unlock_key",
+        "redis.delete"
+      ],
+      "collections": []
+    },
+    {
+      "name": "normalize_query",
+      "args": [
+        "value : json"
+      ],
+      "return": "json",
+      "line": "backend/content/src/repositories/document.py:12",
+      "file": "repositories/document.py",
+      "owner": "DocumentRepository",
+      "calls": [
+        "is_valid",
+        "items",
+        "normalize_query"
+      ],
+      "call_targets": [
+        "DocumentRepository.normalize_query",
+        "ObjectId.is_valid",
+        "value.items"
+      ],
+      "collections": []
+    },
+    {
+      "name": "identifiers",
+      "args": [
+        "values : json"
+      ],
+      "return": "json",
+      "line": "backend/content/src/repositories/document.py:26",
+      "file": "repositories/document.py",
+      "owner": "DocumentRepository",
+      "calls": [
+        "is_valid"
+      ],
+      "call_targets": [
+        "ObjectId.is_valid"
+      ],
+      "collections": []
+    },
+    {
+      "name": "update_one",
+      "args": [],
+      "return": "json",
+      "line": "backend/content/src/repositories/document.py:30",
+      "file": "repositories/document.py",
+      "owner": "DocumentRepository",
+      "calls": [
+        "update_one"
+      ],
+      "call_targets": [
+        "mongo.update_one"
+      ],
+      "collections": [
+        "documents"
+      ]
+    },
+    {
+      "name": "find_one",
+      "args": [],
+      "return": "json",
+      "line": "backend/content/src/repositories/document.py:34",
+      "file": "repositories/document.py",
+      "owner": "DocumentRepository",
+      "calls": [
+        "find_one"
+      ],
+      "call_targets": [
+        "mongo.find_one"
+      ],
+      "collections": [
+        "documents"
+      ]
+    },
+    {
+      "name": "insert_revision",
+      "args": [],
+      "return": "json",
+      "line": "backend/content/src/repositories/document.py:38",
+      "file": "repositories/document.py",
+      "owner": "DocumentRepository",
+      "calls": [
+        "insert_one"
+      ],
+      "call_targets": [
+        "mongo.insert_one"
+      ],
+      "collections": [
+        "document_revisions"
+      ]
+    },
+    {
+      "name": "insert_version",
+      "args": [],
+      "return": "json",
+      "line": "backend/content/src/repositories/document.py:42",
+      "file": "repositories/document.py",
+      "owner": "DocumentRepository",
+      "calls": [
+        "insert_one"
+      ],
+      "call_targets": [
+        "mongo.insert_one"
+      ],
+      "collections": [
+        "document_versions"
+      ]
+    },
+    {
+      "name": "find_version",
+      "args": [],
+      "return": "json",
+      "line": "backend/content/src/repositories/document.py:46",
+      "file": "repositories/document.py",
+      "owner": "DocumentRepository",
+      "calls": [
+        "find_one"
+      ],
+      "call_targets": [
+        "mongo.find_one"
+      ],
+      "collections": [
+        "document_versions"
+      ]
+    },
+    {
+      "name": "find_versions",
+      "args": [],
+      "return": "json",
+      "line": "backend/content/src/repositories/document.py:50",
+      "file": "repositories/document.py",
+      "owner": "DocumentRepository",
+      "calls": [
+        "find"
+      ],
+      "call_targets": [
+        "mongo.find"
+      ],
+      "collections": [
+        "document_versions"
+      ]
+    },
+    {
+      "name": "insert_one",
+      "args": [],
+      "return": "json",
+      "line": "backend/content/src/repositories/document.py:54",
+      "file": "repositories/document.py",
+      "owner": "DocumentRepository",
+      "calls": [
+        "insert_one"
+      ],
+      "call_targets": [
+        "mongo.insert_one"
+      ],
+      "collections": [
+        "documents"
+      ]
+    },
+    {
+      "name": "insert_one_if_unique",
+      "args": [
+        "document : json"
+      ],
+      "return": "json",
+      "line": "backend/content/src/repositories/document.py:58",
+      "file": "repositories/document.py",
+      "owner": "DocumentRepository",
+      "calls": [
+        "insert_one"
+      ],
+      "call_targets": [
+        "mongo.insert_one"
+      ],
+      "collections": [
+        "documents"
+      ]
+    },
+    {
+      "name": "find_one_and_update",
+      "args": [
+        "query : json",
+        "update : json",
+        "upsert : Boolean"
+      ],
+      "return": "json",
+      "line": "backend/content/src/repositories/document.py:66",
+      "file": "repositories/document.py",
+      "owner": "DocumentRepository",
+      "calls": [
+        "find_one_and_update",
+        "get_db"
+      ],
+      "call_targets": [
+        "mongo.get_db"
+      ],
+      "collections": [
+        "documents"
+      ]
+    },
+    {
+      "name": "insert_many",
+      "args": [],
+      "return": "json",
+      "line": "backend/content/src/repositories/document.py:75",
+      "file": "repositories/document.py",
+      "owner": "DocumentRepository",
+      "calls": [
+        "insert_many"
+      ],
+      "call_targets": [
+        "mongo.insert_many"
+      ],
+      "collections": []
+    },
+    {
+      "name": "update_many",
+      "args": [],
+      "return": "json",
+      "line": "backend/content/src/repositories/document.py:79",
+      "file": "repositories/document.py",
+      "owner": "DocumentRepository",
+      "calls": [
+        "update_many"
+      ],
+      "call_targets": [
+        "mongo.update_many"
+      ],
+      "collections": [
+        "documents"
+      ]
+    },
+    {
+      "name": "delete_one",
+      "args": [],
+      "return": "json",
+      "line": "backend/content/src/repositories/document.py:83",
+      "file": "repositories/document.py",
+      "owner": "DocumentRepository",
+      "calls": [
+        "delete_one"
+      ],
+      "call_targets": [
+        "mongo.delete_one"
+      ],
+      "collections": [
+        "documents"
+      ]
+    },
+    {
+      "name": "delete_many",
+      "args": [],
+      "return": "json",
+      "line": "backend/content/src/repositories/document.py:87",
+      "file": "repositories/document.py",
+      "owner": "DocumentRepository",
+      "calls": [
+        "delete_many"
+      ],
+      "call_targets": [
+        "mongo.delete_many"
+      ],
+      "collections": []
+    },
+    {
+      "name": "count_documents",
+      "args": [],
+      "return": "json",
+      "line": "backend/content/src/repositories/document.py:91",
+      "file": "repositories/document.py",
+      "owner": "DocumentRepository",
+      "calls": [
+        "count_documents"
+      ],
+      "call_targets": [
+        "mongo.count_documents"
+      ],
+      "collections": [
+        "documents"
+      ]
+    },
+    {
+      "name": "find",
+      "args": [],
+      "return": "json",
+      "line": "backend/content/src/repositories/document.py:95",
+      "file": "repositories/document.py",
+      "owner": "DocumentRepository",
+      "calls": [
+        "find"
+      ],
+      "call_targets": [
+        "mongo.find"
+      ],
+      "collections": [
+        "documents"
+      ]
+    },
+    {
+      "name": "aggregate",
+      "args": [],
+      "return": "json",
+      "line": "backend/content/src/repositories/document.py:99",
+      "file": "repositories/document.py",
+      "owner": "DocumentRepository",
+      "calls": [
+        "aggregate"
+      ],
+      "call_targets": [
+        "mongo.aggregate"
+      ],
+      "collections": []
+    },
+    {
+      "name": "query",
+      "args": [],
+      "return": "json",
+      "line": "backend/content/src/repositories/document.py:103",
+      "file": "repositories/document.py",
+      "owner": "DocumentRepository",
+      "calls": [
+        "query"
+      ],
+      "call_targets": [
+        "mongo.query"
+      ],
+      "collections": []
+    },
+    {
+      "name": "source_snapshot_from_document",
+      "args": [
+        "document : json"
+      ],
+      "return": "json",
+      "line": "backend/content/src/repositories/document_ingestion_outbox.py:73",
+      "file": "repositories/document_ingestion_outbox.py",
+      "owner": "DocumentIngestionOutboxRepository",
+      "calls": [
+        "get"
+      ],
+      "call_targets": [
+        "document.get"
+      ],
+      "collections": []
+    },
+    {
+      "name": "enqueue",
+      "args": [
+        "document : json",
+        "userId : string",
+        "supersededDocumentId : string",
+        "forceNew : Boolean",
+        "expectedSourceSnapshot : json"
+      ],
+      "return": "string",
+      "line": "backend/content/src/repositories/document_ingestion_outbox.py:77",
+      "file": "repositories/document_ingestion_outbox.py",
+      "owner": "DocumentIngestionOutboxRepository",
+      "calls": [
+        "_collection",
+        "get",
+        "join",
+        "model_dump",
+        "now",
+        "start_session",
+        "start_transaction",
+        "update",
+        "update_one"
+      ],
+      "call_targets": [
+        "cls._collection",
+        "datetime.now",
+        "document.get",
+        "document_filter.update",
+        "event.model_dump",
+        "expected_source_snapshot.get",
+        "session.start_transaction"
+      ],
+      "collections": []
+    },
+    {
+      "name": "claim",
+      "args": [
+        "leaseToken : string"
+      ],
+      "return": "json",
+      "line": "backend/content/src/repositories/document_ingestion_outbox.py:158",
+      "file": "repositories/document_ingestion_outbox.py",
+      "owner": "DocumentIngestionOutboxRepository",
+      "calls": [
+        "_collection",
+        "find_one_and_update",
+        "now"
+      ],
+      "call_targets": [
+        "cls._collection",
+        "datetime.now"
+      ],
+      "collections": []
+    },
+    {
+      "name": "complete",
+      "args": [
+        "eventId : string",
+        "leaseToken : string"
+      ],
+      "return": "Boolean",
+      "line": "backend/content/src/repositories/document_ingestion_outbox.py:191",
+      "file": "repositories/document_ingestion_outbox.py",
+      "owner": "DocumentIngestionOutboxRepository",
+      "calls": [
+        "_collection",
+        "now",
+        "update_one"
+      ],
+      "call_targets": [
+        "cls._collection",
+        "datetime.now"
+      ],
+      "collections": []
+    },
+    {
+      "name": "retry",
+      "args": [
+        "event : json",
+        "leaseToken : string",
+        "error : json"
+      ],
+      "return": "Boolean",
+      "line": "backend/content/src/repositories/document_ingestion_outbox.py:212",
+      "file": "repositories/document_ingestion_outbox.py",
+      "owner": "DocumentIngestionOutboxRepository",
+      "calls": [
+        "_collection",
+        "bit_length",
+        "get",
+        "now",
+        "update_one"
+      ],
+      "call_targets": [
+        "cls._collection",
+        "datetime.now",
+        "event.get"
+      ],
+      "collections": []
+    },
+    {
+      "name": "list_documents_requiring_dispatch",
+      "args": [
+        "limit : int"
+      ],
+      "return": "json",
+      "line": "backend/content/src/repositories/document_ingestion_outbox.py:248",
+      "file": "repositories/document_ingestion_outbox.py",
+      "owner": "DocumentIngestionOutboxRepository",
+      "calls": [
+        "_collection",
+        "find",
+        "limit",
+        "sort",
+        "to_list"
+      ],
+      "call_targets": [
+        "cls._collection",
+        "cursor.to_list"
+      ],
+      "collections": []
+    },
+    {
+      "name": "recover_expired_indexing_claims",
+      "args": [
+        "limit : int"
+      ],
+      "return": "int",
+      "line": "backend/content/src/repositories/document_ingestion_outbox.py:281",
+      "file": "repositories/document_ingestion_outbox.py",
+      "owner": "DocumentIngestionOutboxRepository",
+      "calls": [
+        "_collection",
+        "find",
+        "limit",
+        "now",
+        "sort",
+        "to_list",
+        "update_many",
+        "update_one"
+      ],
+      "call_targets": [
+        "cls._collection",
+        "datetime.now",
+        "documents.find",
+        "documents.update_many",
+        "documents.update_one"
+      ],
+      "collections": []
+    },
+    {
+      "name": "find_one",
+      "args": [],
+      "return": "json",
+      "line": "backend/content/src/repositories/folder.py:6",
+      "file": "repositories/folder.py",
+      "owner": "FolderRepository",
+      "calls": [
+        "find_one"
+      ],
+      "call_targets": [
+        "mongo.find_one"
+      ],
+      "collections": [
+        "workspace_folders"
+      ]
+    },
+    {
+      "name": "insert_one",
+      "args": [],
+      "return": "json",
+      "line": "backend/content/src/repositories/folder.py:10",
+      "file": "repositories/folder.py",
+      "owner": "FolderRepository",
+      "calls": [
+        "insert_one"
+      ],
+      "call_targets": [
+        "mongo.insert_one"
+      ],
+      "collections": [
+        "workspace_folders"
+      ]
+    },
+    {
+      "name": "delete_one",
+      "args": [],
+      "return": "json",
+      "line": "backend/content/src/repositories/folder.py:14",
+      "file": "repositories/folder.py",
+      "owner": "FolderRepository",
+      "calls": [
+        "delete_one"
+      ],
+      "call_targets": [
+        "mongo.delete_one"
+      ],
+      "collections": [
+        "workspace_folders"
+      ]
+    },
+    {
+      "name": "query",
+      "args": [],
+      "return": "json",
+      "line": "backend/content/src/repositories/folder.py:18",
+      "file": "repositories/folder.py",
+      "owner": "FolderRepository",
+      "calls": [
+        "query"
+      ],
+      "call_targets": [
+        "mongo.query"
+      ],
+      "collections": []
+    }
+  ],
+  "frontend": {
+    "pages": [],
+    "service_functions": [],
+    "page_calls": []
+  },
+  "references": [],
+  "indexes": [
+    {
+      "at": "backend/content/src/core/infrastructure/database.py:55",
+      "expression": "db['documents'].create_index([('title', 'text'), ('description', 'text'), ('author', 'text')], background=True)"
+    },
+    {
+      "at": "backend/content/src/core/infrastructure/database.py:58",
+      "expression": "db['documents'].create_index([('creator_id', 1)], background=True)"
+    },
+    {
+      "at": "backend/content/src/core/infrastructure/database.py:59",
+      "expression": "db['documents'].create_index([('source_url', 1)], background=True)"
+    },
+    {
+      "at": "backend/content/src/core/infrastructure/database.py:60",
+      "expression": "db['documents'].create_index([('content_hash', 1)], background=True)"
+    },
+    {
+      "at": "backend/content/src/core/infrastructure/database.py:61",
+      "expression": "db['documents'].create_index([('indexing_status', 1), ('is_deleted', 1), ('source_is_current', 1)], background=True)"
+    },
+    {
+      "at": "backend/content/src/core/infrastructure/database.py:65",
+      "expression": "db['documents'].create_index([('indexing_status', 1), ('indexing_lease_until', 1), ('is_deleted', 1)], background=True)"
+    },
+    {
+      "at": "backend/content/src/core/infrastructure/database.py:69",
+      "expression": "db['documents'].create_index([('source_url', 1), ('source_is_current', 1)], background=True)"
+    },
+    {
+      "at": "backend/content/src/core/infrastructure/database.py:72",
+      "expression": "db['documents'].create_index([('source_url', 1), ('content_hash', 1)], unique=True, partialFilterExpression={'source_url': {'$type': 'string'}, 'content_hash': {'$type': 'string'}}, background=True)"
+    },
+    {
+      "at": "backend/content/src/core/infrastructure/database.py:81",
+      "expression": "db['documents'].create_index([('creator_id', 1), ('created_at', -1)], background=True)"
+    },
+    {
+      "at": "backend/content/src/core/infrastructure/database.py:82",
+      "expression": "db['documents'].create_index([('status', 1), ('is_deleted', 1), ('created_at', -1)], background=True)"
+    },
+    {
+      "at": "backend/content/src/core/infrastructure/database.py:85",
+      "expression": "db['documents'].create_index([('status', 1), ('is_deleted', 1), ('views', -1)], background=True)"
+    },
+    {
+      "at": "backend/content/src/core/infrastructure/database.py:88",
+      "expression": "db['documents'].create_index([('status', 1), ('is_deleted', 1), ('categories', 1), ('created_at', -1)], background=True)"
+    },
+    {
+      "at": "backend/content/src/core/infrastructure/database.py:92",
+      "expression": "db['documents'].create_index([('status', 1), ('is_deleted', 1), ('tags', 1), ('created_at', -1)], background=True)"
+    },
+    {
+      "at": "backend/content/src/core/infrastructure/database.py:95",
+      "expression": "db['documents'].create_index([('slug', 1)], unique=True, background=True)"
+    },
+    {
+      "at": "backend/content/src/core/infrastructure/database.py:97",
+      "expression": "db['comments'].create_index([('item_id', 1), ('item_type', 1)], background=True)"
+    },
+    {
+      "at": "backend/content/src/core/infrastructure/database.py:98",
+      "expression": "db['comments'].create_index([('path', 1)], background=True)"
+    },
+    {
+      "at": "backend/content/src/core/infrastructure/database.py:100",
+      "expression": "db['editor_comments'].create_index([('document_id', 1), ('block_id', 1)], background=True)"
+    },
+    {
+      "at": "backend/content/src/core/infrastructure/database.py:104",
+      "expression": "db['document_versions'].create_index([('document_id', 1), ('created_at', -1)], background=True)"
+    },
+    {
+      "at": "backend/content/src/core/infrastructure/database.py:107",
+      "expression": "db['document_ingestion_outbox'].create_index([('status', 1), ('available_at', 1), ('created_at', 1)], background=True)"
+    },
+    {
+      "at": "backend/content/src/core/infrastructure/database.py:111",
+      "expression": "db['document_ingestion_outbox'].create_index([('status', 1), ('lease_until', 1)], background=True)"
+    },
+    {
+      "at": "backend/content/src/core/infrastructure/database.py:115",
+      "expression": "db['workspace_folders'].create_index([('creator_id', 1), ('parent_id', 1)])"
+    }
+  ],
+  "external_references": []
+}

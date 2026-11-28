@@ -1,0 +1,7 @@
+UML Class Diagram (Boundary-Control-Entity analysis)
+Create the BCE class diagram for 'ai', group 'service_agent_evidence'. Use English PascalCase names. Use stereotypes <<boundary>>, <<control>>, <<entity>>. Do not connect boundaries directly to entities.
+Class 'Ctrl_AgentEvidence' <<control>>: + VerifiedToolEvidenceRecords(evidence : string, projectId : string, allowedRefs : string) : json; + VerifiedToolEvidence(run : string, checkpoint : string) : json.
+Include EVERY class, attribute, operation and relationship listed above, exactly as named. Do not omit, merge, rename, simplify, summarize or add anything. Do not invent extra classes, attributes or relationships. If something does not fit, keep it and let the layout grow instead of dropping it. Totals: 1 classes, 0 relationships, 0 attributes.
+
+Checklist: classes=1; relationships=0; attributes=0.
+Correction prompt: Fix only the following items and keep everything else unchanged: [insert verified discrepancy].

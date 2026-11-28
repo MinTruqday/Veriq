@@ -2,23 +2,23 @@
   "id": "test_case",
   "name": "04 - Thiết kế, rà soát và phê duyệt ca kiểm thử",
   "file_name": "BPMN_Testing_04_Thiet_ke_va_phe_duyet_ca_kiem_thu_v1.drawio",
-  "scope": "Sinh bằng AI và soạn thủ công là hai cách tạo bản nháp. Phê duyệt yêu cầu rà soát độc lập, kiểm tra lại nguồn và tạo phiên bản bất biến.",
+  "scope": "Tạo bằng trí tuệ nhân tạo hoặc soạn thủ công là hai cách tạo bản nháp. Phê duyệt yêu cầu rà soát độc lập, kiểm tra lại nguồn và tạo phiên bản bất biến.",
   "lanes": [
     {
       "id": "designer",
-      "name": "Người thiết kế ca kiểm thử",
+      "name": "Tester",
       "fill": "#E8F3FF",
       "stroke": "#4A90C2"
     },
     {
       "id": "system",
-      "name": "Veriq",
+      "name": "Hệ thống",
       "fill": "#EFE8FF",
       "stroke": "#7956A8"
     },
     {
       "id": "reviewer",
-      "name": "Người có quyền rà soát",
+      "name": "Admin",
       "fill": "#FFF4DF",
       "stroke": "#C58A28"
     }
@@ -34,7 +34,7 @@
     },
     {
       "id": "choose_ai",
-      "label": "Sinh bản nháp bằng AI?",
+      "label": "Tạo bản nháp bằng trí tuệ nhân tạo?",
       "type": "gateway",
       "lane": "designer",
       "col": 1,
@@ -264,7 +264,8 @@
       "from": "submit",
       "to": "auto_approval",
       "type": "sequence",
-      "label": ""
+      "label": "",
+      "route": "lane_gap"
     },
     {
       "id": "e11a",

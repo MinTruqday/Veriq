@@ -8,13 +8,70 @@ from src.schemas.project_access import (
 )
 
 class ProjectAccessRepository:
+    async def ensure_test_case_approval_admin_only(self):
+        """Remove legacy BA/TESTER approval grants, including admin-managed policies."""
+        from src.core.auth import access_policy
+
+        while True:
+            document = await database.value.project_access_control.find_one({"_id": "active"})
+            access = ProjectAccessControl.model_validate(document)
+            role_grants = [
+                grant.model_copy(update={
+                    "permissions": sorted(
+                        set(grant.permissions) - {"testcase.approve"}
+                    ),
+                }) if grant.role in {"BA", "TESTER"} else grant
+                for grant in access.role_grants
+            ]
+            setting_grants = [
+                grant.model_copy(update={
+                    "permissions": sorted(
+                        set(grant.permissions) - {"testcase.approve"}
+                    ),
+                }) if grant.role in {"BA", "TESTER"} else grant
+                for grant in access.setting_grants
+            ]
+            changed = (
+                role_grants != access.role_grants
+                or setting_grants != access.setting_grants
+            )
+            if not changed:
+                access_policy.cache_clear()
+                return
+            updated = access.model_copy(update={
+                "revision": access.revision + 1,
+                "role_grants": role_grants,
+                "setting_grants": setting_grants,
+            })
+            timestamp = datetime.now(timezone.utc)
+            result = await database.value.project_access_control.replace_one(
+                {"_id": "active", "revision": access.revision},
+                {**document, **updated.model_dump(), "updated_at": timestamp},
+            )
+            if not result.modified_count:
+                continue
+            await database.value.audit_events.update_one(
+                {"_id": f"MIG-testcase-approval-admin-only-{updated.revision}"},
+                {"$setOnInsert": {
+                    "actor_id": "SYSTEM_MIGRATION",
+                    "action": "testcase_approval_restricted_to_admin",
+                    "entity_type": "ProjectAccessControl",
+                    "entity_id": "active",
+                    "project_id": None,
+                    "created_at": timestamp,
+                    "details": {"previous_revision": access.revision},
+                }},
+                upsert=True,
+            )
+            access_policy.cache_clear()
+            return
+
     async def ensure_workflow_role_capabilities(self):
         """Add the project workflow permissions needed by the supported roles."""
         from src.core.auth import access_policy
 
         role_permissions = {
             "TESTER": {
-                "testcase.approve",
                 "defect.severity.manage",
                 "defect.update",
                 "testrun.create",
@@ -34,6 +91,9 @@ class ProjectAccessRepository:
             for role, permissions in role_permissions.items():
                 if role in updated_grants:
                     updated_grants[role].update(permissions)
+            for role in ("BA", "TESTER"):
+                if role in updated_grants:
+                    updated_grants[role].discard("testcase.approve")
             if "TESTER" in updated_grants:
                 updated_grants["TESTER"].discard("defect.triage")
             changed_grants = any(updated_grants[role] != grants[role] for role in grants)

@@ -3,9 +3,9 @@ import hashlib
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 from src.core.human_decisions import (
-    can_auto_approve_project_content,
     require_ai_publication_authority,
     require_independent_review,
+    require_test_case_admin_approver,
 )
 from src.modules.design.services.design_authorization import require_assigned_design_draft
 
@@ -138,15 +138,6 @@ async def submit_test_case_review_record(project_id, draft_id, payload, user):
         project_id,
         {"review_note": payload.review_note},
     )
-    if await can_auto_approve_project_content(project_id, user):
-        return await approve_test_case_draft_record(
-            draft_id,
-            TestCaseFreezeInput(
-                expected_revision=draft["revision"],
-                review_note=payload.review_note,
-            ),
-            user,
-        )
     return draft
 
 async def request_test_case_changes_record(project_id, draft_id, payload, user):
@@ -196,6 +187,7 @@ async def request_test_case_changes_record(project_id, draft_id, payload, user):
     return draft
 
 async def approve_test_case_draft_record(draft_id, payload, user):
+    require_test_case_admin_approver(user)
     require_ai_publication_authority(user, "testcase.approve")
     draft = await get_project_entity('test_case_drafts', draft_id, user, 'testcase.approve')
     if draft["status"] == 'APPROVED' and draft.get(

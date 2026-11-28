@@ -253,7 +253,7 @@ export default function RequirementTracePanel({
             />
             {!linkedCount && (
               <p className="text-xs text-ink-muted">
-                Chỉ hiển thị liên kết có trong dữ liệu dự án; hệ thống không tự suy luận quan hệ.
+                Chỉ hiển thị liên kết có trong dữ liệu dự án; hệ thống không tự suy luận quan hệ
               </p>
             )}
           </>

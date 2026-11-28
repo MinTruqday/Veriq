@@ -24,6 +24,18 @@ def require_ai_publication_authority(user, permission=None):
         )
 
 
+def require_test_case_admin_approver(user):
+    """Test-case approval is reserved for Admin, never a BA/Tester grant."""
+    if not getattr(user, "is_system_admin", False):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "TEST_CASE_ADMIN_APPROVAL_REQUIRED",
+                "message": "Chỉ Admin mới được phê duyệt ca kiểm thử.",
+            },
+        )
+
+
 def content_authorship_changes(record, user, changes):
     content_changes = {
         key: value

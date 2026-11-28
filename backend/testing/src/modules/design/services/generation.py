@@ -161,8 +161,6 @@ def merge_duplicate_generated_cases(drafts, suggestions, threshold):
 
 
 def generated_cases_have_equivalent_actions(left, right):
-    if left.test_data != right.test_data:
-        return False
     left_preconditions = " ".join(plain_text(left.preconditions_doc).casefold().split())
     right_preconditions = " ".join(plain_text(right.preconditions_doc).casefold().split())
     if SequenceMatcher(None, left_preconditions, right_preconditions).ratio() < 0.9:

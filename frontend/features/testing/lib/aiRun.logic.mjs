@@ -2,7 +2,7 @@ import { formatDateTime } from "../../../shared/lib/dateTime.mjs";
 
 const RETRYABLE_STATUSES = new Set(["FAILED", "DEGRADED"]);
 
-const failedAIRunStatuses = new Set(["FAILED", "DEGRADED", "CANCELLED"]);
+const failedAIRunStatuses = new Set(["FAILED", "DEGRADED"]);
 
 const checkpointProgress = {
   QUEUED: 0,
@@ -50,6 +50,9 @@ export function aiRunProgress(run, checkpoints) {
   const status = run?.status;
   const failed = failedAIRunStatuses.has(status);
   const completed = status === "COMPLETED";
+  const awaitingInput = status === "AWAITING_INPUT";
+  const awaitingAuthorization = status === "AWAITING_AUTHORIZATION";
+  const cancelled = status === "CANCELLED";
   const phase = progressCheckpoint?.phase;
   const processingPhases = new Set([
     "ACTION_STARTED",
@@ -62,16 +65,22 @@ export function aiRunProgress(run, checkpoints) {
     ? "Hoàn thành"
     : failed
       ? "Thất bại"
-      : processingPhases.has(phase) || status === "VERIFYING"
-        ? "Đang xử lý"
-        : "Chuẩn bị";
+      : awaitingInput
+        ? "Cần bổ sung thông tin"
+        : awaitingAuthorization
+          ? "Cần kiểm tra quyền"
+          : cancelled
+            ? "Đã dừng"
+            : processingPhases.has(phase) || status === "VERIFYING"
+              ? "Đang xử lý"
+              : "Chuẩn bị";
   const percent = completed
     ? 100
     : Math.max(0, Math.min(99, checkpointPercent(progressCheckpoint)));
   return {
     label,
     percent,
-    tone: completed ? "success" : failed ? "danger" : "warning",
+    tone: completed ? "success" : failed || cancelled ? "danger" : "warning",
   };
 }
 
@@ -107,29 +116,27 @@ const checkpointReasonLabels = {
 
 const aiRunErrorMessages = {
   INSUFFICIENT_EVIDENCE:
-    "Tác vụ AI chưa đủ căn cứ để hoàn tất. Hãy xem chi tiết các bước xử lý để biết nguồn hoặc thao tác nào chưa được xác minh.",
+    "Tác vụ AI chưa đủ căn cứ để hoàn tất. Hãy xem chi tiết các bước xử lý để biết nguồn hoặc thao tác nào chưa được xác minh",
   AI_RUN_ACTION_OUTCOME_UNCERTAIN:
-    "Chưa xác định được kết quả bước trước. Hãy kiểm tra dữ liệu trước khi tiếp tục để tránh tạo trùng.",
+    "Chưa xác định được kết quả bước trước. Hãy kiểm tra dữ liệu trước khi tiếp tục để tránh tạo trùng",
   AI_RUN_CHECKPOINT_IDENTITY_MISMATCH:
-    "Thông tin lượt chạy không còn khớp với dữ liệu hiện tại. Hệ thống đã dừng để tránh xử lý nhầm.",
-  AI_RUN_EXECUTION_FAILED: "Tác vụ AI chưa hoàn tất. Hãy xem kết quả gần nhất trước khi tiếp tục.",
+    "Thông tin lượt chạy không còn khớp với dữ liệu hiện tại. Hệ thống đã dừng để tránh xử lý nhầm",
+  AI_RUN_EXECUTION_FAILED: "Tác vụ AI chưa hoàn tất. Hãy xem kết quả gần nhất trước khi tiếp tục",
   AI_RUN_LIMIT_REACHED:
-    "Tác vụ AI đã chạm giới hạn xử lý. Hãy kiểm tra phần việc còn lại trước khi tiếp tục.",
+    "Tác vụ AI đã chạm giới hạn xử lý. Hãy kiểm tra phần việc còn lại trước khi tiếp tục",
   AI_RUN_QUEUE_UNAVAILABLE:
-    "Hệ thống chưa thể tiếp nhận lượt chạy. Lượt này được giữ lại và sẽ được thử lại khi có thể.",
+    "Hệ thống chưa thể tiếp nhận lượt chạy. Lượt này được giữ lại và sẽ được thử lại khi có thể",
   AI_RUN_WORKER_FAILED:
-    "Hệ thống gặp lỗi khi xử lý lượt AI. Hãy xem bước gần nhất và trạng thái tiếp tục trước khi thử lại.",
+    "Hệ thống gặp lỗi khi xử lý lượt AI. Hãy xem bước gần nhất và trạng thái tiếp tục trước khi thử lại",
   AI_RUN_EXECUTOR_UNAVAILABLE:
-    "Không xác minh được người thực hiện có quyền cần thiết để tiếp tục lượt chạy này.",
+    "Không xác minh được người thực hiện có quyền cần thiết để tiếp tục lượt chạy này",
   PROJECT_AUTHORIZATION_CHECK_FAILED:
-    "Chưa xác minh được quyền dự án. Lượt chạy đang chờ kiểm tra quyền.",
-  AUTHORIZATION_EXPIRED: "Phiên quyền của lượt chạy đã hết hạn; cần xác minh lại quyền hiện tại.",
+    "Chưa xác minh được quyền dự án. Lượt chạy đang chờ kiểm tra quyền",
+  AUTHORIZATION_EXPIRED: "Phiên quyền của lượt chạy đã hết hạn; cần xác minh lại quyền hiện tại",
 };
 
 export function aiRunErrorMessage(errorCode) {
-  return (
-    aiRunErrorMessages[errorCode] || "Tác vụ AI chưa hoàn tất; hãy xem kết quả các bước xử lý."
-  );
+  return aiRunErrorMessages[errorCode] || "Tác vụ AI chưa hoàn tất; hãy xem kết quả các bước xử lý";
 }
 
 export function agentCheckpointView(checkpoint, dateTimeOptions = {}) {
@@ -182,7 +189,7 @@ export function agentAuthorizationGuidance(run) {
   if (run?.error_code?.endsWith("_EXECUTOR_UNAVAILABLE")) {
     return {
       message:
-        "Không xác minh được người thực hiện có quyền cần thiết. Hãy kiểm tra quyền dự án rồi thử lại.",
+        "Không xác minh được người thực hiện có quyền cần thiết. Hãy kiểm tra quyền dự án rồi thử lại",
       action: "Kiểm tra quyền và thử lại",
     };
   }
@@ -190,32 +197,32 @@ export function agentAuthorizationGuidance(run) {
     case "AI_RUN_PRINCIPAL_ROLE_CHANGED":
       return {
         message:
-          "Vai trò của người thực hiện đã thay đổi. Hãy kiểm tra lại phân công và quyền dự án.",
+          "Vai trò của người thực hiện đã thay đổi. Hãy kiểm tra lại phân công và quyền dự án",
         action: "Thử lại sau khi kiểm tra quyền",
       };
     case "AI_RUN_PRINCIPAL_UNAVAILABLE":
     case "AI_RUN_EXECUTOR_UNAVAILABLE":
       return {
         message:
-          "Không còn người thực hiện hợp lệ cho lượt này. Hãy kiểm tra thành viên và phân công trong dự án.",
+          "Không còn người thực hiện hợp lệ cho lượt này. Hãy kiểm tra thành viên và phân công trong dự án",
         action: "Thử lại sau khi kiểm tra người thực hiện",
       };
     case "AUTHORIZATION_EXPIRED":
       return {
         message:
-          "Phiên ủy quyền của lượt chạy đã hết hạn. Hệ thống sẽ kiểm tra lại quyền hiện tại khi tiếp tục.",
+          "Phiên ủy quyền của lượt chạy đã hết hạn. Hệ thống sẽ kiểm tra lại quyền hiện tại khi tiếp tục",
         action: "Thử lại sau khi xác minh quyền",
       };
     case "PROJECT_AUTHORIZATION_CHECK_FAILED":
       return {
         message:
-          "Hiện chưa xác minh được quyền truy cập dự án. Hãy kiểm tra lại thành viên hoặc thử lại khi dịch vụ phân quyền sẵn sàng.",
+          "Hiện chưa xác minh được quyền truy cập dự án. Hãy kiểm tra lại thành viên hoặc thử lại khi dịch vụ phân quyền sẵn sàng",
         action: "Thử lại khi dịch vụ phân quyền sẵn sàng",
       };
     default:
       return {
         message:
-          "Lượt AI đang tạm dừng vì chưa xác minh được quyền thực hiện. Hãy kiểm tra quyền hiện tại trước khi tiếp tục.",
+          "Lượt AI đang tạm dừng vì chưa xác minh được quyền thực hiện. Hãy kiểm tra quyền hiện tại trước khi tiếp tục",
         action: "Thử lại sau khi kiểm tra quyền",
       };
   }

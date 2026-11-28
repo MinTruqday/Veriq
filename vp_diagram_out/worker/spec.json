@@ -1,0 +1,1247 @@
+{
+  "service": "worker",
+  "collections": {
+    "worker_jobs": {
+      "fields": {
+        "_id": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/worker/src/repositories/jobs.py:157",
+            "backend/worker/src/repositories/jobs.py:173",
+            "backend/worker/src/repositories/jobs.py:189",
+            "backend/worker/src/repositories/jobs.py:226",
+            "backend/worker/src/repositories/jobs.py:262",
+            "backend/worker/src/repositories/jobs.py:285"
+          ]
+        },
+        "attempt_started_at": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "date",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/worker/src/repositories/jobs.py:159"
+          ]
+        },
+        "canceled_at": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "date",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/worker/src/repositories/jobs.py:228"
+          ]
+        },
+        "delivery_count": {
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/worker/src/repositories/jobs.py:166"
+          ]
+        },
+        "dispatch_generation": {
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/worker/src/repositories/jobs.py:128"
+          ]
+        },
+        "error": {
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/worker/src/repositories/jobs.py:122",
+            "backend/worker/src/repositories/jobs.py:208"
+          ]
+        },
+        "error_code": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/worker/src/repositories/jobs.py:122",
+            "backend/worker/src/repositories/jobs.py:208"
+          ]
+        },
+        "execution_lease_token": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/worker/src/repositories/jobs.py:159",
+            "backend/worker/src/repositories/jobs.py:173",
+            "backend/worker/src/repositories/jobs.py:189",
+            "backend/worker/src/repositories/jobs.py:196",
+            "backend/worker/src/repositories/jobs.py:215",
+            "backend/worker/src/repositories/jobs.py:270"
+          ]
+        },
+        "execution_lease_until": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "date",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/worker/src/repositories/jobs.py:159",
+            "backend/worker/src/repositories/jobs.py:179",
+            "backend/worker/src/repositories/jobs.py:196",
+            "backend/worker/src/repositories/jobs.py:203",
+            "backend/worker/src/repositories/jobs.py:215"
+          ]
+        },
+        "manual_retry_count": {
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/worker/src/repositories/jobs.py:128"
+          ]
+        },
+        "reconciliation_required_at": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "date",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/worker/src/repositories/jobs.py:208"
+          ]
+        },
+        "request": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "json",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/worker/src/repositories/jobs.py:270"
+          ]
+        },
+        "status": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/worker/src/repositories/jobs.py:122",
+            "backend/worker/src/repositories/jobs.py:157",
+            "backend/worker/src/repositories/jobs.py:159",
+            "backend/worker/src/repositories/jobs.py:173",
+            "backend/worker/src/repositories/jobs.py:189",
+            "backend/worker/src/repositories/jobs.py:203",
+            "backend/worker/src/repositories/jobs.py:208",
+            "backend/worker/src/repositories/jobs.py:226",
+            "backend/worker/src/repositories/jobs.py:228",
+            "backend/worker/src/repositories/jobs.py:285"
+          ]
+        },
+        "updated_at": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "date",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/worker/src/repositories/jobs.py:122",
+            "backend/worker/src/repositories/jobs.py:159",
+            "backend/worker/src/repositories/jobs.py:179",
+            "backend/worker/src/repositories/jobs.py:195",
+            "backend/worker/src/repositories/jobs.py:208",
+            "backend/worker/src/repositories/jobs.py:228"
+          ]
+        }
+      },
+      "sources": [
+        "backend/worker/src/core/infrastructure/database.py:19",
+        "backend/worker/src/repositories/jobs.py:112",
+        "backend/worker/src/repositories/jobs.py:13",
+        "backend/worker/src/repositories/jobs.py:156",
+        "backend/worker/src/repositories/jobs.py:172",
+        "backend/worker/src/repositories/jobs.py:188",
+        "backend/worker/src/repositories/jobs.py:202",
+        "backend/worker/src/repositories/jobs.py:225",
+        "backend/worker/src/repositories/jobs.py:262",
+        "backend/worker/src/repositories/jobs.py:265",
+        "backend/worker/src/repositories/jobs.py:268",
+        "backend/worker/src/repositories/jobs.py:276",
+        "backend/worker/src/repositories/jobs.py:279",
+        "backend/worker/src/repositories/jobs.py:284",
+        "backend/worker/src/repositories/jobs.py:30"
+      ],
+      "indexes": []
+    },
+    "worker_job_outbox": {
+      "fields": {
+        "_id": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "string",
+            "nullable": false
+          },
+          "evidence": [
+            "backend/worker/src/repositories/jobs.py:140",
+            "backend/worker/src/repositories/jobs.py:41",
+            "backend/worker/src/repositories/jobs.py:82",
+            "backend/worker/src/repositories/jobs.py:96"
+          ]
+        },
+        "attempt_count": {
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "evidence": [
+            "backend/worker/src/repositories/jobs.py:140",
+            "backend/worker/src/repositories/jobs.py:43",
+            "backend/worker/src/repositories/jobs.py:74"
+          ]
+        },
+        "created_at": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "date",
+            "nullable": false
+          },
+          "evidence": [
+            "backend/worker/src/repositories/jobs.py:140",
+            "backend/worker/src/repositories/jobs.py:43"
+          ]
+        },
+        "dispatch_generation": {
+          "type": {
+            "raw": "inferred from value/key",
+            "type": "string",
+            "nullable": false
+          },
+          "evidence": [
+            "backend/worker/src/repositories/jobs.py:140",
+            "backend/worker/src/repositories/jobs.py:240",
+            "backend/worker/src/repositories/jobs.py:43"
+          ]
+        },
+        "expire_at": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "date",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/worker/src/repositories/jobs.py:246",
+            "backend/worker/src/repositories/jobs.py:84"
+          ]
+        },
+        "job_id": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "string",
+            "nullable": false
+          },
+          "evidence": [
+            "backend/worker/src/repositories/jobs.py:140",
+            "backend/worker/src/repositories/jobs.py:240",
+            "backend/worker/src/repositories/jobs.py:43"
+          ]
+        },
+        "last_error": {
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/worker/src/repositories/jobs.py:90",
+            "backend/worker/src/repositories/jobs.py:98"
+          ]
+        },
+        "lease_token": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/worker/src/repositories/jobs.py:104",
+            "backend/worker/src/repositories/jobs.py:68",
+            "backend/worker/src/repositories/jobs.py:82",
+            "backend/worker/src/repositories/jobs.py:90",
+            "backend/worker/src/repositories/jobs.py:96"
+          ]
+        },
+        "lease_until": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "date",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/worker/src/repositories/jobs.py:104",
+            "backend/worker/src/repositories/jobs.py:68",
+            "backend/worker/src/repositories/jobs.py:90"
+          ]
+        },
+        "next_attempt_at": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "date",
+            "nullable": false
+          },
+          "evidence": [
+            "backend/worker/src/repositories/jobs.py:140",
+            "backend/worker/src/repositories/jobs.py:43",
+            "backend/worker/src/repositories/jobs.py:98"
+          ]
+        },
+        "payload": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "json",
+            "nullable": false
+          },
+          "evidence": [
+            "backend/worker/src/repositories/jobs.py:140",
+            "backend/worker/src/repositories/jobs.py:43"
+          ]
+        },
+        "published_at": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "date",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/worker/src/repositories/jobs.py:84"
+          ]
+        },
+        "status": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "string",
+            "nullable": false
+          },
+          "evidence": [
+            "backend/worker/src/repositories/jobs.py:140",
+            "backend/worker/src/repositories/jobs.py:240",
+            "backend/worker/src/repositories/jobs.py:246",
+            "backend/worker/src/repositories/jobs.py:43",
+            "backend/worker/src/repositories/jobs.py:68",
+            "backend/worker/src/repositories/jobs.py:82",
+            "backend/worker/src/repositories/jobs.py:84",
+            "backend/worker/src/repositories/jobs.py:96",
+            "backend/worker/src/repositories/jobs.py:98"
+          ]
+        },
+        "updated_at": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "date",
+            "nullable": false
+          },
+          "evidence": [
+            "backend/worker/src/repositories/jobs.py:140",
+            "backend/worker/src/repositories/jobs.py:246",
+            "backend/worker/src/repositories/jobs.py:43",
+            "backend/worker/src/repositories/jobs.py:68",
+            "backend/worker/src/repositories/jobs.py:84",
+            "backend/worker/src/repositories/jobs.py:98"
+          ]
+        }
+      },
+      "sources": [
+        "backend/worker/src/core/infrastructure/database.py:23",
+        "backend/worker/src/repositories/jobs.py:139",
+        "backend/worker/src/repositories/jobs.py:17",
+        "backend/worker/src/repositories/jobs.py:239",
+        "backend/worker/src/repositories/jobs.py:31",
+        "backend/worker/src/repositories/jobs.py:40",
+        "backend/worker/src/repositories/jobs.py:60",
+        "backend/worker/src/repositories/jobs.py:81",
+        "backend/worker/src/repositories/jobs.py:95"
+      ],
+      "indexes": []
+    }
+  },
+  "stores": [],
+  "models": [
+    {
+      "name": "Settings",
+      "bases": [],
+      "file": "backend/worker/src/core/infrastructure/configuration.py",
+      "fields": [
+        {
+          "code": "VERSION",
+          "diagram": "VERSION",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/worker/src/core/infrastructure/configuration.py:5"
+        },
+        {
+          "code": "SECRET_KEY",
+          "diagram": "SECRETKEY",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/worker/src/core/infrastructure/configuration.py:6"
+        },
+        {
+          "code": "MONGODB_URI",
+          "diagram": "MONGODBURI",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/worker/src/core/infrastructure/configuration.py:7"
+        },
+        {
+          "code": "RABBITMQ_URI",
+          "diagram": "RABBITMQURI",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/worker/src/core/infrastructure/configuration.py:8"
+        },
+        {
+          "code": "WORKER_DB_NAME",
+          "diagram": "WORKERDBNAME",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/worker/src/core/infrastructure/configuration.py:9"
+        },
+        {
+          "code": "WORKER_QUEUE_NAME",
+          "diagram": "WORKERQUEUENAME",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/worker/src/core/infrastructure/configuration.py:10"
+        },
+        {
+          "code": "TESTING_URL",
+          "diagram": "TESTINGURL",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/worker/src/core/infrastructure/configuration.py:11"
+        },
+        {
+          "code": "WORKER_OUTBOX_POLL_SECONDS",
+          "diagram": "WORKEROUTBOXPOLLSECONDS",
+          "type": {
+            "raw": "float",
+            "type": "float",
+            "nullable": false
+          },
+          "line": "backend/worker/src/core/infrastructure/configuration.py:12"
+        },
+        {
+          "code": "WORKER_OUTBOX_LEASE_SECONDS",
+          "diagram": "WORKEROUTBOXLEASESECONDS",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/worker/src/core/infrastructure/configuration.py:13"
+        },
+        {
+          "code": "WORKER_OUTBOX_MAX_BACKOFF_SECONDS",
+          "diagram": "WORKEROUTBOXMAXBACKOFFSECONDS",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/worker/src/core/infrastructure/configuration.py:14"
+        },
+        {
+          "code": "WORKER_OUTBOX_RETENTION_DAYS",
+          "diagram": "WORKEROUTBOXRETENTIONDAYS",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/worker/src/core/infrastructure/configuration.py:17"
+        },
+        {
+          "code": "WORKER_EXECUTION_LEASE_SECONDS",
+          "diagram": "WORKEREXECUTIONLEASESECONDS",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/worker/src/core/infrastructure/configuration.py:18"
+        },
+        {
+          "code": "WORKER_EXECUTION_HEARTBEAT_SECONDS",
+          "diagram": "WORKEREXECUTIONHEARTBEATSECONDS",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/worker/src/core/infrastructure/configuration.py:19"
+        },
+        {
+          "code": "WORKER_EXECUTION_RECOVERY_POLL_SECONDS",
+          "diagram": "WORKEREXECUTIONRECOVERYPOLLSECONDS",
+          "type": {
+            "raw": "float",
+            "type": "float",
+            "nullable": false
+          },
+          "line": "backend/worker/src/core/infrastructure/configuration.py:20"
+        }
+      ]
+    },
+    {
+      "name": "TestingJobRequest",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/worker/src/schemas.py",
+      "fields": [
+        {
+          "code": "event",
+          "diagram": "Event",
+          "type": {
+            "raw": "TestingJobEvent",
+            "type": "json",
+            "nullable": false
+          },
+          "line": "backend/worker/src/schemas.py:37"
+        },
+        {
+          "code": "project_id",
+          "diagram": "ProjectId",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/worker/src/schemas.py:38"
+        },
+        {
+          "code": "artifact_version_id",
+          "diagram": "ArtifactVersionId",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/worker/src/schemas.py:39"
+        },
+        {
+          "code": "model_version",
+          "diagram": "ModelVersion",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/worker/src/schemas.py:40"
+        },
+        {
+          "code": "requester_id",
+          "diagram": "RequesterId",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/worker/src/schemas.py:41"
+        },
+        {
+          "code": "requester_email",
+          "diagram": "RequesterEmail",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/worker/src/schemas.py:42"
+        },
+        {
+          "code": "payload",
+          "diagram": "Payload",
+          "type": {
+            "raw": "dict",
+            "type": "json",
+            "nullable": false
+          },
+          "line": "backend/worker/src/schemas.py:43"
+        }
+      ]
+    },
+    {
+      "name": "DiscardJobRequest",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/worker/src/schemas.py",
+      "fields": [
+        {
+          "code": "actor_id",
+          "diagram": "ActorId",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/worker/src/schemas.py:47"
+        },
+        {
+          "code": "reason",
+          "diagram": "Reason",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/worker/src/schemas.py:48"
+        }
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/suc-khoe",
+      "name": "health",
+      "args": [],
+      "return": "json",
+      "line": "backend/worker/src/main.py:40",
+      "calls": [
+        "get"
+      ],
+      "call_targets": [
+        "app.get"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/san-sang",
+      "name": "ready",
+      "args": [],
+      "return": "json",
+      "line": "backend/worker/src/main.py:45",
+      "calls": [
+        "command",
+        "get",
+        "get_queue",
+        "is_running",
+        "values"
+      ],
+      "call_targets": [
+        "app.get",
+        "checks.values",
+        "mq.get_queue",
+        "worker_runner.is_running"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/xu-ly-nen/noi-bo/kiem-thu/tac-vu",
+      "name": "enqueue_testing_job",
+      "args": [
+        "payload : json"
+      ],
+      "return": "json",
+      "line": "backend/worker/src/main.py:74",
+      "calls": [
+        "enqueue",
+        "post"
+      ],
+      "call_targets": [
+        "WorkerJobService.enqueue",
+        "app.post"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/xu-ly-nen/noi-bo/tac-vu/{job_id}/thu-lai",
+      "name": "retry_job",
+      "args": [
+        "jobId : string"
+      ],
+      "return": "json",
+      "line": "backend/worker/src/main.py:83",
+      "calls": [
+        "post",
+        "retry"
+      ],
+      "call_targets": [
+        "WorkerJobService.retry",
+        "app.post"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/xu-ly-nen/noi-bo/tac-vu/{job_id}/huy",
+      "name": "cancel_job",
+      "args": [
+        "jobId : string"
+      ],
+      "return": "json",
+      "line": "backend/worker/src/main.py:88",
+      "calls": [
+        "cancel",
+        "post"
+      ],
+      "call_targets": [
+        "WorkerJobService.cancel",
+        "app.post"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/xu-ly-nen/noi-bo/tac-vu/{job_id}",
+      "name": "get_job",
+      "args": [
+        "jobId : string"
+      ],
+      "return": "json",
+      "line": "backend/worker/src/main.py:93",
+      "calls": [
+        "get"
+      ],
+      "call_targets": [
+        "WorkerJobService.get",
+        "app.get"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/xu-ly-nen/noi-bo/tac-vu",
+      "name": "list_jobs",
+      "args": [
+        "projectId : string",
+        "status : string",
+        "kind : string",
+        "limit : int"
+      ],
+      "return": "json",
+      "line": "backend/worker/src/main.py:98",
+      "calls": [
+        "get",
+        "list"
+      ],
+      "call_targets": [
+        "WorkerJobService.list",
+        "app.get"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/xu-ly-nen/noi-bo/tong-quan",
+      "name": "job_overview",
+      "args": [
+        "projectId : string"
+      ],
+      "return": "json",
+      "line": "backend/worker/src/main.py:108",
+      "calls": [
+        "get",
+        "overview"
+      ],
+      "call_targets": [
+        "WorkerJobService.overview",
+        "app.get"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/xu-ly-nen/noi-bo/tac-vu/{job_id}/loai-bo",
+      "name": "discard_job",
+      "args": [
+        "jobId : string",
+        "payload : json"
+      ],
+      "return": "json",
+      "line": "backend/worker/src/main.py:116",
+      "calls": [
+        "discard",
+        "post"
+      ],
+      "call_targets": [
+        "WorkerJobService.discard",
+        "app.post"
+      ]
+    }
+  ],
+  "service_methods": [],
+  "repository_methods": [
+    {
+      "name": "collection",
+      "args": [],
+      "return": "json",
+      "line": "backend/worker/src/repositories/jobs.py:12",
+      "file": "repositories/jobs.py",
+      "owner": "WorkerJobRepository",
+      "calls": [],
+      "call_targets": [],
+      "collections": []
+    },
+    {
+      "name": "outbox",
+      "args": [],
+      "return": "json",
+      "line": "backend/worker/src/repositories/jobs.py:16",
+      "file": "repositories/jobs.py",
+      "owner": "WorkerJobRepository",
+      "calls": [],
+      "call_targets": [],
+      "collections": []
+    },
+    {
+      "name": "create_job_with_outbox",
+      "args": [
+        "jobId : string",
+        "jobValues : string",
+        "insert : string",
+        "outbox : string"
+      ],
+      "return": "void",
+      "line": "backend/worker/src/repositories/jobs.py:19",
+      "file": "repositories/jobs.py",
+      "owner": "WorkerJobRepository",
+      "calls": [
+        "insert_one",
+        "now",
+        "start_session",
+        "start_transaction"
+      ],
+      "call_targets": [
+        "datetime.now",
+        "session.start_transaction"
+      ],
+      "collections": [
+        "worker_job_outbox",
+        "worker_jobs"
+      ]
+    },
+    {
+      "name": "ensure_queued_job_outbox",
+      "args": [
+        "job : string"
+      ],
+      "return": "void",
+      "line": "backend/worker/src/repositories/jobs.py:33",
+      "file": "repositories/jobs.py",
+      "owner": "WorkerJobRepository",
+      "calls": [
+        "get",
+        "now",
+        "update_one"
+      ],
+      "call_targets": [
+        "datetime.now",
+        "job.get"
+      ],
+      "collections": [
+        "worker_job_outbox"
+      ]
+    },
+    {
+      "name": "claim_next_outbox",
+      "args": [
+        "leaseToken : string",
+        "now : string",
+        "leaseUntil : string"
+      ],
+      "return": "json",
+      "line": "backend/worker/src/repositories/jobs.py:59",
+      "file": "repositories/jobs.py",
+      "owner": "WorkerJobRepository",
+      "calls": [
+        "find_one_and_update"
+      ],
+      "call_targets": [],
+      "collections": [
+        "worker_job_outbox"
+      ]
+    },
+    {
+      "name": "mark_outbox_published",
+      "args": [
+        "outboxId : string",
+        "leaseToken : string",
+        "now : string"
+      ],
+      "return": "json",
+      "line": "backend/worker/src/repositories/jobs.py:80",
+      "file": "repositories/jobs.py",
+      "owner": "WorkerJobRepository",
+      "calls": [
+        "update_one"
+      ],
+      "call_targets": [],
+      "collections": [
+        "worker_job_outbox"
+      ]
+    },
+    {
+      "name": "reschedule_outbox",
+      "args": [
+        "outboxId : string",
+        "leaseToken : string",
+        "now : string",
+        "nextAttemptAt : string",
+        "error : string"
+      ],
+      "return": "json",
+      "line": "backend/worker/src/repositories/jobs.py:94",
+      "file": "repositories/jobs.py",
+      "owner": "WorkerJobRepository",
+      "calls": [
+        "update_one"
+      ],
+      "call_targets": [],
+      "collections": [
+        "worker_job_outbox"
+      ]
+    },
+    {
+      "name": "claim_retry_with_outbox",
+      "args": [
+        "jobId : string",
+        "maxManualRetries : string"
+      ],
+      "return": "json",
+      "line": "backend/worker/src/repositories/jobs.py:108",
+      "file": "repositories/jobs.py",
+      "owner": "WorkerJobRepository",
+      "calls": [
+        "find_one_and_update",
+        "get",
+        "insert_one",
+        "now",
+        "start_session",
+        "start_transaction"
+      ],
+      "call_targets": [
+        "datetime.now",
+        "job.get",
+        "session.start_transaction"
+      ],
+      "collections": [
+        "worker_job_outbox",
+        "worker_jobs"
+      ]
+    },
+    {
+      "name": "claim_execution",
+      "args": [
+        "jobId : string",
+        "leaseToken : string",
+        "now : string",
+        "leaseUntil : string"
+      ],
+      "return": "json",
+      "line": "backend/worker/src/repositories/jobs.py:155",
+      "file": "repositories/jobs.py",
+      "owner": "WorkerJobRepository",
+      "calls": [
+        "find_one_and_update"
+      ],
+      "call_targets": [],
+      "collections": [
+        "worker_jobs"
+      ]
+    },
+    {
+      "name": "renew_execution_lease",
+      "args": [
+        "jobId : string",
+        "leaseToken : string",
+        "now : string",
+        "leaseUntil : string"
+      ],
+      "return": "json",
+      "line": "backend/worker/src/repositories/jobs.py:171",
+      "file": "repositories/jobs.py",
+      "owner": "WorkerJobRepository",
+      "calls": [
+        "update_one"
+      ],
+      "call_targets": [],
+      "collections": [
+        "worker_jobs"
+      ]
+    },
+    {
+      "name": "finalize_execution",
+      "args": [
+        "jobId : string",
+        "leaseToken : string",
+        "values : string"
+      ],
+      "return": "json",
+      "line": "backend/worker/src/repositories/jobs.py:186",
+      "file": "repositories/jobs.py",
+      "owner": "WorkerJobRepository",
+      "calls": [
+        "now",
+        "update_one"
+      ],
+      "call_targets": [
+        "datetime.now"
+      ],
+      "collections": [
+        "worker_jobs"
+      ]
+    },
+    {
+      "name": "mark_expired_executions_for_reconciliation",
+      "args": [
+        "now : string"
+      ],
+      "return": "json",
+      "line": "backend/worker/src/repositories/jobs.py:200",
+      "file": "repositories/jobs.py",
+      "owner": "WorkerJobRepository",
+      "calls": [
+        "update_many"
+      ],
+      "call_targets": [],
+      "collections": [
+        "worker_jobs"
+      ]
+    },
+    {
+      "name": "fail_execution",
+      "args": [
+        "jobId : string",
+        "leaseToken : string",
+        "values : string"
+      ],
+      "return": "json",
+      "line": "backend/worker/src/repositories/jobs.py:219",
+      "file": "repositories/jobs.py",
+      "owner": "WorkerJobRepository",
+      "calls": [
+        "finalize_execution"
+      ],
+      "call_targets": [
+        "self.finalize_execution"
+      ],
+      "collections": []
+    },
+    {
+      "name": "cancel_queued",
+      "args": [
+        "jobId : string",
+        "timestamp : string"
+      ],
+      "return": "json",
+      "line": "backend/worker/src/repositories/jobs.py:222",
+      "file": "repositories/jobs.py",
+      "owner": "WorkerJobRepository",
+      "calls": [
+        "find_one_and_update",
+        "get",
+        "start_session",
+        "start_transaction",
+        "update_many"
+      ],
+      "call_targets": [
+        "job.get",
+        "session.start_transaction"
+      ],
+      "collections": [
+        "worker_job_outbox",
+        "worker_jobs"
+      ]
+    },
+    {
+      "name": "record",
+      "args": [
+        "jobId : string",
+        "values : string",
+        "insert : string"
+      ],
+      "return": "void",
+      "line": "backend/worker/src/repositories/jobs.py:257",
+      "file": "repositories/jobs.py",
+      "owner": "WorkerJobRepository",
+      "calls": [
+        "now",
+        "update_one"
+      ],
+      "call_targets": [
+        "datetime.now"
+      ],
+      "collections": [
+        "worker_jobs"
+      ]
+    },
+    {
+      "name": "find_one",
+      "args": [
+        "query : string",
+        "projection : string"
+      ],
+      "return": "json",
+      "line": "backend/worker/src/repositories/jobs.py:264",
+      "file": "repositories/jobs.py",
+      "owner": "WorkerJobRepository",
+      "calls": [
+        "find_one"
+      ],
+      "call_targets": [],
+      "collections": [
+        "worker_jobs"
+      ]
+    },
+    {
+      "name": "list",
+      "args": [
+        "query : string",
+        "limit : string"
+      ],
+      "return": "json",
+      "line": "backend/worker/src/repositories/jobs.py:267",
+      "file": "repositories/jobs.py",
+      "owner": "WorkerJobRepository",
+      "calls": [
+        "find",
+        "limit",
+        "sort",
+        "to_list"
+      ],
+      "call_targets": [],
+      "collections": [
+        "worker_jobs"
+      ]
+    },
+    {
+      "name": "count",
+      "args": [
+        "query : string"
+      ],
+      "return": "json",
+      "line": "backend/worker/src/repositories/jobs.py:275",
+      "file": "repositories/jobs.py",
+      "owner": "WorkerJobRepository",
+      "calls": [
+        "count_documents"
+      ],
+      "call_targets": [],
+      "collections": [
+        "worker_jobs"
+      ]
+    },
+    {
+      "name": "overview",
+      "args": [
+        "query : string"
+      ],
+      "return": "json",
+      "line": "backend/worker/src/repositories/jobs.py:278",
+      "file": "repositories/jobs.py",
+      "owner": "WorkerJobRepository",
+      "calls": [
+        "aggregate",
+        "to_list"
+      ],
+      "call_targets": [],
+      "collections": [
+        "worker_jobs"
+      ]
+    },
+    {
+      "name": "discard",
+      "args": [
+        "jobId : string",
+        "values : string"
+      ],
+      "return": "json",
+      "line": "backend/worker/src/repositories/jobs.py:283",
+      "file": "repositories/jobs.py",
+      "owner": "WorkerJobRepository",
+      "calls": [
+        "find_one_and_update"
+      ],
+      "call_targets": [],
+      "collections": [
+        "worker_jobs"
+      ]
+    }
+  ],
+  "frontend": {
+    "pages": [],
+    "service_functions": [],
+    "page_calls": []
+  },
+  "references": [],
+  "indexes": [
+    {
+      "at": "backend/worker/src/core/infrastructure/database.py:20",
+      "expression": "jobs.create_index([('document_id', 1), ('created_at', -1)])"
+    },
+    {
+      "at": "backend/worker/src/core/infrastructure/database.py:21",
+      "expression": "jobs.create_index('expire_at', expireAfterSeconds=0)"
+    },
+    {
+      "at": "backend/worker/src/core/infrastructure/database.py:22",
+      "expression": "jobs.create_index([('status', 1), ('execution_lease_until', 1)])"
+    },
+    {
+      "at": "backend/worker/src/core/infrastructure/database.py:24",
+      "expression": "outbox.create_index([('status', 1), ('next_attempt_at', 1)])"
+    },
+    {
+      "at": "backend/worker/src/core/infrastructure/database.py:25",
+      "expression": "outbox.create_index([('status', 1), ('lease_until', 1)])"
+    },
+    {
+      "at": "backend/worker/src/core/infrastructure/database.py:26",
+      "expression": "outbox.create_index([('job_id', 1), ('dispatch_generation', 1)], unique=True)"
+    },
+    {
+      "at": "backend/worker/src/core/infrastructure/database.py:27",
+      "expression": "outbox.create_index('expire_at', expireAfterSeconds=0)"
+    }
+  ],
+  "external_references": []
+}

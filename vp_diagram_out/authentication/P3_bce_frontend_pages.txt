@@ -1,0 +1,12 @@
+UML Class Diagram (Boundary-Control-Entity analysis)
+Create the BCE class diagram for 'authentication', group 'frontend_pages'. Use English PascalCase names. Use stereotypes <<boundary>>, <<control>>, <<entity>>. Do not connect boundaries directly to entities.
+Class 'GD_LoginPage' <<boundary>>: source 'frontend/app/(auth)/dang-nhap/page.jsx'.
+Class 'GD_ResetPasswordPage' <<boundary>>: source 'frontend/app/(auth)/dat-lai-mat-khau/page.jsx'.
+Class 'GD_ForgotPasswordPage' <<boundary>>: source 'frontend/app/(auth)/quen-mat-khau/page.jsx'.
+Class 'GD_EmailVerificationPage' <<boundary>>: source 'frontend/app/(auth)/xac-minh-thu-dien-tu/page.jsx'.
+Class 'GD_VerificationPage' <<boundary>>: source 'frontend/app/(auth)/xac-thuc/page.jsx'.
+Class 'GD_AccountPage' <<boundary>>: source 'frontend/app/(main)/cai-dat/page.jsx'.
+Include EVERY class, attribute, operation and relationship listed above, exactly as named. Do not omit, merge, rename, simplify, summarize or add anything. Do not invent extra classes, attributes or relationships. If something does not fit, keep it and let the layout grow instead of dropping it. Totals: 6 classes, 0 relationships, 0 attributes.
+
+Checklist: classes=6; relationships=0; attributes=0.
+Correction prompt: Fix only the following items and keep everything else unchanged: [insert verified discrepancy].

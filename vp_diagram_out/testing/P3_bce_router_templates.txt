@@ -1,0 +1,11 @@
+UML Class Diagram (Boundary-Control-Entity analysis)
+Create the BCE class diagram for 'testing', group 'router_templates'. Use English PascalCase names. Use stereotypes <<boundary>>, <<control>>, <<entity>>. Do not connect boundaries directly to entities.
+Class 'Ctrl_Templates' <<control>>: + ListTemplates(projectId : string, templateType : string, user : json) : json; + GetTemplate(templateId : string, user : json) : json; + CreateTemplate(projectId : string, payload : json, user : json) : json; + UpdateTemplate(templateId : string, payload : json, user : json) : json; + ArchiveTemplate(templateId : string, payload : json, user : json) : json.
+Class 'Ctrl_TestCaseTemplateService' <<control>>: + List(projectId : string, templateType : json, user : json) : json; + Get(templateId : string, user : json) : json; + Create(projectId : string, payload : json, user : json) : json; + Update(templateId : string, payload : json, user : json) : json; + Archive(templateId : string, payload : json, user : json) : json.
+Control dependency: 'Ctrl_Templates' to 'Ctrl_TestCaseTemplateService', multiplicity at source: 1, multiplicity at target: 1, navigable from source to target.
+Class 'TestCaseTemplate' <<entity>>: - TestCaseTemplateId : string; + ListTemplates(query : string, limit : string) : json; + InsertTemplate(value : string) : json; + UpdateTemplate(templateId : string, projectId : string, revision : string, activeStatus : string, changes : string) : json.
+Control dependency: 'Ctrl_TestCaseTemplateService' to 'TestCaseTemplate', multiplicity at control: 1, multiplicity at entity: 1, navigable from control to entity.
+Include EVERY class, attribute, operation and relationship listed above, exactly as named. Do not omit, merge, rename, simplify, summarize or add anything. Do not invent extra classes, attributes or relationships. If something does not fit, keep it and let the layout grow instead of dropping it. Totals: 3 classes, 2 relationships, 1 attributes.
+
+Checklist: classes=3; relationships=2; attributes=1.
+Correction prompt: Fix only the following items and keep everything else unchanged: [insert verified discrepancy].

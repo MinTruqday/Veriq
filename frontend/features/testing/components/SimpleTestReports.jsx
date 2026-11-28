@@ -330,7 +330,7 @@ export default function SimpleTestReports({ project }) {
               )}
             </label>
             <p className="text-xs text-ink-muted sm:col-span-2">
-              Kết quả mới nhất được tổng hợp tự động và làm mới mỗi 30 giây.
+              Kết quả mới nhất được tổng hợp tự động và làm mới mỗi 30 giây
             </p>
           </section>
 
@@ -339,7 +339,7 @@ export default function SimpleTestReports({ project }) {
               <div className="space-y-3 p-5 text-sm text-ink-muted">
                 <p>
                   Cần có kế hoạch kiểm thử đã duyệt. Hoàn tất Requirement, sau đó tạo kế hoạch có
-                  liên kết Requirement và gửi duyệt.
+                  liên kết Requirement và gửi duyệt
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <Link
@@ -449,7 +449,7 @@ export default function SimpleTestReports({ project }) {
               <Panel title="Kết quả theo ca kiểm thử" className="min-w-0">
                 <div className="border-b border-border px-4 py-3 text-xs text-ink-muted sm:px-5">
                   Mỗi ca lấy kết quả mới nhất kể từ khi kế hoạch được duyệt. Tỷ lệ đạt tính trên{" "}
-                  {displayed.pass_rate_denominator ?? 0} ca có kết luận Pass hoặc Fail.
+                  {displayed.pass_rate_denominator ?? 0} ca có kết luận Pass hoặc Fail
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[38rem] text-left text-sm">
@@ -524,11 +524,11 @@ export default function SimpleTestReports({ project }) {
                       </ul>
                     ) : (
                       <p className="text-sm text-ink-muted">
-                        Chưa cấu hình tiêu chí kết thúc trong kế hoạch.
+                        Chưa cấu hình tiêu chí kết thúc trong kế hoạch
                       </p>
                     )}
                     <p className="mt-4 border-t border-border pt-3 text-xs text-ink-muted">
-                      Người phụ trách quyết định việc chấp nhận kết quả hoặc phát hành.
+                      Người phụ trách quyết định việc chấp nhận kết quả hoặc phát hành
                     </p>
                   </div>
                 </Panel>
@@ -536,7 +536,7 @@ export default function SimpleTestReports({ project }) {
             </>
           ) : (
             <Panel title="Đang tổng hợp báo cáo">
-              <p className="p-5 text-sm text-ink-muted">Đang tải kết quả cho kế hoạch đã chọn.</p>
+              <p className="p-5 text-sm text-ink-muted">Đang tải kết quả cho kế hoạch đã chọn</p>
             </Panel>
           )}
 
@@ -568,7 +568,7 @@ export default function SimpleTestReports({ project }) {
               </div>
             ) : (
               <p className="p-4 text-sm text-ink-muted">
-                Chưa có bản chốt. Báo cáo trực tiếp vẫn được tổng hợp từ dữ liệu hiện tại.
+                Chưa có bản chốt. Báo cáo trực tiếp vẫn được tổng hợp từ dữ liệu hiện tại
               </p>
             )}
           </Panel>
@@ -576,7 +576,7 @@ export default function SimpleTestReports({ project }) {
       ) : (
         <Panel title="Báo cáo">
           <p className="p-4 text-sm text-ink-muted">
-            Tài khoản hiện tại không có quyền xem báo cáo trong dự án này.
+            Tài khoản hiện tại không có quyền xem báo cáo trong dự án này
           </p>
         </Panel>
       )}

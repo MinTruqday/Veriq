@@ -1,5 +1,5 @@
 import DataTable from "../../../components/DataTable";
-import { Panel } from "../../../components/WorkspacePrimitives";
+import { AIProcessingState, Panel } from "../../../components/WorkspacePrimitives";
 import { valueLabel } from "../../../lib/testing";
 import { requirementFieldLabel, requirementSuggestionPreview } from "./requirements.model";
 
@@ -26,7 +26,7 @@ export default function RequirementQualityPanel({
         <p className="px-5 py-4 text-sm text-ink-muted" role="status" aria-live="polite">
           {loading
             ? "Đang tải kết quả đã lưu…"
-            : "Chưa kiểm tra phiên bản này. Chọn “Kiểm tra AI” để phân tích nội dung hiện tại."}
+            : "Chưa kiểm tra phiên bản này. Chọn “Kiểm tra AI” để phân tích nội dung hiện tại"}
         </p>
       </Panel>
     );
@@ -43,19 +43,27 @@ export default function RequirementQualityPanel({
   ];
   const aiReasonCodes = new Set(lint.reason_codes || []);
   const aiDegradedMessage = aiReasonCodes.has("AI_PROVIDER_UNAVAILABLE")
-    ? "Không kết nối được mô hình AI. Hệ thống vẫn hiển thị các điều kiện dữ liệu; hãy thử lại khi dịch vụ AI hoạt động."
+    ? "Không kết nối được mô hình AI. Hệ thống vẫn hiển thị các điều kiện dữ liệu; hãy thử lại khi dịch vụ AI hoạt động"
     : aiReasonCodes.has("AI_OUTPUT_INVALID") ||
         aiReasonCodes.has("AI_UNGROUNDED_CANDIDATES_REJECTED")
-      ? "AI đã trả kết quả nhưng nội dung không vượt qua kiểm tra cấu trúc hoặc căn cứ nguồn. Phần đó đã bị loại; các kiểm tra dữ liệu vẫn được giữ."
-      : "Lượt AI chưa tạo được đề xuất. Các điều kiện dữ liệu do hệ thống kiểm tra vẫn có sẵn.";
+      ? "AI đã trả kết quả nhưng nội dung không vượt qua kiểm tra cấu trúc hoặc căn cứ nguồn. Phần đó đã bị loại; các kiểm tra dữ liệu vẫn được giữ"
+      : "Lượt AI chưa tạo được đề xuất. Các điều kiện dữ liệu do hệ thống kiểm tra vẫn có sẵn";
   return (
     <Panel title="Gợi ý hoàn thiện yêu cầu">
+      {recheckingAI && (
+        <div className="px-5 pt-4">
+          <AIProcessingState
+            title="AI đang rà soát yêu cầu"
+            description="Đang kiểm tra nội dung hiện tại và đối chiếu nhận xét với tài liệu nguồn"
+          />
+        </div>
+      )}
       {(lint.is_stale || draftDirty) && (
         <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-4" role="status">
           <p className="text-sm text-warning">
             {draftDirty
-              ? "Yêu cầu đang có chỉnh sửa chưa lưu; kết quả AI chưa phản ánh các thay đổi này."
-              : "Kết quả này thuộc phiên bản hoặc lần sửa trước. Hãy kiểm tra lại nội dung hiện tại."}
+              ? "Yêu cầu đang có chỉnh sửa chưa lưu; kết quả AI chưa phản ánh các thay đổi này"
+              : "Kết quả này thuộc phiên bản hoặc lần sửa trước. Hãy kiểm tra lại nội dung hiện tại"}
           </p>
           {onRecheckAI && (
             <button
@@ -72,7 +80,7 @@ export default function RequirementQualityPanel({
       <div className="mx-5 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-control border border-border bg-surface-quiet px-3 py-2">
         <p className="text-sm text-ink-muted">
           AI chỉ đưa ra nhận xét và đề xuất bổ sung; không tự sửa, không đánh dấu yêu cầu là lỗi và
-          không gửi rà soát. Việc chấp nhận do người có quyền thực hiện.
+          không gửi rà soát. Việc chấp nhận do người có quyền thực hiện
         </p>
       </div>
       {lint.artifact_revision && (
@@ -86,7 +94,7 @@ export default function RequirementQualityPanel({
             <div>
               <h3 className="text-sm font-semibold text-ink">Kiểm tra điều kiện dữ liệu</h3>
               <p className="mt-1 text-sm text-ink-muted">
-                Các điều kiện bắt buộc được hệ thống kiểm tra riêng khi gửi rà soát hoặc chấp nhận.
+                Các điều kiện bắt buộc được hệ thống kiểm tra riêng khi gửi rà soát hoặc chấp nhận
               </p>
             </div>
           </div>
@@ -132,7 +140,7 @@ export default function RequirementQualityPanel({
       )}
       {!systemFindings.length && !recommendations.length && !lint.suggestions?.length && (
         <p className="px-5 py-3 text-sm text-ink-muted" role="status">
-          Chưa có đề xuất bổ sung cho phiên bản này.
+          Chưa có đề xuất bổ sung cho phiên bản này
         </p>
       )}
       {((lint.warnings?.includes("AI_UNGROUNDED_CANDIDATES_REJECTED") && !lint.degraded_mode) ||
@@ -145,7 +153,7 @@ export default function RequirementQualityPanel({
           >
             {lint.degraded_mode
               ? aiDegradedMessage
-              : "Một số nhận xét AI không khớp nguồn nên đã bị loại. Những nhận xét còn lại vẫn cần người dùng rà soát."}
+              : "Một số nhận xét AI không khớp nguồn nên đã bị loại. Những nhận xét còn lại vẫn cần người dùng rà soát"}
           </p>
         </div>
       )}

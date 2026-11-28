@@ -903,6 +903,9 @@ class AIRunWorker:
             matched_tool_calls = tool_call_records_for_observations(
                 completed.tool_calls, completed.observations
             )
+            control_event_refs = (
+                [run.source_event_id] if run.source_event_id else []
+            )
             for observation_index, observation in enumerate(completed.observations):
                 tool_name = observation.get("tool_name")
                 if not tool_name:

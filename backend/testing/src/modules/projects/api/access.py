@@ -21,7 +21,10 @@ async def project_role_permissions(user: CurrentUser = Depends(get_current_user)
     valid_permissions = project_permissions()
     return envelope({
         "role_permissions": {
-            role: sorted(set(permissions) & valid_permissions)
+            role: sorted(
+                (set(permissions) & valid_permissions)
+                - ({"testcase.approve"} if role in {"BA", "TESTER"} else set())
+            )
             for role, permissions in policy.get("role_permissions", {}).items()
         },
         "permissions": sorted(valid_permissions),
@@ -45,6 +48,17 @@ async def update_project_role_permissions(payload: RolePermissionsUpdate, user: 
     if set(payload.role_permissions) != SUPPORTED_PROJECT_ROLES or set(payload.role_permissions) != {grant.role for grant in access.role_grants}:
         raise HTTPException(status_code=422, detail={"code": "PROJECT_ROLES_MISMATCH"})
     fields = access.model_dump()
+    for role in ("BA", "TESTER"):
+        if "testcase.approve" in payload.role_permissions.get(role, []):
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "TEST_CASE_APPROVAL_ADMIN_ONLY",
+                    "message": "Chỉ Admin mới được cấp quyền phê duyệt ca kiểm thử.",
+                    "role": role,
+                    "permission": "testcase.approve",
+                },
+            )
     fields["role_grants"] = [{"role": grant.role, "permissions": payload.role_permissions[grant.role]} for grant in access.role_grants]
     fields["revision"] = payload.revision + 1
     try:

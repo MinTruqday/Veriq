@@ -2,23 +2,23 @@
   "id": "test_plan",
   "name": "03 - Lập, rà soát và phê duyệt kế hoạch kiểm thử",
   "file_name": "BPMN_Testing_03_Lap_va_phe_duyet_ke_hoach_kiem_thu_v1.drawio",
-  "scope": "Gợi ý AI là nhánh tùy chọn. Kế hoạch được duyệt gắn với snapshot phạm vi; lượt chạy về sau kiểm tra snapshot này.",
+  "scope": "Gợi ý tự động là nhánh tùy chọn. Kế hoạch được duyệt gắn với ảnh chụp phạm vi; lượt chạy về sau kiểm tra ảnh chụp phạm vi này.",
   "lanes": [
     {
       "id": "planner",
-      "name": "Người lập kế hoạch",
+      "name": "Tester",
       "fill": "#E8F3FF",
       "stroke": "#4A90C2"
     },
     {
       "id": "system",
-      "name": "Veriq",
+      "name": "Hệ thống",
       "fill": "#EFE8FF",
       "stroke": "#7956A8"
     },
     {
       "id": "reviewer",
-      "name": "Người có quyền phê duyệt",
+      "name": "Admin",
       "fill": "#FFF4DF",
       "stroke": "#C58A28"
     }
@@ -34,7 +34,7 @@
     },
     {
       "id": "choose_ai",
-      "label": "Dùng gợi ý AI để hỗ trợ lập kế hoạch?",
+      "label": "Dùng gợi ý từ trí tuệ nhân tạo để lập kế hoạch?",
       "type": "gateway",
       "lane": "planner",
       "col": 1,
@@ -42,7 +42,7 @@
     },
     {
       "id": "suggest",
-      "label": "Tạo gợi ý kế hoạch bằng AI",
+      "label": "Tạo gợi ý kế hoạch bằng tự động",
       "type": "service_task",
       "lane": "system",
       "col": 2,
@@ -129,7 +129,7 @@
     },
     {
       "id": "snapshot",
-      "label": "Kiểm tra phạm vi đã duyệt và tạo snapshot",
+      "label": "Kiểm tra phạm vi đã duyệt và tạo ảnh chụp phạm vi",
       "type": "service_task",
       "lane": "system",
       "col": 9,
@@ -162,7 +162,7 @@
     },
     {
       "id": "process_data",
-      "label": "Kế hoạch và snapshot đã duyệt",
+      "label": "Kế hoạch và ảnh chụp phạm vi đã duyệt",
       "type": "data_store",
       "lane": "system",
       "col": 9,

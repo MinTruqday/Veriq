@@ -1,0 +1,15 @@
+UML Class Diagram (Boundary-Control-Entity analysis)
+Create the BCE class diagram for 'content', group 'router_version'. Use English PascalCase names. Use stereotypes <<boundary>>, <<control>>, <<entity>>. Do not connect boundaries directly to entities.
+Class 'Ctrl_Version' <<control>>: + SaveVersion(documentId : string, versionNote : string, currentUser : json, db : string) : json; + GetDocumentVersions(documentId : string, currentUser : json, db : string) : json; + RestoreVersion(versionId : string, currentUser : json, db : string) : json.
+Class 'Ctrl_VersionService' <<control>>: + SaveVersion(documentId : string, versionNote : string, currentUser : string) : json; + GetVersions(documentId : string, currentUser : string) : json; + RestoreVersion(versionId : string, currentUser : string) : json.
+Control dependency: 'Ctrl_Version' to 'Ctrl_VersionService', multiplicity at source: 1, multiplicity at target: 1, navigable from source to target.
+Class 'Document' <<entity>>: - DocumentId : string; + UpdateOne() : json; + FindOne() : json; + InsertOne() : json; + InsertOneIfUnique(document : json) : json; + FindOneAndUpdate(query : json, update : json, upsert : Boolean) : json; + UpdateMany() : json; + DeleteOne() : json; + CountDocuments() : json; + Find() : json.
+Control dependency: 'Ctrl_VersionService' to 'Document', multiplicity at control: 1, multiplicity at entity: 1, navigable from control to entity.
+Class 'DocumentVersion' <<entity>>: - DocumentVersionId : string; + InsertVersion() : json; + FindVersion() : json; + FindVersions() : json.
+Control dependency: 'Ctrl_VersionService' to 'DocumentVersion', multiplicity at control: 1, multiplicity at entity: 1, navigable from control to entity.
+Class 'WorkspaceFolder' <<entity>>: - WorkspaceFolderId : string; + FindOne() : json; + InsertOne() : json; + DeleteOne() : json.
+Control dependency: 'Ctrl_VersionService' to 'WorkspaceFolder', multiplicity at control: 1, multiplicity at entity: 1, navigable from control to entity.
+Include EVERY class, attribute, operation and relationship listed above, exactly as named. Do not omit, merge, rename, simplify, summarize or add anything. Do not invent extra classes, attributes or relationships. If something does not fit, keep it and let the layout grow instead of dropping it. Totals: 5 classes, 4 relationships, 3 attributes.
+
+Checklist: classes=5; relationships=4; attributes=3.
+Correction prompt: Fix only the following items and keep everything else unchanged: [insert verified discrepancy].

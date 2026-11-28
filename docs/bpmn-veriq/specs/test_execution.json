@@ -2,25 +2,25 @@
   "id": "test_execution",
   "name": "05 - Phân công và thực thi lượt chạy kiểm thử",
   "file_name": "BPMN_Testing_05_Phan_cong_va_thuc_thi_kiem_thu_v1.drawio",
-  "scope": "Lượt chạy yêu cầu kế hoạch đã duyệt nếu có gắn kế hoạch. Kết quả được ghi cho từng phiên bản ca; việc chạy song song không được khẳng định vì source không quy định thứ tự hay mức song song.",
+  "scope": "Lượt chạy yêu cầu kế hoạch đã duyệt nếu có gắn kế hoạch. Kết quả được ghi cho từng phiên bản ca; việc chạy song song không được khẳng định vì hệ thống không quy định thứ tự hay mức song song.",
   "lanes": [
     {
       "id": "coordinator",
-      "name": "Người điều phối kiểm thử",
-      "fill": "#E8F3FF",
-      "stroke": "#4A90C2"
+      "name": "Admin",
+      "fill": "#FFF4DF",
+      "stroke": "#C58A28"
     },
     {
       "id": "system",
-      "name": "Veriq",
+      "name": "Hệ thống",
       "fill": "#EFE8FF",
       "stroke": "#7956A8"
     },
     {
       "id": "tester",
-      "name": "Người thực thi kiểm thử",
-      "fill": "#FFF4DF",
-      "stroke": "#C58A28"
+      "name": "Tester",
+      "fill": "#E8F3FF",
+      "stroke": "#4A90C2"
     }
   ],
   "nodes": [
@@ -114,7 +114,7 @@
       "id": "complete",
       "label": "Hoàn tất lượt chạy",
       "type": "user_task",
-      "lane": "tester",
+      "lane": "coordinator",
       "col": 9,
       "row": 0,
       "task_type": "user"
@@ -147,7 +147,7 @@
       "id": "abort",
       "label": "Hủy lượt chạy với lý do",
       "type": "user_task",
-      "lane": "tester",
+      "lane": "coordinator",
       "col": 6,
       "row": 1,
       "task_type": "user"

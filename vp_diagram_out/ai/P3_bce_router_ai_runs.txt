@@ -1,0 +1,7 @@
+UML Class Diagram (Boundary-Control-Entity analysis)
+Create the BCE class diagram for 'ai', group 'router_ai_runs'. Use English PascalCase names. Use stereotypes <<boundary>>, <<control>>, <<entity>>. Do not connect boundaries directly to entities.
+Class 'Ctrl_AiRuns' <<control>>: + ListAiRunCapabilities(projectId : string, token : string, user : json) : json; + CreateUserAiRun(payload : json, token : string, user : json) : json; + CreateRequirementDocumentRun(payload : json) : json; + CancelRequirementDocumentRuns(documentId : string) : json; + GetInternalRunExecutionStatus(aiRunId : string) : json; + GetAiRun(aiRunId : string, token : string, user : json) : json; + GetAiRunEvidence(aiRunId : string, token : string, user : json) : json; + ListAiRuns(projectId : string, limit : int, token : string, user : json) : json; + RetryAiRun(aiRunId : string, payload : json, token : string, user : json) : json; + CancelAiRun(aiRunId : string, payload : json, token : string, user : json) : json.
+Include EVERY class, attribute, operation and relationship listed above, exactly as named. Do not omit, merge, rename, simplify, summarize or add anything. Do not invent extra classes, attributes or relationships. If something does not fit, keep it and let the layout grow instead of dropping it. Totals: 1 classes, 0 relationships, 0 attributes.
+
+Checklist: classes=1; relationships=0; attributes=0.
+Correction prompt: Fix only the following items and keep everything else unchanged: [insert verified discrepancy].

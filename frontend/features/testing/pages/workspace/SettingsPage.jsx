@@ -166,8 +166,6 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
   const loadedProjectId = useRef(project._id);
   const settingsLoadRevision = useRef(0);
   const [name, setName] = useState(project.name);
-  const [projectOwnerUserId, setProjectOwnerUserId] = useState(project.project_owner_user_id || "");
-  const [projectLeadUserId, setProjectLeadUserId] = useState(project.project_lead_user_id || "");
   const [description, setDescription] = useState(project.description || "");
   const [projectType, setProjectType] = useState(project.project_type || "");
   const [locale, setLocale] = useState(project.locale || "");
@@ -183,8 +181,6 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
   const plannedDateRangeInvalid = invalidProjectDateRange(plannedStartAt, plannedEndAt);
   const minimumPlannedEndAt = minimumProjectEndDate(plannedStartAt);
   useEffect(() => {
-    setProjectOwnerUserId(project.project_owner_user_id || "");
-    setProjectLeadUserId(project.project_lead_user_id || "");
     setLocale(project.locale || "vi");
     setTimezone(
       project.timezone ||
@@ -197,8 +193,6 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
   }, [
     project._id,
     project.revision,
-    project.project_lead_user_id,
-    project.project_owner_user_id,
     project.planned_end_at,
     project.planned_start_at,
     project.locale,
@@ -515,7 +509,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                 </div>
                 {invalidAuditDateRange && (
                   <p className="text-sm text-danger sm:col-span-2 xl:col-span-3" role="alert">
-                    Ngày bắt đầu phải trước hoặc bằng ngày kết thúc.
+                    Ngày bắt đầu phải trước hoặc bằng ngày kết thúc
                   </p>
                 )}
               </div>
@@ -612,12 +606,12 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                 onSubmit={async (event) => {
                   event.preventDefault();
                   if (can("project.update") && plannedDateRangeInvalid) {
-                    setError("Ngày kết thúc phải sau ngày bắt đầu.");
+                    setError("Ngày kết thúc phải sau ngày bắt đầu");
                     setProjectSaveNotice("");
                     return;
                   }
                   if (can("project.update") && !timezoneIsValid) {
-                    setTimezoneError("Chọn múi giờ hợp lệ từ danh sách trước khi lưu.");
+                    setTimezoneError("Chọn múi giờ hợp lệ từ danh sách trước khi lưu");
                     setProjectSaveNotice("");
                     return;
                   }
@@ -634,14 +628,6 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                     delete actionPolicies["defect.duplicate"];
                     const payload = {
                       expected_revision: project.revision,
-                      ...(canUpdateProject &&
-                      projectOwnerUserId &&
-                      projectOwnerUserId !== project.project_owner_user_id
-                        ? { project_owner_user_id: projectOwnerUserId }
-                        : {}),
-                      ...(can("project.members.read") && (canManageSettings || canUpdateProject)
-                        ? { project_lead_user_id: projectLeadUserId || null }
-                        : {}),
                       ...(canUpdateProject
                         ? {
                             name,
@@ -676,8 +662,8 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                     const refreshed = await onProjectChange();
                     setProjectSaveNotice(
                       refreshed === false
-                        ? "Đã lưu thay đổi, nhưng chưa tải lại được thông tin dự án."
-                        : "Đã lưu thay đổi dự án.",
+                        ? "Đã lưu thay đổi, nhưng chưa tải lại được thông tin dự án"
+                        : "Đã lưu thay đổi dự án",
                     );
                   } catch (reason) {
                     setError(messageOf(reason));
@@ -688,67 +674,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
               >
                 <section className="space-y-4 rounded-xl border border-border bg-white p-4 sm:p-5">
                   <h3 className="text-sm font-semibold text-ink">Thông tin cơ bản</h3>
-                  {can("project.update") && can("project.members.read") && (
-                    <label className="field-label block max-w-xl">
-                      Chủ dự án
-                      <select
-                        className="apple-input mt-2"
-                        value={projectOwnerUserId}
-                        disabled={dataLoading || Boolean(loadErrors.members)}
-                        onChange={(event) => setProjectOwnerUserId(event.target.value)}
-                      >
-                        <option value="" disabled>
-                          Chọn chủ dự án
-                        </option>
-                        {members
-                          .filter(
-                            (member) =>
-                              member.status === "ACTIVE" &&
-                              ["USER", "ADMIN"].includes(member.user?.system_role),
-                          )
-                          .map((member) => (
-                            <option key={member.user_id} value={member.user_id}>
-                              {member.user_label || member.user_id}
-                            </option>
-                          ))}
-                      </select>
-                    </label>
-                  )}
 
-                  {(can("project.update") || can("project.settings.manage")) &&
-                    (can("project.members.read") ? (
-                      <label className="field-label block max-w-xl">
-                        Trưởng dự án
-                        <select
-                          className="apple-input mt-2"
-                          value={projectLeadUserId}
-                          disabled={dataLoading || Boolean(loadErrors.members)}
-                          onChange={(event) => setProjectLeadUserId(event.target.value)}
-                        >
-                          <option value="">Chưa phân công</option>
-                          {members
-                            .filter((member) => member.status === "ACTIVE")
-                            .map((member) => (
-                              <option key={member.user_id} value={member.user_id}>
-                                {member.user_label ||
-                                  member.user?.label ||
-                                  member.user?.email ||
-                                  member.user_id}
-                              </option>
-                            ))}
-                        </select>
-                        <span className="mt-1 block text-xs text-ink-muted">
-                          Có thể chọn bất kỳ thành viên đang hoạt động trong dự án.
-                        </span>
-                      </label>
-                    ) : (
-                      <div className="field-label block max-w-xl">
-                        Trưởng dự án
-                        <p className="mt-2 text-sm font-medium text-ink">
-                          {project.project_lead_label || "Chưa phân công"}
-                        </p>
-                      </div>
-                    ))}
                   <label className="field-label">
                     Tên
                     <input
@@ -809,7 +735,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                           role={timezoneError ? "alert" : "status"}
                         >
                           {timezoneError ||
-                            "Múi giờ đã lưu không hợp lệ. Chọn múi giờ trong danh sách trước khi lưu."}
+                            "Múi giờ đã lưu không hợp lệ. Chọn múi giờ trong danh sách trước khi lưu"}
                         </span>
                       )}
                     </label>
@@ -853,7 +779,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                       </div>
                     ) : (
                       <p className="text-sm text-ink-muted">
-                        Chưa có trách nhiệm nào được gắn với quyền trong cấu hình dự án.
+                        Chưa có trách nhiệm nào được gắn với quyền trong cấu hình dự án
                       </p>
                     )}
                   </section>
@@ -885,7 +811,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                       </label>
                       {plannedDateRangeInvalid && (
                         <p className="sm:col-span-2 text-sm text-danger" role="alert">
-                          Ngày kết thúc phải sau ngày bắt đầu.
+                          Ngày kết thúc phải sau ngày bắt đầu
                         </p>
                       )}
                     </div>
@@ -1191,10 +1117,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                             label: "Vai trò",
                             render: (item) => {
                               const roles = memberRoles(item);
-                              const roleLabels = [
-                                ...(item.is_project_owner ? ["Chủ dự án"] : []),
-                                ...roles.map(valueLabel),
-                              ];
+                              const roleLabels = [...roles.map(valueLabel)];
                               return can("project.members.manage") ? (
                                 <details className="min-w-40">
                                   <summary

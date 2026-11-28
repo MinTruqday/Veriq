@@ -38,7 +38,7 @@ function renderBlocks(nodes, depth = 0) {
         const start = Number(node.attrs?.start) || 1;
         return (node.content || [])
           .map((item, index) => {
-            const marker = node.type === "bulletList" ? "-" : `${start + index}.`;
+            const marker = node.type === "bulletList" ? "-" : `${start + index}`;
             const blocks = renderBlocks(item.content, depth + 1).split("\n");
             const indent = "  ".repeat(depth);
             return blocks

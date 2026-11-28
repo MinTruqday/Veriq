@@ -1,5 +1,7 @@
 import hashlib
+import asyncio
 import json
+import logging
 from datetime import datetime, timezone
 from math import ceil
 from uuid import uuid4
@@ -21,6 +23,8 @@ from src.core.auth import (
 from src.core.human_decisions import require_ai_publication_authority
 from src.core.project_settings import resolve_project_settings
 from src.repositories.common import common_repository
+
+logger = logging.getLogger(__name__)
 
 RETRYABLE_ERROR_CODES = frozenset(['WORKER_UNAVAILABLE',
  'KNOWLEDGE_UNAVAILABLE',
@@ -254,7 +258,18 @@ async def audit(
         details,
         event_id,
     )
-    return await common_repository.insert_audit_event(event, session=session)
+    stored = await common_repository.insert_audit_event(event, session=session)
+    async def dispatch_after_commit():
+        await asyncio.sleep(0.5)
+        try:
+            from src.clients.notification import notification_client
+
+            await notification_client.notify_watchers(event)
+        except Exception:
+            logger.exception("Failed to dispatch project activity notifications")
+
+    asyncio.create_task(dispatch_after_commit())
+    return stored
 
 
 def build_audit_event(

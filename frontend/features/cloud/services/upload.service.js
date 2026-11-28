@@ -11,7 +11,7 @@ export async function uploadAssetAPI(file) {
   if (!response.ok) {
     const detail = body?.error?.message || body?.detail || body?.message;
     throw new Error(
-      typeof detail === "string" && detail ? detail : "Không thể tải tệp lên. Vui lòng thử lại.",
+      typeof detail === "string" && detail ? detail : "Không thể tải tệp lên. Vui lòng thử lại",
     );
   }
   return body;

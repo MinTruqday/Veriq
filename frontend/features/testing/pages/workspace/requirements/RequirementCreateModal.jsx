@@ -24,7 +24,7 @@ export default function RequirementCreateModal({ error, form, setForm, customFie
               Thông tin yêu cầu
             </h2>
             <p className="mt-1 text-xs text-ink-muted">
-              Tên và nội dung là căn cứ để liên kết tiêu chí, ca kiểm thử và nguồn tài liệu.
+              Tên và nội dung là căn cứ để liên kết tiêu chí, ca kiểm thử và nguồn tài liệu
             </p>
           </div>
           <label className="field-label block">
@@ -58,7 +58,7 @@ export default function RequirementCreateModal({ error, form, setForm, customFie
               Tiêu chí và quy tắc
             </h2>
             <p className="mt-1 text-xs text-ink-muted">
-              Tách điều kiện nghiệm thu và quy tắc nghiệp vụ thành từng dòng để dễ truy vết.
+              Tách điều kiện nghiệm thu và quy tắc nghiệp vụ thành từng dòng để dễ truy vết
             </p>
           </div>
           <RequirementLines

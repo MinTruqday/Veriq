@@ -1,0 +1,13 @@
+Domain Model (UML class diagram: attributes only, no operations, no reference fields)
+Create the content domain model. Use PascalCase English names. Each class has a primary key named '<ClassName>Id'.
+Class 'Document': attributes 'DocumentId' (PK), 'ArtifactMetadata', 'Category', 'Content', 'ContentFormat', 'ContentHash', 'CoverUrl', 'CreatedAt', 'DeletedAt', 'Description', 'DraftContent', 'FileUrl', 'IndexingLeaseToken', 'IndexingLeaseUntil', 'IsDeleted', 'PagesCount', 'PreviewPages', 'PublisherName', 'ReadingTimeMinutes', 'Slug', 'SourceUrl', 'Status', 'Tags', 'Title', 'Toc', 'UpdatedAt', 'Views', 'Visibility'.
+Class 'Comment': attributes 'CommentId' (PK).
+Class 'EditorComment': attributes 'EditorCommentId' (PK).
+Class 'DocumentVersion': attributes 'DocumentVersionId' (PK).
+Class 'WorkspaceFolder': attributes 'WorkspaceFolderId' (PK).
+Class 'DocumentRevision': attributes 'DocumentRevisionId' (PK).
+Every listed class has no relationships.
+Include EVERY class, attribute, operation and relationship listed above, exactly as named. Do not omit, merge, rename, simplify, summarize or add anything. Do not invent extra classes, attributes or relationships. If something does not fit, keep it and let the layout grow instead of dropping it. Totals: 6 classes, 0 relationships, 33 attributes.
+
+Checklist: classes=6; relationships=0; attributes=33.
+Correction prompt: Fix only the following items and keep everything else unchanged: [insert verified discrepancy].

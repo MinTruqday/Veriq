@@ -1,0 +1,12 @@
+Domain Model (UML class diagram: attributes only, no operations, no reference fields)
+Create the cloud domain model. Use PascalCase English names. Each class has a primary key named '<ClassName>Id'.
+Class 'StorageItem': attributes 'StorageItemId' (PK), 'AiProcessed', 'BrokenLinks', 'Color', 'CreatedAt', 'Description', 'DuplicateOf', 'Entities', 'EnvironmentReady', 'IsDuplicate', 'IsFolder', 'IsLocked', 'IsPublic', 'IsShortcut', 'IsStarred', 'IsTrashed', 'LockedAt', 'LockedBy', 'MimeType', 'Name', 'ShareToken', 'SharedWith', 'Size', 'Tags', 'UpdatedAt', 'Url', 'Versions'.
+Class 'TempChatFile': attributes 'TempChatFileId' (PK), 'Token'.
+Class 'StorageShareLink': attributes 'StorageShareLinkId' (PK).
+Class 'StorageActivity': attributes 'StorageActivityId' (PK).
+Class 'FileRequest': attributes 'FileRequestId' (PK).
+Every listed class has no relationships.
+Include EVERY class, attribute, operation and relationship listed above, exactly as named. Do not omit, merge, rename, simplify, summarize or add anything. Do not invent extra classes, attributes or relationships. If something does not fit, keep it and let the layout grow instead of dropping it. Totals: 5 classes, 0 relationships, 32 attributes.
+
+Checklist: classes=5; relationships=0; attributes=32.
+Correction prompt: Fix only the following items and keep everything else unchanged: [insert verified discrepancy].

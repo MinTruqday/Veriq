@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import LinkTabs from "@/shared/components/navigation/LinkTabs";
 import PageHeader from "@/shared/components/layout/PageHeader";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { LoaderCircle, RefreshCw } from "lucide-react";
 import { hasNavigationPermission } from "@/shared/components/layout/navigation";
 import MultiSelect from "@/shared/components/ui/MultiSelect";
 import { messageOf, valueLabel } from "../lib/testing";
@@ -400,6 +400,30 @@ export function LoadingState({ label = "Đang tải dữ liệu", variant = "row
   );
 }
 
+export function AIProcessingState({ title = "AI đang xử lý", description }) {
+  return (
+    <div
+      aria-atomic="true"
+      aria-busy="true"
+      aria-live="polite"
+      className="flex items-start gap-3 rounded-control border border-brand/20 bg-brand/5 px-4 py-3"
+      role="status"
+    >
+      <LoaderCircle
+        aria-hidden="true"
+        className="mt-0.5 shrink-0 animate-spin text-brand"
+        size={18}
+      />
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-ink">{title}</p>
+        <p className="mt-1 text-sm text-ink-muted">
+          {description || "Đang gửi yêu cầu và đối chiếu dữ liệu nguồn; kết quả sẽ hiện tại đây"}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export function InitialLoadState({ title, projectId, loading, error, onRetry }) {
   return (
     <WorkspacePage title={title} actions={<ProjectCrumb projectId={projectId} />}>
@@ -439,7 +463,7 @@ export function DegradedBanner({ mode, message }) {
       className="rounded-control border border-warning/30 bg-warning-soft p-4 text-[13px] text-warning"
     >
       {message ||
-        `Hệ thống đang hoạt động ở chế độ hạn chế (${valueLabel(mode)}). Thao tác đã lưu vẫn được giữ lại; một số thao tác có thể cần kiểm tra thủ công.`}
+        `Hệ thống đang hoạt động ở chế độ hạn chế (${valueLabel(mode)}). Thao tác đã lưu vẫn được giữ lại; một số thao tác có thể cần kiểm tra thủ công`}
     </p>
   );
 }

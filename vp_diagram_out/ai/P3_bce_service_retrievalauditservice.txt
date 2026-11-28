@@ -1,0 +1,9 @@
+UML Class Diagram (Boundary-Control-Entity analysis)
+Create the BCE class diagram for 'ai', group 'service_RetrievalAuditService'. Use English PascalCase names. Use stereotypes <<boundary>>, <<control>>, <<entity>>. Do not connect boundaries directly to entities.
+Class 'Ctrl_RetrievalAuditService' <<control>>: + Record(operation : string, query : string, requesterId : string, isAdmin : Boolean, docs : string) : void; + List(requesterId : string, projectId : string, documentId : string, limit : int) : json.
+Class 'RetrievalAudit' <<entity>>: - RetrievalAuditId : string; + Insert(value : string) : void; + List(query : string, limit : string) : json.
+Control dependency: 'Ctrl_RetrievalAuditService' to 'RetrievalAudit', multiplicity at control: 1, multiplicity at entity: 1, navigable from control to entity.
+Include EVERY class, attribute, operation and relationship listed above, exactly as named. Do not omit, merge, rename, simplify, summarize or add anything. Do not invent extra classes, attributes or relationships. If something does not fit, keep it and let the layout grow instead of dropping it. Totals: 2 classes, 1 relationships, 1 attributes.
+
+Checklist: classes=2; relationships=1; attributes=1.
+Correction prompt: Fix only the following items and keep everything else unchanged: [insert verified discrepancy].

@@ -73,6 +73,13 @@ def edge_ports_and_waypoints(src: dict, dst: dict, positions: dict, lanes: dict,
         lane = lanes[src["lane"]]
         rail_y = lane["y"] + LANE_HEIGHT - 20
         return ({"exitX": "0.5", "exitY": "1", "entryX": "0.5", "entryY": "1"}, [(sx, rail_y), (tx, rail_y)])
+    if route == "lane_gap":
+        source_lane, target_lane = lanes[src["lane"]], lanes[dst["lane"]]
+        if target_lane["y"] > source_lane["y"]:
+            rail_y = source_lane["y"] + LANE_HEIGHT - 20
+            return ({"exitX": "0.5", "exitY": "1", "entryX": "0.5", "entryY": "0"}, [(sx, rail_y), (tx, rail_y)])
+        rail_y = source_lane["y"] + 20
+        return ({"exitX": "0.5", "exitY": "0", "entryX": "0.5", "entryY": "1"}, [(sx, rail_y), (tx, rail_y)])
     if sy == ty:
         if tx >= sx:
             return ({"exitX": "1", "exitY": "0.5", "entryX": "0", "entryY": "0.5"}, [])
@@ -118,7 +125,7 @@ def build(spec: dict, out_path: Path) -> dict[str, int]:
     ET.SubElement(mxroot, "mxCell", {"id": "1", "parent": "0"})
 
     pool_id = "pool_veriq"
-    pool = ET.SubElement(mxroot, "mxCell", {"id": pool_id, "value": "Veriq", "style": STYLE["pool"], "vertex": "1", "parent": "1", "bpmnKind": "pool"})
+    pool = ET.SubElement(mxroot, "mxCell", {"id": pool_id, "value": "Quy trình", "style": STYLE["pool"], "vertex": "1", "parent": "1", "bpmnKind": "pool"})
     geom(pool, 0, 0, pool_width, pool_height)
     lane_map: dict[str, dict] = {}
     lane_ids: dict[str, str] = {}

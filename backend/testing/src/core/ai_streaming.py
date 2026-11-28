@@ -1,7 +1,10 @@
 import asyncio
 import json
+import logging
 
 from src.core.ai_capabilities import stream_sink
+
+logger = logging.getLogger(__name__)
 
 
 class AIStreamingMiddleware:
@@ -35,6 +38,7 @@ class AIStreamingMiddleware:
                 await self.app(scope, receive, capture)
             except Exception as error:
                 code = type(error).__name__
+                logger.exception("AI streaming request failed error_type=%s", code)
                 await queue.put(
                     {
                         "type": "error",

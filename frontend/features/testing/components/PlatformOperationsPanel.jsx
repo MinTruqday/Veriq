@@ -485,7 +485,7 @@ export default function PlatformOperationsPanel() {
                   <span className="block max-w-72 whitespace-normal text-xs text-ink-muted">
                     {valueLabel(item.error_code)}
                     {item.status === "reconciliation_required"
-                      ? ". Cần đối soát trước khi thử lại; hệ thống không tự chạy lại job này."
+                      ? ". Cần đối soát trước khi thử lại; hệ thống không tự chạy lại job này"
                       : ""}
                   </span>
                 ) : (

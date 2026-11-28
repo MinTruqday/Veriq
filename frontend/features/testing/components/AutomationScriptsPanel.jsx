@@ -96,7 +96,7 @@ export default function AutomationScriptsPanel({ project }) {
     if (draftDirty) {
       const answer = await ask({
         title: "Bỏ thay đổi chưa lưu?",
-        description: "Nội dung đang sửa sẽ được thay bằng mã kiểm thử khác.",
+        description: "Nội dung đang sửa sẽ được thay bằng mã kiểm thử khác",
         confirmLabel: "Bỏ thay đổi",
       });
       if (!answer) return;
@@ -284,8 +284,8 @@ export default function AutomationScriptsPanel({ project }) {
                 !error && (
                   <p className="py-3 text-sm text-ink-muted">
                     {query.trim()
-                      ? "Không tìm thấy mã kiểm thử phù hợp."
-                      : "Chưa có mã kiểm thử được tạo."}
+                      ? "Không tìm thấy mã kiểm thử phù hợp"
+                      : "Chưa có mã kiểm thử được tạo"}
                   </p>
                 )
               )}
@@ -434,7 +434,7 @@ export default function AutomationScriptsPanel({ project }) {
                 </>
               ) : (
                 <p className="py-2 text-sm text-ink-muted">
-                  Chọn một kịch bản để xem nội dung và thao tác được cấp quyền.
+                  Chọn một kịch bản để xem nội dung và thao tác được cấp quyền
                 </p>
               )}
             </section>

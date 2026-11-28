@@ -102,7 +102,7 @@ export default function ProjectNotificationsPanel({ project }) {
     try {
       await testingApi.setProjectNotificationWatch(project._id, artifactType, artifactId, true);
       setArtifactId("");
-      if (await load()) setNotice("Đã thêm nội dung vào danh sách đang theo dõi.");
+      if (await load()) setNotice("Đã thêm nội dung vào danh sách đang theo dõi");
     } catch (reason) {
       setError(messageOf(reason));
     } finally {
@@ -115,7 +115,7 @@ export default function ProjectNotificationsPanel({ project }) {
     setError("");
     setNotice("");
     if (!isSupportedTimeZone(preferences.timezone)) {
-      setError("Hãy chọn một múi giờ IANA hợp lệ trước khi lưu giờ yên lặng.");
+      setError("Hãy chọn một múi giờ IANA hợp lệ trước khi lưu giờ yên lặng");
       return;
     }
     setSaving((current) => ({ ...current, preferences: true }));
@@ -134,7 +134,7 @@ export default function ProjectNotificationsPanel({ project }) {
         timezone: project.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
         ...value,
       });
-      setNotice("Đã lưu tùy chọn thông báo.");
+      setNotice("Đã lưu tùy chọn thông báo");
     } catch (reason) {
       setError(messageOf(reason));
     } finally {
@@ -156,7 +156,7 @@ export default function ProjectNotificationsPanel({ project }) {
         escalation_minutes: rules.escalation_minutes ? Number(rules.escalation_minutes) : null,
       });
       setRules({ ...DEFAULT_RULES, ...value });
-      setNotice("Đã lưu quy tắc thông báo dự án.");
+      setNotice("Đã lưu quy tắc thông báo dự án");
     } catch (reason) {
       setError(messageOf(reason));
     } finally {
@@ -194,7 +194,7 @@ export default function ProjectNotificationsPanel({ project }) {
             <header className="space-y-1">
               <h3 className="font-semibold text-ink">Dữ liệu đang theo dõi</h3>
               <p className="text-sm leading-5 text-ink-muted">
-                Theo dõi một đối tượng để nhận cập nhật liên quan.
+                Theo dõi một đối tượng để nhận cập nhật liên quan
               </p>
             </header>
             {loading.watches && (
@@ -267,7 +267,7 @@ export default function ProjectNotificationsPanel({ project }) {
                         const refreshed = await load();
                         if (refreshed) {
                           setError("");
-                          setNotice("Đã bỏ theo dõi nội dung này.");
+                          setNotice("Đã bỏ theo dõi nội dung này");
                         } else {
                           setNotice("");
                         }
@@ -294,7 +294,7 @@ export default function ProjectNotificationsPanel({ project }) {
             <header className="space-y-1">
               <h3 className="font-semibold text-ink">Tùy chọn cá nhân</h3>
               <p className="text-sm leading-5 text-ink-muted">
-                Chọn tần suất, kênh nhận và khung giờ áp dụng cho tài khoản của bạn.
+                Chọn tần suất, kênh nhận và khung giờ áp dụng cho tài khoản của bạn
               </p>
             </header>
             {loading.preferences && <p className="text-sm text-ink-muted">Đang tải tùy chọn…</p>}
@@ -336,7 +336,7 @@ export default function ProjectNotificationsPanel({ project }) {
             <fieldset className="space-y-3 rounded-control border border-border p-3">
               <legend className="field-label px-1">Khung giờ yên lặng</legend>
               <p className="text-xs leading-5 text-ink-muted">
-                Thời gian được tính theo múi giờ đã chọn bên dưới.
+                Thời gian được tính theo múi giờ đã chọn bên dưới
               </p>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <label className="field-label">
@@ -387,7 +387,7 @@ export default function ProjectNotificationsPanel({ project }) {
               </select>
               {!isSupportedTimeZone(preferences.timezone) && (
                 <span className="text-xs text-danger">
-                  Múi giờ đã lưu không hợp lệ. Chọn múi giờ IANA để tiếp tục.
+                  Múi giờ đã lưu không hợp lệ. Chọn múi giờ IANA để tiếp tục
                 </span>
               )}
             </label>
@@ -408,7 +408,7 @@ export default function ProjectNotificationsPanel({ project }) {
             <header className="space-y-1">
               <h3 className="font-semibold text-ink">Quy tắc dự án</h3>
               <p className="text-sm leading-5 text-ink-muted">
-                Chọn sự kiện cần gửi, người nhận và thời gian leo thang nếu được cấu hình.
+                Chọn sự kiện cần gửi, người nhận và thời gian leo thang nếu được cấu hình
               </p>
             </header>
             {loading.rules && <p className="text-sm text-ink-muted">Đang tải quy tắc…</p>}
@@ -482,7 +482,7 @@ export default function ProjectNotificationsPanel({ project }) {
                 }
               />
               <span className="mt-1 block text-xs font-normal text-ink-muted">
-                Nhập mã sự kiện, mỗi dòng một mã.
+                Nhập mã sự kiện, mỗi dòng một mã
               </span>
             </label>
             <label className="field-label block max-w-sm">

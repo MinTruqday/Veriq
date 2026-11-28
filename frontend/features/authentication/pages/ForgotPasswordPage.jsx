@@ -16,7 +16,7 @@ export default function ForgotPasswordPage() {
   return (
     <AuthFrame
       title="Khôi phục mật khẩu"
-      description="Nhập Email của tài khoản để nhận mã xác thực."
+      description="Nhập Email của tài khoản để nhận mã xác thực"
       footer={
         <AuthFlowLinks
           links={[

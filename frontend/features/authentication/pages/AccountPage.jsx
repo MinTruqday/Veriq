@@ -1,44 +1,28 @@
 "use client";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
-import { Pagination } from "@/shared/components/ui/Pagination";
 import NotificationPreferencesPanel from "@/features/notification/components/NotificationPreferencesPanel";
 import PasswordField from "../components/PasswordField";
 import { isSupportedTimeZone, timeZoneOptions } from "@/shared/lib/timeZone.mjs";
 import { isSupportedLocale, safeLocale } from "@/shared/lib/locale.mjs";
-import {
-  changeMyPassword,
-  listMySessions,
-  revokeMySession,
-  updateMyProfile,
-} from "../services/session.service";
+import { changeMyPassword, updateMyProfile } from "../services/session.service";
 
 export default function AccountPage() {
   const { user, logoutState, refreshUser } = useAuth();
-  const userId = user?._id || null;
-  const sessionsRequestId = useRef(0);
   const [profile, setProfile] = useState({
     full_name: "",
     locale: "",
     timezone: "",
   });
   const [password, setPassword] = useState({ current_password: "", new_password: "" });
-  const [sessions, setSessions] = useState([]);
-  const [sessionsOwnerId, setSessionsOwnerId] = useState(null);
-  const [sessionsLoading, setSessionsLoading] = useState(true);
-  const [sessionsError, setSessionsError] = useState("");
-  const [sessionPage, setSessionPage] = useState(1);
   const [activeSection, setActiveSection] = useState("profile");
-  const sessionPageSize = 10;
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [timezoneError, setTimezoneError] = useState("");
   const [localeError, setLocaleError] = useState("");
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
-  const [sessionAction, setSessionAction] = useState("");
 
   useEffect(() => {
     setProfile({
@@ -50,50 +34,15 @@ export default function AccountPage() {
     });
     setTimezoneError("");
   }, [user]);
-  const loadSessions = useCallback(async () => {
-    const currentRequest = ++sessionsRequestId.current;
-    setSessionsLoading(true);
-    setSessionsError("");
-    try {
-      const data = await listMySessions();
-      if (currentRequest !== sessionsRequestId.current) return;
-      const nextSessions = Array.isArray(data) ? data : [];
-      setSessions(nextSessions);
-      setSessionPage((current) =>
-        Math.min(current, Math.max(1, Math.ceil(nextSessions.length / sessionPageSize))),
-      );
-      setSessionsOwnerId(userId);
-    } catch (reason) {
-      if (currentRequest !== sessionsRequestId.current) return;
-      setSessionsError(
-        reason instanceof Error ? reason.message : "Không thể tải danh sách phiên đăng nhập",
-      );
-    } finally {
-      if (currentRequest === sessionsRequestId.current) setSessionsLoading(false);
-    }
-  }, [userId]);
-  useEffect(() => {
-    sessionsRequestId.current += 1;
-    setSessions([]);
-    setSessionsOwnerId(null);
-    setSessionsError("");
-    setSessionsLoading(Boolean(userId));
-    setSessionPage(1);
-    if (!userId) return undefined;
-    void loadSessions();
-    return () => {
-      sessionsRequestId.current += 1;
-    };
-  }, [loadSessions, userId]);
   const submitProfile = async (event) => {
     event.preventDefault();
     if (profile.locale && !isSupportedLocale(profile.locale)) {
-      setLocaleError("Nhập mã ngôn ngữ hợp lệ, ví dụ vi-VN hoặc en-US.");
+      setLocaleError("Nhập mã ngôn ngữ hợp lệ, ví dụ vi-VN hoặc en-US");
       setStatus("");
       return;
     }
     if (!isSupportedTimeZone(profile.timezone)) {
-      setTimezoneError("Chọn múi giờ hợp lệ từ danh sách trước khi lưu.");
+      setTimezoneError("Chọn múi giờ hợp lệ từ danh sách trước khi lưu");
       setStatus("");
       return;
     }
@@ -120,61 +69,20 @@ export default function AccountPage() {
     try {
       await changeMyPassword(password);
       setPassword({ current_password: "", new_password: "" });
-      await loadSessions();
-      setStatus("Đã đổi mật khẩu và đóng các phiên khác");
+      setStatus("Đã đổi mật khẩu");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Không thể đổi mật khẩu");
     } finally {
       setSavingPassword(false);
     }
   };
-  const closeOtherSessions = async () => {
-    const otherSessions = visibleSessions.filter((session) => !session.is_current);
-    if (!otherSessions.length || sessionAction) return;
-    setError("");
-    setStatus("");
-    setSessionAction("close-others");
-    try {
-      const results = await Promise.allSettled(
-        otherSessions.map((session) => revokeMySession(session._id)),
-      );
-      await loadSessions();
-      const revokedCount = results.filter((result) => result.status === "fulfilled").length;
-      const failedCount = results.length - revokedCount;
-      if (failedCount) {
-        setError(
-          `Đã thu hồi ${revokedCount}/${results.length} phiên đăng nhập khác. Không thể thu hồi ${failedCount} phiên; hãy tải lại danh sách và thử lại.`,
-        );
-      } else {
-        setStatus(`Đã thu hồi ${revokedCount} phiên đăng nhập khác; phiên hiện tại vẫn hoạt động.`);
-      }
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Không thể đóng các phiên khác");
-    } finally {
-      setSessionAction("");
-    }
-  };
-  const revokeSession = async (sessionId) => {
-    setError("");
-    setSessionAction(sessionId);
-    try {
-      await revokeMySession(sessionId);
-      await loadSessions();
-      setStatus("Đã thu hồi phiên đăng nhập");
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Không thể thu hồi phiên đăng nhập");
-    } finally {
-      setSessionAction("");
-    }
-  };
-  const visibleSessions = sessionsOwnerId === userId ? sessions : [];
   const userTimeZoneOptions = useMemo(() => timeZoneOptions(profile.timezone), [profile.timezone]);
   const timezoneIsValid = isSupportedTimeZone(profile.timezone);
   const localeIsValid = !profile.locale || isSupportedLocale(profile.locale);
   const timezoneMessage =
     timezoneError ||
     (!timezoneIsValid
-      ? "Múi giờ đã lưu không hợp lệ. Thời gian phiên đăng nhập tạm hiển thị theo thiết bị; hãy chọn múi giờ trong danh sách."
+      ? "Múi giờ đã lưu không hợp lệ. Thời gian phiên đăng nhập tạm hiển thị theo thiết bị; hãy chọn múi giờ trong danh sách"
       : "");
   return (
     <div className="mx-auto w-full max-w-[1180px] min-w-0 space-y-6 py-5 sm:py-6 xl:py-8">
@@ -203,7 +111,6 @@ export default function AccountPage() {
             {[
               ["profile", "Hồ sơ cá nhân"],
               ["security", "Mật khẩu và bảo mật"],
-              ["sessions", "Phiên đăng nhập"],
               ["notifications", "Thông báo"],
             ].map(([section, label]) => (
               <li className="shrink-0 xl:shrink" key={section}>
@@ -310,7 +217,7 @@ export default function AccountPage() {
           {activeSection === "security" && (
             <section className="rounded-panel border border-border bg-surface p-5">
               <h2 className="font-semibold">Đổi mật khẩu</h2>
-              <p className="mt-1 text-sm text-ink-muted">Mật khẩu mới cần có ít nhất 12 ký tự.</p>
+              <p className="mt-1 text-sm text-ink-muted">Mật khẩu mới cần có ít nhất 12 ký tự</p>
               <form className="mt-4 grid gap-4 sm:grid-cols-2" onSubmit={submitPassword}>
                 <PasswordField
                   id="account-current-password"
@@ -341,100 +248,6 @@ export default function AccountPage() {
                   </button>
                 </div>
               </form>
-            </section>
-          )}
-          {activeSection === "sessions" && (
-            <section className="rounded-panel border border-border bg-surface p-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <h2 className="font-semibold">Phiên đăng nhập</h2>
-                  <p className="mt-1 text-sm text-ink-muted">
-                    Xem và thu hồi các phiên bạn không nhận ra.
-                  </p>
-                </div>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  disabled={
-                    Boolean(sessionAction) ||
-                    sessionsLoading ||
-                    visibleSessions.every((session) => session.is_current)
-                  }
-                  onClick={closeOtherSessions}
-                >
-                  {sessionAction === "close-others" ? "Đang đóng phiên" : "Đóng các phiên khác"}
-                </button>
-              </div>
-              <div className="mt-4 divide-y divide-border border-y border-border">
-                {sessionsLoading || (userId && sessionsOwnerId !== userId) ? (
-                  <p className="py-4 text-sm text-ink-muted" role="status">
-                    Đang tải danh sách phiên đăng nhập
-                  </p>
-                ) : sessionsError ? (
-                  <div className="flex flex-wrap items-center justify-between gap-3 py-4">
-                    <p className="text-sm text-danger" role="alert">
-                      {sessionsError}
-                    </p>
-                    <button
-                      className="icon-button h-9 w-9"
-                      type="button"
-                      aria-label="Tải lại phiên đăng nhập"
-                      title="Tải lại phiên đăng nhập"
-                      onClick={loadSessions}
-                    >
-                      <RefreshCw aria-hidden="true" size={16} />
-                    </button>
-                  </div>
-                ) : visibleSessions.length ? (
-                  visibleSessions
-                    .slice((sessionPage - 1) * sessionPageSize, sessionPage * sessionPageSize)
-                    .map((session) => (
-                      <div
-                        className="flex flex-wrap items-center justify-between gap-3 py-3"
-                        key={session._id}
-                      >
-                        <div>
-                          <p className="text-sm font-medium">
-                            {session.is_current ? "Phiên hiện tại" : "Phiên đăng nhập khác"}
-                          </p>
-                          <p className="text-xs text-ink-muted">
-                            {session.created_at
-                              ? new Date(session.created_at).toLocaleString(
-                                  safeLocale(user?.locale),
-                                  {
-                                    day: "2-digit",
-                                    month: "2-digit",
-                                    year: "numeric",
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                    timeZone: timezoneIsValid ? profile.timezone : undefined,
-                                  },
-                                )
-                              : "Không rõ thời điểm"}
-                          </p>
-                        </div>
-                        {!session.is_current && (
-                          <button
-                            className="text-sm text-danger"
-                            type="button"
-                            disabled={Boolean(sessionAction)}
-                            onClick={() => revokeSession(session._id)}
-                          >
-                            {sessionAction === session._id ? "Đang thu hồi" : "Thu hồi"}
-                          </button>
-                        )}
-                      </div>
-                    ))
-                ) : (
-                  <p className="py-4 text-sm text-ink-muted">Chưa có phiên đăng nhập</p>
-                )}
-              </div>
-              <Pagination
-                page={sessionPage}
-                pageSize={sessionPageSize}
-                total={visibleSessions.length}
-                onChange={setSessionPage}
-              />
             </section>
           )}
           {activeSection === "notifications" && <NotificationPreferencesPanel />}

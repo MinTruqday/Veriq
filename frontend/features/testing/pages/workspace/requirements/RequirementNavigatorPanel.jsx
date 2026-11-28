@@ -143,7 +143,7 @@ export default function RequirementNavigatorPanel({
           })}
         </ul>
       ) : (
-        <p className="p-4 text-sm text-ink-muted">Không có yêu cầu phù hợp.</p>
+        <p className="p-4 text-sm text-ink-muted">Không có yêu cầu phù hợp</p>
       )}
       <Pagination value={pageInfo} pageSize={pageSize} onChange={onPageChange} />
     </Panel>

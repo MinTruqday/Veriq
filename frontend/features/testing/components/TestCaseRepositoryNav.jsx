@@ -99,8 +99,8 @@ export default function TestCaseRepositoryNav({
         ) : (
           <p className="p-5 text-sm text-ink-muted">
             {filters.suite_id
-              ? "Bộ kiểm thử này chưa có ca phù hợp."
-              : "Không tìm thấy ca kiểm thử phù hợp."}
+              ? "Bộ kiểm thử này chưa có ca phù hợp"
+              : "Không tìm thấy ca kiểm thử phù hợp"}
           </p>
         )}
       </nav>

@@ -20,7 +20,7 @@ function ResetPasswordContent() {
   return (
     <AuthFrame
       title="Đặt mật khẩu mới"
-      description="Mật khẩu mới cần có ít nhất 12 ký tự. Sau khi cập nhật, bạn sẽ được chuyển về trang đăng nhập."
+      description="Mật khẩu mới cần có ít nhất 12 ký tự. Sau khi cập nhật, bạn sẽ được chuyển về trang đăng nhập"
       footer={
         token ? (
           <AuthFlowLinks links={[{ href: "/dang-nhap", label: "Quay lại đăng nhập" }]} />
@@ -31,7 +31,7 @@ function ResetPasswordContent() {
         <div className="grid gap-4">
           <InlineState
             title="Liên kết đặt lại không hợp lệ"
-            detail="Liên kết không có mã đặt lại. Hãy yêu cầu một mã mới để tiếp tục."
+            detail="Liên kết không có mã đặt lại. Hãy yêu cầu một mã mới để tiếp tục"
             tone="warning"
           />
           <Link className="primary-button justify-center" href="/quen-mat-khau">

@@ -2,37 +2,31 @@
   "id": "defect_retest",
   "name": "06 - Phân loại, xử lý lỗi và kiểm thử lại",
   "file_name": "BPMN_Quality_06_Xu_ly_loi_va_kiem_thu_lai_v1.drawio",
-  "scope": "Vòng đời trạng thái được lấy từ defect_transitions; kiểm thử lại phải dùng kết quả mới và đúng ca liên kết. Kết quả PASS đóng lỗi, FAIL mở lại lỗi.",
+  "scope": "Vòng đời trạng thái được lấy từ quy tắc chuyển trạng thái lỗi; kiểm thử lại phải dùng kết quả mới và đúng ca liên kết. Kết quả đạt đóng lỗi, không đạt mở lại lỗi.",
   "lanes": [
     {
       "id": "reporter",
-      "name": "Người ghi nhận lỗi",
+      "name": "Tester",
       "fill": "#E8F3FF",
       "stroke": "#4A90C2"
     },
     {
       "id": "triage",
-      "name": "Người có quyền phân loại lỗi",
+      "name": "Admin",
       "fill": "#FFF4DF",
       "stroke": "#C58A28"
     },
     {
       "id": "resolver",
-      "name": "Người được giao xử lý lỗi",
-      "fill": "#EAF7EE",
-      "stroke": "#43845A"
+      "name": "Người được giao xử lý (BA/Tester/Admin)",
+      "fill": "#F3F4F6",
+      "stroke": "#667085"
     },
     {
       "id": "system",
-      "name": "Veriq",
+      "name": "Hệ thống",
       "fill": "#EFE8FF",
       "stroke": "#7956A8"
-    },
-    {
-      "id": "tester",
-      "name": "Người kiểm thử lại",
-      "fill": "#FFF4DF",
-      "stroke": "#C58A28"
     }
   ],
   "nodes": [
@@ -83,7 +77,7 @@
       "id": "duplicate_end",
       "label": "Lỗi được ghi nhận là trùng",
       "type": "end",
-      "lane": "system",
+      "lane": "triage",
       "col": 5,
       "row": 1
     },
@@ -100,7 +94,7 @@
       "id": "rejected_end",
       "label": "Lỗi bị từ chối",
       "type": "end",
-      "lane": "system",
+      "lane": "triage",
       "col": 5,
       "row": 2
     },
@@ -135,16 +129,16 @@
       "id": "retest",
       "label": "Thực thi kiểm thử lại bằng kết quả mới",
       "type": "user_task",
-      "lane": "tester",
+      "lane": "reporter",
       "col": 7,
-      "row": 0,
+      "row": 1,
       "task_type": "user"
     },
     {
       "id": "result",
       "label": "Kết quả kiểm thử lại?",
       "type": "gateway",
-      "lane": "tester",
+      "lane": "reporter",
       "col": 8,
       "row": 0
     },
@@ -204,7 +198,7 @@
       "label": "Mở lại lỗi để tiếp tục xử lý",
       "type": "user_task",
       "task_type": "user",
-      "lane": "triage",
+      "lane": "resolver",
       "col": 6,
       "row": 1
     }
@@ -299,7 +293,8 @@
       "from": "reopen_direct",
       "to": "continue",
       "type": "sequence",
-      "label": "Đã mở lại"
+      "label": "Đã mở lại",
+      "route": "loop_below"
     },
     {
       "id": "e11",

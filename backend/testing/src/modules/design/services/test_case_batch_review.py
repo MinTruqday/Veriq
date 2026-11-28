@@ -4,7 +4,7 @@ from pymongo.errors import DuplicateKeyError
 from src.core.common import get_project, new_id, now
 from src.core.database import database
 from src.core.project_settings import resolve_testcase_duplicate_threshold
-from src.core.human_decisions import require_ai_publication_authority
+from src.core.human_decisions import require_ai_publication_authority, require_test_case_admin_approver
 from src.core.human_decisions import require_independent_review
 from src.modules.design.services.linters import duplicate_score, has_verifiable_steps, lint_test_case
 from src.modules.design.services.test_case_lifecycle import build_test_case_version, finalize_test_case_derivatives
@@ -19,6 +19,7 @@ from src.repositories.test_design import test_design_repository
 from src.schemas.contracts.design import TestCaseFreezeInput
 
 async def accept_test_case_group(project_id, payload, user):
+    require_test_case_admin_approver(user)
     require_ai_publication_authority(user)
     await get_project(project_id, user, "testcase.approve")
     batch_id = "TCBATCH-" + fingerprint([project_id, payload.operation_id])

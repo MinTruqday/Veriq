@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Modal, ModalFooter, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import { messageOf, valueLabel } from "../../../lib/testing";
 import { testingApi } from "../../../services/testing.service";
@@ -188,7 +189,7 @@ export default function TestSetEditorModal({ projectId, mode, suite, onClose, on
         <ModalTitle>{editing ? "Cập nhật bộ kiểm thử" : "Tạo bộ kiểm thử"}</ModalTitle>
         <p className="mt-2 text-sm text-ink-muted">
           Chọn các phiên bản ca kiểm thử bằng tìm kiếm và phân trang. Các phiên bản đã chọn được giữ
-          nguyên khi chuyển trang.
+          nguyên khi chuyển trang
         </p>
       </ModalHeader>
       <form className="flex min-h-0 flex-1 flex-col" onSubmit={submit}>
@@ -239,7 +240,7 @@ export default function TestSetEditorModal({ projectId, mode, suite, onClose, on
               <div>
                 <h3 className="font-semibold">Ca kiểm thử</h3>
                 <p className="mt-1 text-sm text-ink-muted">
-                  Chọn phiên bản ca cần đưa vào bộ kiểm thử.
+                  Chọn phiên bản ca cần đưa vào bộ kiểm thử
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -299,8 +300,8 @@ export default function TestSetEditorModal({ projectId, mode, suite, onClose, on
                     {!cases.length && (
                       <p className="px-2 py-3 text-sm text-ink-muted">
                         {appliedQuery
-                          ? "Không tìm thấy ca kiểm thử phù hợp với từ khóa."
-                          : "Chưa có ca kiểm thử để thêm vào bộ này."}
+                          ? "Không tìm thấy ca kiểm thử phù hợp với từ khóa"
+                          : "Chưa có ca kiểm thử để thêm vào bộ này"}
                       </p>
                     )}
                   </div>
@@ -310,20 +311,24 @@ export default function TestSetEditorModal({ projectId, mode, suite, onClose, on
                     </span>
                     <div className="flex gap-2">
                       <button
-                        className="secondary-button"
+                        aria-label="Trang trước"
+                        title="Trang trước"
+                        className="icon-button h-9 w-9"
                         type="button"
                         disabled={loading || page <= 1}
                         onClick={() => setPage((current) => current - 1)}
                       >
-                        Trang trước
+                        <ChevronLeft aria-hidden="true" size={16} />
                       </button>
                       <button
-                        className="secondary-button"
+                        aria-label="Trang sau"
+                        title="Trang sau"
+                        className="icon-button h-9 w-9"
                         type="button"
                         disabled={loading || page >= totalPages}
                         onClick={() => setPage((current) => current + 1)}
                       >
-                        Trang sau
+                        <ChevronRight aria-hidden="true" size={16} />
                       </button>
                     </div>
                   </div>
@@ -362,7 +367,7 @@ export default function TestSetEditorModal({ projectId, mode, suite, onClose, on
                 </ul>
               ) : (
                 <p className="mt-3 rounded-control border border-dashed border-border bg-surface p-3 text-sm text-ink-muted">
-                  Chưa chọn phiên bản ca nào.
+                  Chưa chọn phiên bản ca nào
                 </p>
               )}
             </aside>

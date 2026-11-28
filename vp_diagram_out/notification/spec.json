@@ -1,0 +1,997 @@
+{
+  "service": "notification",
+  "collections": {
+    "notifications": {
+      "fields": {
+        "idempotency_key": {
+          "type": {
+            "raw": "inferred from value/key",
+            "type": "json",
+            "nullable": false
+          },
+          "evidence": [
+            "backend/notification/src/core/infrastructure/database.py:29"
+          ]
+        }
+      },
+      "sources": [
+        "backend/notification/src/core/infrastructure/database.py:24",
+        "backend/notification/src/core/infrastructure/database.py:25",
+        "backend/notification/src/core/infrastructure/database.py:26",
+        "backend/notification/src/repositories/announcement.py:11",
+        "backend/notification/src/repositories/announcement.py:15",
+        "backend/notification/src/repositories/announcement.py:19",
+        "backend/notification/src/repositories/announcement.py:23",
+        "backend/notification/src/repositories/announcement.py:27",
+        "backend/notification/src/repositories/announcement.py:31",
+        "backend/notification/src/repositories/announcement.py:7"
+      ],
+      "indexes": []
+    },
+    "notification_settings": {
+      "fields": {
+        "_id": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "string",
+            "nullable": false
+          },
+          "evidence": [
+            "backend/notification/src/repositories/announcement.py:35",
+            "backend/notification/src/repositories/announcement.py:41"
+          ]
+        },
+        "settings": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "json",
+            "nullable": false
+          },
+          "evidence": [
+            "backend/notification/src/repositories/announcement.py:41"
+          ]
+        }
+      },
+      "sources": [
+        "backend/notification/src/repositories/announcement.py:35",
+        "backend/notification/src/repositories/announcement.py:40"
+      ],
+      "indexes": []
+    }
+  },
+  "stores": [],
+  "models": [
+    {
+      "name": "Settings",
+      "bases": [],
+      "file": "backend/notification/src/core/infrastructure/configuration.py",
+      "fields": [
+        {
+          "code": "VERSION",
+          "diagram": "VERSION",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/notification/src/core/infrastructure/configuration.py:4"
+        },
+        {
+          "code": "SECRET_KEY",
+          "diagram": "SECRETKEY",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/notification/src/core/infrastructure/configuration.py:5"
+        },
+        {
+          "code": "CORS_ALLOWED_ORIGINS",
+          "diagram": "CORSALLOWEDORIGINS",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/notification/src/core/infrastructure/configuration.py:6"
+        },
+        {
+          "code": "MONGODB_URI",
+          "diagram": "MONGODBURI",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/notification/src/core/infrastructure/configuration.py:7"
+        },
+        {
+          "code": "REDIS_URI",
+          "diagram": "REDISURI",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/notification/src/core/infrastructure/configuration.py:8"
+        },
+        {
+          "code": "NOTIFICATION_DB_NAME",
+          "diagram": "NOTIFICATIONDBNAME",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/notification/src/core/infrastructure/configuration.py:9"
+        },
+        {
+          "code": "AUTHENTICATION_URL",
+          "diagram": "AUTHENTICATIONURL",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/notification/src/core/infrastructure/configuration.py:10"
+        }
+      ]
+    },
+    {
+      "name": "AnnouncementCreate",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/notification/src/schemas/announcement.py",
+      "fields": [
+        {
+          "code": "target_user_id",
+          "diagram": "TargetUserId",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/notification/src/schemas/announcement.py:9"
+        },
+        {
+          "code": "title",
+          "diagram": "Title",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/notification/src/schemas/announcement.py:10"
+        },
+        {
+          "code": "body",
+          "diagram": "Body",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/notification/src/schemas/announcement.py:11"
+        },
+        {
+          "code": "type",
+          "diagram": "Type",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/notification/src/schemas/announcement.py:12"
+        },
+        {
+          "code": "idempotency_key",
+          "diagram": "IdempotencyKey",
+          "type": {
+            "raw": "Optional[str]",
+            "type": "string",
+            "nullable": true
+          },
+          "line": "backend/notification/src/schemas/announcement.py:13"
+        }
+      ]
+    },
+    {
+      "name": "Announcement",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/notification/src/schemas/announcement.py",
+      "fields": [
+        {
+          "code": "target_user_id",
+          "diagram": "TargetUserId",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/notification/src/schemas/announcement.py:20"
+        },
+        {
+          "code": "title",
+          "diagram": "Title",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/notification/src/schemas/announcement.py:21"
+        },
+        {
+          "code": "body",
+          "diagram": "Body",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/notification/src/schemas/announcement.py:22"
+        },
+        {
+          "code": "is_read",
+          "diagram": "IsRead",
+          "type": {
+            "raw": "bool",
+            "type": "Boolean",
+            "nullable": false
+          },
+          "line": "backend/notification/src/schemas/announcement.py:23"
+        },
+        {
+          "code": "type",
+          "diagram": "Type",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/notification/src/schemas/announcement.py:24"
+        },
+        {
+          "code": "created_at",
+          "diagram": "CreatedAt",
+          "type": {
+            "raw": "datetime",
+            "type": "date",
+            "nullable": false
+          },
+          "line": "backend/notification/src/schemas/announcement.py:25"
+        }
+      ]
+    },
+    {
+      "name": "AnnouncementSettings",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/notification/src/schemas/announcement.py",
+      "fields": [
+        {
+          "code": "enable_comment_notifications",
+          "diagram": "EnableCommentNotifications",
+          "type": {
+            "raw": "bool",
+            "type": "Boolean",
+            "nullable": false
+          },
+          "line": "backend/notification/src/schemas/announcement.py:31"
+        },
+        {
+          "code": "enable_mention_notifications",
+          "diagram": "EnableMentionNotifications",
+          "type": {
+            "raw": "bool",
+            "type": "Boolean",
+            "nullable": false
+          },
+          "line": "backend/notification/src/schemas/announcement.py:32"
+        },
+        {
+          "code": "enable_system_notifications",
+          "diagram": "EnableSystemNotifications",
+          "type": {
+            "raw": "bool",
+            "type": "Boolean",
+            "nullable": false
+          },
+          "line": "backend/notification/src/schemas/announcement.py:33"
+        }
+      ]
+    },
+    {
+      "name": "CurrentUser",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/notification/src/schemas/common.py",
+      "fields": [
+        {
+          "code": "email",
+          "diagram": "Email",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/notification/src/schemas/common.py:16"
+        },
+        {
+          "code": "system_role",
+          "diagram": "SystemRole",
+          "type": {
+            "raw": "SystemRole",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/notification/src/schemas/common.py:17"
+        },
+        {
+          "code": "permissions",
+          "diagram": "Permissions",
+          "type": {
+            "raw": "List[str]",
+            "type": "json",
+            "nullable": false
+          },
+          "line": "backend/notification/src/schemas/common.py:18"
+        },
+        {
+          "code": "is_active",
+          "diagram": "IsActive",
+          "type": {
+            "raw": "bool",
+            "type": "Boolean",
+            "nullable": false
+          },
+          "line": "backend/notification/src/schemas/common.py:19"
+        },
+        {
+          "code": "full_name",
+          "diagram": "FullName",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/notification/src/schemas/common.py:20"
+        },
+        {
+          "code": "slug",
+          "diagram": "Slug",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/notification/src/schemas/common.py:21"
+        },
+        {
+          "code": "session_id",
+          "diagram": "SessionId",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/notification/src/schemas/common.py:22"
+        }
+      ]
+    },
+    {
+      "name": "APIResponse",
+      "bases": [
+        "BaseModel"
+      ],
+      "file": "backend/notification/src/schemas/common.py",
+      "fields": [
+        {
+          "code": "data",
+          "diagram": "Data",
+          "type": {
+            "raw": "Optional[T]",
+            "type": "json",
+            "nullable": true
+          },
+          "line": "backend/notification/src/schemas/common.py:34"
+        },
+        {
+          "code": "message",
+          "diagram": "Message",
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": false
+          },
+          "line": "backend/notification/src/schemas/common.py:35"
+        },
+        {
+          "code": "status",
+          "diagram": "Status",
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": false
+          },
+          "line": "backend/notification/src/schemas/common.py:36"
+        }
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "method": "GET",
+      "path": "",
+      "name": "get_announcements",
+      "args": [
+        "skip : int",
+        "limit : int",
+        "currentUser : json"
+      ],
+      "return": "json",
+      "line": "backend/notification/src/api/announcement.py:14",
+      "calls": [
+        "get",
+        "get_announcements"
+      ],
+      "call_targets": [
+        "AnnouncementService.get_announcements",
+        "router.get"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/{notif_id}/doc-hieu",
+      "name": "mark_as_read",
+      "args": [
+        "notifId : string",
+        "currentUser : json"
+      ],
+      "return": "json",
+      "line": "backend/notification/src/api/announcement.py:26",
+      "calls": [
+        "mark_as_read",
+        "patch"
+      ],
+      "call_targets": [
+        "AnnouncementService.mark_as_read",
+        "router.patch"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/doc-tat-ca",
+      "name": "mark_all_as_read",
+      "args": [
+        "currentUser : json"
+      ],
+      "return": "json",
+      "line": "backend/notification/src/api/announcement.py:36",
+      "calls": [
+        "mark_all_as_read",
+        "patch"
+      ],
+      "call_targets": [
+        "AnnouncementService.mark_all_as_read",
+        "router.patch"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/{notif_id}",
+      "name": "delete_announcement",
+      "args": [
+        "notifId : string",
+        "currentUser : json"
+      ],
+      "return": "json",
+      "line": "backend/notification/src/api/announcement.py:44",
+      "calls": [
+        "delete",
+        "delete_announcement"
+      ],
+      "call_targets": [
+        "AnnouncementService.delete_announcement",
+        "router.delete"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/gui-di",
+      "name": "create_announcement",
+      "args": [
+        "data : json"
+      ],
+      "return": "json",
+      "line": "backend/notification/src/api/announcement.py:60",
+      "calls": [
+        "create_announcement",
+        "post"
+      ],
+      "call_targets": [
+        "AnnouncementService.create_announcement",
+        "router.post"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/cai-dat",
+      "name": "get_settings",
+      "args": [
+        "currentUser : json"
+      ],
+      "return": "json",
+      "line": "backend/notification/src/api/announcement.py:69",
+      "calls": [
+        "get",
+        "settings"
+      ],
+      "call_targets": [
+        "AnnouncementService.settings",
+        "router.get"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/cai-dat",
+      "name": "update_settings",
+      "args": [
+        "settings : json",
+        "currentUser : json"
+      ],
+      "return": "json",
+      "line": "backend/notification/src/api/announcement.py:77",
+      "calls": [
+        "post",
+        "update_settings"
+      ],
+      "call_targets": [
+        "AnnouncementService.update_settings",
+        "router.post"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/suc-khoe",
+      "name": "health_check",
+      "args": [],
+      "return": "json",
+      "line": "backend/notification/src/main.py:50",
+      "calls": [
+        "get"
+      ],
+      "call_targets": [
+        "app.get"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/san-sang",
+      "name": "readiness_check",
+      "args": [],
+      "return": "json",
+      "line": "backend/notification/src/main.py:55",
+      "calls": [
+        "command",
+        "get",
+        "get_client",
+        "ping",
+        "values"
+      ],
+      "call_targets": [
+        "app.get",
+        "checks.values",
+        "redis.get_client"
+      ]
+    }
+  ],
+  "service_methods": [
+    {
+      "name": "get_announcements",
+      "args": [
+        "userId : string",
+        "skip : int",
+        "limit : int"
+      ],
+      "return": "json",
+      "line": "backend/notification/src/services/announcement.py:17",
+      "file": "services/announcement.py",
+      "owner": "AnnouncementService",
+      "calls": [
+        "count_documents",
+        "find",
+        "limit",
+        "skip",
+        "sort",
+        "to_list"
+      ],
+      "call_targets": [
+        "AnnouncementRepository.count_documents",
+        "AnnouncementRepository.find",
+        "cursor.to_list"
+      ],
+      "collections": [
+        "notifications"
+      ]
+    },
+    {
+      "name": "mark_as_read",
+      "args": [
+        "notifId : string",
+        "userId : string"
+      ],
+      "return": "json",
+      "line": "backend/notification/src/services/announcement.py:34",
+      "file": "services/announcement.py",
+      "owner": "AnnouncementService",
+      "calls": [
+        "update_one"
+      ],
+      "call_targets": [
+        "AnnouncementRepository.update_one"
+      ],
+      "collections": [
+        "notifications"
+      ]
+    },
+    {
+      "name": "mark_all_as_read",
+      "args": [
+        "userId : string"
+      ],
+      "return": "json",
+      "line": "backend/notification/src/services/announcement.py:46",
+      "file": "services/announcement.py",
+      "owner": "AnnouncementService",
+      "calls": [
+        "update_many"
+      ],
+      "call_targets": [
+        "AnnouncementRepository.update_many"
+      ],
+      "collections": [
+        "notifications"
+      ]
+    },
+    {
+      "name": "delete_announcement",
+      "args": [
+        "notifId : string",
+        "userId : string"
+      ],
+      "return": "json",
+      "line": "backend/notification/src/services/announcement.py:53",
+      "file": "services/announcement.py",
+      "owner": "AnnouncementService",
+      "calls": [
+        "delete_one"
+      ],
+      "call_targets": [
+        "AnnouncementRepository.delete_one"
+      ],
+      "collections": [
+        "notifications"
+      ]
+    },
+    {
+      "name": "create_announcement",
+      "args": [
+        "data : json"
+      ],
+      "return": "json",
+      "line": "backend/notification/src/services/announcement.py:64",
+      "file": "services/announcement.py",
+      "owner": "AnnouncementService",
+      "calls": [
+        "dumps",
+        "exception",
+        "find_one",
+        "get",
+        "insert_one",
+        "now",
+        "publish",
+        "settings",
+        "uuid4"
+      ],
+      "call_targets": [
+        "AnnouncementRepository.find_one",
+        "AnnouncementRepository.insert_one",
+        "AnnouncementService.settings",
+        "AuthenticationClient.get",
+        "datetime.now",
+        "json.dumps",
+        "logger.exception",
+        "profile.get",
+        "redis.publish",
+        "settings.get",
+        "uuid.uuid4"
+      ],
+      "collections": [
+        "notifications"
+      ]
+    },
+    {
+      "name": "settings",
+      "args": [
+        "userId : string"
+      ],
+      "return": "json",
+      "line": "backend/notification/src/services/announcement.py:107",
+      "file": "services/announcement.py",
+      "owner": "AnnouncementService",
+      "calls": [
+        "get_settings",
+        "model_dump"
+      ],
+      "call_targets": [
+        "AnnouncementRepository.get_settings"
+      ],
+      "collections": [
+        "notification_settings"
+      ]
+    },
+    {
+      "name": "update_settings",
+      "args": [
+        "userId : string",
+        "settings : json"
+      ],
+      "return": "json",
+      "line": "backend/notification/src/services/announcement.py:112",
+      "file": "services/announcement.py",
+      "owner": "AnnouncementService",
+      "calls": [
+        "model_dump",
+        "update_settings"
+      ],
+      "call_targets": [
+        "AnnouncementRepository.update_settings",
+        "settings.model_dump"
+      ],
+      "collections": [
+        "notification_settings"
+      ]
+    }
+  ],
+  "repository_methods": [
+    {
+      "name": "find",
+      "args": [
+        "query : json"
+      ],
+      "return": "json",
+      "line": "backend/notification/src/repositories/announcement.py:6",
+      "file": "repositories/announcement.py",
+      "owner": "AnnouncementRepository",
+      "calls": [
+        "find"
+      ],
+      "call_targets": [
+        "mongo.find"
+      ],
+      "collections": [
+        "notifications"
+      ]
+    },
+    {
+      "name": "find_one",
+      "args": [
+        "query : json",
+        "projection : json"
+      ],
+      "return": "json",
+      "line": "backend/notification/src/repositories/announcement.py:10",
+      "file": "repositories/announcement.py",
+      "owner": "AnnouncementRepository",
+      "calls": [
+        "find_one"
+      ],
+      "call_targets": [
+        "mongo.find_one"
+      ],
+      "collections": [
+        "notifications"
+      ]
+    },
+    {
+      "name": "count_documents",
+      "args": [
+        "query : json"
+      ],
+      "return": "json",
+      "line": "backend/notification/src/repositories/announcement.py:14",
+      "file": "repositories/announcement.py",
+      "owner": "AnnouncementRepository",
+      "calls": [
+        "count_documents"
+      ],
+      "call_targets": [
+        "mongo.count_documents"
+      ],
+      "collections": [
+        "notifications"
+      ]
+    },
+    {
+      "name": "insert_one",
+      "args": [
+        "document : json"
+      ],
+      "return": "json",
+      "line": "backend/notification/src/repositories/announcement.py:18",
+      "file": "repositories/announcement.py",
+      "owner": "AnnouncementRepository",
+      "calls": [
+        "insert_one"
+      ],
+      "call_targets": [
+        "mongo.insert_one"
+      ],
+      "collections": [
+        "notifications"
+      ]
+    },
+    {
+      "name": "update_one",
+      "args": [
+        "query : json",
+        "update : json"
+      ],
+      "return": "json",
+      "line": "backend/notification/src/repositories/announcement.py:22",
+      "file": "repositories/announcement.py",
+      "owner": "AnnouncementRepository",
+      "calls": [
+        "update_one"
+      ],
+      "call_targets": [
+        "mongo.update_one"
+      ],
+      "collections": [
+        "notifications"
+      ]
+    },
+    {
+      "name": "update_many",
+      "args": [
+        "query : json",
+        "update : json"
+      ],
+      "return": "json",
+      "line": "backend/notification/src/repositories/announcement.py:26",
+      "file": "repositories/announcement.py",
+      "owner": "AnnouncementRepository",
+      "calls": [
+        "update_many"
+      ],
+      "call_targets": [
+        "mongo.update_many"
+      ],
+      "collections": [
+        "notifications"
+      ]
+    },
+    {
+      "name": "delete_one",
+      "args": [
+        "query : json"
+      ],
+      "return": "json",
+      "line": "backend/notification/src/repositories/announcement.py:30",
+      "file": "repositories/announcement.py",
+      "owner": "AnnouncementRepository",
+      "calls": [
+        "delete_one"
+      ],
+      "call_targets": [
+        "mongo.delete_one"
+      ],
+      "collections": [
+        "notifications"
+      ]
+    },
+    {
+      "name": "get_settings",
+      "args": [
+        "userId : string"
+      ],
+      "return": "json",
+      "line": "backend/notification/src/repositories/announcement.py:34",
+      "file": "repositories/announcement.py",
+      "owner": "AnnouncementRepository",
+      "calls": [
+        "find_one",
+        "get"
+      ],
+      "call_targets": [
+        "document.get",
+        "mongo.find_one"
+      ],
+      "collections": [
+        "notification_settings"
+      ]
+    },
+    {
+      "name": "update_settings",
+      "args": [
+        "userId : string",
+        "settings : json"
+      ],
+      "return": "json",
+      "line": "backend/notification/src/repositories/announcement.py:39",
+      "file": "repositories/announcement.py",
+      "owner": "AnnouncementRepository",
+      "calls": [
+        "update_one"
+      ],
+      "call_targets": [
+        "mongo.update_one"
+      ],
+      "collections": [
+        "notification_settings"
+      ]
+    }
+  ],
+  "frontend": {
+    "pages": [
+      {
+        "name": "AnnouncementsPage",
+        "route_file": "frontend/app/(main)/thong-bao/page.jsx",
+        "feature_file": "frontend/features/notification/pages/AnnouncementsPage"
+      }
+    ],
+    "service_functions": [
+      {
+        "name": "useAnnouncementsPage",
+        "file": "frontend/features/notification/hooks/useAnnouncements.js"
+      },
+      {
+        "name": "deleteAnnouncementAPI",
+        "file": "frontend/features/notification/services/announcement.service.js"
+      },
+      {
+        "name": "getAnnouncementSettingsAPI",
+        "file": "frontend/features/notification/services/announcement.service.js"
+      },
+      {
+        "name": "getAnnouncementsAPI",
+        "file": "frontend/features/notification/services/announcement.service.js"
+      },
+      {
+        "name": "markAllAnnouncementsReadAPI",
+        "file": "frontend/features/notification/services/announcement.service.js"
+      },
+      {
+        "name": "markAnnouncementReadAPI",
+        "file": "frontend/features/notification/services/announcement.service.js"
+      },
+      {
+        "name": "updateAnnouncementSettingsAPI",
+        "file": "frontend/features/notification/services/announcement.service.js"
+      }
+    ],
+    "page_calls": []
+  },
+  "references": [],
+  "indexes": [
+    {
+      "at": "backend/notification/src/core/infrastructure/database.py:24",
+      "expression": "db['notifications'].create_index([('target_user_id', 1), ('created_at', -1)])"
+    },
+    {
+      "at": "backend/notification/src/core/infrastructure/database.py:25",
+      "expression": "db['notifications'].create_index([('target_user_id', 1), ('is_read', 1)])"
+    },
+    {
+      "at": "backend/notification/src/core/infrastructure/database.py:26",
+      "expression": "db['notifications'].create_index('idempotency_key', unique=True, partialFilterExpression={'idempotency_key': {'$type': 'string'}})"
+    }
+  ],
+  "external_references": []
+}

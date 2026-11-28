@@ -18,19 +18,19 @@ const settingOptions = [
   {
     key: "enable_comment_notifications",
     label: "Bình luận",
-    description: "Nhận thông báo khi có bình luận mới liên quan đến bạn.",
+    description: "Nhận thông báo khi có bình luận mới liên quan đến bạn",
     Icon: MessageSquare,
   },
   {
     key: "enable_mention_notifications",
     label: "Được nhắc tên",
-    description: "Theo dõi những lần thành viên nhắc đến bạn trong nội dung.",
+    description: "Theo dõi những lần thành viên nhắc đến bạn trong nội dung",
     Icon: AtSign,
   },
   {
     key: "enable_system_notifications",
     label: "Thông báo hệ thống",
-    description: "Nhận cập nhật hệ thống và thông tin vận hành tài khoản.",
+    description: "Nhận cập nhật hệ thống và thông tin vận hành tài khoản",
     Icon: Bell,
   },
 ];
@@ -94,7 +94,7 @@ export default function NotificationPreferencesPanel() {
           </p>
           <h2 className="mt-1 font-semibold">Cài đặt thông báo</h2>
           <p className="mt-1 max-w-2xl text-sm text-ink-muted">
-            Chọn các sự kiện sẽ gửi thông báo đến tài khoản của bạn.
+            Chọn các sự kiện sẽ gửi thông báo đến tài khoản của bạn
           </p>
         </div>
         {!loading && !loadFailed && (
@@ -186,7 +186,7 @@ export default function NotificationPreferencesPanel() {
             })}
           </fieldset>
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
-            <p className="text-xs text-ink-faint">Thay đổi chỉ có hiệu lực sau khi lưu.</p>
+            <p className="text-xs text-ink-faint">Thay đổi chỉ có hiệu lực sau khi lưu</p>
             <Button type="submit" disabled={saving}>
               {saving ? "Đang lưu" : "Lưu cài đặt"}
             </Button>

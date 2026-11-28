@@ -92,7 +92,7 @@ export default function RequirementDuplicatePanel({ result }) {
         </ol>
       ) : (
         <p className="p-5 text-sm text-ink-muted">
-          Không phát hiện cặp yêu cầu vượt ngưỡng trùng lặp.
+          Không phát hiện cặp yêu cầu vượt ngưỡng trùng lặp
         </p>
       )}
     </Panel>

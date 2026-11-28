@@ -17,7 +17,7 @@ export const designTestingApi = {
   listRequirements: (id, query = "") =>
     listPage(`/du-an/${id}/yeu-cau`, query).then((result) => {
       if (!Array.isArray(result?.items)) {
-        throw new Error("Máy chủ trả về danh sách yêu cầu không đúng định dạng. Hãy thử tải lại.");
+        throw new Error("Máy chủ trả về danh sách yêu cầu không đúng định dạng. Hãy thử tải lại");
       }
       return result.items;
     }),

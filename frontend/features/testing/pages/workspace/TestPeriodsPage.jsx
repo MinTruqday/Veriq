@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Grid2X2, List } from "lucide-react";
 import { useDateTimeOptions } from "../../hooks/useDateTimeOptions";
 import { testingApi } from "../../services/testing.service";
 import {
@@ -81,7 +82,7 @@ export default function TestPeriodsPage({ project, section = [] }) {
       const items = await testingApi.listTestPeriods(project._id);
       setPeriods(Array.isArray(items) ? items : []);
     } catch (reason) {
-      setListError(reason.message || "Không tải được chu kỳ.");
+      setListError(reason.message || "Không tải được chu kỳ");
     } finally {
       setPeriodsLoading(false);
     }
@@ -103,7 +104,7 @@ export default function TestPeriodsPage({ project, section = [] }) {
       setSummary(periodSummary);
       setPlans(Array.isArray(periodPlans) ? periodPlans : []);
     } catch (reason) {
-      setError(reason.message || "Không tải được chu kỳ.");
+      setError(reason.message || "Không tải được chu kỳ");
     } finally {
       setLoading(false);
     }
@@ -134,14 +135,14 @@ export default function TestPeriodsPage({ project, section = [] }) {
         reason: String(reasons[item.test_case_version_id] || "").trim(),
       }));
     if (carryOverItems.some((item) => !item.reason)) {
-      setError("Nhập lý do cho từng ca được chọn chuyển tiếp.");
+      setError("Nhập lý do cho từng ca được chọn chuyển tiếp");
       return;
     }
     const confirmed = await ask({
       title: "Xác nhận đóng chu kỳ",
       description: carryOverItems.length
-        ? `Đóng chu kỳ “${period.name}” và chuyển tiếp ${carryOverItems.length} ca đã chọn. Lịch sử thực thi sẽ được giữ lại.`
-        : `Đóng chu kỳ “${period.name}”. Lịch sử kế hoạch và thực thi sẽ được giữ lại.`,
+        ? `Đóng chu kỳ “${period.name}” và chuyển tiếp ${carryOverItems.length} ca đã chọn. Lịch sử thực thi sẽ được giữ lại`
+        : `Đóng chu kỳ “${period.name}”. Lịch sử kế hoạch và thực thi sẽ được giữ lại`,
       confirmLabel: "Đóng chu kỳ",
       danger: true,
     });
@@ -156,7 +157,7 @@ export default function TestPeriodsPage({ project, section = [] }) {
       });
       await load();
     } catch (reason) {
-      setError(reason.message || "Không đóng được chu kỳ.");
+      setError(reason.message || "Không đóng được chu kỳ");
     } finally {
       setSaving(false);
     }
@@ -166,7 +167,7 @@ export default function TestPeriodsPage({ project, section = [] }) {
     return (
       <WorkspacePage
         title="Chu kỳ kiểm thử"
-        description="Gom các kế hoạch thuộc cùng một giai đoạn làm việc. Kế hoạch không cần chu kỳ vẫn dùng được."
+        description="Gom các kế hoạch thuộc cùng một giai đoạn làm việc. Kế hoạch không cần chu kỳ vẫn dùng được"
         actions={
           <Link
             className="secondary-button"
@@ -213,7 +214,7 @@ export default function TestPeriodsPage({ project, section = [] }) {
                       projectRoute(project._id, PROJECT_SECTION_SLUGS.testPeriods, created._id),
                     );
                   } catch (reason) {
-                    setListError(reason.message || "Không tạo được chu kỳ.");
+                    setListError(reason.message || "Không tạo được chu kỳ");
                   } finally {
                     setCreatingPeriod(false);
                   }
@@ -241,60 +242,65 @@ export default function TestPeriodsPage({ project, section = [] }) {
               <p className="p-5 text-sm text-ink-muted">Đang tải chu kỳ…</p>
             ) : periods.length ? (
               <div className="space-y-4 p-4 sm:p-5">
-                <div className="grid min-w-0 gap-3">
-                  <div className="w-full min-w-0">
-                    <SearchField
-                      ariaLabel="Tìm chu kỳ"
-                      value={periodQuery}
-                      onChange={setPeriodQuery}
-                      placeholder="Tìm theo tên hoặc số chu kỳ"
-                    />
-                  </div>
-                  <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                    <div
-                      aria-label="Lọc trạng thái chu kỳ"
-                      className="flex flex-wrap gap-1"
-                      role="group"
-                    >
-                      {[
-                        ["ALL", "Tất cả", periodStatusCounts.total],
-                        ["ACTIVE", "Đang thực hiện", periodStatusCounts.active],
-                        ["UPCOMING", "Sắp diễn ra", periodStatusCounts.upcoming],
-                        ["CLOSED", "Đã đóng", periodStatusCounts.closed],
-                      ].map(([status, label, count]) => (
-                        <button
-                          aria-pressed={periodStatusFilter === status}
-                          className={`rounded-control px-3 py-2 text-xs font-medium transition-colors ${periodStatusFilter === status ? "bg-brand text-white" : "border border-border text-ink-muted hover:bg-surface-quiet hover:text-ink"}`}
-                          key={status}
-                          onClick={() => setPeriodStatusFilter(status)}
-                          type="button"
-                        >
-                          {label} <span className="ml-1 tabular-nums">{count}</span>
-                        </button>
-                      ))}
+                <details className="border-b border-border pb-3">
+                  <summary className="cursor-pointer text-sm font-medium">Bộ lọc</summary>
+                  <div className="mt-3 grid min-w-0 gap-3">
+                    <div className="w-full min-w-0">
+                      <SearchField
+                        ariaLabel="Tìm chu kỳ"
+                        value={periodQuery}
+                        onChange={setPeriodQuery}
+                        placeholder="Tìm theo tên hoặc số chu kỳ"
+                      />
                     </div>
-                    <div
-                      aria-label="Cách hiển thị chu kỳ"
-                      className="flex shrink-0 gap-1 lg:justify-end"
-                      role="group"
-                    >
-                      {[
-                        ["cards", "Thẻ"],
-                        ["list", "Danh sách"],
-                      ].map(([view, label]) => (
-                        <button
-                          aria-pressed={periodView === view}
-                          className={`rounded-control px-3 py-2 text-xs font-medium ${periodView === view ? "bg-surface-quiet text-ink" : "text-ink-muted hover:bg-surface-quiet"}`}
-                          key={view}
-                          onClick={() => setPeriodView(view)}
-                          type="button"
-                        >
-                          {label}
-                        </button>
-                      ))}
+                    <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div
+                        aria-label="Lọc trạng thái chu kỳ"
+                        className="flex flex-wrap gap-1"
+                        role="group"
+                      >
+                        {[
+                          ["ALL", "Tất cả", periodStatusCounts.total],
+                          ["ACTIVE", "Đang thực hiện", periodStatusCounts.active],
+                          ["UPCOMING", "Sắp diễn ra", periodStatusCounts.upcoming],
+                          ["CLOSED", "Đã đóng", periodStatusCounts.closed],
+                        ].map(([status, label, count]) => (
+                          <button
+                            aria-pressed={periodStatusFilter === status}
+                            className={`rounded-control px-3 py-2 text-xs font-medium transition-colors ${periodStatusFilter === status ? "bg-brand text-white" : "border border-border text-ink-muted hover:bg-surface-quiet hover:text-ink"}`}
+                            key={status}
+                            onClick={() => setPeriodStatusFilter(status)}
+                            type="button"
+                          >
+                            {label} <span className="ml-1 tabular-nums">{count}</span>
+                          </button>
+                        ))}
+                      </div>
+                      <div
+                        aria-label="Cách hiển thị chu kỳ"
+                        className="flex shrink-0 gap-1 lg:justify-end"
+                        role="group"
+                      >
+                        {[
+                          ["cards", "Thẻ", Grid2X2],
+                          ["list", "Danh sách", List],
+                        ].map(([view, label, Icon]) => (
+                          <button
+                            aria-label={label}
+                            aria-pressed={periodView === view}
+                            className={`icon-button h-9 w-9 ${periodView === view ? "bg-brand/10 text-brand" : ""}`}
+                            key={view}
+                            onClick={() => setPeriodView(view)}
+                            title={label}
+                            type="button"
+                          >
+                            <Icon aria-hidden="true" size={16} />
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
-                </div>
+                </details>
                 <p aria-live="polite" className="text-xs text-ink-muted">
                   Hiển thị {visiblePeriods.length} / {periods.length} chu kỳ
                 </p>
@@ -383,7 +389,7 @@ export default function TestPeriodsPage({ project, section = [] }) {
                   <div className="rounded-panel border border-dashed border-border p-6 text-center">
                     <p className="text-sm font-medium text-ink">Không tìm thấy chu kỳ phù hợp</p>
                     <p className="mt-1 text-sm text-ink-muted">
-                      Thử từ khóa khác hoặc xóa bộ lọc trạng thái.
+                      Thử từ khóa khác hoặc xóa bộ lọc trạng thái
                     </p>
                     <button
                       className="secondary-button mt-3"
@@ -400,7 +406,7 @@ export default function TestPeriodsPage({ project, section = [] }) {
               </div>
             ) : (
               <p className="p-5 text-sm text-ink-muted">
-                Chưa có chu kỳ. Bạn cũng có thể tạo chu kỳ ngay trong form kế hoạch.
+                Chưa có chu kỳ. Bạn cũng có thể tạo chu kỳ ngay trong form kế hoạch
               </p>
             )}
           </Panel>
@@ -417,7 +423,7 @@ export default function TestPeriodsPage({ project, section = [] }) {
       description={
         period
           ? `Chu kỳ ${period.sequence} · ${period.status === "ACTIVE" ? "Đang thực hiện" : closed ? "Đã đóng" : "Sắp diễn ra"}`
-          : "Tổng hợp kế hoạch và kết quả trong chu kỳ."
+          : "Tổng hợp kế hoạch và kết quả trong chu kỳ"
       }
       actions={
         <div className="flex flex-wrap items-center gap-3">
@@ -502,7 +508,7 @@ export default function TestPeriodsPage({ project, section = [] }) {
                   ))}
                 </ul>
               ) : (
-                <p className="p-5 text-sm text-ink-muted">Chu kỳ này chưa có kế hoạch kiểm thử.</p>
+                <p className="p-5 text-sm text-ink-muted">Chu kỳ này chưa có kế hoạch kiểm thử</p>
               )}
             </Panel>
 
@@ -516,7 +522,7 @@ export default function TestPeriodsPage({ project, section = [] }) {
                 </div>
                 {caseStatusTotal === 0 ? (
                   <p className="text-xs leading-5 text-ink-muted">
-                    Chu kỳ chưa có kết quả thực thi để phân bố.
+                    Chu kỳ chưa có kết quả thực thi để phân bố
                   </p>
                 ) : (
                   <div className="space-y-2.5">
@@ -556,8 +562,8 @@ export default function TestPeriodsPage({ project, section = [] }) {
                 {summary.cases.length === 0 ? (
                   <p className="p-5 text-sm text-ink-muted">
                     {closed
-                      ? "Không có ca được chọn chuyển tiếp."
-                      : "Chu kỳ chưa có ca trong phạm vi kế hoạch."}
+                      ? "Không có ca được chọn chuyển tiếp"
+                      : "Chu kỳ chưa có ca trong phạm vi kế hoạch"}
                   </p>
                 ) : (
                   <div className="divide-y divide-border">
@@ -635,7 +641,7 @@ export default function TestPeriodsPage({ project, section = [] }) {
                     {summary.open_run_count > 0 && (
                       <p className="text-sm text-ink-muted">
                         Cần hoàn tất hoặc hủy {summary.open_run_count} lần chạy trước khi đóng chu
-                        kỳ.
+                        kỳ
                       </p>
                     )}
                     <button

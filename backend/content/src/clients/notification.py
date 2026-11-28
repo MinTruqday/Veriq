@@ -10,6 +10,7 @@ class NotificationClient:
         title: str,
         body: str,
         notification_type: str,
+        idempotency_key: str | None = None,
     ):
         if not settings.NOTIFICATION_URL:
             return None
@@ -23,6 +24,7 @@ class NotificationClient:
                     "title": title,
                     "body": body,
                     "type": notification_type,
+                    "idempotency_key": idempotency_key,
                 },
                 headers={"X-Internal-Token": settings.SECRET_KEY},
             )
