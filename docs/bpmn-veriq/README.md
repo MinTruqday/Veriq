@@ -1,6 +1,6 @@
 # Sáu sơ đồ BPMN và mô tả quy trình
 
-Bộ tài liệu gồm sáu sơ đồ có thể mở và chỉnh sửa bằng Draw.io, kèm phần mô tả theo từng bước. Nội dung được đối chiếu với mã nguồn của dự án. Tác nhân nghiệp vụ trong sơ đồ là BA, Tester, Admin và Hệ thống; người được giao xử lý lỗi là người được phân công, không phải một vai trò mới.
+Bộ tài liệu gồm sáu sơ đồ có thể mở và chỉnh sửa bằng Draw.io, kèm phần mô tả theo từng bước. Nội dung được đối chiếu với mã nguồn của dự án. Các sơ đồ sử dụng các vai trò BA, Tester, Admin và Hệ thống; quy trình xử lý lỗi chỉ có các làn Tester, Admin và Hệ thống. Thông tin phân công thuộc hồ sơ lỗi, không tạo thêm tác nhân.
 
 ## Danh mục sơ đồ
 

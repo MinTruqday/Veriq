@@ -2,42 +2,6 @@
 
 Tên code | Tên sơ đồ | Loại | Căn cứ
 ---|---|---|---
-`ai_run_source_facts` | `AiRunSourceFact` | collection/table | `backend/ai/src/core/infrastructure/database.py:?, backend/ai/src/repositories/ai_runs.py:455, backend/ai/src/repositories/ai_runs.py:466`
-`_id` | `AiRunSourceFactId` | field | `backend/ai/src/repositories/ai_runs.py:467`
-`ai_run_id` | `AiRunId` | field | `backend/ai/src/repositories/ai_runs.py:467, backend/ai/src/repositories/ai_runs.py:494`
-`document_ingestion_page_checkpoints` | `DocumentIngestionPageCheckpoint` | collection/table | `backend/ai/src/core/infrastructure/database.py:175, backend/ai/src/core/infrastructure/database.py:?, backend/ai/src/repositories/document_ingestion_checkpoint.py:113`
-`_id` | `DocumentIngestionPageCheckpointId` | field | `backend/ai/src/repositories/document_ingestion_checkpoint.py:89`
-`created_at` | `CreatedAt` | field | `backend/ai/src/schemas/document_ingestion_checkpoint.py:24`
-`document_id` | `DocumentId` | field | `backend/ai/src/schemas/document_ingestion_checkpoint.py:9`
-`expires_at` | `ExpiresAt` | field | `backend/ai/src/schemas/document_ingestion_checkpoint.py:25`
-`extraction_warnings` | `ExtractionWarnings` | field | `backend/ai/src/schemas/document_ingestion_checkpoint.py:22`
-`markdown` | `Markdown` | field | `backend/ai/src/schemas/document_ingestion_checkpoint.py:19`
-`ocr_enabled` | `OcrEnabled` | field | `backend/ai/src/schemas/document_ingestion_checkpoint.py:23`
-`ocr_language` | `OcrLanguage` | field | `backend/ai/src/schemas/document_ingestion_checkpoint.py:16`
-`owner_id` | `OwnerId` | field | `backend/ai/src/schemas/document_ingestion_checkpoint.py:11`
-`page_count` | `PageCount` | field | `backend/ai/src/schemas/document_ingestion_checkpoint.py:18`
-`page_no` | `PageNo` | field | `backend/ai/src/schemas/document_ingestion_checkpoint.py:17`
-`parser_contract_version` | `ParserContractVersion` | field | `backend/ai/src/schemas/document_ingestion_checkpoint.py:15`
-`parser_name` | `ParserName` | field | `backend/ai/src/schemas/document_ingestion_checkpoint.py:13`
-`parser_version` | `ParserVersion` | field | `backend/ai/src/schemas/document_ingestion_checkpoint.py:14`
-`project_id` | `ProjectId` | field | `backend/ai/src/schemas/document_ingestion_checkpoint.py:10`
-`source_hash` | `SourceHash` | field | `backend/ai/src/schemas/document_ingestion_checkpoint.py:12`
-`structure` | `Structure` | field | `backend/ai/src/schemas/document_ingestion_checkpoint.py:20`
-`unprocessed_blocks` | `UnprocessedBlocks` | field | `backend/ai/src/schemas/document_ingestion_checkpoint.py:21`
-`long_term_memory` | `LongTermMemory` | collection/table | `backend/ai/src/core/infrastructure/database.py:?, backend/ai/src/memory/long_term.py:10, backend/ai/src/memory/long_term.py:35`
-`_id` | `LongTermMemoryId` | field | `backend/ai/src/memory/long_term.py:23`
-`created_at` | `CreatedAt` | field | `backend/ai/src/memory/long_term.py:23`
-`evidence_refs` | `EvidenceRefs` | field | `backend/ai/src/memory/long_term.py:23`
-`intent` | `Intent` | field | `backend/ai/src/memory/long_term.py:23`
-`objective` | `Objective` | field | `backend/ai/src/memory/long_term.py:23`
-`owner_id` | `OwnerId` | field | `backend/ai/src/memory/long_term.py:23, backend/ai/src/repositories/memory.py:12`
-`project_id` | `ProjectId` | field | `backend/ai/src/memory/long_term.py:23, backend/ai/src/repositories/memory.py:12`
-`proposal` | `Proposal` | field | `backend/ai/src/memory/long_term.py:23`
-`run_id` | `RunId` | field | `backend/ai/src/memory/long_term.py:23, backend/ai/src/repositories/memory.py:21`
-`trusted` | `Trusted` | field | `backend/ai/src/memory/long_term.py:23, backend/ai/src/repositories/memory.py:12`
-`ai_run_derivation_receipts` | `AiRunDerivationReceipt` | collection/table | `backend/ai/src/core/infrastructure/database.py:?, backend/ai/src/repositories/ai_runs.py:477, backend/ai/src/repositories/ai_runs.py:484`
-`_id` | `AiRunDerivationReceiptId` | field | `backend/ai/src/repositories/ai_runs.py:479`
-`ai_run_id` | `AiRunId` | field | `backend/ai/src/repositories/ai_runs.py:478, backend/ai/src/repositories/ai_runs.py:485`
 `ai_run_checkpoints` | `AiRunCheckpoint` | collection/table | `backend/ai/src/core/infrastructure/database.py:?, backend/ai/src/repositories/ai_runs.py:156, backend/ai/src/repositories/ai_runs.py:324`
 `ai_run_id` | `AiRunId` | field | `backend/ai/src/schemas/ai_runs.py:189`
 `checkpoint_id` | `CheckpointId` | field | `backend/ai/src/schemas/ai_runs.py:188`
@@ -48,9 +12,6 @@ Tên code | Tên sơ đồ | Loại | Căn cứ
 `state_snapshot` | `StateSnapshot` | field | `backend/ai/src/schemas/ai_runs.py:194`
 `status` | `Status` | field | `backend/ai/src/schemas/ai_runs.py:192`
 `agent_traces` | `AgentTrace` | collection/table | `backend/ai/src/core/infrastructure/database.py:?, backend/ai/src/services/agent_metrics.py:153`
-`ai_sessions` | `AiSession` | collection/table | `backend/ai/src/core/infrastructure/database.py:?`
-`retrieval_audit` | `RetrievalAudit` | collection/table | `backend/ai/src/core/infrastructure/database.py:?, backend/ai/src/repositories/retrieval_audit.py:6, backend/ai/src/repositories/retrieval_audit.py:9`
-`ai_messages` | `AiMessage` | collection/table | `backend/ai/src/core/infrastructure/database.py:?`
 `dead_letter_recovery_audit` | `DeadLetterRecoveryAudit` | collection/table | `backend/ai/src/core/infrastructure/database.py:?`
 `acknowledged_at` | `AcknowledgedAt` | field | `backend/ai/src/schemas/queue_recovery.py:36`
 `action_id` | `ActionId` | field | `backend/ai/src/schemas/queue_recovery.py:16`
@@ -67,7 +28,18 @@ Tên code | Tên sơ đồ | Loại | Căn cứ
 `source_delivery_attempt` | `SourceDeliveryAttempt` | field | `backend/ai/src/schemas/queue_recovery.py:23`
 `status` | `Status` | field | `backend/ai/src/schemas/queue_recovery.py:25`
 `updated_at` | `UpdatedAt` | field | `backend/ai/src/schemas/queue_recovery.py:37`
-`ai_workspaces` | `AiWorkspace` | collection/table | `backend/ai/src/core/infrastructure/database.py:?`
+`long_term_memory` | `LongTermMemory` | collection/table | `backend/ai/src/core/infrastructure/database.py:?, backend/ai/src/memory/long_term.py:10, backend/ai/src/memory/long_term.py:35`
+`_id` | `LongTermMemoryId` | field | `backend/ai/src/memory/long_term.py:23`
+`created_at` | `CreatedAt` | field | `backend/ai/src/memory/long_term.py:23`
+`evidence_refs` | `EvidenceRefs` | field | `backend/ai/src/memory/long_term.py:23`
+`intent` | `Intent` | field | `backend/ai/src/memory/long_term.py:23`
+`objective` | `Objective` | field | `backend/ai/src/memory/long_term.py:23`
+`owner_id` | `OwnerId` | field | `backend/ai/src/memory/long_term.py:23, backend/ai/src/repositories/memory.py:12`
+`project_id` | `ProjectId` | field | `backend/ai/src/memory/long_term.py:23, backend/ai/src/repositories/memory.py:12`
+`proposal` | `Proposal` | field | `backend/ai/src/memory/long_term.py:23`
+`run_id` | `RunId` | field | `backend/ai/src/memory/long_term.py:23, backend/ai/src/repositories/memory.py:21`
+`trusted` | `Trusted` | field | `backend/ai/src/memory/long_term.py:23, backend/ai/src/repositories/memory.py:12`
+`ai_sessions` | `AiSession` | collection/table | `backend/ai/src/core/infrastructure/database.py:?`
 `ai_runs` | `AiRun` | collection/table | `backend/ai/src/core/infrastructure/database.py:?, backend/ai/src/repositories/ai_runs.py:134, backend/ai/src/repositories/ai_runs.py:194`
 `_id` | `AiRunId` | field | `backend/ai/src/repositories/ai_runs.py:368, backend/ai/src/repositories/ai_runs.py:387`
 `ai_run_id` | `AiRunId` | field | `backend/ai/src/schemas/ai_runs.py:261`
@@ -101,6 +73,34 @@ Tên code | Tên sơ đồ | Loại | Căn cứ
 `trigger` | `Trigger` | field | `backend/ai/src/schemas/ai_runs.py:270`
 `updated_at` | `UpdatedAt` | field | `backend/ai/src/schemas/ai_runs.py:291`
 `worker_lease_expires_at` | `WorkerLeaseExpiresAt` | field | `backend/ai/src/schemas/ai_runs.py:288`
+`retrieval_audit` | `RetrievalAudit` | collection/table | `backend/ai/src/core/infrastructure/database.py:?, backend/ai/src/repositories/retrieval_audit.py:6, backend/ai/src/repositories/retrieval_audit.py:9`
+`ai_messages` | `AiMessage` | collection/table | `backend/ai/src/core/infrastructure/database.py:?`
+`document_ingestion_page_checkpoints` | `DocumentIngestionPageCheckpoint` | collection/table | `backend/ai/src/core/infrastructure/database.py:175, backend/ai/src/core/infrastructure/database.py:?, backend/ai/src/repositories/document_ingestion_checkpoint.py:113`
+`_id` | `DocumentIngestionPageCheckpointId` | field | `backend/ai/src/repositories/document_ingestion_checkpoint.py:89`
+`created_at` | `CreatedAt` | field | `backend/ai/src/schemas/document_ingestion_checkpoint.py:24`
+`document_id` | `DocumentId` | field | `backend/ai/src/schemas/document_ingestion_checkpoint.py:9`
+`expires_at` | `ExpiresAt` | field | `backend/ai/src/schemas/document_ingestion_checkpoint.py:25`
+`extraction_warnings` | `ExtractionWarnings` | field | `backend/ai/src/schemas/document_ingestion_checkpoint.py:22`
+`markdown` | `Markdown` | field | `backend/ai/src/schemas/document_ingestion_checkpoint.py:19`
+`ocr_enabled` | `OcrEnabled` | field | `backend/ai/src/schemas/document_ingestion_checkpoint.py:23`
+`ocr_language` | `OcrLanguage` | field | `backend/ai/src/schemas/document_ingestion_checkpoint.py:16`
+`owner_id` | `OwnerId` | field | `backend/ai/src/schemas/document_ingestion_checkpoint.py:11`
+`page_count` | `PageCount` | field | `backend/ai/src/schemas/document_ingestion_checkpoint.py:18`
+`page_no` | `PageNo` | field | `backend/ai/src/schemas/document_ingestion_checkpoint.py:17`
+`parser_contract_version` | `ParserContractVersion` | field | `backend/ai/src/schemas/document_ingestion_checkpoint.py:15`
+`parser_name` | `ParserName` | field | `backend/ai/src/schemas/document_ingestion_checkpoint.py:13`
+`parser_version` | `ParserVersion` | field | `backend/ai/src/schemas/document_ingestion_checkpoint.py:14`
+`project_id` | `ProjectId` | field | `backend/ai/src/schemas/document_ingestion_checkpoint.py:10`
+`source_hash` | `SourceHash` | field | `backend/ai/src/schemas/document_ingestion_checkpoint.py:12`
+`structure` | `Structure` | field | `backend/ai/src/schemas/document_ingestion_checkpoint.py:20`
+`unprocessed_blocks` | `UnprocessedBlocks` | field | `backend/ai/src/schemas/document_ingestion_checkpoint.py:21`
+`ai_run_derivation_receipts` | `AiRunDerivationReceipt` | collection/table | `backend/ai/src/core/infrastructure/database.py:?, backend/ai/src/repositories/ai_runs.py:477, backend/ai/src/repositories/ai_runs.py:484`
+`_id` | `AiRunDerivationReceiptId` | field | `backend/ai/src/repositories/ai_runs.py:479`
+`ai_run_id` | `AiRunId` | field | `backend/ai/src/repositories/ai_runs.py:478, backend/ai/src/repositories/ai_runs.py:485`
+`ai_workspaces` | `AiWorkspace` | collection/table | `backend/ai/src/core/infrastructure/database.py:?`
+`ai_run_source_facts` | `AiRunSourceFact` | collection/table | `backend/ai/src/core/infrastructure/database.py:?, backend/ai/src/repositories/ai_runs.py:455, backend/ai/src/repositories/ai_runs.py:466`
+`_id` | `AiRunSourceFactId` | field | `backend/ai/src/repositories/ai_runs.py:467`
+`ai_run_id` | `AiRunId` | field | `backend/ai/src/repositories/ai_runs.py:467, backend/ai/src/repositories/ai_runs.py:494`
 `verified_tool_evidence_records` | `VerifiedToolEvidenceRecords` | method | `backend/ai/src/services/agent_evidence.py:1`
 `verified_tool_evidence` | `VerifiedToolEvidence` | method | `backend/ai/src/services/agent_evidence.py:34`
 `record_session_start` | `RecordSessionStart` | method | `backend/ai/src/services/agent_metrics.py:52`

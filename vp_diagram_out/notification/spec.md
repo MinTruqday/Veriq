@@ -8,7 +8,7 @@
 - Router handlers found: 9
 - Public service methods: 7
 - Public repository methods: 9
-- Frontend pages mapped by app-route import: 1
+- Frontend pages mapped by app-route import: 2
 
 ## Domain model candidates
 - `Notification`: `IdempotencyKey` — source: backend/notification/src/core/infrastructure/database.py:24, backend/notification/src/core/infrastructure/database.py:25, backend/notification/src/core/infrastructure/database.py:26
@@ -56,5 +56,8 @@
 - `get_settings(userId : string) : json` — `backend/notification/src/repositories/announcement.py:34`
 - `update_settings(userId : string, settings : json) : json` — `backend/notification/src/repositories/announcement.py:39`
 
-### Frontend pages
-- `AnnouncementsPage` from `frontend/app/(main)/thong-bao/page.jsx` → `frontend/features/notification/pages/AnnouncementsPage`
+### Frontend pages and panels with API dependencies
+- `NotificationPreferencesPanel` (panel) from `frontend/features/notification/components/NotificationPreferencesPanel.jsx` → `frontend/features/notification/components/NotificationPreferencesPanel.jsx`
+  - API module `frontend/features/notification/services/announcement.service.js`; statically imported functions: getAnnouncementSettingsAPI, updateAnnouncementSettingsAPI; literal paths: ${API_URL}/thong-bao/cai-dat
+- `AnnouncementsPage` (page) from `frontend/app/(main)/thong-bao/page.jsx` → `frontend/features/notification/pages/AnnouncementsPage`
+  - API module `frontend/features/notification/services/announcement.service.js`; statically imported functions: deleteAnnouncementAPI, getAnnouncementsAPI, markAllAnnouncementsReadAPI, markAnnouncementReadAPI; literal paths: ${API_URL}/thong-bao, ${API_URL}/thong-bao/${id}, ${API_URL}/thong-bao/${id}/doc-hieu, ${API_URL}/thong-bao/doc-tat-ca

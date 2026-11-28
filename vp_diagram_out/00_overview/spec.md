@@ -3,11 +3,11 @@
 ## Service extraction totals
 Service | Collections | Route handlers | Frontend pages | Domain classes | ERD fields | BCE groups
 ---|---:|---:|---:|---:|---:|---:
-authentication | 12 | 107 | 6 | 1 | 132 | 22
+authentication | 12 | 107 | 9 | 1 | 132 | 22
 content | 7 | 41 | 0 | 6 | 30 | 17
-cloud | 5 | 77 | 0 | 5 | 33 | 34
-notification | 2 | 9 | 1 | 2 | 3 | 4
-testing | 76 | 369 | 4 | 70 | 481 | 125
+cloud | 5 | 77 | 3 | 5 | 33 | 35
+notification | 2 | 9 | 2 | 2 | 3 | 4
+testing | 76 | 369 | 37 | 70 | 481 | 125
 worker | 2 | 9 | 0 | 0 | 28 | 1
 ai | 12 | 35 | 0 | 5 | 87 | 31
 

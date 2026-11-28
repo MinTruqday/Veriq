@@ -22,16 +22,20 @@
 
 ## Code ambiguities / possible issues
 - Dict-shaped and update-only fields are merged from static key evidence. The scanner cannot prove every runtime payload shape.
+- Identifier fields are attached to the collection where their write/query evidence was extracted; the relationship remains inferred from field naming, not a MongoDB-enforced foreign key.
 - Route registrations generated dynamically are represented from the `add_api_route` source pattern; inspect JSON `dynamic` flags if a template expands into multiple concrete routes.
+- Frontend boundaries include pages and `*Panel` components whose static import closure reaches a service module. API function/path lists are based on imported symbols; dynamically assembled requests may be missing. BCE links are emitted only when literal paths match extracted backend route paths.
+- `overrides.json` is not yet applied by the extractor; dynamic route/collection corrections require code changes to the extractor or a later override implementation.
 - The scanner does not modify source application code.
 
 ## Extraction coverage
 - Routes extracted: 107; dynamic route entries: 2.
 - Collections extracted: 12; collections with no detected fields: 0.
+- Frontend boundaries extracted: 9 (route pages plus statically linked pages/panels).
 - Separate vector stores extracted: 0.
 - Check `spec.json` for file and line evidence; add service-specific cases to `overrides.json` if static extraction missed dynamic code.
 
 ## Verified schema/write-path ambiguity checked during review
 
-- `AccountService.preferences()` reads the `preferences` key, and `update_preferences()` writes nested `preferences.*`; `update_notification_settings()` separately writes `notification_settings.*` (`backend/authentication/src/services/account.py`). This means both shapes are retained as distinct code-backed keys where extracted; the scanner does not reconcile them into one field.
-- User-facing name `user` is represented by the extracted `auth_credentials` collection for local `user_id` references. This is a naming map inferred from service code, not a MongoDB-enforced foreign key.
+- `AccountService.preferences()` reads `preferences`, and `update_preferences()` writes nested `preferences.*`; `update_notification_settings()` separately writes `notification_settings.*` (`backend/authentication/src/services/account.py`). These remain separate code-backed keys in the extraction.
+- `user` references are mapped to the `auth_credentials` collection for the local ERD. This naming map is inferred from code and is not a MongoDB-enforced foreign key.

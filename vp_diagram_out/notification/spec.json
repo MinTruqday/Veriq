@@ -941,9 +941,99 @@
   "frontend": {
     "pages": [
       {
+        "name": "NotificationPreferencesPanel",
+        "kind": "panel",
+        "route_file": "",
+        "feature_file": "frontend/features/notification/components/NotificationPreferencesPanel.jsx",
+        "api_services": [
+          "frontend/features/notification/services/announcement.service.js"
+        ],
+        "api_calls": [
+          {
+            "service_file": "frontend/features/notification/services/announcement.service.js",
+            "functions": [
+              "getAnnouncementSettingsAPI",
+              "updateAnnouncementSettingsAPI"
+            ],
+            "literal_paths": [
+              "${API_URL}/thong-bao/cai-dat"
+            ],
+            "path_methods": [
+              {
+                "path": "${API_URL}/thong-bao/cai-dat",
+                "method": "GET"
+              },
+              {
+                "path": "${API_URL}/thong-bao/cai-dat",
+                "method": "POST"
+              }
+            ]
+          }
+        ],
+        "import_closure": [
+          "frontend/features/notification/components/NotificationPreferencesPanel.jsx",
+          "frontend/features/notification/services/announcement.service.js",
+          "frontend/shared/components/common/InlineState.jsx",
+          "frontend/shared/components/ui/Button.jsx",
+          "frontend/shared/services/api-client.js"
+        ]
+      },
+      {
         "name": "AnnouncementsPage",
+        "kind": "page",
         "route_file": "frontend/app/(main)/thong-bao/page.jsx",
-        "feature_file": "frontend/features/notification/pages/AnnouncementsPage"
+        "feature_file": "frontend/features/notification/pages/AnnouncementsPage",
+        "api_services": [
+          "frontend/features/notification/services/announcement.service.js"
+        ],
+        "api_calls": [
+          {
+            "service_file": "frontend/features/notification/services/announcement.service.js",
+            "functions": [
+              "deleteAnnouncementAPI",
+              "getAnnouncementsAPI",
+              "markAllAnnouncementsReadAPI",
+              "markAnnouncementReadAPI"
+            ],
+            "literal_paths": [
+              "${API_URL}/thong-bao",
+              "${API_URL}/thong-bao/${id}",
+              "${API_URL}/thong-bao/${id}/doc-hieu",
+              "${API_URL}/thong-bao/doc-tat-ca"
+            ],
+            "path_methods": [
+              {
+                "path": "${API_URL}/thong-bao/${id}",
+                "method": "DELETE"
+              },
+              {
+                "path": "${API_URL}/thong-bao",
+                "method": "GET"
+              },
+              {
+                "path": "${API_URL}/thong-bao/doc-tat-ca",
+                "method": "PATCH"
+              },
+              {
+                "path": "${API_URL}/thong-bao/${id}/doc-hieu",
+                "method": "PATCH"
+              }
+            ]
+          }
+        ],
+        "import_closure": [
+          "frontend/features/notification/hooks/useAnnouncements.js",
+          "frontend/features/notification/pages/AnnouncementsPage.jsx",
+          "frontend/shared/components/common/EmptyState.jsx",
+          "frontend/shared/components/common/InlineState.jsx",
+          "frontend/shared/components/common/PageLoader.jsx",
+          "frontend/shared/components/layout/PageHeader.jsx",
+          "frontend/shared/components/navigation/HorizontalScrollCue.jsx",
+          "frontend/shared/components/navigation/SegmentedTabs.jsx",
+          "frontend/shared/components/ui/Button.jsx",
+          "frontend/shared/lib/locale.mjs",
+          "frontend/shared/lib/timeZone.mjs"
+        ]
       }
     ],
     "service_functions": [

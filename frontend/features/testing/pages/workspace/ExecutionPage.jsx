@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Archive, Copy, Grid2X2, List, Pencil, RefreshCw, Sparkles } from "lucide-react";
 import TestPlanEditor from "../../components/TestPlanEditor";
+import TestPlanAIGenerationPanel from "../../components/TestPlanAIGenerationPanel";
 import DataTable from "../../components/DataTable";
 import AnchoredActionMenu from "../../components/AnchoredActionMenu";
 import {
@@ -78,6 +79,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
   const openPlan = (id, action) =>
     router.push([planPath, encodeURIComponent(id), action].filter(Boolean).join("/"));
   const [plans, setPlans] = useState([]);
+  const [planAiPrefill, setPlanAiPrefill] = useState(null);
   const [testPeriods, setTestPeriods] = useState([]);
   const [suites, setSuites] = useState([]);
   const [releases, setReleases] = useState([]);
@@ -1234,18 +1236,51 @@ export default function ExecutionPage({ project, section, workspaceView }) {
     );
   if (planRoute) {
     const creatingWithAI = planRoute === "tao-bang-ai";
-    const creating = planRoute === "tao-moi" || creatingWithAI;
+    if (creatingWithAI) {
+      const canGeneratePlan =
+        can("testplan.create") && can("ai.ask_project") && can("testplan.read");
+      return (
+        <WorkspacePage
+          title="Tạo kế hoạch kiểm thử bằng AI"
+          actions={
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => router.push(planPath)}
+            >
+              Quay lại danh sách
+            </button>
+          }
+        >
+          {canGeneratePlan ? (
+            <TestPlanAIGenerationPanel
+              projectId={project._id}
+              requirements={requirements}
+              canGenerate={canGeneratePlan}
+              onApply={(prefill) => {
+                setPlanAiPrefill(prefill);
+                void router.push(`${planPath}/tao-moi`);
+              }}
+            />
+          ) : (
+            <ErrorState message="Bạn không có quyền tạo kế hoạch hoặc sử dụng AI trong dự án này" />
+          )}
+        </WorkspacePage>
+      );
+    }
+    const creating = planRoute === "tao-moi";
     const editing = section[1] === "chinh-sua";
     const plan = plans.find((item) => item._id === planRoute);
     const editable = ["DRAFT", "READY"].includes(plan?.status) && can("testplan.update");
     const title = creating
-      ? creatingWithAI
-        ? "Tạo kế hoạch với AI"
-        : "Tạo kế hoạch kiểm thử"
+      ? "Tạo kế hoạch kiểm thử"
       : editing
         ? "Sửa kế hoạch kiểm thử"
         : plan?.name || "Chi tiết kế hoạch kiểm thử";
-    const goBack = () => router.push(planPath);
+    const goBack = () => {
+      setPlanAiPrefill(null);
+      router.push(planPath);
+    };
     const allowed = creating
       ? can("testplan.create")
       : Boolean(plan && can("testplan.read") && (!editing || editable));
@@ -1275,6 +1310,16 @@ export default function ExecutionPage({ project, section, workspaceView }) {
           <>
             {creating || editing ? (
               <>
+                {creating && can("ai.ask_project") && can("testplan.read") && (
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => openPlan("tao-bang-ai")}
+                  >
+                    <Sparkles aria-hidden="true" size={16} />
+                    Mở công cụ AI
+                  </button>
+                )}
                 <button className="secondary-button" type="button" onClick={goBack}>
                   Hủy
                 </button>
@@ -1378,14 +1423,12 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                 </p>
               )}
               <TestPlanEditor
-                key={
-                  creating
-                    ? `${project._id}:${creatingWithAI}`
-                    : `${plan._id}:${plan.revision}:${editing}`
-                }
+                key={creating ? `${project._id}:new` : `${plan._id}:${plan.revision}:${editing}`}
                 projectId={project._id}
                 initialValue={
-                  creating ? { test_period_id: planFilters.test_period_id || "" } : plan
+                  creating
+                    ? planAiPrefill || { test_period_id: planFilters.test_period_id || "" }
+                    : plan
                 }
                 initialRequirementVersionIds={
                   creating && sourceRequirementId ? [sourceRequirementId] : []
@@ -1393,8 +1436,6 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                 sourcePeriodId={creating ? sourcePeriodId : ""}
                 readOnly={!creating && !editing}
                 canCreateCases={can("testcase.create")}
-                canSuggestAI={can("ai.ask_project") && can("testplan.read")}
-                showAISuggestions={creatingWithAI || editing}
                 requirements={requirements}
                 suites={suites}
                 tests={tests}
@@ -1412,6 +1453,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                   await load();
                   if (saved?._id) openPlan(saved._id);
                   else goBack();
+                  setPlanAiPrefill(null);
                 }}
               />
             </Panel>

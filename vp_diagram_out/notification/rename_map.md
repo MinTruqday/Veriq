@@ -23,6 +23,7 @@ Tên code | Tên sơ đồ | Loại | Căn cứ
 `delete_one` | `DeleteOne` | method | `backend/notification/src/repositories/announcement.py:30`
 `get_settings` | `GetSettings` | method | `backend/notification/src/repositories/announcement.py:34`
 `update_settings` | `UpdateSettings` | method | `backend/notification/src/repositories/announcement.py:39`
+`NotificationPreferencesPanel` | `GD_NotificationPreferencesPanel` | page/boundary | ``
 `AnnouncementsPage` | `GD_AnnouncementsPage` | page/boundary | `frontend/app/(main)/thong-bao/page.jsx`
 `get_announcements` | `Ctrl_Announcement` | route method in grouped control | `backend/notification/src/api/announcement.py:14`
 `mark_as_read` | `Ctrl_Announcement` | route method in grouped control | `backend/notification/src/api/announcement.py:26`

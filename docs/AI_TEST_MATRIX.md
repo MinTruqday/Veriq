@@ -28,13 +28,13 @@ Phạm vi được lập từ các luồng AI đang có trong frontend/backend. 
 | CASE-01 | Tạo nhiều ca từ Requirement có nội dung và tiêu chí chấp nhận | Mỗi ca có bước, kết quả mong đợi, nguồn và loại kiểm thử phù hợp | Đạt phần xem trước: sinh 2 gợi ý đăng nhập từ REQ-0002; chưa lưu nháp và chưa kiểm tra mọi trường dữ liệu |
 | CASE-02 | Requirement thiếu tiêu chí, có mâu thuẫn hoặc chỉ có mô tả ngắn | AI nêu thiếu hụt; không biến giả định thành yêu cầu đã xác nhận | Chưa chạy |
 | CASE-03 | Ca gợi ý gần trùng ca đang hiệu lực | Hiển thị cảnh báo/so sánh; không lưu trùng tự động | Chưa chạy |
-| CASE-04 | Không chọn Requirement, chọn Requirement chưa duyệt, số lượng 0/âm/quá giới hạn | Không gửi yêu cầu không hợp lệ; giải thích cách khắc phục | Chưa chạy |
+| CASE-04 | Không chọn Requirement, chọn Requirement chưa duyệt, số lượng 0/âm/quá giới hạn | Không gửi yêu cầu không hợp lệ; giải thích cách khắc phục | Đạt một phần trên API Docker: payload không bật `preview_only` bị chặn `TEST_CASE_PREVIEW_REQUIRED` trước khi gọi AI; phiên bản yêu cầu không tồn tại trả `ARTIFACT_NOT_FOUND`, không đổi dữ liệu. Chưa chạy hết biên số lượng và trạng thái chưa duyệt |
 | CASE-05 | Chọn/bỏ chọn nhiều gợi ý rồi lưu nháp, bấm lưu lặp hoặc mất mạng | Chỉ lưu mục đã chọn; không duyệt tự động; thao tác lặp không tạo bản trùng | Chưa chạy |
 | CASE-06 | Requirement đổi sau khi tạo bản xem trước | Từ chối lưu bản xem trước cũ và yêu cầu tạo lại | Chưa chạy |
 | PLAN-01 | Tạo kế hoạch từ một hoặc nhiều Requirement đã duyệt | Đề xuất phân loại đủ 7 mục; mỗi mục có căn cứ riêng | Đạt một phần: 3/7 mục có căn cứ trên một nguồn; cần chạy thêm với nhiều Requirement |
 | PLAN-02 | Nguồn không đủ thông tin môi trường, ngoài phạm vi, điều kiện, rủi ro | Mục thiếu căn cứ được giữ nguyên; không tự bịa để lấp đủ trường | Đạt trong lần chạy: 4/7 mục được đánh dấu giữ nguyên |
 | PLAN-03 | Chọn/bỏ chọn từng mục AI rồi áp dụng | Chỉ cập nhật mục được chọn; nội dung khác trong form không đổi | Chưa chạy |
-| PLAN-04 | Không chọn yêu cầu, yêu cầu không còn duyệt hoặc nguồn đổi phiên bản | Không gọi/lưu đề xuất từ nguồn không hợp lệ | Chưa chạy |
+| PLAN-04 | Không chọn yêu cầu, yêu cầu không còn duyệt hoặc nguồn đổi phiên bản | Không gọi/lưu đề xuất từ nguồn không hợp lệ | Đạt một phần trên API Docker: danh sách Requirement rỗng bị chặn 422; mã phiên bản không tồn tại trả `ARTIFACT_NOT_FOUND`; không gọi AI và không đổi dữ liệu. Chưa chạy nguồn đổi phiên bản/quyền |
 | PLAN-05 | Lưu nháp/gửi duyệt sau khi áp dụng AI | AI chỉ tạo đề xuất; lưu và gửi duyệt vẫn theo thao tác/quyền của người dùng | Chưa chạy |
 | API-01 | Sinh ca từ OpenAPI/Postman hợp lệ | Method, path, tham số, schema và xác thực bám đặc tả | Chưa chạy |
 | API-02 | Đặc tả lỗi/thiếu schema hoặc AI trả path không có trong nguồn | Từ chối phần không khớp; không lưu ca sai | Chưa chạy |

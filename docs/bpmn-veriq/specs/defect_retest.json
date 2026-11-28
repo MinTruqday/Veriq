@@ -1,6 +1,6 @@
 {
   "id": "defect_retest",
-  "name": "06 - Phân loại, xử lý lỗi và kiểm thử lại",
+  "name": "06 - Xử lý lỗi và kiểm thử lại",
   "file_name": "BPMN_Quality_06_Xu_ly_loi_va_kiem_thu_lai_v1.drawio",
   "scope": "Vòng đời trạng thái được lấy từ quy tắc chuyển trạng thái lỗi; kiểm thử lại phải dùng kết quả mới và đúng ca liên kết. Kết quả đạt đóng lỗi, không đạt mở lại lỗi.",
   "lanes": [
@@ -15,12 +15,6 @@
       "name": "Admin",
       "fill": "#FFF4DF",
       "stroke": "#C58A28"
-    },
-    {
-      "id": "resolver",
-      "name": "Người được giao xử lý (BA/Tester/Admin)",
-      "fill": "#F3F4F6",
-      "stroke": "#667085"
     },
     {
       "id": "system",
@@ -100,7 +94,7 @@
     },
     {
       "id": "assign",
-      "label": "Giao lỗi cho người xử lý",
+      "label": "Phân công xử lý lỗi",
       "type": "user_task",
       "lane": "triage",
       "col": 4,
@@ -109,9 +103,9 @@
     },
     {
       "id": "resolve",
-      "label": "Xử lý lỗi và cập nhật trạng thái",
+      "label": "Cập nhật lỗi và trạng thái xử lý",
       "type": "user_task",
-      "lane": "resolver",
+      "lane": "triage",
       "col": 5,
       "row": 0,
       "task_type": "user"
@@ -120,7 +114,7 @@
       "id": "ready",
       "label": "Đưa lỗi sang trạng thái sẵn sàng kiểm thử lại",
       "type": "user_task",
-      "lane": "resolver",
+      "lane": "triage",
       "col": 7,
       "row": 0,
       "task_type": "user"
@@ -147,7 +141,7 @@
       "label": "Đóng lỗi sau khi kiểm thử đạt",
       "type": "service_task",
       "lane": "system",
-      "col": 9,
+      "col": 8,
       "row": 0,
       "task_type": "user"
     },
@@ -156,7 +150,7 @@
       "label": "Lỗi đã đóng",
       "type": "end",
       "lane": "system",
-      "col": 10,
+      "col": 9,
       "row": 0
     },
     {
@@ -164,15 +158,6 @@
       "label": "Mở lại lỗi khi kiểm thử không đạt",
       "type": "service_task",
       "lane": "system",
-      "col": 9,
-      "row": 1,
-      "task_type": "user"
-    },
-    {
-      "id": "continue",
-      "label": "Tiếp tục xử lý lỗi đã mở lại",
-      "type": "user_task",
-      "lane": "resolver",
       "col": 10,
       "row": 1,
       "task_type": "user"
@@ -182,25 +167,16 @@
       "label": "Lỗi và kết quả kiểm thử lại",
       "type": "data_store",
       "lane": "system",
-      "col": 10,
-      "row": 1
+      "col": 8,
+      "row": 2
     },
     {
       "id": "ready_decision",
       "label": "Đưa lỗi sang kiểm thử lại hay mở lại xử lý?",
       "type": "gateway",
-      "lane": "resolver",
+      "lane": "triage",
       "col": 6,
       "row": 0
-    },
-    {
-      "id": "reopen_direct",
-      "label": "Mở lại lỗi để tiếp tục xử lý",
-      "type": "user_task",
-      "task_type": "user",
-      "lane": "resolver",
-      "col": 6,
-      "row": 1
     }
   ],
   "edges": [
@@ -282,21 +258,6 @@
       "label": "Sẵn sàng kiểm thử lại"
     },
     {
-      "id": "e10b",
-      "from": "ready_decision",
-      "to": "reopen_direct",
-      "type": "sequence",
-      "label": "Cần xử lý tiếp"
-    },
-    {
-      "id": "e10c",
-      "from": "reopen_direct",
-      "to": "continue",
-      "type": "sequence",
-      "label": "Đã mở lại",
-      "route": "loop_below"
-    },
-    {
       "id": "e11",
       "from": "ready",
       "to": "retest",
@@ -329,22 +290,8 @@
       "from": "result",
       "to": "reopen",
       "type": "sequence",
-      "label": "Không đạt"
-    },
-    {
-      "id": "e16",
-      "from": "reopen",
-      "to": "continue",
-      "type": "sequence",
-      "label": ""
-    },
-    {
-      "id": "e17",
-      "from": "continue",
-      "to": "resolve",
-      "type": "sequence",
-      "label": "Xử lý lại",
-      "route": "loop_below"
+      "label": "Không đạt",
+      "route": "lane_gap"
     },
     {
       "id": "data_assoc",
@@ -352,6 +299,21 @@
       "to": "process_data",
       "type": "association",
       "label": ""
+    },
+    {
+      "id": "e10b",
+      "from": "ready_decision",
+      "to": "resolve",
+      "type": "sequence",
+      "label": "Cần xử lý tiếp"
+    },
+    {
+      "id": "e16",
+      "from": "reopen",
+      "to": "ready_decision",
+      "type": "sequence",
+      "label": "Đã mở lại",
+      "route": "lane_gap"
     }
   ]
 }

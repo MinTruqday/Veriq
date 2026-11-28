@@ -384,29 +384,31 @@ def extract_service(service: str):
                 fd["type"]["nullable"]=True
         data["fields"] = dict(sorted(data["fields"].items()))
         data["sources"] = sorted(set(data["sources"]))
-    # Bind identifier-like fields to the collection document that actually
-    # contains them before resolving the target collection.
-    for field, at in sorted(refs):
-        target = ""
-        base_target = field[:-4] if field.endswith("_ids") else field[:-3]
-        if service=="authentication" and base_target in {"user","account"}: base_target="auth_credential"
-        for coll in collection_names:
-            if singular(coll).lower() == base_target.lower() or coll.lower() == base_target.lower() + "s": target = coll; break
-        if target:
-            for source,data in result["collections"].items():
-                if field in data["fields"]:
-                    result["references"].append({"source":source,"field": field, "target": target, "at": at, "inferred": True})
-    result["references"]=list({(r["source"],r["field"],r["target"]):r for r in result["references"]}.values())
-    result["external_references"]=[]
-    for field,at in sorted(refs):
-        if not field.endswith(("_id","_ids")): continue
+    # Bind candidate references to evidence recorded for each specific collection
+    # field, rather than copying a global field-name match onto every collection.
+    def target_for(field):
         stem=field[:-4] if field.endswith("_ids") else field[:-3]
         if service=="authentication" and stem in {"user","account"}: stem="auth_credential"
-        target_service=EXTERNAL_REFERENCE_SERVICES.get(stem)
-        if target_service and target_service!=service:
-            for source,data in result["collections"].items():
-                if field in data["fields"]:
-                    result["external_references"].append({"source":source,"field":field,"target_service":target_service,"target_concept":"AuthCredential" if service=="authentication" and stem=="auth_credential" else pascal(stem),"at":at,"inferred":True})
+        for coll in collection_names:
+            if singular(coll).lower()==stem.lower() or coll.lower()==stem.lower()+"s": return coll
+        return None
+    for source,data in result["collections"].items():
+        for field,fd in data["fields"].items():
+            if not field.endswith(("_id","_ids")): continue
+            target=target_for(field)
+            if target:
+                evidence=fd.get("evidence",[])
+                result["references"].append({"source":source,"field":field,"target":target,"at":evidence[0] if evidence else "field present in extracted document/schema","evidence":evidence[:5],"inferred":True})
+    result["references"]=list({(r["source"],r["field"],r["target"]):r for r in result["references"]}.values())
+    result["external_references"]=[]
+    for source,data in result["collections"].items():
+        for field,fd in data["fields"].items():
+            if not field.endswith(("_id","_ids")): continue
+            stem=field[:-4] if field.endswith("_ids") else field[:-3]
+            target_service=EXTERNAL_REFERENCE_SERVICES.get(stem)
+            if target_service and target_service!=service:
+                evidence=fd.get("evidence",[])
+                result["external_references"].append({"source":source,"field":field,"target_service":target_service,"target_concept":pascal(stem),"at":evidence[0] if evidence else "field present in extracted document/schema","evidence":evidence[:5],"inferred":True})
     result["external_references"]=list({(r["source"],r["field"],r["target_service"]):r for r in result["external_references"]}.values())
     repo_by_name={m["name"]:m.get("collections",[]) for m in result["repository_methods"]}
     for method in result["service_methods"]:
@@ -426,14 +428,107 @@ def extract_frontend(service, result):
                 for pair in names:
                     name = next((x for x in pair if x), None)
                     if name: result["frontend"]["service_functions"].append({"name":name,"file":p.relative_to(ROOT).as_posix()})
-    # route page wrappers and pages explicitly imported from this feature
+    # Discover page wrappers plus first-class page/panel boundaries. Follow
+    # static imports so a page's service imports are visible in the inventory.
     for p in source_files(app, {".js", ".jsx", ".ts", ".tsx"}):
         if p.name not in {"page.js", "page.jsx", "page.ts", "page.tsx"}: continue
         txt = p.read_text(errors="replace")
         match = re.search(r"from\s+['\"]@/features/"+re.escape(service)+r"/([^'\"]+)['\"]", txt)
         if match:
             page = match.group(1).split("/")[-1]
-            result["frontend"]["pages"].append({"name":page,"route_file":p.relative_to(ROOT).as_posix(),"feature_file":f"frontend/features/{service}/{match.group(1)}"})
+            result["frontend"]["pages"].append({"name":page,"kind":"page","route_file":p.relative_to(ROOT).as_posix(),"feature_file":f"frontend/features/{service}/{match.group(1)}"})
+    candidates=[]
+    global_features=ROOT/"frontend"/"features"
+    if global_features.exists():
+        for p in source_files(global_features,{".js",".jsx",".ts",".tsx"}):
+            if p.name.endswith("Page.jsx") or p.name.endswith("Page.tsx") or p.name.endswith("Panel.jsx") or p.name.endswith("Panel.tsx"):
+                kind="panel" if "Panel." in p.name else "page"
+                candidates.append({"name":p.stem,"kind":kind,"route_file":"","feature_file":p.relative_to(ROOT).as_posix()})
+    def with_ext(rel):
+        path=ROOT/rel
+        return next((x for x in [path,path.with_suffix(".js"),path.with_suffix(".jsx"),path.with_suffix(".ts"),path.with_suffix(".tsx")] if x.is_file()),path)
+    known={str(with_ext(p["feature_file"]).relative_to(ROOT)) for p in result["frontend"]["pages"]}
+    boundaries=result["frontend"]["pages"][:]
+    for item in candidates:
+        if str(with_ext(item["feature_file"]).relative_to(ROOT)) not in known: boundaries.append(item)
+    def resolve_import(src, current):
+        if src.startswith("@/"): base=ROOT/"frontend"/src[2:]
+        elif src.startswith("."): base=current.parent/src
+        else: return None
+        options=[base,Path(str(base)+".js"),Path(str(base)+".jsx"),Path(str(base)+".ts"),Path(str(base)+".tsx"),base.with_suffix(".js"),base.with_suffix(".jsx"),base.with_suffix(".ts"),base.with_suffix(".tsx"),base/"index.js",base/"index.jsx"]
+        found=next((x for x in options if x.is_file()),None)
+        return found.resolve() if found else None
+    kept_boundaries=[]
+    for boundary in boundaries:
+        start=with_ext(boundary["feature_file"])
+        seen_files=set(); pending=[start]; service_imports=[]
+        while pending:
+            cur=pending.pop()
+            if cur in seen_files or not cur.is_file(): continue
+            seen_files.add(cur); txt=cur.read_text(errors="replace")
+            for m in re.finditer(r"(?:from\s*|import\s*)['\"]([^'\"]+)['\"]",txt):
+                src=m.group(1)
+                resolved=resolve_import(src,cur)
+                before=txt[max(0,m.start()-300):m.start()]
+                imp=re.search(r"import\s+([\s\S]*?)\s*$",before)
+                symbols=[]
+                if imp:
+                    symbols=re.findall(r"\b[A-Za-z_$][\w$]*\b",imp.group(1))
+                    symbols=[x for x in symbols if x not in {"as","type","from"}]
+                svc=re.match(r"@/features/([^/]+)/services/([^'\"]+)",src)
+                if svc:
+                    if svc.group(1)==service:
+                        service_imports.append((cur,svc.group(2),symbols))
+                    continue
+                service_dir=ROOT/"frontend/features"/service/"services"
+                if resolved and resolved.is_relative_to(service_dir):
+                    service_imports.append((cur,resolved.relative_to(service_dir).as_posix(),symbols))
+                if resolved and resolved!=start and not re.search(r"(?:Page|Panel)\.(?:js|jsx|ts|tsx)$",resolved.name) and "/contexts/" not in resolved.as_posix(): pending.append(resolved)
+        if not boundary.get("route_file") and not service_imports:
+            continue
+        kept_boundaries.append(boundary)
+        calls=[]
+        for importer,service_file,imported_symbols in service_imports:
+            sf=ROOT/"frontend/features"/service/"services"/service_file
+            if not sf.exists():
+                sf=next(iter((ROOT/"frontend/features"/service/"services").glob(Path(service_file).name+".*")),None)
+            if not sf: continue
+            st=sf.read_text(errors="replace")
+            names=re.findall(r"export\s+(?:async\s+)?function\s+(\w+)|export\s+const\s+(\w+)\s*=",st)
+            funcs=sorted({a or b for a,b in names})
+            selected=[n for n in funcs if n in imported_symbols]
+            paths=[]; path_methods=[]
+            for idx,n in enumerate(selected):
+                if n.endswith("Api"):
+                    used_members=set()
+                    for closure_file in seen_files:
+                        used_members.update(re.findall(r"\b\w+Api\.(\w+)",closure_file.read_text(errors="replace")))
+                    for member in used_members:
+                        prop=re.search(rf"\b{re.escape(member)}\s*:\s*[\s\S]*?(?=,\s*\n\s{{2}}\w+\s*:|\n}};)",st)
+                        if not prop: continue
+                        segment=prop.group(0)
+                        found=re.findall(r"[`'\"]((?:/|\$\{API_URL\}/)[^`'\"]{1,140})[`'\"]",segment)
+                        method_match=re.search(r"method\s*:\s*['\"](GET|POST|PUT|PATCH|DELETE)['\"]",segment,re.I)
+                        method=method_match.group(1).upper() if method_match else "GET"
+                        paths.extend(found); path_methods.extend({"path":path,"method":method} for path in found)
+                    continue
+                decl=re.search(rf"export\s+(?:async\s+)?(?:function|const)\s+{re.escape(n)}\b",st)
+                if not decl: continue
+                next_decl=re.search(r"\nexport\s+(?:async\s+)?(?:function|const)\s+\w+",st[decl.end():])
+                segment=st[decl.start():decl.end()+next_decl.start() if next_decl else len(st)]
+                found=re.findall(r"[`'\"]((?:/|\$\{API_URL\}/)[^`'\"]{1,140})[`'\"]",segment)
+                paths.extend(found)
+                method_match=re.search(r"method\s*:\s*['\"](GET|POST|PUT|PATCH|DELETE)['\"]",segment,re.I)
+                method=method_match.group(1).upper() if method_match else "GET"
+                path_methods.extend({"path":path,"method":method} for path in found)
+            funcs=selected
+            paths=sorted(set(paths))
+            path_methods=list({(x["path"],x["method"]):x for x in path_methods}.values())
+            calls.append({"service_file":sf.relative_to(ROOT).as_posix(),"functions":funcs,"literal_paths":paths,"path_methods":path_methods})
+        boundary["api_services"]=sorted({x["service_file"] for x in calls})
+        boundary["api_calls"]=calls
+        boundary["import_closure"]=sorted(x.relative_to(ROOT).as_posix() for x in seen_files)
+    result["frontend"]["pages"]=sorted(kept_boundaries,key=lambda x:(x["kind"],x["feature_file"]))
     result["frontend"]["pages"].sort(key=lambda x:x["route_file"])
     result["frontend"]["service_functions"].sort(key=lambda x:(x["file"],x["name"]))
 
@@ -500,8 +595,11 @@ def write_service(spec):
     for m in spec["service_methods"]: spec_lines.append(f"- `{m['name']}({', '.join(m['args'])}) : {m['return']}` — `{m['line']}`")
     spec_lines += ["", "### Repository methods"]
     for m in spec["repository_methods"]: spec_lines.append(f"- `{m['name']}({', '.join(m['args'])}) : {m['return']}` — `{m['line']}`")
-    spec_lines += ["", "### Frontend pages"]
-    for p in spec["frontend"]["pages"]: spec_lines.append(f"- `{p['name']}` from `{p['route_file']}` → `{p['feature_file']}`")
+    spec_lines += ["", "### Frontend pages and panels with API dependencies"]
+    for p in spec["frontend"]["pages"]:
+        spec_lines.append(f"- `{p['name']}` ({p.get('kind','page')}) from `{p.get('route_file') or p['feature_file']}` → `{p['feature_file']}`")
+        for call in p.get("api_calls",[]):
+            spec_lines.append(f"  - API module `{call['service_file']}`; statically imported functions: {', '.join(call['functions']) or '(no direct exported function resolved)'}; literal paths: {', '.join(call['literal_paths']) or '(dynamic or helper-built paths)'}")
     (dest/"spec.md").write_text("\n".join(spec_lines)+"\n")
     # Domain prompt, with complete extracted attributes and ref-derived links among candidate domain classes.
     domain_prompt=["Domain Model (UML class diagram: attributes only, no operations, no reference fields)", f"Create the {service} domain model. Use PascalCase English names. Each class has a primary key named '<ClassName>Id'."]
@@ -552,6 +650,8 @@ def write_service(spec):
     for group,rs,ms in group_list:
         bce=["UML Class Diagram (Boundary-Control-Entity analysis)", f"Create the BCE class diagram for '{service}', group '{group}'. Use English PascalCase names. Use stereotypes <<boundary>>, <<control>>, <<entity>>. Do not connect boundaries directly to entities."]
         classes=0; rel_count=0; total_attr=0
+        boundary_links=set()
+        boundary_control_ops=defaultdict(dict)
         stem=group.removeprefix("router_")
         if group.startswith("service_"): stem=group[len("service_"):]
         stem=stem.removeprefix("service_")
@@ -569,7 +669,35 @@ def write_service(spec):
             classes+=1
         elif group=="frontend_pages":
             for page in spec["frontend"]["pages"]:
-                bce.append(f"Class 'GD_{pascal(page['name'])}' <<boundary>>: source '{page['route_file']}'.")
+                source=page.get("route_file") or page["feature_file"]
+                bce.append(f"Class 'GD_{pascal(page['name'])}' <<boundary>>: source '{source}'.")
+                classes+=1
+                for call in page.get("api_calls",[]):
+                    for api_call in call.get("path_methods",[]):
+                        path=api_call["path"]
+                        clean=re.sub(r"\$\{[^}]+\}","{}",path)
+                        clean=re.sub(r"\?.*$","",clean).rstrip("/")
+                        clean=re.sub(r"\$\{API_URL\}","",clean)
+                        for route in spec["routes"]:
+                            route_path=route.get("path","").rstrip("/")
+                            if not route_path or len(route_path.strip("/").split("/"))<1 or not clean: continue
+                            if route_path=="/": continue
+                            normalized_route=re.sub(r"\{[^}]+\}","{}",route_path)
+                            if not any(seg and not (seg.startswith("{") and seg.endswith("}")) for seg in route_path.strip("/").split("/")): continue
+                            # Only link on a literal path suffix/prefix match; dynamic
+                            # endpoint construction remains listed as an unresolved call.
+                            if route["method"]==api_call["method"] and (clean.endswith(normalized_route) or normalized_route.endswith(clean)):
+                                router=Path(route["line"].split(":")[0]).stem
+                                link=(page["name"],router,api_call["method"],path,route_path)
+                                if link not in boundary_links:
+                                    boundary_links.add(link)
+                                    args=", ".join(route.get("args",[]))
+                                    boundary_control_ops[router][(route['method'],route['name'],args,route.get('return','unknown'))]=route
+                                    bce.append(f"Boundary dependency: 'GD_{pascal(page['name'])}' to 'Ctrl_{pascal(router)}' via API {api_call['method']} path '{path}', backend route '{route['method']} {route_path}' at '{route['line']}', multiplicity at boundary: 1, multiplicity at control: 1.")
+                                    rel_count+=1
+            for router,ops in boundary_control_ops.items():
+                signatures="; ".join(f"+ {pascal(route['name'])}({', '.join(route.get('args',[]))}) : {route.get('return','unknown')}" for route in ops.values())
+                bce.append(f"Class 'Ctrl_{pascal(router)}' <<control>>: {signatures}.")
                 classes+=1
         used_methods=list(ms)
         if rs:
@@ -616,7 +744,7 @@ def write_service(spec):
     # Review assumptions and exclusions.
     review=[f"# Review — {service}", "", "## [SUY RA]", "- Field-only references and multiplicities are inferred from identifier naming and static query/write evidence; MongoDB does not enforce these relationships.", "- Missing type hints on extracted document keys default to `varchar(255)` as required by V6.", "- Optionality defaults to nullable when a write path or annotation does not guarantee presence.", "", "## Excluded from Domain Model", "| Collection | Reason |", "|---|---|"]
     for c in excluded: review.append(f"| `{c}` | Technical/infrastructure collection excluded by V6 rule |")
-    review += ["", "## Code ambiguities / possible issues", "- Dict-shaped and update-only fields are merged from static key evidence. The scanner cannot prove every runtime payload shape.", "- Route registrations generated dynamically are represented from the `add_api_route` source pattern; inspect JSON `dynamic` flags if a template expands into multiple concrete routes.", "- The scanner does not modify source application code.", "", "## Extraction coverage", f"- Routes extracted: {len(spec['routes'])}; dynamic route entries: {sum(bool(x.get('dynamic')) for x in spec['routes'])}.", f"- Collections extracted: {len(spec['collections'])}; collections with no detected fields: {sum(not x['fields'] for x in spec['collections'].values())}.", f"- Separate vector stores extracted: {len(spec['stores'])}.", "- Check `spec.json` for file and line evidence; add service-specific cases to `overrides.json` if static extraction missed dynamic code."]
+    review += ["", "## Code ambiguities / possible issues", "- Dict-shaped and update-only fields are merged from static key evidence. The scanner cannot prove every runtime payload shape.", "- Identifier fields are attached to the collection where their write/query evidence was extracted; the relationship remains inferred from field naming, not a MongoDB-enforced foreign key.", "- Route registrations generated dynamically are represented from the `add_api_route` source pattern; inspect JSON `dynamic` flags if a template expands into multiple concrete routes.", "- Frontend boundaries include pages and `*Panel` components whose static import closure reaches a service module. API function/path lists are based on imported symbols; dynamically assembled requests may be missing. BCE links are emitted only when literal paths match extracted backend route paths.", "- `overrides.json` is not yet applied by the extractor; dynamic route/collection corrections require code changes to the extractor or a later override implementation.", "- The scanner does not modify source application code.", "", "## Extraction coverage", f"- Routes extracted: {len(spec['routes'])}; dynamic route entries: {sum(bool(x.get('dynamic')) for x in spec['routes'])}.", f"- Collections extracted: {len(spec['collections'])}; collections with no detected fields: {sum(not x['fields'] for x in spec['collections'].values())}.", f"- Frontend boundaries extracted: {len(spec['frontend']['pages'])} (route pages plus statically linked pages/panels).", f"- Separate vector stores extracted: {len(spec['stores'])}.", "- Check `spec.json` for file and line evidence; add service-specific cases to `overrides.json` if static extraction missed dynamic code."]
     (dest/"review.md").write_text("\n".join(review)+"\n")
     return {"service":service,"collections":len(spec["collections"]),"routes":len(spec["routes"]),"pages":len(spec["frontend"]["pages"]),"domain_classes":len(domain),"domain_attributes":dattrs,"erd_fields":total_fields,"bce_groups":len(bce_status),"bce_files":bce_status}
 

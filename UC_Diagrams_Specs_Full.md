@@ -1216,18 +1216,27 @@ Các số bước dưới đây đếm các dòng có mã bước trong ba luồ
 
 ### UC32 - Đề xuất kế hoạch kiểm thử bằng AI
 
-**Số bước đặc tả đã chốt:** chính 9, thay thế 6, ngoại lệ 0. **Tác nhân:** thành viên dự án có quyền phù hợp; không gán cứng Tester.
+**Số bước đặc tả đã chốt:** chính 10, thay thế 6, ngoại lệ 0. **Tác nhân:** thành viên dự án có quyền phù hợp; không gán cứng Tester.
+
+#### Hai ngữ cảnh sử dụng cần phân biệt khi vẽ
+
+| Ngữ cảnh | Cách bắt đầu | Căn cứ đã xác minh | Cách thể hiện |
+|---|---|---|---|
+| UC31 gọi chức năng đề xuất | Người dùng chạy UC31; trong nhánh đủ điều kiện, hệ thống gọi chức năng đề xuất và kết quả chưa lưu được hiển thị trong Hoạt động AI. | Có lời gọi trong quy trình xử lý tài liệu và giao diện hiển thị kết quả. | Vẽ lần gọi này trong sơ đồ UC31. Đây là ngữ cảnh dùng lại, không phải bước bắt đầu UC32 độc lập. |
+| UC32 được gọi độc lập | Người dùng mở **Kế hoạch kiểm thử**, chọn **Tạo kế hoạch với AI**, chọn phiên bản yêu cầu, nhập chỉ dẫn thêm nếu cần và chọn **Tạo gợi ý**. | Đã xác minh ở `ExecutionPage.jsx` và `TestPlanEditor.jsx`. Giao diện cho xem trước, chọn mục và áp dụng vào biểu mẫu; người dùng có thể lưu kế hoạch sau đó. | Vẽ thành luồng UC32 độc lập. Việc tạo gợi ý không tự lưu kế hoạch; thao tác áp dụng và lưu là các bước người dùng thực hiện tiếp trên biểu mẫu. |
+
+Hai ngữ cảnh trên dùng chung năng lực tạo đề xuất, nhưng là hai điểm bắt đầu khác nhau. UC32 không phải UC con bắt buộc của UC31; UC31 cũng không phải tiền điều kiện của UC32.
 
 | Số bước/hạng mục | Loại | Mô tả vấn đề | Cách xử lý |
 |---|---|---|---|
-| Điểm vào giao diện | THIẾU | Đặc tả nghiệp vụ và xử lý riêng xác nhận UC32 là chức năng độc lập, nhưng chưa tìm thấy màn hình frontend gọi trực tiếp tại commit đang rà. UC31 hiện gọi lại cùng chức năng từ workflow tài liệu. | Giữ UC32 độc lập. Ghi rõ màn hình trực tiếp chưa xác minh; không lấy UC31 làm tiền điều kiện hoặc actor flow bắt buộc. |
+| Điểm vào giao diện | SAI | Lần rà trước kết luận không có màn hình gọi trực tiếp, nhưng đã bỏ sót nút **Tạo kế hoạch với AI** và khung gợi ý trong biểu mẫu kế hoạch. | Sửa luồng UC32 theo giao diện tại `ExecutionPage.jsx` và `TestPlanEditor.jsx`; vẫn mô tả riêng lần gọi trong UC31. (đã sửa) |
 | Tác nhân | MƠ HỒ | Bảng nguồn gợi ý Tester, trong khi điều kiện xử lý dựa trên quyền đọc yêu cầu/kế hoạch và sử dụng AI, không dựa vào vai trò cố định. | Mô tả tác nhân là thành viên dự án có các quyền tương ứng; không khóa vai trò Tester. |
-| Lưu kết quả | SAI | Bảng nguồn gợi ý chuyển các trường sang UC16, nhưng chức năng chỉ trả đề xuất và giao diện đang có hiển thị “Chưa lưu”. Không có thao tác chuyển/lưu kế hoạch được xác minh. | Hậu điều kiện chỉ là trả đề xuất; việc dùng nội dung cho UC16 là thao tác riêng, chưa xác minh handoff. |
+| Áp dụng và lưu kết quả | THIẾU | Đặc tả trước chỉ nói trả đề xuất và bỏ sót thao tác chọn mục, áp dụng vào biểu mẫu, sau đó người dùng có thể lưu kế hoạch hoặc lưu nháp. | Bổ sung các thao tác giao diện đã xác minh; phân biệt rõ tạo gợi ý chưa lưu với lưu kế hoạch theo UC16. (đã sửa) |
 | Tình huống lỗi | THIẾU | Bảng không liệt kê lỗi quyền, phiên bản sai dự án/không còn hiện hành, căn cứ rỗng, AI không sẵn sàng và trích dẫn sai. | Thêm các nhánh thay thế có điều kiện từ xử lý thật; từng nhánh từ chối kết quả hoặc trả lỗi, không lưu kế hoạch. |
 
 **Kiểm tra nguồn:** 9 bước chính, 6 nhánh thay thế, 0 ngoại lệ riêng. Điều kiện đầu vào, quyền, căn cứ và trích dẫn được đối chiếu với xử lý. Không có hành vi lưu kế hoạch trong UC32.
 
-**Phân biệt với UC31:** UC32 có yêu cầu và điểm xử lý riêng. UC31 hiện gọi lại năng lực đề xuất khi xử lý tài liệu có phiên bản yêu cầu đã duyệt và đủ quyền; đây là caller cụ thể, không phải điều kiện để UC32 độc lập được khởi chạy.
+**Phân biệt với UC31:** UC32 có đường khởi chạy riêng từ trang Kế hoạch kiểm thử và UC31 cũng gọi lại năng lực đề xuất khi xử lý tài liệu đủ điều kiện. Hai ngữ cảnh cùng dùng khả năng tạo gợi ý, nhưng có điểm bắt đầu và cách hiển thị kết quả khác nhau. UC31 không phải tiền điều kiện của UC32. (đã sửa)
 
 ### UC33 - Tạo ca kiểm thử bằng AI
 
@@ -3406,7 +3415,7 @@ Nguồn mô tả: Chức năng này hỗ trợ chuyên viên phân tích nghiệ
 
 **Mô tả:** UC32 là chức năng độc lập cho phép đề xuất nội dung kế hoạch kiểm thử từ các phiên bản yêu cầu và tiêu chí chấp nhận được chọn. Kết quả chỉ để xem xét; UC32 không tự tạo hoặc lưu kế hoạch. UC31 hiện cũng gọi lại năng lực đề xuất này trong quy trình xử lý tài liệu, nhưng UC32 không phụ thuộc vào việc người dùng phải chạy UC31.
 
-**Tiền điều kiện:** Người dùng có quyền đọc yêu cầu, xem kế hoạch kiểm thử và sử dụng AI của dự án. Có ít nhất một phiên bản yêu cầu hiện hành, thuộc đúng dự án và ở trạng thái đủ điều kiện; phiên bản có nội dung làm căn cứ. Người dùng cung cấp danh sách phiên bản yêu cầu và hướng dẫn bổ sung nếu cần. Bản mã hiện có chức năng xử lý riêng cho yêu cầu đề xuất, nhưng chưa tìm thấy màn hình riêng để người dùng nhập các thông tin này.
+**Tiền điều kiện:** Người dùng có quyền xem kế hoạch kiểm thử, tạo kế hoạch và sử dụng AI của dự án. Có ít nhất một phiên bản yêu cầu hiện hành, thuộc đúng dự án, ở trạng thái đủ điều kiện và có nội dung làm căn cứ. Người dùng mở chức năng **Tạo kế hoạch với AI** từ trang Kế hoạch kiểm thử. (đã sửa)
 
 **Hậu điều kiện:** Hệ thống trả về đề xuất, thông tin căn cứ, các câu hỏi chưa được giải quyết và siêu dữ liệu kết quả AI. Không có kế hoạch mới được tạo hoặc lưu. Nếu kiểm tra đầu vào, quyền hoặc kết quả AI thất bại, đề xuất không được trả về như kết quả hợp lệ.
 
@@ -3418,15 +3427,16 @@ Nguồn mô tả: Chức năng này hỗ trợ chuyên viên phân tích nghiệ
 
 | Bước | Người dùng | Hệ thống |
 |---|---|---|
-| 1 | Mở chức năng đề xuất kế hoạch kiểm thử. |  |
-| 2 | Chọn một hoặc nhiều phiên bản yêu cầu và nhập hướng dẫn bổ sung nếu cần. |  |
-| 3 | Gửi yêu cầu tạo đề xuất. |  |
-| 4 |  | Hệ thống kiểm tra quyền của người dùng, xác nhận từng phiên bản thuộc đúng dự án, còn là phiên bản hiện hành và ở trạng thái đủ điều kiện. |
-| 5 |  | Hệ thống thu thập nội dung yêu cầu và tiêu chí chấp nhận làm căn cứ. |
-| 6 |  | Dịch vụ AI tạo đề xuất từ căn cứ được cung cấp; đề xuất không tự lưu kế hoạch. |
-| 7 |  | Hệ thống kiểm tra tham chiếu, trích dẫn và căn cứ của từng trường đề xuất cùng các rủi ro được nêu. |
-| 8 |  | Hệ thống trả về đề xuất, thông tin căn cứ và câu hỏi còn bỏ ngỏ để nơi gọi chức năng hiển thị cho người dùng. |
-| 9 | Xem xét đề xuất trong giao diện gọi chức năng. |  |
+| 1 | Mở mục Kế hoạch kiểm thử và chọn **Tạo kế hoạch với AI**. (đã sửa) | Hiển thị biểu mẫu tạo kế hoạch có phần gợi ý bằng AI. (đã sửa) |
+| 2 | Chọn một hoặc nhiều phiên bản yêu cầu; nhập chỉ dẫn thêm nếu cần. (đã sửa) |  |
+| 3 | Chọn **Tạo gợi ý**. (đã sửa) |  |
+| 4 |  | Kiểm tra quyền và xác nhận từng phiên bản thuộc đúng dự án, còn hiện hành, ở trạng thái đủ điều kiện. |
+| 5 |  | Thu thập nội dung yêu cầu và tiêu chí chấp nhận làm căn cứ. |
+| 6 |  | Tạo đề xuất từ căn cứ được cung cấp; thao tác này chưa lưu kế hoạch. |
+| 7 |  | Kiểm tra tham chiếu, trích dẫn và căn cứ của các mục được đề xuất. |
+| 8 |  | Hiển thị nội dung gợi ý, thông tin căn cứ và các câu hỏi còn bỏ ngỏ trong biểu mẫu. (đã sửa) |
+| 9 | Xem xét các mục gợi ý, chọn những mục muốn dùng và chọn **Áp dụng**. (thêm mới) | Đưa các mục được chọn vào biểu mẫu kế hoạch. (thêm mới) |
+| 10 | Tiếp tục chỉnh sửa biểu mẫu; có thể chọn **Lưu kế hoạch** hoặc **Lưu nháp**. (thêm mới) | Tạo kế hoạch theo nội dung người dùng đã xác nhận. (thêm mới) |
 
 ### Luồng sự kiện thay thế
 
@@ -3441,13 +3451,13 @@ Nguồn mô tả: Chức năng này hỗ trợ chuyên viên phân tích nghiệ
 
 ### Luồng sự kiện ngoại lệ
 
-UC32 không có bước lưu kế hoạch hoặc thao tác chấp nhận/từ chối đề xuất. Người dùng có thể tạo kế hoạch riêng theo UC16, nhưng mã hiện tại không chuyển đề xuất sang UC16 tự động.
+Tạo gợi ý không tự lưu kế hoạch. Giao diện có thao tác chọn và áp dụng các mục gợi ý vào biểu mẫu; sau đó người dùng có thể lưu kế hoạch hoặc lưu nháp theo chức năng UC16. (đã sửa)
 
 ### Giả định / Câu hỏi cần làm rõ
 
-- Bảng UC mô tả người dùng mở chức năng và chọn phiên bản yêu cầu. Cấu trúc yêu cầu của chức năng cũng nhận danh sách phiên bản và hướng dẫn; tuy nhiên chưa tìm thấy màn hình gọi trực tiếp ở frontend tại commit đang đối chiếu. Vì vậy các bước nhập liệu là hành vi theo đặc tả nghiệp vụ, còn vị trí/giao diện thao tác chưa được xác minh.
+- Giao diện độc lập được xác minh tại trang Kế hoạch kiểm thử: nút **Tạo kế hoạch với AI**, phần **Gợi ý kế hoạch bằng AI**, trường chỉ dẫn thêm, nút **Tạo gợi ý**, thao tác chọn mục và **Áp dụng**. Phần giao diện này đã được đưa vào luồng chính ở trên. (đã sửa)
 - UC31 hiện gọi cùng năng lực đề xuất trong xử lý tài liệu và giao diện Hoạt động AI hiển thị kết quả ở trạng thái chưa lưu. Đây là một nơi tái sử dụng UC32, không biến UC32 thành UC con hoặc bắt buộc người dùng phải vào UC31.
-- Bảng nguồn nói người dùng chuyển các trường đề xuất sang UC16. Chưa thấy thao tác chuyển/lưu trực tiếp trong giao diện; giữ đây là câu hỏi cần xác nhận, không xem là hành vi đã triển khai.
+- Sau khi áp dụng gợi ý, người dùng ở biểu mẫu tạo kế hoạch và có thể lưu kế hoạch/lưu nháp. Đây là thao tác lưu của UC16; riêng lần gọi tạo gợi ý không tự ghi kế hoạch. (đã sửa)
 
 # UC33 - Tạo ca kiểm thử bằng AI
 
@@ -3533,12 +3543,12 @@ Bảng mã nguồn chi tiết cho 33 UC được giữ nguyên ở cuối tài l
 | UC29 | Xử lý lỗi | `backend/testing/src/modules/execution/api/execution.py; backend/testing/src/modules/quality/services/defect_records.py; backend/testing/src/modules/quality/services/defect_lifecycle.py` | Có chuyển trạng thái và kiểm thử lại lỗi. |
 | UC30 | Quản lý báo cáo kiểm thử | `backend/testing/src/modules/execution/api/simple_reports.py; frontend/features/testing/components/SimpleTestReports.jsx` | Có xem báo cáo, lưu bản và xuất PDF/Word theo các thao tác hiển thị. |
 | UC31 | Tạo yêu cầu bằng AI | `backend/testing/src/modules/requirements/api/requirement_documents.py; backend/ai/src/tools/requirement_document_workflow.py` | Có chạy xử lý tài liệu nguồn để tạo ứng viên yêu cầu; cần mô tả riêng phần người dùng duyệt/lưu nếu luồng giao diện thể hiện. |
-| UC32 | Đề xuất kế hoạch kiểm thử bằng AI | `backend/testing/src/modules/execution/api/execution.py; backend/testing/src/modules/execution/services/test_plan_generation.py; backend/testing/src/schemas/contracts/planning.py; backend/ai/src/tools/requirement_document_workflow.py; frontend/features/testing/components/AIRunPanel.jsx` | UC32 có xử lý riêng nhận danh sách phiên bản yêu cầu và hướng dẫn; UC31 hiện cũng gọi lại năng lực đó. Chưa thấy giao diện frontend gọi trực tiếp UC32; khi được gọi trong UC31, kết quả hiện trong Hoạt động AI ở trạng thái chưa lưu. |
+| UC32 | Đề xuất kế hoạch kiểm thử bằng AI | `frontend/features/testing/pages/workspace/ExecutionPage.jsx; frontend/features/testing/components/TestPlanEditor.jsx; frontend/features/testing/services/testing.execution.js; backend/testing/src/modules/execution/api/execution.py; backend/testing/src/modules/execution/services/test_plan_generation.py; backend/testing/src/schemas/contracts/planning.py; backend/ai/src/tools/requirement_document_workflow.py; frontend/features/testing/components/AIRunPanel.jsx` | Có giao diện độc lập **Tạo kế hoạch với AI** để tạo, xem, chọn và áp dụng gợi ý; người dùng có thể lưu kế hoạch riêng sau đó. UC31 cũng gọi lại năng lực tạo gợi ý và hiển thị kết quả chưa lưu trong Hoạt động AI. |
 | UC33 | Tạo ca kiểm thử bằng AI | `frontend/features/testing/components/ManualTestGenerationPanel.jsx; frontend/features/testing/services/testing.design.js; backend/testing/src/modules/design/api/test_design.py` | Có giao diện tạo đề xuất, xem trước, chọn đề xuất rồi lưu thành ca nháp. Bảng nguồn để trống cả ba luồng; có thể dựng lại từ thao tác đang có trên giao diện, nhưng phải ghi nguồn và không thêm lỗi không được thể hiện. |
 
 ## Giới hạn kết luận
 
-- UC32: là UC độc lập; UC31 là một caller tái sử dụng. Không có màn hình frontend gọi trực tiếp được tìm thấy ở commit đang rà. Chức năng trả đề xuất, không lưu kế hoạch.
+- UC32: có giao diện khởi chạy độc lập tại trang Kế hoạch kiểm thử; UC31 cũng gọi lại năng lực tạo gợi ý. Tạo gợi ý chưa tự lưu, nhưng giao diện UC32 cho chọn và áp dụng các mục vào biểu mẫu rồi lưu kế hoạch/lưu nháp.
 - UC33: bảng nguồn không có bước, nhưng giao diện `ManualTestGenerationPanel` có luồng đề xuất, xem, chọn và lưu ca nháp. Nguồn của đặc tả phải được ghi là giao diện.
 - Không tạo UC “quản lý phiên đăng nhập”.
 - Điều hướng người dùng sang một UC khác là quan hệ giữa các chức năng, không được biểu diễn thành một lời gọi hàm nếu mã không có lời gọi đó.

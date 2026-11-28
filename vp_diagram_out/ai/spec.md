@@ -13,47 +13,11 @@
 ## Domain model candidates
 - `LongTermMemory`: `LongTermMemoryId`, `CreatedAt`, `EvidenceRefs`, `Intent`, `Objective`, `OwnerId`, `ProjectId`, `Proposal`, `RunId`, `Trusted` — source: backend/ai/src/core/infrastructure/database.py:?, backend/ai/src/memory/long_term.py:10, backend/ai/src/memory/long_term.py:35
 - `AiSession`:  — source: backend/ai/src/core/infrastructure/database.py:?
+- `AiRun`: `AiRunId`, `AiRunId`, `AutomaticRetryCount`, `ChangeSimulation`, `CheckpointSequence`, `Constraints`, `CreatedAt`, `DefinitionId`, `ErrorCode`, `Evidence`, `ExecutionPermissions`, `ExecutionRole`, `ExecutionUserId`, `Intent`, `IntentArguments`, `Kind`, `Objective`, `ProjectId`, `QueueDispatchLeaseExpiresAt`, `RequesterPermissions`, `RequesterRole`, `RequesterUserId`, `Result`, `Revision`, `SourceEventId`, `SourceEventVerified`, `Status`, `TargetArtifactIds`, `TraceId`, `Trigger`, `UpdatedAt`, `WorkerLeaseExpiresAt` — source: backend/ai/src/core/infrastructure/database.py:?, backend/ai/src/repositories/ai_runs.py:134, backend/ai/src/repositories/ai_runs.py:194
 - `AiMessage`:  — source: backend/ai/src/core/infrastructure/database.py:?
 - `AiWorkspace`:  — source: backend/ai/src/core/infrastructure/database.py:?
-- `AiRun`: `AiRunId`, `AiRunId`, `AutomaticRetryCount`, `ChangeSimulation`, `CheckpointSequence`, `Constraints`, `CreatedAt`, `DefinitionId`, `ErrorCode`, `Evidence`, `ExecutionPermissions`, `ExecutionRole`, `ExecutionUserId`, `Intent`, `IntentArguments`, `Kind`, `Objective`, `ProjectId`, `QueueDispatchLeaseExpiresAt`, `RequesterPermissions`, `RequesterRole`, `RequesterUserId`, `Result`, `Revision`, `SourceEventId`, `SourceEventVerified`, `Status`, `TargetArtifactIds`, `TraceId`, `Trigger`, `UpdatedAt`, `WorkerLeaseExpiresAt` — source: backend/ai/src/core/infrastructure/database.py:?, backend/ai/src/repositories/ai_runs.py:134, backend/ai/src/repositories/ai_runs.py:194
 
 ## ERD collections and fields
-### AiRunSourceFact (code collection `ai_run_source_facts`; technical=True)
-- `AiRunSourceFactId` `varchar(255)` [PK] — backend/ai/src/repositories/ai_runs.py:467
-- `AiRunId` `varchar(255)` [N] — backend/ai/src/repositories/ai_runs.py:467, backend/ai/src/repositories/ai_runs.py:494
-### DocumentIngestionPageCheckpoint (code collection `document_ingestion_page_checkpoints`; technical=True)
-- `DocumentIngestionPageCheckpointId` `varchar(255)` [PK] — backend/ai/src/repositories/document_ingestion_checkpoint.py:89
-- `CreatedAt` `datetime` [N] — backend/ai/src/schemas/document_ingestion_checkpoint.py:24
-- `DocumentId` `varchar(255)` [N] — backend/ai/src/schemas/document_ingestion_checkpoint.py:9
-- `ExpiresAt` `datetime` [N] — backend/ai/src/schemas/document_ingestion_checkpoint.py:25
-- `ExtractionWarnings` `json` [N] — backend/ai/src/schemas/document_ingestion_checkpoint.py:22
-- `Markdown` `varchar(255)` [N] — backend/ai/src/schemas/document_ingestion_checkpoint.py:19
-- `OcrEnabled` `boolean` [N] — backend/ai/src/schemas/document_ingestion_checkpoint.py:23
-- `OcrLanguage` `varchar(255)` [N] — backend/ai/src/schemas/document_ingestion_checkpoint.py:16
-- `OwnerId` `varchar(255)` [N] — backend/ai/src/schemas/document_ingestion_checkpoint.py:11
-- `PageCount` `integer(10)` [N] — backend/ai/src/schemas/document_ingestion_checkpoint.py:18
-- `PageNo` `integer(10)` [N] — backend/ai/src/schemas/document_ingestion_checkpoint.py:17
-- `ParserContractVersion` `integer(10)` [N] — backend/ai/src/schemas/document_ingestion_checkpoint.py:15
-- `ParserName` `varchar(255)` [N] — backend/ai/src/schemas/document_ingestion_checkpoint.py:13
-- `ParserVersion` `varchar(255)` [N] — backend/ai/src/schemas/document_ingestion_checkpoint.py:14
-- `ProjectId` `varchar(255)` [N] — backend/ai/src/schemas/document_ingestion_checkpoint.py:10
-- `SourceHash` `varchar(255)` [N] — backend/ai/src/schemas/document_ingestion_checkpoint.py:12
-- `Structure` `json` [N] — backend/ai/src/schemas/document_ingestion_checkpoint.py:20
-- `UnprocessedBlocks` `json` [N] — backend/ai/src/schemas/document_ingestion_checkpoint.py:21
-### LongTermMemory (code collection `long_term_memory`; technical=False)
-- `LongTermMemoryId` `varchar(255)` [PK] — backend/ai/src/memory/long_term.py:23
-- `CreatedAt` `datetime` [NOT NULL] — backend/ai/src/memory/long_term.py:23
-- `EvidenceRefs` `json` [NOT NULL] — backend/ai/src/memory/long_term.py:23
-- `Intent` `varchar(255)` [NOT NULL] — backend/ai/src/memory/long_term.py:23
-- `Objective` `varchar(255)` [NOT NULL] — backend/ai/src/memory/long_term.py:23
-- `OwnerId` `varchar(255)` [NOT NULL] — backend/ai/src/memory/long_term.py:23, backend/ai/src/repositories/memory.py:12
-- `ProjectId` `varchar(255)` [NOT NULL] — backend/ai/src/memory/long_term.py:23, backend/ai/src/repositories/memory.py:12
-- `Proposal` `json` [NOT NULL] — backend/ai/src/memory/long_term.py:23
-- `RunId` `varchar(255)` [NOT NULL] — backend/ai/src/memory/long_term.py:23, backend/ai/src/repositories/memory.py:21
-- `Trusted` `boolean` [NOT NULL] — backend/ai/src/memory/long_term.py:23, backend/ai/src/repositories/memory.py:12
-### AiRunDerivationReceipt (code collection `ai_run_derivation_receipts`; technical=True)
-- `AiRunDerivationReceiptId` `varchar(255)` [PK] — backend/ai/src/repositories/ai_runs.py:479
-- `AiRunId` `varchar(255)` [NOT NULL] — backend/ai/src/repositories/ai_runs.py:478, backend/ai/src/repositories/ai_runs.py:485
 ### AiRunCheckpoint (code collection `ai_run_checkpoints`; technical=True)
 - `AiRunId` `varchar(255)` [N] — backend/ai/src/schemas/ai_runs.py:189
 - `CheckpointId` `varchar(255)` [N] — backend/ai/src/schemas/ai_runs.py:188
@@ -64,9 +28,6 @@
 - `StateSnapshot` `json` [N] — backend/ai/src/schemas/ai_runs.py:194
 - `Status` `json` [N] — backend/ai/src/schemas/ai_runs.py:192
 ### AgentTrace (code collection `agent_traces`; technical=True)
-### AiSession (code collection `ai_sessions`; technical=False)
-### RetrievalAudit (code collection `retrieval_audit`; technical=True)
-### AiMessage (code collection `ai_messages`; technical=False)
 ### DeadLetterRecoveryAudit (code collection `dead_letter_recovery_audit`; technical=True)
 - `AcknowledgedAt` `datetime` [N] — backend/ai/src/schemas/queue_recovery.py:36
 - `ActionId` `varchar(255)` [N] — backend/ai/src/schemas/queue_recovery.py:16
@@ -83,7 +44,18 @@
 - `SourceDeliveryAttempt` `integer(10)` [N] — backend/ai/src/schemas/queue_recovery.py:23
 - `Status` `json` [N] — backend/ai/src/schemas/queue_recovery.py:25
 - `UpdatedAt` `datetime` [N] — backend/ai/src/schemas/queue_recovery.py:37
-### AiWorkspace (code collection `ai_workspaces`; technical=False)
+### LongTermMemory (code collection `long_term_memory`; technical=False)
+- `LongTermMemoryId` `varchar(255)` [PK] — backend/ai/src/memory/long_term.py:23
+- `CreatedAt` `datetime` [NOT NULL] — backend/ai/src/memory/long_term.py:23
+- `EvidenceRefs` `json` [NOT NULL] — backend/ai/src/memory/long_term.py:23
+- `Intent` `varchar(255)` [NOT NULL] — backend/ai/src/memory/long_term.py:23
+- `Objective` `varchar(255)` [NOT NULL] — backend/ai/src/memory/long_term.py:23
+- `OwnerId` `varchar(255)` [NOT NULL] — backend/ai/src/memory/long_term.py:23, backend/ai/src/repositories/memory.py:12
+- `ProjectId` `varchar(255)` [NOT NULL] — backend/ai/src/memory/long_term.py:23, backend/ai/src/repositories/memory.py:12
+- `Proposal` `json` [NOT NULL] — backend/ai/src/memory/long_term.py:23
+- `RunId` `varchar(255)` [NOT NULL] — backend/ai/src/memory/long_term.py:23, backend/ai/src/repositories/memory.py:21
+- `Trusted` `boolean` [NOT NULL] — backend/ai/src/memory/long_term.py:23, backend/ai/src/repositories/memory.py:12
+### AiSession (code collection `ai_sessions`; technical=False)
 ### AiRun (code collection `ai_runs`; technical=False)
 - `AiRunId` `varchar(255)` [PK] — backend/ai/src/repositories/ai_runs.py:368, backend/ai/src/repositories/ai_runs.py:387
 - `AiRunId` `varchar(255)` [N] — backend/ai/src/schemas/ai_runs.py:261
@@ -117,6 +89,34 @@
 - `Trigger` `json` [N] — backend/ai/src/schemas/ai_runs.py:270
 - `UpdatedAt` `datetime` [N] — backend/ai/src/schemas/ai_runs.py:291
 - `WorkerLeaseExpiresAt` `datetime` [N] — backend/ai/src/schemas/ai_runs.py:288
+### RetrievalAudit (code collection `retrieval_audit`; technical=True)
+### AiMessage (code collection `ai_messages`; technical=False)
+### DocumentIngestionPageCheckpoint (code collection `document_ingestion_page_checkpoints`; technical=True)
+- `DocumentIngestionPageCheckpointId` `varchar(255)` [PK] — backend/ai/src/repositories/document_ingestion_checkpoint.py:89
+- `CreatedAt` `datetime` [N] — backend/ai/src/schemas/document_ingestion_checkpoint.py:24
+- `DocumentId` `varchar(255)` [N] — backend/ai/src/schemas/document_ingestion_checkpoint.py:9
+- `ExpiresAt` `datetime` [N] — backend/ai/src/schemas/document_ingestion_checkpoint.py:25
+- `ExtractionWarnings` `json` [N] — backend/ai/src/schemas/document_ingestion_checkpoint.py:22
+- `Markdown` `varchar(255)` [N] — backend/ai/src/schemas/document_ingestion_checkpoint.py:19
+- `OcrEnabled` `boolean` [N] — backend/ai/src/schemas/document_ingestion_checkpoint.py:23
+- `OcrLanguage` `varchar(255)` [N] — backend/ai/src/schemas/document_ingestion_checkpoint.py:16
+- `OwnerId` `varchar(255)` [N] — backend/ai/src/schemas/document_ingestion_checkpoint.py:11
+- `PageCount` `integer(10)` [N] — backend/ai/src/schemas/document_ingestion_checkpoint.py:18
+- `PageNo` `integer(10)` [N] — backend/ai/src/schemas/document_ingestion_checkpoint.py:17
+- `ParserContractVersion` `integer(10)` [N] — backend/ai/src/schemas/document_ingestion_checkpoint.py:15
+- `ParserName` `varchar(255)` [N] — backend/ai/src/schemas/document_ingestion_checkpoint.py:13
+- `ParserVersion` `varchar(255)` [N] — backend/ai/src/schemas/document_ingestion_checkpoint.py:14
+- `ProjectId` `varchar(255)` [N] — backend/ai/src/schemas/document_ingestion_checkpoint.py:10
+- `SourceHash` `varchar(255)` [N] — backend/ai/src/schemas/document_ingestion_checkpoint.py:12
+- `Structure` `json` [N] — backend/ai/src/schemas/document_ingestion_checkpoint.py:20
+- `UnprocessedBlocks` `json` [N] — backend/ai/src/schemas/document_ingestion_checkpoint.py:21
+### AiRunDerivationReceipt (code collection `ai_run_derivation_receipts`; technical=True)
+- `AiRunDerivationReceiptId` `varchar(255)` [PK] — backend/ai/src/repositories/ai_runs.py:479
+- `AiRunId` `varchar(255)` [NOT NULL] — backend/ai/src/repositories/ai_runs.py:478, backend/ai/src/repositories/ai_runs.py:485
+### AiWorkspace (code collection `ai_workspaces`; technical=False)
+### AiRunSourceFact (code collection `ai_run_source_facts`; technical=True)
+- `AiRunSourceFactId` `varchar(255)` [PK] — backend/ai/src/repositories/ai_runs.py:467
+- `AiRunId` `varchar(255)` [N] — backend/ai/src/repositories/ai_runs.py:467, backend/ai/src/repositories/ai_runs.py:494
 
 ## Non-MongoDB vector store
 ### Qdrant vector collection `veriq` — source `backend/ai/src/store/vector.py`
@@ -213,10 +213,10 @@
 - `Text` `varchar(255)` — `backend/ai/src/schemas/project.py:550`
 
 ## Local logical references
-- `AiRunSourceFact.AiRunId` → `AiRun.AiRunId` [SUY RA], source `backend/ai/src/tools/testing_api.py:44`
-- `AiRunDerivationReceipt.AiRunId` → `AiRun.AiRunId` [SUY RA], source `backend/ai/src/tools/testing_api.py:44`
-- `AiRunCheckpoint.AiRunId` → `AiRun.AiRunId` [SUY RA], source `backend/ai/src/tools/testing_api.py:44`
-- `AiRun.AiRunId` → `AiRun.AiRunId` [SUY RA], source `backend/ai/src/tools/testing_api.py:44`
+- `AiRunCheckpoint.AiRunId` → `AiRun.AiRunId` [SUY RA], source `backend/ai/src/schemas/ai_runs.py:189`
+- `AiRun.AiRunId` → `AiRun.AiRunId` [SUY RA], source `backend/ai/src/schemas/ai_runs.py:261`
+- `AiRunDerivationReceipt.AiRunId` → `AiRun.AiRunId` [SUY RA], source `backend/ai/src/repositories/ai_runs.py:478`
+- `AiRunSourceFact.AiRunId` → `AiRun.AiRunId` [SUY RA], source `backend/ai/src/repositories/ai_runs.py:467`
 
 ## BCE function inventory
 ### Routes
@@ -401,4 +401,4 @@
 - `insert(value : string) : void` — `backend/ai/src/repositories/retrieval_audit.py:5`
 - `list(query : string, limit : string) : json` — `backend/ai/src/repositories/retrieval_audit.py:8`
 
-### Frontend pages
+### Frontend pages and panels with API dependencies

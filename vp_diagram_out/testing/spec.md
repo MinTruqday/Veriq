@@ -8,7 +8,7 @@
 - Router handlers found: 369
 - Public service methods: 653
 - Public repository methods: 526
-- Frontend pages mapped by app-route import: 4
+- Frontend pages mapped by app-route import: 37
 
 ## Domain model candidates
 - `RequirementVersion`: `RequirementVersionId`, `AcceptanceCriterionIds`, `Dependencies`, `IndexErrorCode`, `IndexStatus`, `ObsoleteAt`, `ObsoleteBy`, `ObsoleteReason`, `ProjectId`, `RequirementId`, `RestoreReason`, `RestoredAt`, `RestoredBy`, `Revision`, `SourceRefs`, `Status`, `StatusBeforeObsolete`, `SupersededAt`, `SupersededBy`, `SupersededByRequirementIds`, `SupersededByTransformationId`, `UpdatedAt`, `Version` — source: backend/testing/src/clients/notification.py:48, backend/testing/src/core/database.py:182, backend/testing/src/modules/design/services/test_case_review.py:185
@@ -642,79 +642,79 @@
 - `RuntimePolicyId` `varchar(255)` [PK] — backend/testing/src/repositories/project_access.py:300
 
 ## Local logical references
-- `DefectRetest.DefectId` → `Defect.DefectId` [SUY RA], source `backend/testing/src/repositories/defect_search_index.py:27`
-- `RequirementVersion.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `TestCaseVersion.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `NotificationSubscription.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `ProjectNotificationPreference.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `TestResult.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `Requirement.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `TestCondition.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `TestPlan.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `TestCaseDraft.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `TestRun.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `DocumentSummaryJob.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `RequirementDocument.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `RequirementImpactJob.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `RequirementChangeSet.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `ImportJob.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `TraceLink.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `TestPeriod.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `ProjectMember.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `RequirementTemplateVersion.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `RequirementCustomField.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `AcceptanceCriteria.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `RequirementTransformation.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `TestCaseTemplate.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `TestCase.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `AiResult.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `AiFinding.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `CoverageSnapshot.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `ImpactAnalyse.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `MaintenanceProposal.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `RegressionRecommendation.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `TestSuite.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `SecurityTestSuggestion.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `PerformancePlanDraft.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `AutomationExecution.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `JunitResultImport.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `CollaborationOperation.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `DraftConflict.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `Release.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `Build.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `TestEnvironment.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `Defect.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `AuditEvent.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `ReviewComment.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `Attachment.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `BreakGlassGrant.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `ApiImport.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `ApiOperation.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `TestImport.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `BulkOperation.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `SimpleTestReport.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `DocumentSummaryCache.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `DocumentSummaryChunkCache.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `AutomationScriptDraft.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/test_analysis.py:247`
-- `RequirementVersion.RequirementId` → `Requirement.RequirementId` [SUY RA], source `backend/testing/src/repositories/test_design.py:101`
-- `RequirementImpactJob.RequirementId` → `Requirement.RequirementId` [SUY RA], source `backend/testing/src/repositories/test_design.py:101`
-- `RequirementChangeSet.RequirementId` → `Requirement.RequirementId` [SUY RA], source `backend/testing/src/repositories/test_design.py:101`
-- `AcceptanceCriteria.RequirementVersionId` → `RequirementVersion.RequirementVersionId` [SUY RA], source `backend/testing/src/repositories/test_design.py:390`
-- `TestCaseVersion.RequirementVersionIds` → `RequirementVersion.RequirementVersionId` [SUY RA], source `backend/testing/src/schemas/contracts/planning.py:47`
-- `TestPlan.RequirementVersionIds` → `RequirementVersion.RequirementVersionId` [SUY RA], source `backend/testing/src/schemas/contracts/planning.py:47`
-- `TestCaseVersion.TestCaseId` → `TestCase.TestCaseId` [SUY RA], source `backend/testing/src/repositories/test_design.py:62`
-- `TestResult.TestCaseVersionId` → `TestCaseVersion.TestCaseVersionId` [SUY RA], source `backend/testing/src/repositories/test_run.py:75`
-- `TestPlan.TestCaseVersionIds` → `TestCaseVersion.TestCaseVersionId` [SUY RA], source `backend/testing/src/repositories/impact_analysis.py:70`
-- `TestRun.TestCaseVersionIds` → `TestCaseVersion.TestCaseVersionId` [SUY RA], source `backend/testing/src/repositories/impact_analysis.py:70`
-- `TestSuite.TestCaseVersionIds` → `TestCaseVersion.TestCaseVersionId` [SUY RA], source `backend/testing/src/repositories/impact_analysis.py:70`
-- `TestPlan.TestPeriodId` → `TestPeriod.TestPeriodId` [SUY RA], source `backend/testing/src/modules/execution/services/test_run_query.py:53`
-- `TestRun.TestPeriodId` → `TestPeriod.TestPeriodId` [SUY RA], source `backend/testing/src/modules/execution/services/test_run_query.py:53`
-- `TestRun.TestPlanId` → `TestPlan.TestPlanId` [SUY RA], source `backend/testing/src/repositories/test_plan_progress.py:12`
+- `RequirementVersion.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/modules/design/services/test_case_review.py:186`
+- `RequirementVersion.RequirementId` → `Requirement.RequirementId` [SUY RA], source `backend/testing/src/clients/notification.py:49`
+- `TestCaseVersion.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/modules/design/services/test_case_batch_review.py:146`
+- `TestCaseVersion.RequirementVersionIds` → `RequirementVersion.RequirementVersionId` [SUY RA], source `backend/testing/src/repositories/requirement_import.py:44`
+- `TestCaseVersion.TestCaseId` → `TestCase.TestCaseId` [SUY RA], source `backend/testing/src/clients/notification.py:54`
+- `NotificationSubscription.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/clients/notification.py:66`
+- `ProjectNotificationPreference.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/clients/notification.py:83`
+- `TestResult.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/modules/execution/api/simple_reports.py:125`
+- `TestResult.TestCaseVersionId` → `TestCaseVersion.TestCaseVersionId` [SUY RA], source `backend/testing/src/modules/integrations/services/junit_import.py:164`
+- `TestResult.TestRunId` → `TestRun.TestRunId` [SUY RA], source `backend/testing/src/clients/notification.py:59`
+- `Requirement.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/core/ai_capabilities.py:103`
+- `TestCondition.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/repositories/test_analysis.py:9`
+- `TestPlan.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/modules/execution/api/simple_reports.py:233`
+- `TestPlan.RequirementVersionIds` → `RequirementVersion.RequirementVersionId` [SUY RA], source `backend/testing/src/modules/quality/services/requirement_impact_worker.py:80`
+- `TestPlan.TestCaseVersionIds` → `TestCaseVersion.TestCaseVersionId` [SUY RA], source `backend/testing/src/modules/quality/services/requirement_impact_worker.py:81`
+- `TestPlan.TestPeriodId` → `TestPeriod.TestPeriodId` [SUY RA], source `backend/testing/src/modules/execution/api/simple_reports.py:234`
+- `TestCaseDraft.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/modules/design/services/test_case_batch_review.py:137`
+- `TestRun.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/modules/execution/api/simple_reports.py:102`
+- `TestRun.TestCaseVersionIds` → `TestCaseVersion.TestCaseVersionId` [SUY RA], source `backend/testing/src/repositories/bulk_operation.py:98`
+- `TestRun.TestPeriodId` → `TestPeriod.TestPeriodId` [SUY RA], source `backend/testing/src/modules/execution/services/test_period.py:103`
+- `TestRun.TestPlanId` → `TestPlan.TestPlanId` [SUY RA], source `backend/testing/src/modules/execution/api/simple_reports.py:102`
+- `DocumentSummaryJob.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/modules/requirements/services/document_reader.py:1066`
+- `RequirementDocument.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/repositories/requirement_import.py:256`
+- `RequirementImpactJob.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/modules/requirements/api/requirement_records.py:107`
+- `RequirementImpactJob.RequirementId` → `Requirement.RequirementId` [SUY RA], source `backend/testing/src/modules/requirements/services/requirement_lifecycle.py:498`
+- `RequirementChangeSet.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/repositories/analysis.py:43`
+- `RequirementChangeSet.RequirementId` → `Requirement.RequirementId` [SUY RA], source `backend/testing/src/repositories/analysis.py:32`
+- `ImportJob.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/repositories/requirement_import.py:118`
+- `TraceLink.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/modules/quality/services/requirement_impact_worker.py:72`
+- `TestPeriod.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/modules/execution/api/simple_reports.py:76`
+- `ProjectMember.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/repositories/review.py:55`
+- `RequirementTemplateVersion.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/repositories/requirement_template.py:35`
+- `RequirementCustomField.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/repositories/requirement_template.py:63`
+- `AcceptanceCriteria.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/modules/quality/services/requirement_impact_worker.py:65`
+- `AcceptanceCriteria.RequirementVersionId` → `RequirementVersion.RequirementVersionId` [SUY RA], source `backend/testing/src/modules/quality/services/requirement_impact_worker.py:65`
+- `RequirementTransformation.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/repositories/requirement.py:10`
+- `TestCaseTemplate.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/repositories/test_design.py:419`
+- `TestCase.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/modules/design/services/test_case_batch_review.py:144`
+- `AiResult.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/modules/execution/services/execution_assistance.py:337`
+- `AiFinding.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/repositories/requirement_ai.py:62`
+- `CoverageSnapshot.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/repositories/traceability.py:41`
+- `ImpactAnalyse.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/repositories/api_artifact.py:52`
+- `MaintenanceProposal.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/repositories/maintenance_proposal.py:71`
+- `RegressionRecommendation.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/repositories/regression_recommendation.py:27`
+- `TestSuite.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/repositories/bulk_operation.py:36`
+- `TestSuite.TestCaseVersionIds` → `TestCaseVersion.TestCaseVersionId` [SUY RA], source `backend/testing/src/repositories/bulk_operation.py:58`
+- `SecurityTestSuggestion.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/repositories/test_design.py:363`
+- `PerformancePlanDraft.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/repositories/test_design.py:377`
+- `AutomationExecution.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/repositories/execution_asset.py:28`
+- `JunitResultImport.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/modules/integrations/services/junit_import.py:124`
+- `JunitResultImport.TestRunId` → `TestRun.TestRunId` [SUY RA], source `backend/testing/src/modules/integrations/services/junit_import.py:124`
+- `CollaborationOperation.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/repositories/collaboration.py:27`
+- `DraftConflict.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/repositories/collaboration.py:52`
+- `TestRunResumeEvent.TestRunId` → `TestRun.TestRunId` [SUY RA], source `backend/testing/src/repositories/test_run.py:109`
+- `Release.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/modules/execution/services/execution_context.py:166`
+- `Build.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/repositories/execution_context.py:165`
+- `TestEnvironment.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/repositories/execution_asset.py:58`
 - `TestResultCorrection.TestResultId` → `TestResult.TestResultId` [SUY RA], source `backend/testing/src/repositories/test_run.py:188`
-- `TestExecutionUpdate.TestResultId` → `TestResult.TestResultId` [SUY RA], source `backend/testing/src/repositories/test_run.py:188`
-- `TestResult.TestRunId` → `TestRun.TestRunId` [SUY RA], source `backend/testing/src/repositories/test_run.py:73`
-- `JunitResultImport.TestRunId` → `TestRun.TestRunId` [SUY RA], source `backend/testing/src/repositories/test_run.py:73`
-- `TestRunResumeEvent.TestRunId` → `TestRun.TestRunId` [SUY RA], source `backend/testing/src/repositories/test_run.py:73`
+- `Defect.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/modules/execution/services/test_run_execution.py:111`
+- `DefectRetest.DefectId` → `Defect.DefectId` [SUY RA], source `backend/testing/src/repositories/defect.py:217`
+- `TestExecutionUpdate.TestResultId` → `TestResult.TestResultId` [SUY RA], source `backend/testing/src/repositories/test_run.py:165`
+- `AuditEvent.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/core/database.py:483`
+- `ReviewComment.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/repositories/defect.py:169`
+- `Attachment.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/repositories/defect.py:180`
+- `BreakGlassGrant.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/schemas/internal_admin.py:20`
+- `ApiImport.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/repositories/api_artifact.py:15`
+- `ApiOperation.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/repositories/api_artifact.py:41`
+- `TestImport.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/repositories/test_design.py:329`
+- `BulkOperation.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/modules/design/services/test_case_records.py:729`
+- `SimpleTestReport.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/modules/execution/api/simple_reports.py:322`
+- `DocumentSummaryCache.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/modules/requirements/services/document_reader.py:1359`
+- `DocumentSummaryChunkCache.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/modules/requirements/services/document_reader.py:1307`
+- `AutomationScriptDraft.ProjectId` → `Project.ProjectId` [SUY RA], source `backend/testing/src/repositories/execution_asset.py:14`
 
 ## BCE function inventory
 ### Routes
@@ -1277,7 +1277,7 @@
 - `request_test_plan_revision(planId : string, payload : string, user : string) : json` — `backend/testing/src/modules/execution/services/test_plan.py:791`
 - `archive_test_plan_record(planId : string, payload : string, user : string) : json` — `backend/testing/src/modules/execution/services/test_plan.py:814`
 - `clone_test_plan_record(planId : string, user : string) : json` — `backend/testing/src/modules/execution/services/test_plan.py:847`
-- `generate_test_plan_suggestion(projectId : string, payload : string, user : string) : json` — `backend/testing/src/modules/execution/services/test_plan_generation.py:45`
+- `generate_test_plan_suggestion(projectId : string, payload : string, user : string) : json` — `backend/testing/src/modules/execution/services/test_plan_generation.py:61`
 - `get_live_plan_progress(projectId : string, planId : string, user : string) : json` — `backend/testing/src/modules/execution/services/test_plan_progress.py:55`
 - `create_test_run_record(payload : string, projectId : string, user : string) : json` — `backend/testing/src/modules/execution/services/test_run.py:177`
 - `rerun_test_run_record(projectId : string, runId : string, payload : string, user : string) : json` — `backend/testing/src/modules/execution/services/test_run.py:395`
@@ -1613,17 +1613,17 @@
 - `encode_ai_document_cursor(projectId : string, documentId : string) : json` — `backend/testing/src/modules/requirements/services/requirement_documents.py:1789`
 - `decode_ai_document_cursor(cursor : string, projectId : string) : json` — `backend/testing/src/modules/requirements/services/requirement_documents.py:1798`
 - `list_ai_requirement_document_page(projectId : string, cursor : string, limit : string, user : string) : json` — `backend/testing/src/modules/requirements/services/requirement_documents.py:1823`
-- `list_requirement_source_structure_page(documentId : string, offset : string, limit : string, user : string, permission : string) : json` — `backend/testing/src/modules/requirements/services/requirement_documents.py:1859`
-- `get_requirement_document_record(documentId : string, user : string, permission : string) : json` — `backend/testing/src/modules/requirements/services/requirement_documents.py:1929`
-- `get_requirement_source_impact(documentId : string, user : string) : json` — `backend/testing/src/modules/requirements/services/requirement_documents.py:1945`
-- `update_requirement_document_record(documentId : string, payload : string, user : string) : json` — `backend/testing/src/modules/requirements/services/requirement_documents.py:2084`
-- `update_requirement_document_access(documentId : string, payload : string, user : string) : json` — `backend/testing/src/modules/requirements/services/requirement_documents.py:2154`
-- `update_requirement_document_ai_read(documentId : string, payload : string, user : string) : json` — `backend/testing/src/modules/requirements/services/requirement_documents.py:2353`
-- `start_requirement_document_ai_processing(documentId : string, payload : string, user : string) : json` — `backend/testing/src/modules/requirements/services/requirement_documents.py:2589`
-- `reindex_requirement_document_record(documentId : string, user : string) : json` — `backend/testing/src/modules/requirements/services/requirement_documents.py:2699`
-- `archive_requirement_document_record(documentId : string, payload : string, user : string) : json` — `backend/testing/src/modules/requirements/services/requirement_documents.py:2788`
-- `restore_requirement_document_record(documentId : string, payload : string, user : string) : json` — `backend/testing/src/modules/requirements/services/requirement_documents.py:2816`
-- `retry_requirement_document_parse_record(documentId : string, payload : string, user : string, document : string) : json` — `backend/testing/src/modules/requirements/services/requirement_documents.py:2892`
+- `list_requirement_source_structure_page(documentId : string, offset : string, limit : string, user : string, permission : string) : json` — `backend/testing/src/modules/requirements/services/requirement_documents.py:1861`
+- `get_requirement_document_record(documentId : string, user : string, permission : string) : json` — `backend/testing/src/modules/requirements/services/requirement_documents.py:1931`
+- `get_requirement_source_impact(documentId : string, user : string) : json` — `backend/testing/src/modules/requirements/services/requirement_documents.py:1947`
+- `update_requirement_document_record(documentId : string, payload : string, user : string) : json` — `backend/testing/src/modules/requirements/services/requirement_documents.py:2086`
+- `update_requirement_document_access(documentId : string, payload : string, user : string) : json` — `backend/testing/src/modules/requirements/services/requirement_documents.py:2156`
+- `update_requirement_document_ai_read(documentId : string, payload : string, user : string) : json` — `backend/testing/src/modules/requirements/services/requirement_documents.py:2355`
+- `start_requirement_document_ai_processing(documentId : string, payload : string, user : string) : json` — `backend/testing/src/modules/requirements/services/requirement_documents.py:2591`
+- `reindex_requirement_document_record(documentId : string, user : string) : json` — `backend/testing/src/modules/requirements/services/requirement_documents.py:2701`
+- `archive_requirement_document_record(documentId : string, payload : string, user : string) : json` — `backend/testing/src/modules/requirements/services/requirement_documents.py:2790`
+- `restore_requirement_document_record(documentId : string, payload : string, user : string) : json` — `backend/testing/src/modules/requirements/services/requirement_documents.py:2818`
+- `retry_requirement_document_parse_record(documentId : string, payload : string, user : string, document : string) : json` — `backend/testing/src/modules/requirements/services/requirement_documents.py:2894`
 - `is_labeled_acceptance_criterion_line(line : string) : json` — `backend/testing/src/modules/requirements/services/requirement_import.py:88`
 - `is_acceptance_criteria_table_header(line : string) : json` — `backend/testing/src/modules/requirements/services/requirement_import.py:95`
 - `extract_labeled_acceptance_criteria(text : string) : json` — `backend/testing/src/modules/requirements/services/requirement_import.py:107`
@@ -2271,8 +2271,343 @@
 - `find_snapshot(projectId : string, idempotencyKey : string) : json` — `backend/testing/src/repositories/traceability.py:39`
 - `insert_snapshot(snapshot : string, session : string) : void` — `backend/testing/src/repositories/traceability.py:44`
 
-### Frontend pages
-- `ProjectWorkspacePage` from `frontend/app/(main)/du-an/[projectId]/[[...section]]/page.jsx` → `frontend/features/testing/pages/ProjectWorkspacePage`
-- `ProjectsPage` from `frontend/app/(main)/du-an/page.jsx` → `frontend/features/testing/pages/ProjectsPage`
-- `ProjectCreatePage` from `frontend/app/(main)/du-an/tao-moi/page.jsx` → `frontend/features/testing/pages/ProjectCreatePage`
-- `OperationsPage` from `frontend/app/(main)/van-hanh/page.jsx` → `frontend/features/testing/pages/OperationsPage`
+### Frontend pages and panels with API dependencies
+- `DashboardPage` (page) from `frontend/features/testing/pages/workspace/DashboardPage.jsx` → `frontend/features/testing/pages/workspace/DashboardPage.jsx`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: /du-an/${id}/do-phu${query ? 
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: /du-an/${id}, /du-an/${id}/thanh-vien, /du-an/${id}/tong-quan
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+- `DefectsPage` (page) from `frontend/features/testing/pages/workspace/DefectsPage.jsx` → `frontend/features/testing/pages/workspace/DefectsPage.jsx`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: /du-an/${id}/ban-dung${value ? , /du-an/${id}/ban-phat-hanh${value ? , /du-an/${id}/ket-qua-kiem-thu${status ? , /du-an/${id}/loi, /du-an/${id}/loi/trung-lap, /du-an/${id}/loi/xuat, /du-an/${id}/moi-truong, /du-an/${projectId}/ai/goi-y-truy-vet${query.size ? , /du-an/${projectId}/ai/loi/${defectId}/goi-y-truy-vet, /du-an/${projectId}/loi/${defectId}/kiem-thu-lai, /du-an/${projectId}/loi/${defectId}/truy-vet, /ket-qua-kiem-thu/${resultId}, /loi/${id}, /loi/${id}/chuyen-trang-thai
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: /du-an/${id}/thanh-vien, /du-an/${projectId}/phan-loai-loi
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+- `DocumentReaderPage` (page) from `frontend/features/testing/pages/workspace/DocumentReaderPage.jsx` → `frontend/features/testing/pages/workspace/DocumentReaderPage.jsx`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: /du-an/${projectId}/tai-lieu-yeu-cau/tom-tat, /du-an/${projectId}/tai-lieu-yeu-cau/tom-tat/${jobId}, /du-an/${projectId}/tai-lieu-yeu-cau/tom-tat/${jobId}/thu-lai, /tai-lieu-yeu-cau/${encodeURIComponent(documentId)}/anh-nguon/${encodeURIComponent(blockIndex)}, /tai-lieu-yeu-cau/${id}/noi-dung?offset=${offset}&limit=40000&row_limit=100${sheet ? , /tai-lieu-yeu-cau/${id}/tai-xuong, /tai-lieu-yeu-cau/${id}/tim-kiem?${params.toString()}
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+- `ExecutionPage` (page) from `frontend/features/testing/pages/workspace/ExecutionPage.jsx` → `frontend/features/testing/pages/workspace/ExecutionPage.jsx`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: /du-an/${id}/ca-kiem-thu, /du-an/${id}/tep-dinh-kem
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: /ban-dung/${buildId}, /ban-dung/${buildId}/dat-hien-tai, /bo-kiem-thu, /bo-kiem-thu/${id}, /bo-kiem-thu/${id}/luu-tru, /bo-kiem-thu/${id}/nhan-ban, /du-an/${id}/ban-dung${value ? , /du-an/${id}/ban-phat-hanh${value ? , /du-an/${id}/bo-kiem-thu${value ? , /du-an/${id}/ke-hoach-kiem-thu${value ? , /du-an/${id}/lan-chay-kiem-thu, /du-an/${id}/loi, /du-an/${id}/moi-truong, /du-an/${projectId}/ban-dung, /du-an/${projectId}/chu-ky-kiem-thu, /du-an/${projectId}/ket-qua-kiem-thu/${resultId}/lien-ket-loi, /du-an/${projectId}/lan-chay-kiem-thu/${runId}/chay-lai, /du-an/${projectId}/lan-chay-kiem-thu/${runId}/phan-cong, /du-an/${projectId}/lan-chay-kiem-thu/${runId}/tiep-tuc, /du-an/${projectId}/thuc-thi-kiem-thu/${executionId}, /ke-hoach-kiem-thu, /ke-hoach-kiem-thu/${id}, /ke-hoach-kiem-thu/${id}/gui-ra-soat, /ke-hoach-kiem-thu/${id}/kiem-tra, /ke-hoach-kiem-thu/${id}/luu-tru, /ke-hoach-kiem-thu/${id}/nhan-ban, /ke-hoach-kiem-thu/${id}/phe-duyet, /ke-hoach-kiem-thu/${id}/yeu-cau-chinh-sua, /lan-chay-kiem-thu, /lan-chay-kiem-thu/${id}, /lan-chay-kiem-thu/${id}/bao-cao, /lan-chay-kiem-thu/${id}/bat-dau, /lan-chay-kiem-thu/${id}/hoan-tat, /lan-chay-kiem-thu/${id}/huy, /loi/${id}/chuyen-trang-thai
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: /du-an/${id}/thanh-vien, /du-an/${projectId}/ke-hoach-kiem-thu/${planId}/tien-do
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+- `KnowledgePage` (page) from `frontend/features/testing/pages/workspace/KnowledgePage.jsx` → `frontend/features/testing/pages/workspace/KnowledgePage.jsx`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: /du-an/${encodeURIComponent(projectId)}/nguon-tri-thuc/${encodeURIComponent(documentId)}/anh/${encodeURIComponent(blockIndex)}, /du-an/${id}/nguon-tri-thuc, /du-an/${id}/nguon-tri-thuc?include_archived=${includeArchived}, /du-an/${id}/tim-kiem?q=${encodeURIComponent(query)}&limit=50, /du-an/${projectId}/nguon-tri-thuc/${documentId}/cac-doan?${params.toString()}, /du-an/${projectId}/nguon-tri-thuc/${documentId}/cau-truc-nguon?${params.toString()}, /nguon-tri-thuc/${id}/lap-chi-muc-lai, /nguon-tri-thuc/${id}/luu-tru
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: /du-an/${id}/ban-phat-hanh${value ? , /du-an/${id}/tri-thuc/tim-kiem
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: /du-an/${id}/thanh-vien
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+- `ReleasesPage` (page) from `frontend/features/testing/pages/workspace/ReleasesPage.jsx` → `frontend/features/testing/pages/workspace/ReleasesPage.jsx`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: /ban-phat-hanh/${releaseId}/dong, /ban-phat-hanh/${releaseId}/kich-hoat, /ban-phat-hanh/${releaseId}/san-sang-dong, /du-an/${id}/ban-phat-hanh${value ? , /du-an/${projectId}/ban-phat-hanh
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+- `ReportsPage` (page) from `frontend/features/testing/pages/workspace/ReportsPage.jsx` → `frontend/features/testing/pages/workspace/ReportsPage.jsx`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: /du-an/${id}/ke-hoach-kiem-thu${value ? 
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+- `RequirementsPage` (page) from `frontend/features/testing/pages/workspace/RequirementsPage.jsx` → `frontend/features/testing/pages/workspace/RequirementsPage.jsx`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: /du-an/${id}/tai-lieu-yeu-cau${query ? , /du-an/${id}/tai-lieu-yeu-cau/doi-chieu-tap, /du-an/${id}/tai-lieu-yeu-cau/tai-len, /du-an/${id}/truong-yeu-cau, /du-an/${id}/yeu-cau, /du-an/${projectId}/hang-loat/luu-tru, /du-an/${projectId}/hang-loat/nhan, /du-an/${projectId}/yeu-cau/${requirementId}/tach, /du-an/${projectId}/yeu-cau/gop, /du-an/${projectId}/yeu-cau/kiem-tra-trung-lap, /tai-lieu-yeu-cau/${id}, /tai-lieu-yeu-cau/${id}/thu-lai-phan-tich, /yeu-cau/${id}, /yeu-cau/${id}/phien-ban
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: /du-an/${projectId}/cong-tac/yeu-cau/${artifactId}/thao-tac
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: /du-an/${id}/thanh-vien
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+- `SettingsPage` (page) from `frontend/features/testing/pages/workspace/SettingsPage.jsx` → `frontend/features/testing/pages/workspace/SettingsPage.jsx`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: /du-an/${id}/nhat-ky${suffix}, /du-an/${id}/phan-tich-bao-tri
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: /du-an/${id}, /du-an/${id}/cai-dat, /du-an/${id}/loi-moi, /du-an/${id}/luu-tru, /du-an/${id}/thanh-vien, /du-an/${id}/thanh-vien/${userId}, /du-an/${id}/thanh-vien/${userId}/gui-lai-loi-moi, /du-an/${id}/thanh-vien/${userId}/huy-loi-moi
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+- `TestAnalysisPage` (page) from `frontend/features/testing/pages/workspace/TestAnalysisPage.jsx` → `frontend/features/testing/pages/workspace/TestAnalysisPage.jsx`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: /du-an/${id}/yeu-cau
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: /dieu-kien-kiem-thu/${conditionId}, /dieu-kien-kiem-thu/${conditionId}/ban-nhap-moi, /dieu-kien-kiem-thu/${conditionId}/gui-ra-soat, /dieu-kien-kiem-thu/${conditionId}/ket-qua/${findingId}/giai-quyet, /dieu-kien-kiem-thu/${conditionId}/luu-tru, /dieu-kien-kiem-thu/${conditionId}/phe-duyet, /dieu-kien-kiem-thu/${conditionId}/ra-soat, /du-an/${id}/thanh-vien, /du-an/${projectId}/dieu-kien-kiem-thu, /du-an/${projectId}/dieu-kien-kiem-thu${query ? , /du-an/${projectId}/ket-qua-phan-tich${query ? , /ket-qua-phan-tich/${findingId}/giai-quyet, /ket-qua-phan-tich/${findingId}/phan-cong, /ket-qua-phan-tich/${findingId}/xac-minh
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+- `TestDesignPage` (page) from `frontend/features/testing/pages/workspace/TestDesignPage.jsx` → `frontend/features/testing/pages/workspace/TestDesignPage.jsx`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: /ban-nhap-ca-kiem-thu/${id}, /ban-nhap-ca-kiem-thu/${id}/dong-bang, /ban-nhap-ca-kiem-thu/${id}/kiem-tra, /ban-nhap-ca-kiem-thu/${id}/luu-ban-ghep, /ban-nhap-ca-kiem-thu/${id}/so-sanh, /ca-kiem-thu/${id}, /ca-kiem-thu/${id}/khoi-phuc, /ca-kiem-thu/${id}/ngung-hieu-luc, /ca-kiem-thu/${id}/nhan-ban, /ca-kiem-thu/${id}/phien-ban, /ca-kiem-thu/${id}/phien-ban/ban-nhap, /du-an/${id}/ban-nhap-ca-kiem-thu, /du-an/${id}/ca-kiem-thu, /du-an/${id}/dac-ta-giao-dien, /du-an/${id}/dac-ta-giao-dien/thao-tac, /du-an/${projectId}/ban-nhap-ca-kiem-thu/chap-nhan-nhom, /du-an/${projectId}/ca-kiem-thu/${draftId}/gui-ra-soat, /du-an/${projectId}/ca-kiem-thu/${draftId}/yeu-cau-chinh-sua, /du-an/${projectId}/hang-loat/ca-kiem-thu/danh-dau-can-ra-soat, /du-an/${projectId}/hang-loat/ca-kiem-thu/them-vao-bo-kiem-thu, /du-an/${projectId}/hang-loat/luu-tru, /du-an/${projectId}/hang-loat/nhan, /phien-ban-ca-kiem-thu/${versionId}, /phien-ban-yeu-cau/${requirementVersionId}/hang-muc-do-phu
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: /bo-kiem-thu, /bo-kiem-thu/${id}, /bo-kiem-thu/${id}/luu-tru, /du-an/${id}/bo-kiem-thu${value ? , /du-an/${projectId}/cong-tac/ca-kiem-thu/${artifactId}/thao-tac
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: /du-an/${projectId}/dieu-kien-kiem-thu${query ? 
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+- `TestPeriodsPage` (page) from `frontend/features/testing/pages/workspace/TestPeriodsPage.jsx` → `frontend/features/testing/pages/workspace/TestPeriodsPage.jsx`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: /chu-ky-kiem-thu, /chu-ky-kiem-thu/${periodId}/dong, /chu-ky-kiem-thu/${periodId}/tong-ket, /du-an/${id}/ke-hoach-kiem-thu${value ? , /du-an/${projectId}/chu-ky-kiem-thu
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+- `TraceabilityPage` (page) from `frontend/features/testing/pages/workspace/TraceabilityPage.jsx` → `frontend/features/testing/pages/workspace/TraceabilityPage.jsx`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: /du-an/${id}/anh-chup-do-phu, /du-an/${id}/do-phu${query ? , /du-an/${id}/khoi-phuc-truy-vet, /du-an/${id}/truy-vet${query ? , /lien-ket-truy-vet, /lien-ket-truy-vet/${id}, /lien-ket-truy-vet/${id}/tu-choi, /lien-ket-truy-vet/${id}/xac-nhan
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+- `TestSetEditorPage` (page) from `frontend/features/testing/pages/workspace/test-design/TestSetEditorPage.jsx` → `frontend/features/testing/pages/workspace/test-design/TestSetEditorPage.jsx`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: /phien-ban-ca-kiem-thu/${versionId}
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+- `AIRunPanel` (panel) from `frontend/features/testing/components/AIRunPanel.jsx` → `frontend/features/testing/components/AIRunPanel.jsx`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: /du-an/${encodeURIComponent(projectId)}/nang-luc, /du-an/${projectId}/luot-chay, /luot-chay, /luot-chay/${runId}, /luot-chay/${runId}/bang-chung, /luot-chay/${runId}/huy, /luot-chay/${runId}/uy-quyen-lai
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+- `AutomationScriptsPanel` (panel) from `frontend/features/testing/components/AutomationScriptsPanel.jsx` → `frontend/features/testing/components/AutomationScriptsPanel.jsx`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: /ban-nhap-kich-ban-tu-dong/${draftId}, /ban-nhap-kich-ban-tu-dong/${draftId}/phe-duyet, /ban-nhap-kich-ban-tu-dong/${draftId}/xuat, /du-an/${projectId}/ban-nhap-kich-ban-tu-dong
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+- `CollaborationPanel` (panel) from `frontend/features/testing/components/CollaborationPanel.jsx` → `frontend/features/testing/components/CollaborationPanel.jsx`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: /du-an/${projectId}/cong-tac/hien-dien?artifact_type=${encodeURIComponent(artifactType)}&artifact_id=${encodeURIComponent(artifactId)}, /du-an/${projectId}/cong-tac/phien, /du-an/${projectId}/cong-tac/xung-dot, /du-an/${projectId}/cong-tac/xung-dot/${conflictId}/giai-quyet
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+- `EnvironmentManagementPanel` (panel) from `frontend/features/testing/components/EnvironmentManagementPanel.jsx` → `frontend/features/testing/components/EnvironmentManagementPanel.jsx`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: /du-an/${id}/moi-truong, /du-an/${projectId}/moi-truong, /moi-truong/${environmentId}, /moi-truong/${environmentId}/luu-tru
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+- `JUnitResultPanel` (panel) from `frontend/features/testing/components/JUnitResultPanel.jsx` → `frontend/features/testing/components/JUnitResultPanel.jsx`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: /du-an/${projectId}/ket-qua-tu-dong/junit, /ket-qua-tu-dong/junit/${importId}/giai-quyet
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+- `ManualTestGenerationPanel` (panel) from `frontend/features/testing/components/ManualTestGenerationPanel.jsx` → `frontend/features/testing/components/ManualTestGenerationPanel.jsx`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: /du-an/${id}/ban-nhap-ca-kiem-thu/lo, /phien-ban-yeu-cau/${versionId}/ai/sinh-ca-kiem-thu
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+- `ProjectAccessPanel` (panel) from `frontend/features/testing/components/ProjectAccessPanel.jsx` → `frontend/features/testing/components/ProjectAccessPanel.jsx`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: /du-an/${encodeURIComponent(projectId)}/quyen-hieu-luc
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+- `ProjectNotificationsPanel` (panel) from `frontend/features/testing/components/ProjectNotificationsPanel.jsx` → `frontend/features/testing/components/ProjectNotificationsPanel.jsx`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: /du-an/${projectId}/thong-bao/quy-tac, /du-an/${projectId}/thong-bao/theo-doi${artifactType ? , /du-an/${projectId}/thong-bao/theo-doi/${artifactType}/${artifactId}, /du-an/${projectId}/thong-bao/tuy-chon
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+- `ReviewCommentsPanel` (panel) from `frontend/features/testing/components/ReviewCommentsPanel.jsx` → `frontend/features/testing/components/ReviewCommentsPanel.jsx`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: /du-an/${projectId}/nhan-xet-ra-soat, /du-an/${projectId}/nhan-xet-ra-soat${query ? , /nhan-xet-ra-soat/${id}/giai-quyet, /nhan-xet-ra-soat/${id}/mo-lai
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+- `TestCaseTemplatesPanel` (panel) from `frontend/features/testing/components/TestCaseTemplatesPanel.jsx` → `frontend/features/testing/components/TestCaseTemplatesPanel.jsx`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: /du-an/${projectId}/mau-ca-kiem-thu, /du-an/${projectId}/mau-ca-kiem-thu${templateType ? , /mau-ca-kiem-thu/${templateId}, /mau-ca-kiem-thu/${templateId}/luu-tru
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+- `TestPlanAIGenerationPanel` (panel) from `frontend/features/testing/components/TestPlanAIGenerationPanel.jsx` → `frontend/features/testing/components/TestPlanAIGenerationPanel.jsx`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: /du-an/${projectId}/ke-hoach-kiem-thu/ai/de-xuat
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+- `RequirementCurrentVersionPanel` (panel) from `frontend/features/testing/pages/workspace/requirements/RequirementCurrentVersionPanel.jsx` → `frontend/features/testing/pages/workspace/requirements/RequirementCurrentVersionPanel.jsx`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: /du-an/${projectId}/yeu-cau/${requirementId}/gui-ra-soat, /du-an/${projectId}/yeu-cau/${requirementId}/luu, /du-an/${projectId}/yeu-cau/${requirementId}/mo-lai-chinh-sua, /du-an/${projectId}/yeu-cau/${requirementId}/phe-duyet, /du-an/${projectId}/yeu-cau/${requirementId}/yeu-cau-chinh-sua, /phien-ban-yeu-cau/${id}/ra-soat-ky-thuat, /yeu-cau/${id}/khoi-phuc, /yeu-cau/${id}/ngung-hieu-luc
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+- `RequirementHistoryPanel` (panel) from `frontend/features/testing/pages/workspace/requirements/RequirementHistoryPanel.jsx` → `frontend/features/testing/pages/workspace/requirements/RequirementHistoryPanel.jsx`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: /yeu-cau/${id}/so-sanh
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+- `RequirementImpactPanel` (panel) from `frontend/features/testing/pages/workspace/requirements/RequirementImpactPanel.jsx` → `frontend/features/testing/pages/workspace/requirements/RequirementImpactPanel.jsx`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: /ca-kiem-thu/${id}/phien-ban/ban-nhap, /phien-ban-yeu-cau/${id}/anh-huong-kiem-thu, /phien-ban-yeu-cau/${id}/anh-huong-kiem-thu/thu-lai
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+- `RequirementSourceDocumentsPanel` (panel) from `frontend/features/testing/pages/workspace/requirements/RequirementSourceDocumentsPanel.jsx` → `frontend/features/testing/pages/workspace/requirements/RequirementSourceDocumentsPanel.jsx`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: /du-an/${projectId}/tai-lieu-yeu-cau/tom-tat, /du-an/${projectId}/tai-lieu-yeu-cau/tom-tat/${jobId}, /du-an/${projectId}/tai-lieu-yeu-cau/tom-tat/${jobId}/thu-lai, /tai-lieu-yeu-cau/${id}, /tai-lieu-yeu-cau/${id}/ai-doc, /tai-lieu-yeu-cau/${id}/chay-ai, /tai-lieu-yeu-cau/${id}/khoi-phuc, /tai-lieu-yeu-cau/${id}/lap-chi-muc-lai, /tai-lieu-yeu-cau/${id}/luu-tru, /tai-lieu-yeu-cau/${id}/quyen-truy-cap, /tai-lieu-yeu-cau/${id}/tai-xuong, /tai-lieu-yeu-cau/${id}/thu-lai-phan-tich
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+- `RequirementTemplatePanel` (panel) from `frontend/features/testing/pages/workspace/requirements/RequirementTemplatePanel.jsx` → `frontend/features/testing/pages/workspace/requirements/RequirementTemplatePanel.jsx`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: /du-an/${id}/mau-yeu-cau, /du-an/${id}/mau-yeu-cau/${templateId}, /du-an/${id}/mau-yeu-cau/${templateId}/de-nghi-phat-hanh, /du-an/${id}/mau-yeu-cau/${templateId}/dong-y, /du-an/${id}/mau-yeu-cau/${templateId}/duyet-phat-hanh, /du-an/${id}/mau-yeu-cau/${templateId}/xem-truoc, /du-an/${id}/truong-yeu-cau
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: /du-an/${projectId}/luot-chay
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+- `RequirementTracePanel` (panel) from `frontend/features/testing/pages/workspace/requirements/RequirementTracePanel.jsx` → `frontend/features/testing/pages/workspace/requirements/RequirementTracePanel.jsx`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: /du-an/${id}/do-phu${query ? , /du-an/${id}/truy-vet${query ? 
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+- `ApiArtifactsPanel` (panel) from `frontend/features/testing/pages/workspace/test-design/ApiArtifactsPanel.jsx` → `frontend/features/testing/pages/workspace/test-design/ApiArtifactsPanel.jsx`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: /dac-ta-giao-dien/${id}, /dac-ta-giao-dien/${id}/luu-tru, /dac-ta-giao-dien/${id}/ra-soat, /dac-ta-giao-dien/${id}/xac-nhan, /du-an/${id}/dac-ta-giao-dien/nhap, /nhap-ca-kiem-thu/${id}
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: /du-an/${projectId}/luot-chay
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+- `TestCaseTransferPanel` (panel) from `frontend/features/testing/pages/workspace/test-design/TestCaseTransferPanel.jsx` → `frontend/features/testing/pages/workspace/test-design/TestCaseTransferPanel.jsx`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: /du-an/${id}/ca-kiem-thu/xuat?format=${format}, /du-an/${id}/nhap-ca-kiem-thu/tai-len, /nhap-ca-kiem-thu/${id}/xac-nhan
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+- `ProjectWorkspacePage` (page) from `frontend/app/(main)/du-an/[projectId]/[[...section]]/page.jsx` → `frontend/features/testing/pages/ProjectWorkspacePage`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: /du-an/${id}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+- `ProjectsPage` (page) from `frontend/app/(main)/du-an/page.jsx` → `frontend/features/testing/pages/ProjectsPage`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: /du-an/${id}/khoi-phuc, /du-an/kha-nang, /du-an?${params.toString()}, /loi-moi-du-an, /loi-moi-du-an/${invitationId}/chap-nhan, /loi-moi-du-an/${invitationId}/tu-choi
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+- `ProjectCreatePage` (page) from `frontend/app/(main)/du-an/tao-moi/page.jsx` → `frontend/features/testing/pages/ProjectCreatePage`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: /du-an
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+- `OperationsPage` (page) from `frontend/app/(main)/van-hanh/page.jsx` → `frontend/features/testing/pages/OperationsPage`
+  - API module `frontend/features/testing/services/testing.service.js`; statically imported functions: testingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.design.js`; statically imported functions: designTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.execution.js`; statically imported functions: executionTestingApi; literal paths: (dynamic or helper-built paths)
+  - API module `frontend/features/testing/services/testing.projects.js`; statically imported functions: projectTestingApi; literal paths: /quan-tri/vai-tro-du-an
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: testingRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: aiRunRequest, listQuery, testingRequest; literal paths: ${API_URL}/kiem-thu${path}, ${API_URL}/tac-nhan-ai${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}
+  - API module `frontend/features/testing/services/testing.transport.js`; statically imported functions: downloadTestingFile, listPage, listQuery, readTestingFile, testingImageRequest, testingRequest, testingStreamRequest; literal paths: ${API_URL}/kiem-thu${path}

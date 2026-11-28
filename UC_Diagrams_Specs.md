@@ -2157,9 +2157,18 @@ Nguồn mô tả: Chức năng này hỗ trợ chuyên viên phân tích nghiệ
 
 ## Đặc tả nghiệp vụ đã đối chiếu
 
+### Hai ngữ cảnh sử dụng cần phân biệt khi vẽ
+
+| Ngữ cảnh | Cách bắt đầu | Căn cứ đã xác minh | Cách thể hiện |
+|---|---|---|---|
+| UC31 gọi chức năng đề xuất | Người dùng chạy UC31; trong nhánh đủ điều kiện, hệ thống gọi chức năng đề xuất và kết quả chưa lưu được hiển thị trong Hoạt động AI. | Có lời gọi trong quy trình xử lý tài liệu và giao diện hiển thị kết quả. | Vẽ lần gọi này trong sơ đồ UC31. Đây là ngữ cảnh dùng lại, không phải bước bắt đầu UC32 độc lập. |
+| UC32 được gọi độc lập | Người dùng mở **Kế hoạch kiểm thử**, chọn **Tạo kế hoạch với AI**, chọn phiên bản yêu cầu, nhập chỉ dẫn thêm nếu cần và chọn **Tạo gợi ý**. | Đã xác minh ở `ExecutionPage.jsx` và `TestPlanEditor.jsx`. Giao diện cho xem trước, chọn mục và áp dụng vào biểu mẫu; người dùng có thể lưu kế hoạch sau đó. | Vẽ thành luồng UC32 độc lập. Việc tạo gợi ý không tự lưu kế hoạch; thao tác áp dụng và lưu là các bước người dùng thực hiện tiếp trên biểu mẫu. |
+
+Hai ngữ cảnh trên dùng chung năng lực tạo đề xuất, nhưng là hai điểm khởi đầu khác nhau. UC32 không phải UC con bắt buộc của UC31; UC31 cũng không phải tiền điều kiện của UC32.
+
 **Mô tả:** UC32 là chức năng độc lập cho phép đề xuất nội dung kế hoạch kiểm thử từ các phiên bản yêu cầu và tiêu chí chấp nhận được chọn. Kết quả chỉ để xem xét; UC32 không tự tạo hoặc lưu kế hoạch. UC31 hiện cũng gọi lại năng lực đề xuất này trong quy trình xử lý tài liệu, nhưng UC32 không phụ thuộc vào việc người dùng phải chạy UC31.
 
-**Tiền điều kiện:** Người dùng có quyền đọc yêu cầu, xem kế hoạch kiểm thử và sử dụng AI của dự án. Có ít nhất một phiên bản yêu cầu hiện hành, thuộc đúng dự án và ở trạng thái đủ điều kiện; phiên bản có nội dung làm căn cứ. Người dùng cung cấp danh sách phiên bản yêu cầu và hướng dẫn bổ sung nếu cần. Bản mã hiện có chức năng xử lý riêng cho yêu cầu đề xuất, nhưng chưa tìm thấy màn hình riêng để người dùng nhập các thông tin này.
+**Tiền điều kiện:** Người dùng có quyền xem kế hoạch kiểm thử, tạo kế hoạch và sử dụng AI của dự án. Có ít nhất một phiên bản yêu cầu hiện hành, thuộc đúng dự án, ở trạng thái đủ điều kiện và có nội dung làm căn cứ. Người dùng mở chức năng **Tạo kế hoạch với AI** từ trang Kế hoạch kiểm thử. (đã sửa)
 
 **Hậu điều kiện:** Hệ thống trả về đề xuất, thông tin căn cứ, các câu hỏi chưa được giải quyết và siêu dữ liệu kết quả AI. Không có kế hoạch mới được tạo hoặc lưu. Nếu kiểm tra đầu vào, quyền hoặc kết quả AI thất bại, đề xuất không được trả về như kết quả hợp lệ.
 
@@ -2171,15 +2180,16 @@ Nguồn mô tả: Chức năng này hỗ trợ chuyên viên phân tích nghiệ
 
 | Bước | Người dùng | Hệ thống |
 |---|---|---|
-| 1 | Mở chức năng đề xuất kế hoạch kiểm thử. |  |
-| 2 | Chọn một hoặc nhiều phiên bản yêu cầu và nhập hướng dẫn bổ sung nếu cần. |  |
-| 3 | Gửi yêu cầu tạo đề xuất. |  |
-| 4 |  | Hệ thống kiểm tra quyền của người dùng, xác nhận từng phiên bản thuộc đúng dự án, còn là phiên bản hiện hành và ở trạng thái đủ điều kiện. |
-| 5 |  | Hệ thống thu thập nội dung yêu cầu và tiêu chí chấp nhận làm căn cứ. |
-| 6 |  | Dịch vụ AI tạo đề xuất từ căn cứ được cung cấp; đề xuất không tự lưu kế hoạch. |
-| 7 |  | Hệ thống kiểm tra tham chiếu, trích dẫn và căn cứ của từng trường đề xuất cùng các rủi ro được nêu. |
-| 8 |  | Hệ thống trả về đề xuất, thông tin căn cứ và câu hỏi còn bỏ ngỏ để nơi gọi chức năng hiển thị cho người dùng. |
-| 9 | Xem xét đề xuất trong giao diện gọi chức năng. |  |
+| 1 | Mở mục Kế hoạch kiểm thử và chọn **Tạo kế hoạch với AI**. (đã sửa) | Hiển thị biểu mẫu tạo kế hoạch có phần gợi ý bằng AI. (đã sửa) |
+| 2 | Chọn một hoặc nhiều phiên bản yêu cầu; nhập chỉ dẫn thêm nếu cần. (đã sửa) |  |
+| 3 | Chọn **Tạo gợi ý**. (đã sửa) |  |
+| 4 |  | Kiểm tra quyền và xác nhận từng phiên bản thuộc đúng dự án, còn hiện hành, ở trạng thái đủ điều kiện. |
+| 5 |  | Thu thập nội dung yêu cầu và tiêu chí chấp nhận làm căn cứ. |
+| 6 |  | Tạo đề xuất từ căn cứ được cung cấp; thao tác này chưa lưu kế hoạch. |
+| 7 |  | Kiểm tra tham chiếu, trích dẫn và căn cứ của các mục được đề xuất. |
+| 8 |  | Hiển thị nội dung gợi ý, thông tin căn cứ và các câu hỏi còn bỏ ngỏ trong biểu mẫu. (đã sửa) |
+| 9 | Xem xét các mục gợi ý, chọn những mục muốn dùng và chọn **Áp dụng**. (thêm mới) | Đưa các mục được chọn vào biểu mẫu kế hoạch. (thêm mới) |
+| 10 | Tiếp tục chỉnh sửa biểu mẫu; có thể chọn **Lưu kế hoạch** hoặc **Lưu nháp**. (thêm mới) | Tạo kế hoạch theo nội dung người dùng đã xác nhận. (thêm mới) |
 
 ### Luồng sự kiện thay thế
 
@@ -2194,13 +2204,13 @@ Nguồn mô tả: Chức năng này hỗ trợ chuyên viên phân tích nghiệ
 
 ### Luồng sự kiện ngoại lệ
 
-UC32 không có bước lưu kế hoạch hoặc thao tác chấp nhận/từ chối đề xuất. Người dùng có thể tạo kế hoạch riêng theo UC16, nhưng mã hiện tại không chuyển đề xuất sang UC16 tự động.
+Tạo gợi ý không tự lưu kế hoạch. Giao diện có thao tác chọn và áp dụng các mục gợi ý vào biểu mẫu; sau đó người dùng có thể lưu kế hoạch hoặc lưu nháp theo chức năng UC16. (đã sửa)
 
 ### Giả định / Câu hỏi cần làm rõ
 
-- Bảng UC mô tả người dùng mở chức năng và chọn phiên bản yêu cầu. Cấu trúc yêu cầu của chức năng cũng nhận danh sách phiên bản và hướng dẫn; tuy nhiên chưa tìm thấy màn hình gọi trực tiếp ở frontend tại commit đang đối chiếu. Vì vậy các bước nhập liệu là hành vi theo đặc tả nghiệp vụ, còn vị trí/giao diện thao tác chưa được xác minh.
+- Giao diện độc lập được xác minh tại trang Kế hoạch kiểm thử: nút **Tạo kế hoạch với AI**, phần **Gợi ý kế hoạch bằng AI**, trường chỉ dẫn thêm, nút **Tạo gợi ý**, thao tác chọn mục và **Áp dụng**. Phần giao diện này đã được đưa vào luồng chính ở trên. (đã sửa)
 - UC31 hiện gọi cùng năng lực đề xuất trong xử lý tài liệu và giao diện Hoạt động AI hiển thị kết quả ở trạng thái chưa lưu. Đây là một nơi tái sử dụng UC32, không biến UC32 thành UC con hoặc bắt buộc người dùng phải vào UC31.
-- Bảng nguồn nói người dùng chuyển các trường đề xuất sang UC16. Chưa thấy thao tác chuyển/lưu trực tiếp trong giao diện; giữ đây là câu hỏi cần xác nhận, không xem là hành vi đã triển khai.
+- Sau khi áp dụng gợi ý, người dùng ở biểu mẫu tạo kế hoạch và có thể lưu kế hoạch/lưu nháp. Đây là thao tác lưu của UC16; riêng lần gọi tạo gợi ý không tự ghi kế hoạch. (đã sửa)
 
 # UC33 - Tạo ca kiểm thử bằng AI
 

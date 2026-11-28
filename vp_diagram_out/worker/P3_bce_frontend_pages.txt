@@ -1,0 +1,66 @@
+UML Class Diagram (Boundary-Control-Entity analysis)
+Create the BCE class diagram for 'worker', group 'frontend_pages'. Use English PascalCase names. Use stereotypes <<boundary>>, <<control>>, <<entity>>. Do not connect boundaries directly to entities.
+Class 'GD_AccountPage' <<boundary>>: source 'frontend/features/authentication/pages/AccountPage.jsx'.
+Class 'GD_EmailVerificationPage' <<boundary>>: source 'frontend/features/authentication/pages/EmailVerificationPage.jsx'.
+Class 'GD_ForgotPasswordPage' <<boundary>>: source 'frontend/features/authentication/pages/ForgotPasswordPage.jsx'.
+Class 'GD_LoginPage' <<boundary>>: source 'frontend/features/authentication/pages/LoginPage.jsx'.
+Class 'GD_ResetPasswordPage' <<boundary>>: source 'frontend/features/authentication/pages/ResetPasswordPage.jsx'.
+Class 'GD_VerificationPage' <<boundary>>: source 'frontend/features/authentication/pages/VerificationPage.jsx'.
+Class 'GD_TermsPage' <<boundary>>: source 'frontend/features/legal/pages/TermsPage.jsx'.
+Class 'GD_HomePage' <<boundary>>: source 'frontend/features/marketing/pages/HomePage.jsx'.
+Class 'GD_AnnouncementsPage' <<boundary>>: source 'frontend/features/notification/pages/AnnouncementsPage.jsx'.
+Class 'GD_OperationsPage' <<boundary>>: source 'frontend/features/testing/pages/OperationsPage.jsx'.
+Class 'GD_ProjectCreatePage' <<boundary>>: source 'frontend/features/testing/pages/ProjectCreatePage.jsx'.
+Class 'GD_ProjectWorkspacePage' <<boundary>>: source 'frontend/features/testing/pages/ProjectWorkspacePage.jsx'.
+Class 'GD_ProjectsPage' <<boundary>>: source 'frontend/features/testing/pages/ProjectsPage.jsx'.
+Class 'GD_DashboardPage' <<boundary>>: source 'frontend/features/testing/pages/workspace/DashboardPage.jsx'.
+Class 'GD_DefectsPage' <<boundary>>: source 'frontend/features/testing/pages/workspace/DefectsPage.jsx'.
+Class 'GD_DocumentReaderPage' <<boundary>>: source 'frontend/features/testing/pages/workspace/DocumentReaderPage.jsx'.
+Class 'GD_ExecutionPage' <<boundary>>: source 'frontend/features/testing/pages/workspace/ExecutionPage.jsx'.
+Class 'GD_KnowledgePage' <<boundary>>: source 'frontend/features/testing/pages/workspace/KnowledgePage.jsx'.
+Class 'GD_ReleasesPage' <<boundary>>: source 'frontend/features/testing/pages/workspace/ReleasesPage.jsx'.
+Class 'GD_ReportsPage' <<boundary>>: source 'frontend/features/testing/pages/workspace/ReportsPage.jsx'.
+Class 'GD_RequirementsPage' <<boundary>>: source 'frontend/features/testing/pages/workspace/RequirementsPage.jsx'.
+Class 'GD_ReviewQueuePage' <<boundary>>: source 'frontend/features/testing/pages/workspace/ReviewQueuePage.jsx'.
+Class 'GD_SettingsPage' <<boundary>>: source 'frontend/features/testing/pages/workspace/SettingsPage.jsx'.
+Class 'GD_TestAnalysisPage' <<boundary>>: source 'frontend/features/testing/pages/workspace/TestAnalysisPage.jsx'.
+Class 'GD_TestDesignPage' <<boundary>>: source 'frontend/features/testing/pages/workspace/TestDesignPage.jsx'.
+Class 'GD_TestPeriodsPage' <<boundary>>: source 'frontend/features/testing/pages/workspace/TestPeriodsPage.jsx'.
+Class 'GD_TraceabilityPage' <<boundary>>: source 'frontend/features/testing/pages/workspace/TraceabilityPage.jsx'.
+Class 'GD_TestSetEditorPage' <<boundary>>: source 'frontend/features/testing/pages/workspace/test-design/TestSetEditorPage.jsx'.
+Class 'GD_NotificationPreferencesPanel' <<boundary>>: source 'frontend/features/notification/components/NotificationPreferencesPanel.jsx'.
+Class 'GD_AIRunPanel' <<boundary>>: source 'frontend/features/testing/components/AIRunPanel.jsx'.
+Class 'GD_AutomationScriptsPanel' <<boundary>>: source 'frontend/features/testing/components/AutomationScriptsPanel.jsx'.
+Class 'GD_CollaborationPanel' <<boundary>>: source 'frontend/features/testing/components/CollaborationPanel.jsx'.
+Class 'GD_EnvironmentManagementPanel' <<boundary>>: source 'frontend/features/testing/components/EnvironmentManagementPanel.jsx'.
+Class 'GD_JUnitResultPanel' <<boundary>>: source 'frontend/features/testing/components/JUnitResultPanel.jsx'.
+Class 'GD_ManualTestGenerationPanel' <<boundary>>: source 'frontend/features/testing/components/ManualTestGenerationPanel.jsx'.
+Class 'GD_PlanVsActualPanel' <<boundary>>: source 'frontend/features/testing/components/PlanVsActualPanel.jsx'.
+Class 'GD_PlatformControlsPanel' <<boundary>>: source 'frontend/features/testing/components/PlatformControlsPanel.jsx'.
+Class 'GD_PlatformOperationsPanel' <<boundary>>: source 'frontend/features/testing/components/PlatformOperationsPanel.jsx'.
+Class 'GD_PlatformUsersPanel' <<boundary>>: source 'frontend/features/testing/components/PlatformUsersPanel.jsx'.
+Class 'GD_ProjectAIEvaluationPanel' <<boundary>>: source 'frontend/features/testing/components/ProjectAIEvaluationPanel.jsx'.
+Class 'GD_ProjectAccessPanel' <<boundary>>: source 'frontend/features/testing/components/ProjectAccessPanel.jsx'.
+Class 'GD_ProjectNotificationsPanel' <<boundary>>: source 'frontend/features/testing/components/ProjectNotificationsPanel.jsx'.
+Class 'GD_ResidualRiskPanel' <<boundary>>: source 'frontend/features/testing/components/ResidualRiskPanel.jsx'.
+Class 'GD_ReviewCommentsPanel' <<boundary>>: source 'frontend/features/testing/components/ReviewCommentsPanel.jsx'.
+Class 'GD_TestBasisPanel' <<boundary>>: source 'frontend/features/testing/components/TestBasisPanel.jsx'.
+Class 'GD_TestCaseTemplatesPanel' <<boundary>>: source 'frontend/features/testing/components/TestCaseTemplatesPanel.jsx'.
+Class 'GD_TestControlActionPanel' <<boundary>>: source 'frontend/features/testing/components/TestControlActionPanel.jsx'.
+Class 'GD_TestwareHandoverPanel' <<boundary>>: source 'frontend/features/testing/components/TestwareHandoverPanel.jsx'.
+Class 'GD_RequirementCurrentVersionPanel' <<boundary>>: source 'frontend/features/testing/pages/workspace/requirements/RequirementCurrentVersionPanel.jsx'.
+Class 'GD_RequirementDuplicatePanel' <<boundary>>: source 'frontend/features/testing/pages/workspace/requirements/RequirementDuplicatePanel.jsx'.
+Class 'GD_RequirementHistoryPanel' <<boundary>>: source 'frontend/features/testing/pages/workspace/requirements/RequirementHistoryPanel.jsx'.
+Class 'GD_RequirementImpactPanel' <<boundary>>: source 'frontend/features/testing/pages/workspace/requirements/RequirementImpactPanel.jsx'.
+Class 'GD_RequirementNavigatorPanel' <<boundary>>: source 'frontend/features/testing/pages/workspace/requirements/RequirementNavigatorPanel.jsx'.
+Class 'GD_RequirementQualityPanel' <<boundary>>: source 'frontend/features/testing/pages/workspace/requirements/RequirementQualityPanel.jsx'.
+Class 'GD_RequirementSourceDocumentsPanel' <<boundary>>: source 'frontend/features/testing/pages/workspace/requirements/RequirementSourceDocumentsPanel.jsx'.
+Class 'GD_RequirementTemplatePanel' <<boundary>>: source 'frontend/features/testing/pages/workspace/requirements/RequirementTemplatePanel.jsx'.
+Class 'GD_RequirementTracePanel' <<boundary>>: source 'frontend/features/testing/pages/workspace/requirements/RequirementTracePanel.jsx'.
+Class 'GD_RequirementsListPanel' <<boundary>>: source 'frontend/features/testing/pages/workspace/requirements/RequirementsListPanel.jsx'.
+Class 'GD_ApiArtifactsPanel' <<boundary>>: source 'frontend/features/testing/pages/workspace/test-design/ApiArtifactsPanel.jsx'.
+Class 'GD_TestCaseTransferPanel' <<boundary>>: source 'frontend/features/testing/pages/workspace/test-design/TestCaseTransferPanel.jsx'.
+Include EVERY class, attribute, operation and relationship listed above, exactly as named. Do not omit, merge, rename, simplify, summarize or add anything. Do not invent extra classes, attributes or relationships. If something does not fit, keep it and let the layout grow instead of dropping it. Totals: 60 classes, 0 relationships, 0 attributes.
+
+Checklist: classes=60; relationships=0; attributes=0.
+Correction prompt: Fix only the following items and keep everything else unchanged: [insert verified discrepancy].

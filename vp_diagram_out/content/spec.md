@@ -187,4 +187,4 @@
 - `delete_one() : json` — `backend/content/src/repositories/folder.py:14`
 - `query() : json` — `backend/content/src/repositories/folder.py:18`
 
-### Frontend pages
+### Frontend pages and panels with API dependencies

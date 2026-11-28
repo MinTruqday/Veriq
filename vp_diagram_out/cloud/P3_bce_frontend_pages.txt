@@ -1,0 +1,17 @@
+UML Class Diagram (Boundary-Control-Entity analysis)
+Create the BCE class diagram for 'cloud', group 'frontend_pages'. Use English PascalCase names. Use stereotypes <<boundary>>, <<control>>, <<entity>>. Do not connect boundaries directly to entities.
+Class 'GD_DefectsPage' <<boundary>>: source 'frontend/features/testing/pages/workspace/DefectsPage.jsx'.
+Boundary dependency: 'GD_DefectsPage' to 'Ctrl_Storage' via API POST path '${API_URL}/tai-len/tap-tin', backend route 'POST /tap-tin' at 'backend/cloud/src/api/storage.py:43', multiplicity at boundary: 1, multiplicity at control: 1.
+Boundary dependency: 'GD_DefectsPage' to 'Ctrl_Upload' via API POST path '${API_URL}/tai-len/tap-tin', backend route 'POST /tap-tin' at 'backend/cloud/src/api/upload.py:47', multiplicity at boundary: 1, multiplicity at control: 1.
+Class 'GD_ExecutionPage' <<boundary>>: source 'frontend/features/testing/pages/workspace/ExecutionPage.jsx'.
+Boundary dependency: 'GD_ExecutionPage' to 'Ctrl_Storage' via API POST path '${API_URL}/tai-len/tap-tin', backend route 'POST /tap-tin' at 'backend/cloud/src/api/storage.py:43', multiplicity at boundary: 1, multiplicity at control: 1.
+Boundary dependency: 'GD_ExecutionPage' to 'Ctrl_Upload' via API POST path '${API_URL}/tai-len/tap-tin', backend route 'POST /tap-tin' at 'backend/cloud/src/api/upload.py:47', multiplicity at boundary: 1, multiplicity at control: 1.
+Class 'GD_TestDesignPage' <<boundary>>: source 'frontend/features/testing/pages/workspace/TestDesignPage.jsx'.
+Boundary dependency: 'GD_TestDesignPage' to 'Ctrl_Storage' via API POST path '${API_URL}/tai-len/tap-tin', backend route 'POST /tap-tin' at 'backend/cloud/src/api/storage.py:43', multiplicity at boundary: 1, multiplicity at control: 1.
+Boundary dependency: 'GD_TestDesignPage' to 'Ctrl_Upload' via API POST path '${API_URL}/tai-len/tap-tin', backend route 'POST /tap-tin' at 'backend/cloud/src/api/upload.py:47', multiplicity at boundary: 1, multiplicity at control: 1.
+Class 'Ctrl_Storage' <<control>>: + CreateFile(data : json, currentUser : json, db : string) : json.
+Class 'Ctrl_Upload' <<control>>: + UploadAsset(file : json, currentUser : json, db : string) : json.
+Include EVERY class, attribute, operation and relationship listed above, exactly as named. Do not omit, merge, rename, simplify, summarize or add anything. Do not invent extra classes, attributes or relationships. If something does not fit, keep it and let the layout grow instead of dropping it. Totals: 5 classes, 6 relationships, 0 attributes.
+
+Checklist: classes=5; relationships=6; attributes=0.
+Correction prompt: Fix only the following items and keep everything else unchanged: [insert verified discrepancy].

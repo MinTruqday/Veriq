@@ -8,7 +8,7 @@
 - Router handlers found: 107
 - Public service methods: 115
 - Public repository methods: 63
-- Frontend pages mapped by app-route import: 6
+- Frontend pages mapped by app-route import: 9
 
 ## Domain model candidates
 - `AuthCredential`: `AuthCredentialId`, `AvatarUrl`, `Bio`, `BlockedUsers`, `Bookmarks`, `CoverUrl`, `CreatedAt`, `CreatorStatus`, `DonationLink`, `Email`, `EmailVerified`, `EmailVerifiedAt`, `FullName`, `IsActive`, `IsKycVerified`, `IsShadowbanned`, `IsVerified`, `KycStatus`, `LastBankUpdate`, `LastPasswordChange`, `LastReadDate`, `Locale`, `Location`, `LoginSecurity`, `PasswordHash`, `PendingEmail`, `PendingEmailRequestedAt`, `Permissions`, `PinnedDocuments`, `Settings`, `Slug`, `SocialLinks`, `StorageLimit`, `SystemRole`, `Timezone`, `TosAcceptedAt`, `UpdatedAt`, `Website`, `WelcomeMessage` — source: backend/authentication/src/core/infrastructure/database.py:31, backend/authentication/src/core/infrastructure/database.py:32, backend/authentication/src/repositories/identity.py:107
@@ -160,9 +160,9 @@
 - `UpdatedAt` `datetime` [NOT NULL] — backend/authentication/src/services/platform_security.py:141
 
 ## Local logical references
-- `Session.UserId` → `AuthCredential.AuthCredentialId` [SUY RA], source `backend/authentication/src/services/session.py:96`
-- `EmailVerificationToken.UserId` → `AuthCredential.AuthCredentialId` [SUY RA], source `backend/authentication/src/services/session.py:96`
-- `AdminOperation.UserIds` → `AuthCredential.AuthCredentialId` [SUY RA], source `backend/authentication/src/services/platform_account_controls.py:84`
+- `Session.UserId` → `AuthCredential.AuthCredentialId` [SUY RA], source `backend/authentication/src/repositories/identity.py:272`
+- `EmailVerificationToken.UserId` → `AuthCredential.AuthCredentialId` [SUY RA], source `backend/authentication/src/repositories/identity.py:432`
+- `AdminOperation.UserIds` → `AuthCredential.AuthCredentialId` [SUY RA], source `backend/authentication/src/services/platform_account_controls.py:80`
 
 ## BCE function inventory
 ### Routes
@@ -456,10 +456,22 @@
 - `rotate_secret_reference(referenceId : string, changes : json) : json` — `backend/authentication/src/repositories/platform.py:124`
 - `delete_secret_reference(referenceId : string) : json` — `backend/authentication/src/repositories/platform.py:132`
 
-### Frontend pages
-- `LoginPage` from `frontend/app/(auth)/dang-nhap/page.jsx` → `frontend/features/authentication/pages/LoginPage`
-- `ResetPasswordPage` from `frontend/app/(auth)/dat-lai-mat-khau/page.jsx` → `frontend/features/authentication/pages/ResetPasswordPage`
-- `ForgotPasswordPage` from `frontend/app/(auth)/quen-mat-khau/page.jsx` → `frontend/features/authentication/pages/ForgotPasswordPage`
-- `EmailVerificationPage` from `frontend/app/(auth)/xac-minh-thu-dien-tu/page.jsx` → `frontend/features/authentication/pages/EmailVerificationPage`
-- `VerificationPage` from `frontend/app/(auth)/xac-thuc/page.jsx` → `frontend/features/authentication/pages/VerificationPage`
-- `AccountPage` from `frontend/app/(main)/cai-dat/page.jsx` → `frontend/features/authentication/pages/AccountPage`
+### Frontend pages and panels with API dependencies
+- `PlatformControlsPanel` (panel) from `frontend/features/testing/components/PlatformControlsPanel.jsx` → `frontend/features/testing/components/PlatformControlsPanel.jsx`
+  - API module `frontend/features/authentication/services/platform.service.js`; statically imported functions: platformApi; literal paths: /ai/gioi-han, /ai/mac-dinh, /ai/phien-ban, /ai/truy-xuat, /bao-mat/chinh-sach-truy-cap-khan-cap, /bao-mat/chinh-sach-xac-thuc, /bao-mat/danh-tinh-dich-vu, /bao-mat/danh-tinh-dich-vu/${id}/xoay-vong, /bao-mat/gioi-han-tan-suat, /bao-mat/thu-hoi-khan-cap, /bao-mat/truy-cap-khan-cap, /bao-mat/truy-cap-khan-cap/${id}/thu-hoi, /bi-mat, /bi-mat/${id}, /bi-mat/${id}/xoay-vong, /cau-hinh/${name}, /cau-hinh/bao-tri, /luu-tru, /luu-tru/kiem-tra, /nhat-ky/xuat, /tich-hop, /tich-hop/smtp/kiem-tra, /tich-hop/suc-khoe, /van-hanh/bo-nho-dem, /van-hanh/bo-nho-dem/don-sach, /van-hanh/dlq, /van-hanh/dlq/${id}/dua-lai-hang-doi, /van-hanh/dlq/${id}/loai-bo, /van-hanh/dung-luong-luu-tru, /van-hanh/hang-doi, /van-hanh/phien-ban-van-hanh, /van-hanh/rag, /van-hanh/rag/lap-chi-muc-lai
+- `PlatformOperationsPanel` (panel) from `frontend/features/testing/components/PlatformOperationsPanel.jsx` → `frontend/features/testing/components/PlatformOperationsPanel.jsx`
+  - API module `frontend/features/authentication/services/platform.service.js`; statically imported functions: platformApi; literal paths: /ai/mo-hinh, /ai/nha-cung-cap, /ai/nha-cung-cap/${id}, /ai/nha-cung-cap/${id}/kiem-tra, /du-an${search ? , /du-an/${id}, /du-an/${id}/han-muc, /du-an/${id}/trang-thai, /du-an/${id}/vai-tro-du-an, /nen-tang/chinh-sach-du-an, /suc-khoe, /van-hanh/tac-vu${status ? , /van-hanh/tac-vu/${id}/huy, /van-hanh/tac-vu/${id}/thu-lai
+- `PlatformUsersPanel` (panel) from `frontend/features/testing/components/PlatformUsersPanel.jsx` → `frontend/features/testing/components/PlatformUsersPanel.jsx`
+  - API module `frontend/features/authentication/services/platform.service.js`; statically imported functions: platformApi; literal paths: /tai-khoan, /tai-khoan${search ? , /tai-khoan/${id}, /tai-khoan/${id}/bat-buoc-doi-mat-khau, /tai-khoan/${id}/gui-lai-xac-minh, /tai-khoan/${id}/ho-so, /tai-khoan/${id}/khoa, /tai-khoan/${id}/kich-hoat, /tai-khoan/${id}/mo-khoa, /tai-khoan/${id}/vai-tro-du-an, /tai-khoan/${id}/vai-tro-he-thong, /tai-khoan/${id}/vo-hieu-hoa, /tai-khoan/hang-loat/${operationId}/xac-nhan, /tai-khoan/hang-loat/xem-truoc
+- `LoginPage` (page) from `frontend/app/(auth)/dang-nhap/page.jsx` → `frontend/features/authentication/pages/LoginPage`
+  - API module `frontend/features/authentication/services/session.service.js`; statically imported functions: login; literal paths: ${API_URL}/xac-thuc/dang-nhap
+- `ResetPasswordPage` (page) from `frontend/app/(auth)/dat-lai-mat-khau/page.jsx` → `frontend/features/authentication/pages/ResetPasswordPage`
+  - API module `frontend/features/authentication/services/session.service.js`; statically imported functions: forgotPasswordAPI, resetPasswordAPI, verifyCodeAPI; literal paths: ${API_URL}/xac-thuc/dat-lai-mat-khau, ${API_URL}/xac-thuc/quen-mat-khau, ${API_URL}/xac-thuc/xac-nhan-ma
+- `ForgotPasswordPage` (page) from `frontend/app/(auth)/quen-mat-khau/page.jsx` → `frontend/features/authentication/pages/ForgotPasswordPage`
+  - API module `frontend/features/authentication/services/session.service.js`; statically imported functions: forgotPasswordAPI, resetPasswordAPI, verifyCodeAPI; literal paths: ${API_URL}/xac-thuc/dat-lai-mat-khau, ${API_URL}/xac-thuc/quen-mat-khau, ${API_URL}/xac-thuc/xac-nhan-ma
+- `EmailVerificationPage` (page) from `frontend/app/(auth)/xac-minh-thu-dien-tu/page.jsx` → `frontend/features/authentication/pages/EmailVerificationPage`
+  - API module `frontend/features/authentication/services/session.service.js`; statically imported functions: verifyEmailAPI; literal paths: ${API_URL}/xac-thuc/xac-minh-thu-dien-tu
+- `VerificationPage` (page) from `frontend/app/(auth)/xac-thuc/page.jsx` → `frontend/features/authentication/pages/VerificationPage`
+  - API module `frontend/features/authentication/services/session.service.js`; statically imported functions: forgotPasswordAPI, resetPasswordAPI, verifyCodeAPI; literal paths: ${API_URL}/xac-thuc/dat-lai-mat-khau, ${API_URL}/xac-thuc/quen-mat-khau, ${API_URL}/xac-thuc/xac-nhan-ma
+- `AccountPage` (page) from `frontend/app/(main)/cai-dat/page.jsx` → `frontend/features/authentication/pages/AccountPage`
+  - API module `frontend/features/authentication/services/session.service.js`; statically imported functions: changeMyPassword, updateMyProfile; literal paths: /xac-thuc/ca-nhan, /xac-thuc/doi-mat-khau

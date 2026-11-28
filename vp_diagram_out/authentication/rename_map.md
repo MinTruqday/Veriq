@@ -324,6 +324,9 @@ Tên code | Tên sơ đồ | Loại | Căn cứ
 `insert_secret_reference` | `InsertSecretReference` | method | `backend/authentication/src/repositories/platform.py:120`
 `rotate_secret_reference` | `RotateSecretReference` | method | `backend/authentication/src/repositories/platform.py:124`
 `delete_secret_reference` | `DeleteSecretReference` | method | `backend/authentication/src/repositories/platform.py:132`
+`PlatformControlsPanel` | `GD_PlatformControlsPanel` | page/boundary | ``
+`PlatformOperationsPanel` | `GD_PlatformOperationsPanel` | page/boundary | ``
+`PlatformUsersPanel` | `GD_PlatformUsersPanel` | page/boundary | ``
 `LoginPage` | `GD_LoginPage` | page/boundary | `frontend/app/(auth)/dang-nhap/page.jsx`
 `ResetPasswordPage` | `GD_ResetPasswordPage` | page/boundary | `frontend/app/(auth)/dat-lai-mat-khau/page.jsx`
 `ForgotPasswordPage` | `GD_ForgotPasswordPage` | page/boundary | `frontend/app/(auth)/quen-mat-khau/page.jsx`

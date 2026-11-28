@@ -1,7 +1,13 @@
 UML Class Diagram (Boundary-Control-Entity analysis)
 Create the BCE class diagram for 'notification', group 'frontend_pages'. Use English PascalCase names. Use stereotypes <<boundary>>, <<control>>, <<entity>>. Do not connect boundaries directly to entities.
+Class 'GD_NotificationPreferencesPanel' <<boundary>>: source 'frontend/features/notification/components/NotificationPreferencesPanel.jsx'.
+Boundary dependency: 'GD_NotificationPreferencesPanel' to 'Ctrl_Announcement' via API GET path '${API_URL}/thong-bao/cai-dat', backend route 'GET /cai-dat' at 'backend/notification/src/api/announcement.py:69', multiplicity at boundary: 1, multiplicity at control: 1.
+Boundary dependency: 'GD_NotificationPreferencesPanel' to 'Ctrl_Announcement' via API POST path '${API_URL}/thong-bao/cai-dat', backend route 'POST /cai-dat' at 'backend/notification/src/api/announcement.py:77', multiplicity at boundary: 1, multiplicity at control: 1.
 Class 'GD_AnnouncementsPage' <<boundary>>: source 'frontend/app/(main)/thong-bao/page.jsx'.
-Include EVERY class, attribute, operation and relationship listed above, exactly as named. Do not omit, merge, rename, simplify, summarize or add anything. Do not invent extra classes, attributes or relationships. If something does not fit, keep it and let the layout grow instead of dropping it. Totals: 1 classes, 0 relationships, 0 attributes.
+Boundary dependency: 'GD_AnnouncementsPage' to 'Ctrl_Announcement' via API PATCH path '${API_URL}/thong-bao/doc-tat-ca', backend route 'PATCH /doc-tat-ca' at 'backend/notification/src/api/announcement.py:36', multiplicity at boundary: 1, multiplicity at control: 1.
+Boundary dependency: 'GD_AnnouncementsPage' to 'Ctrl_Announcement' via API PATCH path '${API_URL}/thong-bao/${id}/doc-hieu', backend route 'PATCH /{notif_id}/doc-hieu' at 'backend/notification/src/api/announcement.py:26', multiplicity at boundary: 1, multiplicity at control: 1.
+Class 'Ctrl_Announcement' <<control>>: + GetSettings(currentUser : json) : json; + UpdateSettings(settings : json, currentUser : json) : json; + MarkAllAsRead(currentUser : json) : json; + MarkAsRead(notifId : string, currentUser : json) : json.
+Include EVERY class, attribute, operation and relationship listed above, exactly as named. Do not omit, merge, rename, simplify, summarize or add anything. Do not invent extra classes, attributes or relationships. If something does not fit, keep it and let the layout grow instead of dropping it. Totals: 3 classes, 4 relationships, 0 attributes.
 
-Checklist: classes=1; relationships=0; attributes=0.
+Checklist: classes=3; relationships=4; attributes=0.
 Correction prompt: Fix only the following items and keep everything else unchanged: [insert verified discrepancy].

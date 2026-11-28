@@ -146,6 +146,9 @@ Tên code | Tên sơ đồ | Loại | Căn cứ
 `key` | `Key` | method | `backend/cloud/src/repositories/storage.py:131`
 `reserve` | `Reserve` | method | `backend/cloud/src/repositories/storage.py:134`
 `consume` | `Consume` | method | `backend/cloud/src/repositories/storage.py:137`
+`DefectsPage` | `GD_DefectsPage` | page/boundary | ``
+`ExecutionPage` | `GD_ExecutionPage` | page/boundary | ``
+`TestDesignPage` | `GD_TestDesignPage` | page/boundary | ``
 `upload_chunk` | `Ctrl_Chunk` | route method in grouped control | `backend/cloud/src/api/chunk.py:16`
 `get_download_url` | `Ctrl_Download` | route method in grouped control | `backend/cloud/src/api/download.py:13`
 `create_file_record` | `Ctrl_File` | route method in grouped control | `backend/cloud/src/api/file.py:14`

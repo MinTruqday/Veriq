@@ -9773,34 +9773,760 @@
   "frontend": {
     "pages": [
       {
+        "name": "PlatformControlsPanel",
+        "kind": "panel",
+        "route_file": "",
+        "feature_file": "frontend/features/testing/components/PlatformControlsPanel.jsx",
+        "api_services": [
+          "frontend/features/authentication/services/platform.service.js"
+        ],
+        "api_calls": [
+          {
+            "service_file": "frontend/features/authentication/services/platform.service.js",
+            "functions": [
+              "platformApi"
+            ],
+            "literal_paths": [
+              "/ai/gioi-han",
+              "/ai/mac-dinh",
+              "/ai/phien-ban",
+              "/ai/truy-xuat",
+              "/bao-mat/chinh-sach-truy-cap-khan-cap",
+              "/bao-mat/chinh-sach-xac-thuc",
+              "/bao-mat/danh-tinh-dich-vu",
+              "/bao-mat/danh-tinh-dich-vu/${id}/xoay-vong",
+              "/bao-mat/gioi-han-tan-suat",
+              "/bao-mat/thu-hoi-khan-cap",
+              "/bao-mat/truy-cap-khan-cap",
+              "/bao-mat/truy-cap-khan-cap/${id}/thu-hoi",
+              "/bi-mat",
+              "/bi-mat/${id}",
+              "/bi-mat/${id}/xoay-vong",
+              "/cau-hinh/${name}",
+              "/cau-hinh/bao-tri",
+              "/luu-tru",
+              "/luu-tru/kiem-tra",
+              "/nhat-ky/xuat",
+              "/tich-hop",
+              "/tich-hop/smtp/kiem-tra",
+              "/tich-hop/suc-khoe",
+              "/van-hanh/bo-nho-dem",
+              "/van-hanh/bo-nho-dem/don-sach",
+              "/van-hanh/dlq",
+              "/van-hanh/dlq/${id}/dua-lai-hang-doi",
+              "/van-hanh/dlq/${id}/loai-bo",
+              "/van-hanh/dung-luong-luu-tru",
+              "/van-hanh/hang-doi",
+              "/van-hanh/phien-ban-van-hanh",
+              "/van-hanh/rag",
+              "/van-hanh/rag/lap-chi-muc-lai"
+            ],
+            "path_methods": [
+              {
+                "path": "/van-hanh/bo-nho-dem",
+                "method": "GET"
+              },
+              {
+                "path": "/bao-mat/gioi-han-tan-suat",
+                "method": "GET"
+              },
+              {
+                "path": "/bi-mat",
+                "method": "GET"
+              },
+              {
+                "path": "/van-hanh/dlq/${id}/dua-lai-hang-doi",
+                "method": "POST"
+              },
+              {
+                "path": "/cau-hinh/bao-tri",
+                "method": "PATCH"
+              },
+              {
+                "path": "/tich-hop",
+                "method": "PATCH"
+              },
+              {
+                "path": "/van-hanh/hang-doi",
+                "method": "GET"
+              },
+              {
+                "path": "/cau-hinh/${name}",
+                "method": "GET"
+              },
+              {
+                "path": "/van-hanh/phien-ban-van-hanh",
+                "method": "GET"
+              },
+              {
+                "path": "/bao-mat/gioi-han-tan-suat",
+                "method": "PATCH"
+              },
+              {
+                "path": "/luu-tru/kiem-tra",
+                "method": "POST"
+              },
+              {
+                "path": "/bi-mat/${id}/xoay-vong",
+                "method": "POST"
+              },
+              {
+                "path": "/ai/mac-dinh",
+                "method": "PATCH"
+              },
+              {
+                "path": "/van-hanh/dlq",
+                "method": "GET"
+              },
+              {
+                "path": "/bao-mat/chinh-sach-truy-cap-khan-cap",
+                "method": "PATCH"
+              },
+              {
+                "path": "/tich-hop",
+                "method": "GET"
+              },
+              {
+                "path": "/van-hanh/rag",
+                "method": "GET"
+              },
+              {
+                "path": "/van-hanh/rag/lap-chi-muc-lai",
+                "method": "POST"
+              },
+              {
+                "path": "/nhat-ky/xuat",
+                "method": "GET"
+              },
+              {
+                "path": "/bao-mat/chinh-sach-xac-thuc",
+                "method": "PATCH"
+              },
+              {
+                "path": "/ai/truy-xuat",
+                "method": "GET"
+              },
+              {
+                "path": "/cau-hinh/${name}",
+                "method": "PATCH"
+              },
+              {
+                "path": "/bao-mat/thu-hoi-khan-cap",
+                "method": "POST"
+              },
+              {
+                "path": "/ai/truy-xuat",
+                "method": "PATCH"
+              },
+              {
+                "path": "/bao-mat/danh-tinh-dich-vu/${id}/xoay-vong",
+                "method": "POST"
+              },
+              {
+                "path": "/ai/phien-ban",
+                "method": "GET"
+              },
+              {
+                "path": "/cau-hinh/bao-tri",
+                "method": "GET"
+              },
+              {
+                "path": "/bao-mat/danh-tinh-dich-vu",
+                "method": "GET"
+              },
+              {
+                "path": "/ai/gioi-han",
+                "method": "GET"
+              },
+              {
+                "path": "/tich-hop/smtp/kiem-tra",
+                "method": "POST"
+              },
+              {
+                "path": "/bi-mat",
+                "method": "POST"
+              },
+              {
+                "path": "/ai/mac-dinh",
+                "method": "GET"
+              },
+              {
+                "path": "/van-hanh/dung-luong-luu-tru",
+                "method": "GET"
+              },
+              {
+                "path": "/luu-tru",
+                "method": "PATCH"
+              },
+              {
+                "path": "/van-hanh/dlq/${id}/loai-bo",
+                "method": "POST"
+              },
+              {
+                "path": "/bao-mat/danh-tinh-dich-vu",
+                "method": "POST"
+              },
+              {
+                "path": "/bao-mat/truy-cap-khan-cap",
+                "method": "POST"
+              },
+              {
+                "path": "/ai/gioi-han",
+                "method": "PATCH"
+              },
+              {
+                "path": "/van-hanh/bo-nho-dem/don-sach",
+                "method": "POST"
+              },
+              {
+                "path": "/bao-mat/truy-cap-khan-cap",
+                "method": "GET"
+              },
+              {
+                "path": "/bao-mat/chinh-sach-xac-thuc",
+                "method": "GET"
+              },
+              {
+                "path": "/luu-tru",
+                "method": "GET"
+              },
+              {
+                "path": "/bao-mat/chinh-sach-truy-cap-khan-cap",
+                "method": "GET"
+              },
+              {
+                "path": "/tich-hop/suc-khoe",
+                "method": "GET"
+              },
+              {
+                "path": "/bi-mat/${id}",
+                "method": "DELETE"
+              },
+              {
+                "path": "/bao-mat/truy-cap-khan-cap/${id}/thu-hoi",
+                "method": "POST"
+              }
+            ]
+          }
+        ],
+        "import_closure": [
+          "frontend/features/testing/components/DataTable.jsx",
+          "frontend/features/testing/components/PlatformControlsPanel.jsx",
+          "frontend/features/testing/components/StructuredValueEditor.jsx",
+          "frontend/features/testing/components/WorkspacePrimitives.jsx",
+          "frontend/features/testing/hooks/useDateTimeOptions.js",
+          "frontend/features/testing/lib/testing.js",
+          "frontend/features/testing/lib/testing.logic.mjs",
+          "frontend/features/testing/routes.js",
+          "frontend/shared/components/layout/PageHeader.jsx",
+          "frontend/shared/components/layout/navigation.js",
+          "frontend/shared/components/layout/navigationAccess.mjs",
+          "frontend/shared/components/navigation/HorizontalScrollCue.jsx",
+          "frontend/shared/components/navigation/LinkTabs.jsx",
+          "frontend/shared/components/ui/Modal.jsx",
+          "frontend/shared/components/ui/MultiSelect.jsx",
+          "frontend/shared/components/ui/Pagination.jsx",
+          "frontend/shared/lib/dateTime.mjs",
+          "frontend/shared/lib/locale.mjs",
+          "frontend/shared/lib/timeZone.mjs"
+        ]
+      },
+      {
+        "name": "PlatformOperationsPanel",
+        "kind": "panel",
+        "route_file": "",
+        "feature_file": "frontend/features/testing/components/PlatformOperationsPanel.jsx",
+        "api_services": [
+          "frontend/features/authentication/services/platform.service.js"
+        ],
+        "api_calls": [
+          {
+            "service_file": "frontend/features/authentication/services/platform.service.js",
+            "functions": [
+              "platformApi"
+            ],
+            "literal_paths": [
+              "/ai/mo-hinh",
+              "/ai/nha-cung-cap",
+              "/ai/nha-cung-cap/${id}",
+              "/ai/nha-cung-cap/${id}/kiem-tra",
+              "/du-an${search ? ",
+              "/du-an/${id}",
+              "/du-an/${id}/han-muc",
+              "/du-an/${id}/trang-thai",
+              "/du-an/${id}/vai-tro-du-an",
+              "/nen-tang/chinh-sach-du-an",
+              "/suc-khoe",
+              "/van-hanh/tac-vu${status ? ",
+              "/van-hanh/tac-vu/${id}/huy",
+              "/van-hanh/tac-vu/${id}/thu-lai"
+            ],
+            "path_methods": [
+              {
+                "path": "/ai/nha-cung-cap/${id}/kiem-tra",
+                "method": "POST"
+              },
+              {
+                "path": "/du-an/${id}",
+                "method": "GET"
+              },
+              {
+                "path": "/nen-tang/chinh-sach-du-an",
+                "method": "PATCH"
+              },
+              {
+                "path": "/du-an/${id}/trang-thai",
+                "method": "PATCH"
+              },
+              {
+                "path": "/ai/nha-cung-cap",
+                "method": "GET"
+              },
+              {
+                "path": "/du-an/${id}/han-muc",
+                "method": "PATCH"
+              },
+              {
+                "path": "/van-hanh/tac-vu/${id}/huy",
+                "method": "POST"
+              },
+              {
+                "path": "/suc-khoe",
+                "method": "GET"
+              },
+              {
+                "path": "/van-hanh/tac-vu${status ? ",
+                "method": "GET"
+              },
+              {
+                "path": "/du-an${search ? ",
+                "method": "GET"
+              },
+              {
+                "path": "/du-an/${id}/vai-tro-du-an",
+                "method": "GET"
+              },
+              {
+                "path": "/du-an/${id}",
+                "method": "DELETE"
+              },
+              {
+                "path": "/ai/nha-cung-cap/${id}",
+                "method": "PATCH"
+              },
+              {
+                "path": "/van-hanh/tac-vu/${id}/thu-lai",
+                "method": "POST"
+              },
+              {
+                "path": "/nen-tang/chinh-sach-du-an",
+                "method": "GET"
+              },
+              {
+                "path": "/ai/mo-hinh",
+                "method": "GET"
+              }
+            ]
+          }
+        ],
+        "import_closure": [
+          "frontend/features/testing/components/DataTable.jsx",
+          "frontend/features/testing/components/PlatformOperationsPanel.jsx",
+          "frontend/features/testing/components/WorkspacePrimitives.jsx",
+          "frontend/features/testing/hooks/useDateTimeOptions.js",
+          "frontend/features/testing/lib/testing.js",
+          "frontend/features/testing/lib/testing.logic.mjs",
+          "frontend/features/testing/routes.js",
+          "frontend/shared/components/layout/PageHeader.jsx",
+          "frontend/shared/components/layout/navigation.js",
+          "frontend/shared/components/layout/navigationAccess.mjs",
+          "frontend/shared/components/navigation/HorizontalScrollCue.jsx",
+          "frontend/shared/components/navigation/LinkTabs.jsx",
+          "frontend/shared/components/ui/MultiSelect.jsx",
+          "frontend/shared/components/ui/Pagination.jsx",
+          "frontend/shared/lib/dateTime.mjs",
+          "frontend/shared/lib/locale.mjs",
+          "frontend/shared/lib/timeZone.mjs"
+        ]
+      },
+      {
+        "name": "PlatformUsersPanel",
+        "kind": "panel",
+        "route_file": "",
+        "feature_file": "frontend/features/testing/components/PlatformUsersPanel.jsx",
+        "api_services": [
+          "frontend/features/authentication/services/platform.service.js"
+        ],
+        "api_calls": [
+          {
+            "service_file": "frontend/features/authentication/services/platform.service.js",
+            "functions": [
+              "platformApi"
+            ],
+            "literal_paths": [
+              "/tai-khoan",
+              "/tai-khoan${search ? ",
+              "/tai-khoan/${id}",
+              "/tai-khoan/${id}/bat-buoc-doi-mat-khau",
+              "/tai-khoan/${id}/gui-lai-xac-minh",
+              "/tai-khoan/${id}/ho-so",
+              "/tai-khoan/${id}/khoa",
+              "/tai-khoan/${id}/kich-hoat",
+              "/tai-khoan/${id}/mo-khoa",
+              "/tai-khoan/${id}/vai-tro-du-an",
+              "/tai-khoan/${id}/vai-tro-he-thong",
+              "/tai-khoan/${id}/vo-hieu-hoa",
+              "/tai-khoan/hang-loat/${operationId}/xac-nhan",
+              "/tai-khoan/hang-loat/xem-truoc"
+            ],
+            "path_methods": [
+              {
+                "path": "/tai-khoan/hang-loat/xem-truoc",
+                "method": "POST"
+              },
+              {
+                "path": "/tai-khoan/${id}/vo-hieu-hoa",
+                "method": "POST"
+              },
+              {
+                "path": "/tai-khoan/${id}/kich-hoat",
+                "method": "POST"
+              },
+              {
+                "path": "/tai-khoan/${id}/bat-buoc-doi-mat-khau",
+                "method": "POST"
+              },
+              {
+                "path": "/tai-khoan/${id}/vai-tro-he-thong",
+                "method": "PATCH"
+              },
+              {
+                "path": "/tai-khoan/${id}/khoa",
+                "method": "POST"
+              },
+              {
+                "path": "/tai-khoan/${id}/gui-lai-xac-minh",
+                "method": "POST"
+              },
+              {
+                "path": "/tai-khoan/${id}",
+                "method": "DELETE"
+              },
+              {
+                "path": "/tai-khoan/${id}/ho-so",
+                "method": "PATCH"
+              },
+              {
+                "path": "/tai-khoan/hang-loat/${operationId}/xac-nhan",
+                "method": "POST"
+              },
+              {
+                "path": "/tai-khoan/${id}/mo-khoa",
+                "method": "POST"
+              },
+              {
+                "path": "/tai-khoan${search ? ",
+                "method": "GET"
+              },
+              {
+                "path": "/tai-khoan",
+                "method": "POST"
+              },
+              {
+                "path": "/tai-khoan/${id}/vai-tro-du-an",
+                "method": "GET"
+              },
+              {
+                "path": "/tai-khoan/${id}",
+                "method": "GET"
+              }
+            ]
+          }
+        ],
+        "import_closure": [
+          "frontend/features/testing/components/DataTable.jsx",
+          "frontend/features/testing/components/PlatformUsersPanel.jsx",
+          "frontend/features/testing/components/WorkspacePrimitives.jsx",
+          "frontend/features/testing/lib/testing.js",
+          "frontend/features/testing/lib/testing.logic.mjs",
+          "frontend/features/testing/routes.js",
+          "frontend/shared/components/layout/PageHeader.jsx",
+          "frontend/shared/components/layout/navigation.js",
+          "frontend/shared/components/layout/navigationAccess.mjs",
+          "frontend/shared/components/navigation/HorizontalScrollCue.jsx",
+          "frontend/shared/components/navigation/LinkTabs.jsx",
+          "frontend/shared/components/ui/Modal.jsx",
+          "frontend/shared/components/ui/MultiSelect.jsx",
+          "frontend/shared/components/ui/Pagination.jsx",
+          "frontend/shared/components/ui/SearchField.jsx",
+          "frontend/shared/lib/dateTime.mjs",
+          "frontend/shared/lib/locale.mjs",
+          "frontend/shared/lib/timeZone.mjs"
+        ]
+      },
+      {
         "name": "LoginPage",
+        "kind": "page",
         "route_file": "frontend/app/(auth)/dang-nhap/page.jsx",
-        "feature_file": "frontend/features/authentication/pages/LoginPage"
+        "feature_file": "frontend/features/authentication/pages/LoginPage",
+        "api_services": [
+          "frontend/features/authentication/services/session.service.js"
+        ],
+        "api_calls": [
+          {
+            "service_file": "frontend/features/authentication/services/session.service.js",
+            "functions": [
+              "login"
+            ],
+            "literal_paths": [
+              "${API_URL}/xac-thuc/dang-nhap"
+            ],
+            "path_methods": [
+              {
+                "path": "${API_URL}/xac-thuc/dang-nhap",
+                "method": "POST"
+              }
+            ]
+          }
+        ],
+        "import_closure": [
+          "frontend/features/authentication/components/AuthField.jsx",
+          "frontend/features/authentication/components/AuthFrame.jsx",
+          "frontend/features/authentication/components/AuthSubmitButton.jsx",
+          "frontend/features/authentication/components/PasswordField.jsx",
+          "frontend/features/authentication/hooks/useLogin.js",
+          "frontend/features/authentication/lib/authReturnPath.mjs",
+          "frontend/features/authentication/pages/LoginPage.jsx",
+          "frontend/shared/components/common/InlineState.jsx",
+          "frontend/shared/components/ui/Button.jsx"
+        ]
       },
       {
         "name": "ResetPasswordPage",
+        "kind": "page",
         "route_file": "frontend/app/(auth)/dat-lai-mat-khau/page.jsx",
-        "feature_file": "frontend/features/authentication/pages/ResetPasswordPage"
+        "feature_file": "frontend/features/authentication/pages/ResetPasswordPage",
+        "api_services": [
+          "frontend/features/authentication/services/session.service.js"
+        ],
+        "api_calls": [
+          {
+            "service_file": "frontend/features/authentication/services/session.service.js",
+            "functions": [
+              "forgotPasswordAPI",
+              "resetPasswordAPI",
+              "verifyCodeAPI"
+            ],
+            "literal_paths": [
+              "${API_URL}/xac-thuc/dat-lai-mat-khau",
+              "${API_URL}/xac-thuc/quen-mat-khau",
+              "${API_URL}/xac-thuc/xac-nhan-ma"
+            ],
+            "path_methods": [
+              {
+                "path": "${API_URL}/xac-thuc/quen-mat-khau",
+                "method": "POST"
+              },
+              {
+                "path": "${API_URL}/xac-thuc/dat-lai-mat-khau",
+                "method": "POST"
+              },
+              {
+                "path": "${API_URL}/xac-thuc/xac-nhan-ma",
+                "method": "POST"
+              }
+            ]
+          }
+        ],
+        "import_closure": [
+          "frontend/features/authentication/components/AuthField.jsx",
+          "frontend/features/authentication/components/AuthFlowLinks.jsx",
+          "frontend/features/authentication/components/AuthFrame.jsx",
+          "frontend/features/authentication/components/AuthLoading.jsx",
+          "frontend/features/authentication/components/AuthSubmitButton.jsx",
+          "frontend/features/authentication/components/PasswordField.jsx",
+          "frontend/features/authentication/hooks/usePasswordRecovery.js",
+          "frontend/features/authentication/pages/ResetPasswordPage.jsx",
+          "frontend/shared/components/common/InlineState.jsx",
+          "frontend/shared/components/ui/Button.jsx"
+        ]
       },
       {
         "name": "ForgotPasswordPage",
+        "kind": "page",
         "route_file": "frontend/app/(auth)/quen-mat-khau/page.jsx",
-        "feature_file": "frontend/features/authentication/pages/ForgotPasswordPage"
+        "feature_file": "frontend/features/authentication/pages/ForgotPasswordPage",
+        "api_services": [
+          "frontend/features/authentication/services/session.service.js"
+        ],
+        "api_calls": [
+          {
+            "service_file": "frontend/features/authentication/services/session.service.js",
+            "functions": [
+              "forgotPasswordAPI",
+              "resetPasswordAPI",
+              "verifyCodeAPI"
+            ],
+            "literal_paths": [
+              "${API_URL}/xac-thuc/dat-lai-mat-khau",
+              "${API_URL}/xac-thuc/quen-mat-khau",
+              "${API_URL}/xac-thuc/xac-nhan-ma"
+            ],
+            "path_methods": [
+              {
+                "path": "${API_URL}/xac-thuc/quen-mat-khau",
+                "method": "POST"
+              },
+              {
+                "path": "${API_URL}/xac-thuc/dat-lai-mat-khau",
+                "method": "POST"
+              },
+              {
+                "path": "${API_URL}/xac-thuc/xac-nhan-ma",
+                "method": "POST"
+              }
+            ]
+          }
+        ],
+        "import_closure": [
+          "frontend/features/authentication/components/AuthField.jsx",
+          "frontend/features/authentication/components/AuthFlowLinks.jsx",
+          "frontend/features/authentication/components/AuthFrame.jsx",
+          "frontend/features/authentication/components/AuthSubmitButton.jsx",
+          "frontend/features/authentication/hooks/usePasswordRecovery.js",
+          "frontend/features/authentication/pages/ForgotPasswordPage.jsx",
+          "frontend/shared/components/common/InlineState.jsx",
+          "frontend/shared/components/ui/Button.jsx"
+        ]
       },
       {
         "name": "EmailVerificationPage",
+        "kind": "page",
         "route_file": "frontend/app/(auth)/xac-minh-thu-dien-tu/page.jsx",
-        "feature_file": "frontend/features/authentication/pages/EmailVerificationPage"
+        "feature_file": "frontend/features/authentication/pages/EmailVerificationPage",
+        "api_services": [
+          "frontend/features/authentication/services/session.service.js"
+        ],
+        "api_calls": [
+          {
+            "service_file": "frontend/features/authentication/services/session.service.js",
+            "functions": [
+              "verifyEmailAPI"
+            ],
+            "literal_paths": [
+              "${API_URL}/xac-thuc/xac-minh-thu-dien-tu"
+            ],
+            "path_methods": [
+              {
+                "path": "${API_URL}/xac-thuc/xac-minh-thu-dien-tu",
+                "method": "POST"
+              }
+            ]
+          }
+        ],
+        "import_closure": [
+          "frontend/features/authentication/components/AuthField.jsx",
+          "frontend/features/authentication/components/AuthFlowLinks.jsx",
+          "frontend/features/authentication/components/AuthFrame.jsx",
+          "frontend/features/authentication/components/AuthLoading.jsx",
+          "frontend/features/authentication/components/AuthSubmitButton.jsx",
+          "frontend/features/authentication/hooks/useEmailVerification.js",
+          "frontend/features/authentication/pages/EmailVerificationPage.jsx",
+          "frontend/features/authentication/services/session.service.js",
+          "frontend/shared/components/common/InlineState.jsx",
+          "frontend/shared/components/ui/Button.jsx",
+          "frontend/shared/services/api-client.js"
+        ]
       },
       {
         "name": "VerificationPage",
+        "kind": "page",
         "route_file": "frontend/app/(auth)/xac-thuc/page.jsx",
-        "feature_file": "frontend/features/authentication/pages/VerificationPage"
+        "feature_file": "frontend/features/authentication/pages/VerificationPage",
+        "api_services": [
+          "frontend/features/authentication/services/session.service.js"
+        ],
+        "api_calls": [
+          {
+            "service_file": "frontend/features/authentication/services/session.service.js",
+            "functions": [
+              "forgotPasswordAPI",
+              "resetPasswordAPI",
+              "verifyCodeAPI"
+            ],
+            "literal_paths": [
+              "${API_URL}/xac-thuc/dat-lai-mat-khau",
+              "${API_URL}/xac-thuc/quen-mat-khau",
+              "${API_URL}/xac-thuc/xac-nhan-ma"
+            ],
+            "path_methods": [
+              {
+                "path": "${API_URL}/xac-thuc/quen-mat-khau",
+                "method": "POST"
+              },
+              {
+                "path": "${API_URL}/xac-thuc/dat-lai-mat-khau",
+                "method": "POST"
+              },
+              {
+                "path": "${API_URL}/xac-thuc/xac-nhan-ma",
+                "method": "POST"
+              }
+            ]
+          }
+        ],
+        "import_closure": [
+          "frontend/features/authentication/components/AuthField.jsx",
+          "frontend/features/authentication/components/AuthFlowLinks.jsx",
+          "frontend/features/authentication/components/AuthFrame.jsx",
+          "frontend/features/authentication/components/AuthLoading.jsx",
+          "frontend/features/authentication/components/AuthSubmitButton.jsx",
+          "frontend/features/authentication/hooks/usePasswordRecovery.js",
+          "frontend/features/authentication/pages/VerificationPage.jsx",
+          "frontend/shared/components/common/InlineState.jsx",
+          "frontend/shared/components/ui/Button.jsx"
+        ]
       },
       {
         "name": "AccountPage",
+        "kind": "page",
         "route_file": "frontend/app/(main)/cai-dat/page.jsx",
-        "feature_file": "frontend/features/authentication/pages/AccountPage"
+        "feature_file": "frontend/features/authentication/pages/AccountPage",
+        "api_services": [
+          "frontend/features/authentication/services/session.service.js"
+        ],
+        "api_calls": [
+          {
+            "service_file": "frontend/features/authentication/services/session.service.js",
+            "functions": [
+              "changeMyPassword",
+              "updateMyProfile"
+            ],
+            "literal_paths": [
+              "/xac-thuc/ca-nhan",
+              "/xac-thuc/doi-mat-khau"
+            ],
+            "path_methods": [
+              {
+                "path": "/xac-thuc/doi-mat-khau",
+                "method": "POST"
+              },
+              {
+                "path": "/xac-thuc/ca-nhan",
+                "method": "PATCH"
+              }
+            ]
+          }
+        ],
+        "import_closure": [
+          "frontend/features/authentication/components/AuthField.jsx",
+          "frontend/features/authentication/components/PasswordField.jsx",
+          "frontend/features/authentication/pages/AccountPage.jsx",
+          "frontend/features/authentication/services/session.service.js",
+          "frontend/shared/lib/locale.mjs",
+          "frontend/shared/lib/timeZone.mjs",
+          "frontend/shared/services/api-client.js"
+        ]
       }
     ],
     "service_functions": [
@@ -9892,21 +10618,35 @@
       "source": "sessions",
       "field": "user_id",
       "target": "auth_credentials",
-      "at": "backend/authentication/src/services/session.py:96",
+      "at": "backend/authentication/src/repositories/identity.py:272",
+      "evidence": [
+        "backend/authentication/src/repositories/identity.py:272",
+        "backend/authentication/src/repositories/identity.py:307",
+        "backend/authentication/src/repositories/identity.py:317",
+        "backend/authentication/src/repositories/identity.py:355",
+        "backend/authentication/src/repositories/identity.py:369"
+      ],
       "inferred": true
     },
     {
       "source": "email_verification_tokens",
       "field": "user_id",
       "target": "auth_credentials",
-      "at": "backend/authentication/src/services/session.py:96",
+      "at": "backend/authentication/src/repositories/identity.py:432",
+      "evidence": [
+        "backend/authentication/src/repositories/identity.py:432",
+        "backend/authentication/src/services/session.py:94"
+      ],
       "inferred": true
     },
     {
       "source": "admin_operations",
       "field": "user_ids",
       "target": "auth_credentials",
-      "at": "backend/authentication/src/services/platform_account_controls.py:84",
+      "at": "backend/authentication/src/services/platform_account_controls.py:80",
+      "evidence": [
+        "backend/authentication/src/services/platform_account_controls.py:80"
+      ],
       "inferred": true
     }
   ],

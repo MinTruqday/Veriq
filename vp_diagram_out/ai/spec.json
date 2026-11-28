@@ -1,379 +1,6 @@
 {
   "service": "ai",
   "collections": {
-    "ai_run_source_facts": {
-      "fields": {
-        "_id": {
-          "type": {
-            "raw": "inferred from key",
-            "type": "string",
-            "nullable": true
-          },
-          "evidence": [
-            "backend/ai/src/repositories/ai_runs.py:467"
-          ]
-        },
-        "ai_run_id": {
-          "type": {
-            "raw": "inferred from key",
-            "type": "string",
-            "nullable": true
-          },
-          "evidence": [
-            "backend/ai/src/repositories/ai_runs.py:467",
-            "backend/ai/src/repositories/ai_runs.py:494"
-          ]
-        }
-      },
-      "sources": [
-        "backend/ai/src/core/infrastructure/database.py:?",
-        "backend/ai/src/repositories/ai_runs.py:455",
-        "backend/ai/src/repositories/ai_runs.py:466",
-        "backend/ai/src/repositories/ai_runs.py:493"
-      ],
-      "indexes": []
-    },
-    "document_ingestion_page_checkpoints": {
-      "fields": {
-        "_id": {
-          "type": {
-            "raw": "inferred from key",
-            "type": "string",
-            "nullable": false
-          },
-          "evidence": [
-            "backend/ai/src/repositories/document_ingestion_checkpoint.py:89"
-          ]
-        },
-        "created_at": {
-          "type": {
-            "raw": "datetime",
-            "type": "date",
-            "nullable": true
-          },
-          "evidence": [
-            "backend/ai/src/schemas/document_ingestion_checkpoint.py:24"
-          ]
-        },
-        "document_id": {
-          "type": {
-            "raw": "str",
-            "type": "string",
-            "nullable": true
-          },
-          "evidence": [
-            "backend/ai/src/schemas/document_ingestion_checkpoint.py:9"
-          ]
-        },
-        "expires_at": {
-          "type": {
-            "raw": "datetime",
-            "type": "date",
-            "nullable": true
-          },
-          "evidence": [
-            "backend/ai/src/schemas/document_ingestion_checkpoint.py:25"
-          ]
-        },
-        "extraction_warnings": {
-          "type": {
-            "raw": "list[dict]",
-            "type": "json",
-            "nullable": true
-          },
-          "evidence": [
-            "backend/ai/src/schemas/document_ingestion_checkpoint.py:22"
-          ]
-        },
-        "markdown": {
-          "type": {
-            "raw": "str",
-            "type": "string",
-            "nullable": true
-          },
-          "evidence": [
-            "backend/ai/src/schemas/document_ingestion_checkpoint.py:19"
-          ]
-        },
-        "ocr_enabled": {
-          "type": {
-            "raw": "bool",
-            "type": "Boolean",
-            "nullable": true
-          },
-          "evidence": [
-            "backend/ai/src/schemas/document_ingestion_checkpoint.py:23"
-          ]
-        },
-        "ocr_language": {
-          "type": {
-            "raw": "str",
-            "type": "string",
-            "nullable": true
-          },
-          "evidence": [
-            "backend/ai/src/schemas/document_ingestion_checkpoint.py:16"
-          ]
-        },
-        "owner_id": {
-          "type": {
-            "raw": "str",
-            "type": "string",
-            "nullable": true
-          },
-          "evidence": [
-            "backend/ai/src/schemas/document_ingestion_checkpoint.py:11"
-          ]
-        },
-        "page_count": {
-          "type": {
-            "raw": "int",
-            "type": "int",
-            "nullable": true
-          },
-          "evidence": [
-            "backend/ai/src/schemas/document_ingestion_checkpoint.py:18"
-          ]
-        },
-        "page_no": {
-          "type": {
-            "raw": "int",
-            "type": "int",
-            "nullable": true
-          },
-          "evidence": [
-            "backend/ai/src/schemas/document_ingestion_checkpoint.py:17"
-          ]
-        },
-        "parser_contract_version": {
-          "type": {
-            "raw": "int",
-            "type": "int",
-            "nullable": true
-          },
-          "evidence": [
-            "backend/ai/src/schemas/document_ingestion_checkpoint.py:15"
-          ]
-        },
-        "parser_name": {
-          "type": {
-            "raw": "str",
-            "type": "string",
-            "nullable": true
-          },
-          "evidence": [
-            "backend/ai/src/schemas/document_ingestion_checkpoint.py:13"
-          ]
-        },
-        "parser_version": {
-          "type": {
-            "raw": "str",
-            "type": "string",
-            "nullable": true
-          },
-          "evidence": [
-            "backend/ai/src/schemas/document_ingestion_checkpoint.py:14"
-          ]
-        },
-        "project_id": {
-          "type": {
-            "raw": "str",
-            "type": "string",
-            "nullable": true
-          },
-          "evidence": [
-            "backend/ai/src/schemas/document_ingestion_checkpoint.py:10"
-          ]
-        },
-        "source_hash": {
-          "type": {
-            "raw": "str",
-            "type": "string",
-            "nullable": true
-          },
-          "evidence": [
-            "backend/ai/src/schemas/document_ingestion_checkpoint.py:12"
-          ]
-        },
-        "structure": {
-          "type": {
-            "raw": "list[dict]",
-            "type": "json",
-            "nullable": true
-          },
-          "evidence": [
-            "backend/ai/src/schemas/document_ingestion_checkpoint.py:20"
-          ]
-        },
-        "unprocessed_blocks": {
-          "type": {
-            "raw": "list[dict]",
-            "type": "json",
-            "nullable": true
-          },
-          "evidence": [
-            "backend/ai/src/schemas/document_ingestion_checkpoint.py:21"
-          ]
-        }
-      },
-      "sources": [
-        "backend/ai/src/core/infrastructure/database.py:175",
-        "backend/ai/src/core/infrastructure/database.py:?",
-        "backend/ai/src/repositories/document_ingestion_checkpoint.py:113",
-        "backend/ai/src/repositories/document_ingestion_checkpoint.py:13",
-        "backend/ai/src/repositories/document_ingestion_checkpoint.py:64",
-        "backend/ai/src/repositories/document_ingestion_checkpoint.py:88",
-        "backend/ai/src/repositories/document_ingestion_checkpoint.py:99"
-      ],
-      "indexes": []
-    },
-    "long_term_memory": {
-      "fields": {
-        "_id": {
-          "type": {
-            "raw": "inferred from key",
-            "type": "string",
-            "nullable": false
-          },
-          "evidence": [
-            "backend/ai/src/memory/long_term.py:23"
-          ]
-        },
-        "created_at": {
-          "type": {
-            "raw": "inferred from key",
-            "type": "date",
-            "nullable": false
-          },
-          "evidence": [
-            "backend/ai/src/memory/long_term.py:23"
-          ]
-        },
-        "evidence_refs": {
-          "type": {
-            "raw": "inferred from key",
-            "type": "json",
-            "nullable": false
-          },
-          "evidence": [
-            "backend/ai/src/memory/long_term.py:23"
-          ]
-        },
-        "intent": {
-          "type": {
-            "raw": "inferred from value/key",
-            "type": "string",
-            "nullable": false
-          },
-          "evidence": [
-            "backend/ai/src/memory/long_term.py:23"
-          ]
-        },
-        "objective": {
-          "type": {
-            "raw": "inferred from value/key",
-            "type": "string",
-            "nullable": false
-          },
-          "evidence": [
-            "backend/ai/src/memory/long_term.py:23"
-          ]
-        },
-        "owner_id": {
-          "type": {
-            "raw": "inferred from key",
-            "type": "string",
-            "nullable": false
-          },
-          "evidence": [
-            "backend/ai/src/memory/long_term.py:23",
-            "backend/ai/src/repositories/memory.py:12"
-          ]
-        },
-        "project_id": {
-          "type": {
-            "raw": "inferred from key",
-            "type": "string",
-            "nullable": false
-          },
-          "evidence": [
-            "backend/ai/src/memory/long_term.py:23",
-            "backend/ai/src/repositories/memory.py:12"
-          ]
-        },
-        "proposal": {
-          "type": {
-            "raw": "inferred from key",
-            "type": "json",
-            "nullable": false
-          },
-          "evidence": [
-            "backend/ai/src/memory/long_term.py:23"
-          ]
-        },
-        "run_id": {
-          "type": {
-            "raw": "inferred from key",
-            "type": "string",
-            "nullable": false
-          },
-          "evidence": [
-            "backend/ai/src/memory/long_term.py:23",
-            "backend/ai/src/repositories/memory.py:21"
-          ]
-        },
-        "trusted": {
-          "type": {
-            "raw": "inferred from key",
-            "type": "Boolean",
-            "nullable": false
-          },
-          "evidence": [
-            "backend/ai/src/memory/long_term.py:23",
-            "backend/ai/src/repositories/memory.py:12"
-          ]
-        }
-      },
-      "sources": [
-        "backend/ai/src/core/infrastructure/database.py:?",
-        "backend/ai/src/memory/long_term.py:10",
-        "backend/ai/src/memory/long_term.py:35",
-        "backend/ai/src/repositories/memory.py:11",
-        "backend/ai/src/repositories/memory.py:20"
-      ],
-      "indexes": []
-    },
-    "ai_run_derivation_receipts": {
-      "fields": {
-        "_id": {
-          "type": {
-            "raw": "inferred from key",
-            "type": "string",
-            "nullable": false
-          },
-          "evidence": [
-            "backend/ai/src/repositories/ai_runs.py:479"
-          ]
-        },
-        "ai_run_id": {
-          "type": {
-            "raw": "inferred from key",
-            "type": "string",
-            "nullable": false
-          },
-          "evidence": [
-            "backend/ai/src/repositories/ai_runs.py:478",
-            "backend/ai/src/repositories/ai_runs.py:485"
-          ]
-        }
-      },
-      "sources": [
-        "backend/ai/src/core/infrastructure/database.py:?",
-        "backend/ai/src/repositories/ai_runs.py:477",
-        "backend/ai/src/repositories/ai_runs.py:484"
-      ],
-      "indexes": []
-    },
     "ai_run_checkpoints": {
       "fields": {
         "ai_run_id": {
@@ -475,29 +102,6 @@
       "sources": [
         "backend/ai/src/core/infrastructure/database.py:?",
         "backend/ai/src/services/agent_metrics.py:153"
-      ],
-      "indexes": []
-    },
-    "ai_sessions": {
-      "fields": {},
-      "sources": [
-        "backend/ai/src/core/infrastructure/database.py:?"
-      ],
-      "indexes": []
-    },
-    "retrieval_audit": {
-      "fields": {},
-      "sources": [
-        "backend/ai/src/core/infrastructure/database.py:?",
-        "backend/ai/src/repositories/retrieval_audit.py:6",
-        "backend/ai/src/repositories/retrieval_audit.py:9"
-      ],
-      "indexes": []
-    },
-    "ai_messages": {
-      "fields": {},
-      "sources": [
-        "backend/ai/src/core/infrastructure/database.py:?"
       ],
       "indexes": []
     },
@@ -659,7 +263,123 @@
       ],
       "indexes": []
     },
-    "ai_workspaces": {
+    "long_term_memory": {
+      "fields": {
+        "_id": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "string",
+            "nullable": false
+          },
+          "evidence": [
+            "backend/ai/src/memory/long_term.py:23"
+          ]
+        },
+        "created_at": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "date",
+            "nullable": false
+          },
+          "evidence": [
+            "backend/ai/src/memory/long_term.py:23"
+          ]
+        },
+        "evidence_refs": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "json",
+            "nullable": false
+          },
+          "evidence": [
+            "backend/ai/src/memory/long_term.py:23"
+          ]
+        },
+        "intent": {
+          "type": {
+            "raw": "inferred from value/key",
+            "type": "string",
+            "nullable": false
+          },
+          "evidence": [
+            "backend/ai/src/memory/long_term.py:23"
+          ]
+        },
+        "objective": {
+          "type": {
+            "raw": "inferred from value/key",
+            "type": "string",
+            "nullable": false
+          },
+          "evidence": [
+            "backend/ai/src/memory/long_term.py:23"
+          ]
+        },
+        "owner_id": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "string",
+            "nullable": false
+          },
+          "evidence": [
+            "backend/ai/src/memory/long_term.py:23",
+            "backend/ai/src/repositories/memory.py:12"
+          ]
+        },
+        "project_id": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "string",
+            "nullable": false
+          },
+          "evidence": [
+            "backend/ai/src/memory/long_term.py:23",
+            "backend/ai/src/repositories/memory.py:12"
+          ]
+        },
+        "proposal": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "json",
+            "nullable": false
+          },
+          "evidence": [
+            "backend/ai/src/memory/long_term.py:23"
+          ]
+        },
+        "run_id": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "string",
+            "nullable": false
+          },
+          "evidence": [
+            "backend/ai/src/memory/long_term.py:23",
+            "backend/ai/src/repositories/memory.py:21"
+          ]
+        },
+        "trusted": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "Boolean",
+            "nullable": false
+          },
+          "evidence": [
+            "backend/ai/src/memory/long_term.py:23",
+            "backend/ai/src/repositories/memory.py:12"
+          ]
+        }
+      },
+      "sources": [
+        "backend/ai/src/core/infrastructure/database.py:?",
+        "backend/ai/src/memory/long_term.py:10",
+        "backend/ai/src/memory/long_term.py:35",
+        "backend/ai/src/repositories/memory.py:11",
+        "backend/ai/src/repositories/memory.py:20"
+      ],
+      "indexes": []
+    },
+    "ai_sessions": {
       "fields": {},
       "sources": [
         "backend/ai/src/core/infrastructure/database.py:?"
@@ -1004,6 +724,286 @@
         "backend/ai/src/repositories/ai_runs.py:64",
         "backend/ai/src/repositories/ai_runs.py:75",
         "backend/ai/src/repositories/ai_runs.py:99"
+      ],
+      "indexes": []
+    },
+    "retrieval_audit": {
+      "fields": {},
+      "sources": [
+        "backend/ai/src/core/infrastructure/database.py:?",
+        "backend/ai/src/repositories/retrieval_audit.py:6",
+        "backend/ai/src/repositories/retrieval_audit.py:9"
+      ],
+      "indexes": []
+    },
+    "ai_messages": {
+      "fields": {},
+      "sources": [
+        "backend/ai/src/core/infrastructure/database.py:?"
+      ],
+      "indexes": []
+    },
+    "document_ingestion_page_checkpoints": {
+      "fields": {
+        "_id": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "string",
+            "nullable": false
+          },
+          "evidence": [
+            "backend/ai/src/repositories/document_ingestion_checkpoint.py:89"
+          ]
+        },
+        "created_at": {
+          "type": {
+            "raw": "datetime",
+            "type": "date",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/ai/src/schemas/document_ingestion_checkpoint.py:24"
+          ]
+        },
+        "document_id": {
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/ai/src/schemas/document_ingestion_checkpoint.py:9"
+          ]
+        },
+        "expires_at": {
+          "type": {
+            "raw": "datetime",
+            "type": "date",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/ai/src/schemas/document_ingestion_checkpoint.py:25"
+          ]
+        },
+        "extraction_warnings": {
+          "type": {
+            "raw": "list[dict]",
+            "type": "json",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/ai/src/schemas/document_ingestion_checkpoint.py:22"
+          ]
+        },
+        "markdown": {
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/ai/src/schemas/document_ingestion_checkpoint.py:19"
+          ]
+        },
+        "ocr_enabled": {
+          "type": {
+            "raw": "bool",
+            "type": "Boolean",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/ai/src/schemas/document_ingestion_checkpoint.py:23"
+          ]
+        },
+        "ocr_language": {
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/ai/src/schemas/document_ingestion_checkpoint.py:16"
+          ]
+        },
+        "owner_id": {
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/ai/src/schemas/document_ingestion_checkpoint.py:11"
+          ]
+        },
+        "page_count": {
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/ai/src/schemas/document_ingestion_checkpoint.py:18"
+          ]
+        },
+        "page_no": {
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/ai/src/schemas/document_ingestion_checkpoint.py:17"
+          ]
+        },
+        "parser_contract_version": {
+          "type": {
+            "raw": "int",
+            "type": "int",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/ai/src/schemas/document_ingestion_checkpoint.py:15"
+          ]
+        },
+        "parser_name": {
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/ai/src/schemas/document_ingestion_checkpoint.py:13"
+          ]
+        },
+        "parser_version": {
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/ai/src/schemas/document_ingestion_checkpoint.py:14"
+          ]
+        },
+        "project_id": {
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/ai/src/schemas/document_ingestion_checkpoint.py:10"
+          ]
+        },
+        "source_hash": {
+          "type": {
+            "raw": "str",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/ai/src/schemas/document_ingestion_checkpoint.py:12"
+          ]
+        },
+        "structure": {
+          "type": {
+            "raw": "list[dict]",
+            "type": "json",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/ai/src/schemas/document_ingestion_checkpoint.py:20"
+          ]
+        },
+        "unprocessed_blocks": {
+          "type": {
+            "raw": "list[dict]",
+            "type": "json",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/ai/src/schemas/document_ingestion_checkpoint.py:21"
+          ]
+        }
+      },
+      "sources": [
+        "backend/ai/src/core/infrastructure/database.py:175",
+        "backend/ai/src/core/infrastructure/database.py:?",
+        "backend/ai/src/repositories/document_ingestion_checkpoint.py:113",
+        "backend/ai/src/repositories/document_ingestion_checkpoint.py:13",
+        "backend/ai/src/repositories/document_ingestion_checkpoint.py:64",
+        "backend/ai/src/repositories/document_ingestion_checkpoint.py:88",
+        "backend/ai/src/repositories/document_ingestion_checkpoint.py:99"
+      ],
+      "indexes": []
+    },
+    "ai_run_derivation_receipts": {
+      "fields": {
+        "_id": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "string",
+            "nullable": false
+          },
+          "evidence": [
+            "backend/ai/src/repositories/ai_runs.py:479"
+          ]
+        },
+        "ai_run_id": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "string",
+            "nullable": false
+          },
+          "evidence": [
+            "backend/ai/src/repositories/ai_runs.py:478",
+            "backend/ai/src/repositories/ai_runs.py:485"
+          ]
+        }
+      },
+      "sources": [
+        "backend/ai/src/core/infrastructure/database.py:?",
+        "backend/ai/src/repositories/ai_runs.py:477",
+        "backend/ai/src/repositories/ai_runs.py:484"
+      ],
+      "indexes": []
+    },
+    "ai_workspaces": {
+      "fields": {},
+      "sources": [
+        "backend/ai/src/core/infrastructure/database.py:?"
+      ],
+      "indexes": []
+    },
+    "ai_run_source_facts": {
+      "fields": {
+        "_id": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/ai/src/repositories/ai_runs.py:467"
+          ]
+        },
+        "ai_run_id": {
+          "type": {
+            "raw": "inferred from key",
+            "type": "string",
+            "nullable": true
+          },
+          "evidence": [
+            "backend/ai/src/repositories/ai_runs.py:467",
+            "backend/ai/src/repositories/ai_runs.py:494"
+          ]
+        }
+      },
+      "sources": [
+        "backend/ai/src/core/infrastructure/database.py:?",
+        "backend/ai/src/repositories/ai_runs.py:455",
+        "backend/ai/src/repositories/ai_runs.py:466",
+        "backend/ai/src/repositories/ai_runs.py:493"
       ],
       "indexes": []
     }
@@ -16691,31 +16691,45 @@
   },
   "references": [
     {
-      "source": "ai_run_source_facts",
-      "field": "ai_run_id",
-      "target": "ai_runs",
-      "at": "backend/ai/src/tools/testing_api.py:44",
-      "inferred": true
-    },
-    {
-      "source": "ai_run_derivation_receipts",
-      "field": "ai_run_id",
-      "target": "ai_runs",
-      "at": "backend/ai/src/tools/testing_api.py:44",
-      "inferred": true
-    },
-    {
       "source": "ai_run_checkpoints",
       "field": "ai_run_id",
       "target": "ai_runs",
-      "at": "backend/ai/src/tools/testing_api.py:44",
+      "at": "backend/ai/src/schemas/ai_runs.py:189",
+      "evidence": [
+        "backend/ai/src/schemas/ai_runs.py:189"
+      ],
       "inferred": true
     },
     {
       "source": "ai_runs",
       "field": "ai_run_id",
       "target": "ai_runs",
-      "at": "backend/ai/src/tools/testing_api.py:44",
+      "at": "backend/ai/src/schemas/ai_runs.py:261",
+      "evidence": [
+        "backend/ai/src/schemas/ai_runs.py:261"
+      ],
+      "inferred": true
+    },
+    {
+      "source": "ai_run_derivation_receipts",
+      "field": "ai_run_id",
+      "target": "ai_runs",
+      "at": "backend/ai/src/repositories/ai_runs.py:478",
+      "evidence": [
+        "backend/ai/src/repositories/ai_runs.py:478",
+        "backend/ai/src/repositories/ai_runs.py:485"
+      ],
+      "inferred": true
+    },
+    {
+      "source": "ai_run_source_facts",
+      "field": "ai_run_id",
+      "target": "ai_runs",
+      "at": "backend/ai/src/repositories/ai_runs.py:467",
+      "evidence": [
+        "backend/ai/src/repositories/ai_runs.py:467",
+        "backend/ai/src/repositories/ai_runs.py:494"
+      ],
       "inferred": true
     }
   ],
@@ -16727,27 +16741,15 @@
   ],
   "external_references": [
     {
-      "source": "document_ingestion_page_checkpoints",
-      "field": "document_id",
-      "target_service": "content",
-      "target_concept": "Document",
-      "at": "backend/ai/src/tools/requirement_document_workflow.py:382",
-      "inferred": true
-    },
-    {
-      "source": "document_ingestion_page_checkpoints",
-      "field": "project_id",
-      "target_service": "testing",
-      "target_concept": "Project",
-      "at": "backend/ai/src/tools/testing.py:58",
-      "inferred": true
-    },
-    {
       "source": "long_term_memory",
       "field": "project_id",
       "target_service": "testing",
       "target_concept": "Project",
-      "at": "backend/ai/src/tools/testing.py:58",
+      "at": "backend/ai/src/memory/long_term.py:23",
+      "evidence": [
+        "backend/ai/src/memory/long_term.py:23",
+        "backend/ai/src/repositories/memory.py:12"
+      ],
       "inferred": true
     },
     {
@@ -16755,7 +16757,32 @@
       "field": "project_id",
       "target_service": "testing",
       "target_concept": "Project",
-      "at": "backend/ai/src/tools/testing.py:58",
+      "at": "backend/ai/src/schemas/ai_runs.py:262",
+      "evidence": [
+        "backend/ai/src/schemas/ai_runs.py:262"
+      ],
+      "inferred": true
+    },
+    {
+      "source": "document_ingestion_page_checkpoints",
+      "field": "document_id",
+      "target_service": "content",
+      "target_concept": "Document",
+      "at": "backend/ai/src/schemas/document_ingestion_checkpoint.py:9",
+      "evidence": [
+        "backend/ai/src/schemas/document_ingestion_checkpoint.py:9"
+      ],
+      "inferred": true
+    },
+    {
+      "source": "document_ingestion_page_checkpoints",
+      "field": "project_id",
+      "target_service": "testing",
+      "target_concept": "Project",
+      "at": "backend/ai/src/schemas/document_ingestion_checkpoint.py:10",
+      "evidence": [
+        "backend/ai/src/schemas/document_ingestion_checkpoint.py:10"
+      ],
       "inferred": true
     }
   ]

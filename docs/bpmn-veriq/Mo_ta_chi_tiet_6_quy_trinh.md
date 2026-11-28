@@ -4,7 +4,7 @@ Tài liệu diễn giải sáu sơ đồ theo từng bước. Tùy nội dung, m
 
 ## Vai trò và thuật ngữ
 
-Các vai trò trong quy trình gồm BA, Tester, Admin và Hệ thống. BA phụ trách yêu cầu; Tester lập kế hoạch, thiết kế ca và thực hiện kiểm thử; Admin đảm nhiệm các bước xét duyệt hoặc quản trị theo đặc tả. Riêng ca kiểm thử do Admin phê duyệt. Tester không tự phê duyệt ca, và thao tác gửi ca chỉ chuyển hồ sơ sang bước chờ Admin xem xét. Ở quy trình xử lý lỗi, người khắc phục là người được giao phụ trách; đây là phân công công việc, không phải chức danh riêng.
+Các vai trò trong quy trình gồm BA, Tester, Admin và Hệ thống. BA phụ trách yêu cầu; Tester lập kế hoạch, thiết kế ca và thực hiện kiểm thử; Admin đảm nhiệm các bước xét duyệt hoặc quản trị theo đặc tả. Riêng ca kiểm thử do Admin phê duyệt. Tester không tự phê duyệt ca, và thao tác gửi ca chỉ chuyển hồ sơ sang bước chờ Admin xem xét.
 
 Một số thuật ngữ được dùng thống nhất: **phiên bản chuẩn** là phiên bản yêu cầu đã được rà soát và ghi nhận làm căn cứ cho các bước sau; **ảnh chụp phạm vi** là thông tin cố định về phạm vi kế hoạch đã duyệt; **kiểm tra tự động** là việc hệ thống rà cấu trúc và mức đầy đủ của nội dung; **truy vết** là khả năng lần theo liên hệ giữa yêu cầu, ca kiểm thử, kết quả và lỗi; **giao dịch dữ liệu** là nhóm thao tác được ghi nhận cùng nhau để tránh lưu dữ liệu dở dang nếu có sự cố.
 
@@ -444,7 +444,7 @@ Admin tạo lượt kiểm thử từ kế hoạch đã duyệt, xác minh phạ
 
 **Đầu vào:** Lượt kiểm thử và danh sách thành viên dự án được chọn.
 
-**Xử lý:** Người có quyền phân công kiểm thử gán toàn lượt cho một người hoặc gán từng phiên bản ca. Người được chỉ định phải là thành viên đang hoạt động và có quyền thực thi kiểm thử. Người tạo có thể là người được giao xử lý mặc định nếu họ có quyền thực thi, nhưng không tự động trở thành người được giao xử lý trong mọi trường hợp.
+**Xử lý:** Người có quyền phân công kiểm thử gán toàn lượt cho một người hoặc gán từng phiên bản ca. Người được chỉ định phải là thành viên đang hoạt động và có quyền thực thi kiểm thử. Người tạo có thể được hệ thống phân công mặc định nếu họ có quyền thực thi; nếu không, Admin cần chọn thành viên phù hợp.
 
 **Đầu ra:** Phân công đã lưu; hoặc lỗi nếu người nhận không hợp lệ hay không có quyền thực thi.
 
@@ -504,9 +504,9 @@ Hình 3.2.5. Sơ đồ BPMN quy trình phân công và thực thi kiểm thử. 
 
 ## 3.2.6 Quy trình xử lý lỗi và kiểm thử lại
 
-Khi một kết quả kiểm thử không đạt, Tester có thể ghi nhận lỗi và liên kết lỗi với ca, lượt kiểm thử cùng thông tin liên quan. Admin phân loại lỗi; lỗi được xác nhận sẽ chuyển cho người phụ trách theo phân công. Sau khi cập nhật và đánh dấu đã xử lý, lỗi có thể chờ kiểm thử lại hoặc được mở lại để tiếp tục khắc phục. Tester thực hiện lại ca được giao. Kết quả đạt dẫn đến đóng lỗi; kết quả không đạt đưa lỗi trở lại bước xử lý.
+Khi một kết quả kiểm thử không đạt, Tester có thể ghi nhận lỗi và liên kết lỗi với ca kiểm thử, lượt chạy cùng thông tin liên quan. Admin phân loại lỗi và quyết định lỗi được xác nhận, bị từ chối hay đã trùng. Với lỗi được xác nhận, Admin ghi nhận phân công trên hồ sơ; các thao tác cập nhật tiếp theo được Hệ thống kiểm tra theo quyền và thông tin phân công. Sau khi lỗi được đánh dấu đã xử lý, luồng có thể chuyển sang kiểm thử lại hoặc quay về xử lý. Tester thực hiện lại ca kiểm thử tương ứng. Kết quả đạt cho phép Hệ thống đóng lỗi; kết quả không đạt khiến lỗi được mở lại.
 
-**Tác nhân:** Tester ghi nhận lỗi từ kết quả thực thi và thực hiện kiểm thử lại; Admin phân loại lỗi theo vai trò nghiệp vụ. Khâu khắc phục thuộc người dùng được giao cho người phụ trách xử lý, có thể là BA, Tester hoặc Admin tùy cấu hình. Hệ thống yêu cầu quyền phân loại lỗi, quyền cập nhật trạng thái lỗi, quyền kiểm thử lại lỗi và quyền thực thi/phân công phù hợp; hệ thống không quy định người được giao xử lý bằng một chức danh cố định.
+**Tác nhân:** Tester ghi nhận lỗi và thực hiện kiểm thử lại; Admin phân loại lỗi, quản lý phân công và cập nhật trạng thái theo quyền được cấp; Hệ thống lưu hồ sơ, kiểm tra quyền, điều kiện chuyển trạng thái và kết quả kiểm thử. Thông tin phân công là thuộc tính của hồ sơ lỗi, không phải một tác nhân hoặc làn riêng trong quy trình.
 
 ### Bước 1. Ghi nhận lỗi
 
@@ -532,33 +532,33 @@ Khi một kết quả kiểm thử không đạt, Tester có thể ghi nhận l�
 
 **Nhánh lỗi/điều kiện:** Chỉ cho phép lỗi mới ghi nhận được chuyển sang trạng thái hợp lệ như đã xác nhận, trùng lặp hoặc bị từ chối; chuyển trạng thái ngoài ma trận bị chặn.
 
-### Bước 3. Giao và bắt đầu xử lý
+### Bước 3. Phân công và bắt đầu xử lý
 
-**Tác nhân:** Người được giao xử lý; Hệ thống xác minh quyền và phân công
+**Tác nhân:** Admin phân công; Hệ thống kiểm tra quyền và lưu thay đổi
 
-**Đầu vào:** Lỗi đã xác nhận, cùng người được phân công nếu trường phân công được sử dụng.
+**Đầu vào:** Lỗi đã xác nhận và thông tin phân công cần ghi nhận.
 
-**Xử lý:** Người có quyền chuyển lỗi sang đang thực hiện. Một số thao tác xử lý yêu cầu người đang thực hiện phải khớp người được giao xử lý; quyền được kiểm tra theo trạng thái đích và phân công. Hệ thống lưu lý do chuyển, người thao tác, thời điểm, nhật ký thao tác và yêu cầu cập nhật dữ liệu phục vụ tra cứu tìm kiếm.
+**Xử lý:** Admin chọn thành viên phụ trách nếu quy trình của dự án có sử dụng trường phân công. Khi bắt đầu xử lý, tài khoản thực hiện phải có quyền chuyển trạng thái tương ứng; với các thao tác bị ràng buộc theo phân công, Hệ thống đối chiếu tài khoản với hồ sơ lỗi. Lý do, người thao tác, thời điểm và lịch sử thay đổi được lưu để truy vết.
 
-**Đầu ra:** Lỗi đang được xử lý; hoặc lỗi quyền, phân công, lần sửa đổi hay chuyển trạng thái.
+**Đầu ra:** Lỗi có thông tin phân công và được chuyển sang đang thực hiện; hoặc yêu cầu bị từ chối do thiếu quyền, sai phân công, lần sửa đổi không còn mới hay trạng thái không hợp lệ.
 
-**Nhánh lỗi/điều kiện:** Nếu người được giao xử lý không khớp hoặc thiếu quyền chuyển trạng thái, không đưa lỗi sang đang thực hiện.
+**Nhánh lỗi/điều kiện:** Nếu thiếu quyền hoặc không đáp ứng điều kiện phân công của thao tác, Hệ thống không chuyển lỗi sang đang thực hiện.
 
 ### Bước 4. Cập nhật và khắc phục lỗi
 
-**Tác nhân:** Người được giao xử lý
+**Tác nhân:** Admin cập nhật hồ sơ theo quyền; Hệ thống xác minh điều kiện thao tác
 
-**Đầu vào:** Lỗi đang thực hiện, dữ liệu nguyên nhân và kết quả sửa lỗi.
+**Đầu vào:** Lỗi đang thực hiện, thông tin nguyên nhân và nội dung cập nhật về kết quả khắc phục.
 
-**Xử lý:** Người có quyền cập nhật thông tin lỗi và tiếp tục thao tác sửa trong phạm vi ứng dụng. Hệ thống thể hiện cập nhật/trạng thái, nhưng không mô tả đủ chi tiết quy trình kỹ thuật nội bộ để khẳng định hoạt động sửa hệ thống, triển khai hay phát hành diễn ra theo một chuỗi cụ thể.
+**Xử lý:** Admin cập nhật hồ sơ lỗi và ghi nhận tiến độ xử lý trong phạm vi chức năng được mô tả. Mã nguồn thể hiện việc cập nhật nội dung và trạng thái, nhưng không mô tả đầy đủ quy trình sửa sản phẩm, triển khai hay phát hành; vì vậy các hoạt động kỹ thuật ngoài ứng dụng không được đưa thành bước BPMN.
 
-**Đầu ra:** Lỗi còn đang xử lý; hoặc sẵn sàng chuyển sang trạng thái đã xử lý khi người dùng xác nhận.
+**Đầu ra:** Hồ sơ lỗi được cập nhật và tiếp tục ở trạng thái đang thực hiện; hoặc yêu cầu cập nhật bị từ chối.
 
-**Nhánh lỗi/điều kiện:** Hệ thống không quy định chuỗi sửa hệ thống/phát hành; mô tả chỉ ghi nhận cập nhật lỗi, không suy diễn thêm hoạt động ngoài hệ thống.
+**Nhánh lỗi/điều kiện:** Hệ thống từ chối cập nhật nếu tài khoản thiếu quyền, không đáp ứng điều kiện phân công áp dụng cho thao tác hoặc dữ liệu không hợp lệ.
 
 ### Bước 5. Đánh dấu đã xử lý và quyết định kiểm thử lại
 
-**Tác nhân:** Admin hoặc người có quyền cập nhật trạng thái; Hệ thống ghi nhận quyết định kiểm thử lại
+**Tác nhân:** Admin cập nhật trạng thái; Hệ thống kiểm tra ma trận chuyển trạng thái
 
 **Đầu vào:** Lỗi đang thực hiện đã được cập nhật.
 
@@ -624,7 +624,7 @@ Lỗi gắn với kết quả kiểm thử phải tham chiếu đúng dự án, 
 
 ## Lưu ý khi dùng sơ đồ
 
-1. làn vai trò BA, Tester và Admin được lấy theo đặc tả ca sử dụng; làn “Người được giao xử lý” ở quy trình 06 phản ánh trường phân công trong quy trình xử lý lỗi, không phải vai trò mới.
+1. Sơ đồ 06 chỉ sử dụng các làn Tester, Admin và Hệ thống. BA không tham gia luồng này theo đặc tả ca sử dụng đã rà. Thông tin phân công được lưu trên hồ sơ lỗi, còn quyền thao tác và điều kiện phân công do Hệ thống kiểm tra.
 2. Ma trận khi vận hành có thể được Admin cập nhật. Nên xác minh quyền thao tác thực tế trước khi dùng các sơ đồ như ma trận truy cập/quy trình vận hành triển khai.
 3. Sơ đồ không thêm họp, email, sửa hệ thống hoặc phát hành nếu không có căn cứ trong hệ thống và đặc tả đã rà.
 4. Cổng rẽ nhánh lặp tại thực thi biểu thị còn ca cần xử lý, không xác nhận chạy song song. Các nhánh ngoại lệ còn phụ thuộc quyền thao tác, lần cập nhật và thiết lập của từng quy trình.

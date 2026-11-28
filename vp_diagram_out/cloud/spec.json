@@ -6261,7 +6261,207 @@
     }
   ],
   "frontend": {
-    "pages": [],
+    "pages": [
+      {
+        "name": "DefectsPage",
+        "kind": "page",
+        "route_file": "",
+        "feature_file": "frontend/features/testing/pages/workspace/DefectsPage.jsx",
+        "api_services": [
+          "frontend/features/cloud/services/upload.service.js"
+        ],
+        "api_calls": [
+          {
+            "service_file": "frontend/features/cloud/services/upload.service.js",
+            "functions": [
+              "uploadAssetAPI"
+            ],
+            "literal_paths": [
+              "${API_URL}/tai-len/tap-tin"
+            ],
+            "path_methods": [
+              {
+                "path": "${API_URL}/tai-len/tap-tin",
+                "method": "POST"
+              }
+            ]
+          }
+        ],
+        "import_closure": [
+          "frontend/features/testing/components/DataTable.jsx",
+          "frontend/features/testing/components/FilePicker.jsx",
+          "frontend/features/testing/components/WorkspacePrimitives.jsx",
+          "frontend/features/testing/hooks/useDateTimeOptions.js",
+          "frontend/features/testing/lib/executionRecovery.logic.mjs",
+          "frontend/features/testing/lib/testing.js",
+          "frontend/features/testing/lib/testing.logic.mjs",
+          "frontend/features/testing/pages/workspace/DefectsPage.jsx",
+          "frontend/features/testing/pages/workspace/defectAccess.logic.mjs",
+          "frontend/features/testing/pages/workspace/defectRetest.logic.mjs",
+          "frontend/features/testing/routes.js",
+          "frontend/features/testing/services/testing.design.js",
+          "frontend/features/testing/services/testing.execution.js",
+          "frontend/features/testing/services/testing.projects.js",
+          "frontend/features/testing/services/testing.service.js",
+          "frontend/features/testing/services/testing.transport.js",
+          "frontend/shared/components/common/ContentOriginBadge.jsx",
+          "frontend/shared/components/common/EmptyState.jsx",
+          "frontend/shared/components/layout/PageHeader.jsx",
+          "frontend/shared/components/layout/navigation.js",
+          "frontend/shared/components/layout/navigationAccess.mjs",
+          "frontend/shared/components/navigation/HorizontalScrollCue.jsx",
+          "frontend/shared/components/navigation/LinkTabs.jsx",
+          "frontend/shared/components/ui/Modal.jsx",
+          "frontend/shared/components/ui/MultiSelect.jsx",
+          "frontend/shared/components/ui/Pagination.jsx",
+          "frontend/shared/components/ui/SearchField.jsx",
+          "frontend/shared/lib/dateTime.mjs",
+          "frontend/shared/lib/locale.mjs",
+          "frontend/shared/lib/timeZone.mjs",
+          "frontend/shared/services/api-client.js"
+        ]
+      },
+      {
+        "name": "ExecutionPage",
+        "kind": "page",
+        "route_file": "",
+        "feature_file": "frontend/features/testing/pages/workspace/ExecutionPage.jsx",
+        "api_services": [
+          "frontend/features/cloud/services/upload.service.js"
+        ],
+        "api_calls": [
+          {
+            "service_file": "frontend/features/cloud/services/upload.service.js",
+            "functions": [
+              "uploadAssetAPI"
+            ],
+            "literal_paths": [
+              "${API_URL}/tai-len/tap-tin"
+            ],
+            "path_methods": [
+              {
+                "path": "${API_URL}/tai-len/tap-tin",
+                "method": "POST"
+              }
+            ]
+          }
+        ],
+        "import_closure": [
+          "frontend/features/testing/components/AnchoredActionMenu.jsx",
+          "frontend/features/testing/components/DataTable.jsx",
+          "frontend/features/testing/components/FilePicker.jsx",
+          "frontend/features/testing/components/TestPlanEditor.jsx",
+          "frontend/features/testing/components/WorkspacePrimitives.jsx",
+          "frontend/features/testing/hooks/useDateTimeOptions.js",
+          "frontend/features/testing/lib/executionRecovery.logic.mjs",
+          "frontend/features/testing/lib/testing.js",
+          "frontend/features/testing/lib/testing.logic.mjs",
+          "frontend/features/testing/pages/workspace/ExecutionPage.jsx",
+          "frontend/features/testing/pages/workspace/execution/RunExecutionWorkspace.jsx",
+          "frontend/features/testing/routes.js",
+          "frontend/features/testing/services/testing.design.js",
+          "frontend/features/testing/services/testing.execution.js",
+          "frontend/features/testing/services/testing.projects.js",
+          "frontend/features/testing/services/testing.service.js",
+          "frontend/features/testing/services/testing.transport.js",
+          "frontend/shared/components/layout/PageHeader.jsx",
+          "frontend/shared/components/layout/navigation.js",
+          "frontend/shared/components/layout/navigationAccess.mjs",
+          "frontend/shared/components/navigation/HorizontalScrollCue.jsx",
+          "frontend/shared/components/navigation/LinkTabs.jsx",
+          "frontend/shared/components/ui/Modal.jsx",
+          "frontend/shared/components/ui/MultiSelect.jsx",
+          "frontend/shared/components/ui/Pagination.jsx",
+          "frontend/shared/components/ui/SearchField.jsx",
+          "frontend/shared/lib/dateTime.mjs",
+          "frontend/shared/lib/locale.mjs",
+          "frontend/shared/lib/timeZone.mjs",
+          "frontend/shared/services/api-client.js"
+        ]
+      },
+      {
+        "name": "TestDesignPage",
+        "kind": "page",
+        "route_file": "",
+        "feature_file": "frontend/features/testing/pages/workspace/TestDesignPage.jsx",
+        "api_services": [
+          "frontend/features/cloud/services/upload.service.js"
+        ],
+        "api_calls": [
+          {
+            "service_file": "frontend/features/cloud/services/upload.service.js",
+            "functions": [
+              "uploadAssetAPI"
+            ],
+            "literal_paths": [
+              "${API_URL}/tai-len/tap-tin"
+            ],
+            "path_methods": [
+              {
+                "path": "${API_URL}/tai-len/tap-tin",
+                "method": "POST"
+              }
+            ]
+          },
+          {
+            "service_file": "frontend/features/cloud/services/upload.service.js",
+            "functions": [
+              "uploadAssetAPI"
+            ],
+            "literal_paths": [
+              "${API_URL}/tai-len/tap-tin"
+            ],
+            "path_methods": [
+              {
+                "path": "${API_URL}/tai-len/tap-tin",
+                "method": "POST"
+              }
+            ]
+          }
+        ],
+        "import_closure": [
+          "frontend/features/testing/components/AnchoredActionMenu.jsx",
+          "frontend/features/testing/components/DataTable.jsx",
+          "frontend/features/testing/components/FilePicker.jsx",
+          "frontend/features/testing/components/WorkspacePrimitives.jsx",
+          "frontend/features/testing/editor/DocumentEditor.jsx",
+          "frontend/features/testing/editor/extensions.js",
+          "frontend/features/testing/hooks/useDateTimeOptions.js",
+          "frontend/features/testing/lib/testing.js",
+          "frontend/features/testing/lib/testing.logic.mjs",
+          "frontend/features/testing/pages/workspace/TestDesignPage.jsx",
+          "frontend/features/testing/pages/workspace/test-design/RequirementCoverageSelector.jsx",
+          "frontend/features/testing/pages/workspace/test-design/TestCaseCompareWorkspace.jsx",
+          "frontend/features/testing/pages/workspace/test-design/TestCaseCreateForm.jsx",
+          "frontend/features/testing/pages/workspace/test-design/TestCaseOptions.jsx",
+          "frontend/features/testing/pages/workspace/test-design/TestSetEditorModal.jsx",
+          "frontend/features/testing/pages/workspace/test-design/testCaseApproval.logic.mjs",
+          "frontend/features/testing/pages/workspace/test-design/testCaseMerge.logic.mjs",
+          "frontend/features/testing/pages/workspace/test-design/testDesign.model.js",
+          "frontend/features/testing/pages/workspace/test-design/testDesignAccess.logic.mjs",
+          "frontend/features/testing/routes.js",
+          "frontend/features/testing/services/testing.design.js",
+          "frontend/features/testing/services/testing.execution.js",
+          "frontend/features/testing/services/testing.projects.js",
+          "frontend/features/testing/services/testing.service.js",
+          "frontend/features/testing/services/testing.transport.js",
+          "frontend/shared/components/common/ContentOriginBadge.jsx",
+          "frontend/shared/components/layout/PageHeader.jsx",
+          "frontend/shared/components/layout/navigation.js",
+          "frontend/shared/components/layout/navigationAccess.mjs",
+          "frontend/shared/components/navigation/HorizontalScrollCue.jsx",
+          "frontend/shared/components/navigation/LinkTabs.jsx",
+          "frontend/shared/components/ui/Modal.jsx",
+          "frontend/shared/components/ui/MultiSelect.jsx",
+          "frontend/shared/components/ui/Pagination.jsx",
+          "frontend/shared/components/ui/SearchField.jsx",
+          "frontend/shared/lib/dateTime.mjs",
+          "frontend/shared/lib/locale.mjs",
+          "frontend/shared/lib/timeZone.mjs",
+          "frontend/shared/services/api-client.js"
+        ]
+      }
+    ],
     "service_functions": [
       {
         "name": "uploadAssetAPI",

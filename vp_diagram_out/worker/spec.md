@@ -83,4 +83,4 @@
 - `overview(query : string) : json` — `backend/worker/src/repositories/jobs.py:278`
 - `discard(jobId : string, values : string) : json` — `backend/worker/src/repositories/jobs.py:283`
 
-### Frontend pages
+### Frontend pages and panels with API dependencies

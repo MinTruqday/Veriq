@@ -1,3 +1,4 @@
+import json
 import logging
 
 from fastapi import HTTPException
@@ -25,6 +26,21 @@ def _field_evidence_values(field, value, expected_field_values):
     ):
         return expanded
     return set()
+
+
+def _missing_plan_field_evidence(suggestion):
+    expected = set()
+    if suggestion.get("objective"):
+        expected.add(("objective", suggestion["objective"]))
+    for field in ("scope_out", "entry_criteria", "exit_criteria", "test_types"):
+        expected.update((field, str(value)) for value in suggestion.get(field, []) if value)
+    if suggestion.get("test_level"):
+        expected.add(("test_level", suggestion["test_level"]))
+
+    cited = set()
+    for item in suggestion.get("field_evidence") or []:
+        cited.update(_field_evidence_values(item.get("field"), item.get("value"), expected))
+    return sorted({field for field, _ in expected - cited})
 
 
 def _append_evidence(evidence, artifact_type, artifact_id, text):
@@ -83,8 +99,44 @@ async def generate_test_plan_suggestion(project_id, payload, user):
             detail={"code": "AI_PROVIDER_UNAVAILABLE", "retryable": True},
         )
 
-    allowed_refs = {item["artifact_id"] for item in evidence}
     suggestion = result.get("suggestion") or {}
+    missing_fields = _missing_plan_field_evidence(suggestion)
+    if missing_fields:
+        retry_instruction = json.dumps(
+            {
+                "user_instruction": payload.instruction,
+                "grounding_retry": {
+                    "instruction": (
+                        "Regenerate the complete draft using only the supplied approved "
+                        "Requirement evidence. For every non-empty field value, include a "
+                        "field_evidence entry with an exact source quote. Omit unsupported "
+                        "optional values instead of keeping them without evidence."
+                    ),
+                    "fields_requiring_evidence": missing_fields,
+                },
+            },
+            ensure_ascii=False,
+        )
+        result = await request_ai_capability(
+            "test_plan_generation",
+            project_id,
+            retry_instruction,
+            evidence,
+        )
+        if result.get("status") != "SUCCESS" or result.get("degraded_mode"):
+            raise HTTPException(
+                503,
+                detail={"code": "AI_PROVIDER_UNAVAILABLE", "retryable": True},
+            )
+        suggestion = result.get("suggestion") or {}
+        missing_fields = _missing_plan_field_evidence(suggestion)
+        if missing_fields:
+            logger.warning(
+                "Test Plan AI suggestion rejected reason=AI_PLAN_FIELD_EVIDENCE_MISSING fields=%s",
+                missing_fields,
+            )
+
+    allowed_refs = {item["artifact_id"] for item in evidence}
     if not set(result.get("evidence_refs") or []) <= allowed_refs:
         logger.warning("Test Plan AI suggestion rejected reason=AI_EVIDENCE_REF_UNKNOWN")
         raise HTTPException(502, detail={"code": "AI_EVIDENCE_REF_UNKNOWN"})

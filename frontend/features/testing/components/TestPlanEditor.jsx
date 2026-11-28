@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { LoaderCircle, Sparkles } from "lucide-react";
 import MultiSelect from "@/shared/components/ui/MultiSelect";
 import { Panel } from "./WorkspacePrimitives";
 import { testingApi } from "../services/testing.service";
@@ -11,16 +10,6 @@ const conditionFields = [
   ["entry_criteria", "Điều kiện bắt đầu"],
   ["exit_criteria", "Tiêu chí hoàn thành"],
 ];
-const aiPlanFields = [
-  ["objective", "Mục tiêu"],
-  ["scope_out", "Ngoài phạm vi"],
-  ["entry_criteria", "Điều kiện bắt đầu"],
-  ["exit_criteria", "Tiêu chí hoàn thành"],
-  ["test_types", "Loại kiểm thử"],
-  ["test_level", "Cấp độ kiểm thử"],
-  ["risks", "Rủi ro"],
-];
-
 function environmentOptionLabel(item) {
   const typeLabels = {
     WEB: "Web",
@@ -68,8 +57,6 @@ export default function TestPlanEditor({
   environments = [],
   readOnly = false,
   canCreateCases = false,
-  canSuggestAI = false,
-  showAISuggestions = false,
   initialRequirementVersionIds = [],
   onSave,
   sourcePeriodId = "",
@@ -103,11 +90,6 @@ export default function TestPlanEditor({
   const [newPeriodName, setNewPeriodName] = useState("");
   const [newPeriodSourceId, setNewPeriodSourceId] = useState(sourcePeriodId);
   const [showNewPeriod, setShowNewPeriod] = useState(false);
-  const [aiInstruction, setAiInstruction] = useState("");
-  const [aiSuggestion, setAiSuggestion] = useState(null);
-  const [aiError, setAiError] = useState("");
-  const [aiBusy, setAiBusy] = useState(false);
-  const [selectedAiFields, setSelectedAiFields] = useState(new Set());
   const [openSections, setOpenSections] = useState(() => ({
     additionalScope: Boolean(initialValue?.scope_out?.some((item) => String(item).trim())),
     classification: Boolean(initialValue?.test_types?.length || initialValue?.test_level),
@@ -131,22 +113,6 @@ export default function TestPlanEditor({
 
   const selectedTestTypes = value.test_types || [];
   const approvedRequirements = requirements.filter(isApprovedCurrentRequirement);
-  const aiSuggestedFields = aiPlanFields.map(([key, label]) => {
-    const candidate = aiSuggestion?.suggestion?.[key];
-    const available = Array.isArray(candidate) ? candidate.length > 0 : Boolean(candidate);
-    const lines =
-      key === "risks"
-        ? (candidate || []).map(
-            (item) => `${item.title}${item.response ? ` — ${item.response}` : ""}`,
-          )
-        : Array.isArray(candidate)
-          ? candidate.map(String)
-          : candidate
-            ? [String(candidate)]
-            : [];
-    return { key, label, available, lines };
-  });
-  const aiSuggestedFieldCount = aiSuggestedFields.filter((field) => field.available).length;
   const selectedPeriod = testPeriods.find((period) => period._id === value.test_period_id);
   const selectedEnvironment = environments.find((item) => item._id === value.environment_id);
   const carryOverItems = selectedPeriod?.carry_over_items || [];
@@ -200,82 +166,6 @@ export default function TestPlanEditor({
   ];
   const savingRef = useRef(false);
   const setField = (key, next) => setValue((current) => ({ ...current, [key]: next }));
-  const suggestWithAI = async () => {
-    if (!value.requirement_version_ids?.length || aiBusy) return;
-    setAiBusy(true);
-    setAiError("");
-    setAiSuggestion(null);
-    setSelectedAiFields(new Set());
-    try {
-      const result = await testingApi.suggestTestPlan(projectId, {
-        requirement_version_ids: value.requirement_version_ids,
-        instruction: aiInstruction,
-      });
-      const suggestion = result?.suggestion || null;
-      setAiSuggestion(result);
-      setSelectedAiFields(
-        new Set(
-          aiPlanFields
-            .map(([key]) => key)
-            .filter((key) => {
-              const field = suggestion?.[key];
-              return Array.isArray(field) ? field.length > 0 : Boolean(field);
-            }),
-        ),
-      );
-    } catch (reason) {
-      setAiError(messageOf(reason) || "Không thể tạo gợi ý kế hoạch kiểm thử");
-    } finally {
-      setAiBusy(false);
-    }
-  };
-  const applyAiSuggestion = () => {
-    const suggestion = aiSuggestion?.suggestion;
-    if (!suggestion || selectedAiFields.size === 0) return;
-    setValue((current) => {
-      const next = { ...current };
-      for (const field of selectedAiFields) {
-        if (field === "risks") {
-          const existing = current.risk_register || [];
-          const titles = new Set(
-            existing.map((risk) =>
-              String(risk.title || "")
-                .trim()
-                .toLocaleLowerCase(),
-            ),
-          );
-          const additions = (suggestion.risks || [])
-            .filter(
-              (risk) =>
-                !titles.has(
-                  String(risk.title || "")
-                    .trim()
-                    .toLocaleLowerCase(),
-                ),
-            )
-            .map((risk) => ({
-              risk_id: crypto.randomUUID(),
-              category: risk.category || "PRODUCT",
-              title: risk.title || "",
-              description: risk.description || "",
-              probability: risk.probability ?? null,
-              impact: risk.impact ?? null,
-              exposure: risk.exposure ?? null,
-              response: risk.response || "",
-              owner_id: risk.owner_id || null,
-              status: "OPEN",
-              due_at: risk.due_at || null,
-            }));
-          next.risk_register = [...existing, ...additions];
-        } else if (field === "objective" || field === "test_level") {
-          if (suggestion[field]) next[field] = suggestion[field];
-        } else if (Array.isArray(suggestion[field])) {
-          next[field] = [...new Set([...(current[field] || []), ...suggestion[field]])];
-        }
-      }
-      return next;
-    });
-  };
   const setDisclosureOpen = (key, event) => {
     const isOpen = event.currentTarget.open;
     setOpenSections((current) =>
@@ -630,9 +520,6 @@ export default function TestPlanEditor({
               value={value.requirement_version_ids}
               onChange={(selected) => {
                 setField("requirement_version_ids", selected);
-                setAiSuggestion(null);
-                setSelectedAiFields(new Set());
-                setAiError("");
               }}
               disabled={readOnly}
             />
@@ -685,132 +572,6 @@ export default function TestPlanEditor({
             </div>
           </div>
         </section>
-        {!readOnly && showAISuggestions && (
-          <Panel
-            title="Gợi ý kế hoạch bằng AI"
-            description="Chọn yêu cầu đã duyệt ở trên. AI tạo bản xem trước có căn cứ để bạn chọn mục cần áp dụng"
-            actions={
-              <button
-                className="secondary-button"
-                type="button"
-                onClick={suggestWithAI}
-                disabled={!canSuggestAI || aiBusy || !value.requirement_version_ids?.length}
-                aria-busy={aiBusy}
-              >
-                {aiBusy ? (
-                  <LoaderCircle aria-hidden="true" className="animate-spin" size={16} />
-                ) : (
-                  <Sparkles aria-hidden="true" size={16} />
-                )}
-                {aiBusy ? "Đang tạo gợi ý…" : "Tạo gợi ý"}
-              </button>
-            }
-          >
-            <div className="space-y-4 p-5">
-              <label className="field-label block">
-                Chỉ dẫn thêm (không bắt buộc)
-                <textarea
-                  className="apple-input mt-2 min-h-20"
-                  value={aiInstruction}
-                  onChange={(event) => setAiInstruction(event.target.value)}
-                  disabled={aiBusy}
-                  placeholder="Ví dụ: ưu tiên luồng đăng nhập và phân quyền"
-                />
-              </label>
-              {!value.requirement_version_ids?.length && (
-                <p className="text-sm text-ink-muted">
-                  Chọn yêu cầu ở mục “Yêu cầu đã duyệt dùng cho kế hoạch và AI” phía trên để tạo gợi
-                  ý
-                </p>
-              )}
-              {!canSuggestAI && (
-                <p className="text-sm text-warning" role="status">
-                  Bạn chưa được cấp quyền sử dụng gợi ý AI trong dự án này
-                </p>
-              )}
-              {aiError && (
-                <p className="text-sm text-danger" role="alert">
-                  {aiError}
-                </p>
-              )}
-              {aiSuggestion && (
-                <div className="space-y-3 rounded-control border border-border bg-surface p-3">
-                  <p className="text-sm text-ink-muted" role="status">
-                    AI có căn cứ cho {aiSuggestedFieldCount}/{aiPlanFields.length} mục. Các mục chưa
-                    có căn cứ sẽ giữ nguyên nội dung hiện tại
-                  </p>
-                  {aiSuggestedFields.map(({ key, label, available, lines }) => (
-                    <label
-                      key={key}
-                      className="flex min-w-0 gap-3 border-b border-border pb-3 last:border-0 last:pb-0"
-                    >
-                      <input
-                        className="mt-1 shrink-0"
-                        type="checkbox"
-                        disabled={!available}
-                        checked={available && selectedAiFields.has(key)}
-                        onChange={() =>
-                          setSelectedAiFields((current) => {
-                            const next = new Set(current);
-                            if (next.has(key)) next.delete(key);
-                            else next.add(key);
-                            return next;
-                          })
-                        }
-                      />
-                      <span className="min-w-0 text-sm">
-                        <strong>{label}</strong>
-                        <span className="mt-1 block whitespace-pre-line text-ink-muted">
-                          {available
-                            ? lines.join("\n")
-                            : "Chưa có căn cứ phù hợp trong yêu cầu đã chọn; mục này sẽ để nguyên"}
-                        </span>
-                      </span>
-                    </label>
-                  ))}
-                  {aiSuggestion.unresolved_questions?.length > 0 && (
-                    <div className="rounded-control bg-surface-quiet p-3 text-sm">
-                      <strong>Cần xác nhận</strong>
-                      <ul className="mt-1 list-disc pl-5 text-ink-muted">
-                        {aiSuggestion.unresolved_questions.map((question, index) => (
-                          <li key={`${index}:${question}`}>{question}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {aiSuggestion.field_evidence?.length > 0 && (
-                    <details className="text-sm">
-                      <summary className="cursor-pointer font-medium">Căn cứ theo yêu cầu</summary>
-                      <ul className="mt-2 space-y-2 text-ink-muted">
-                        {aiSuggestion.field_evidence.slice(0, 12).map((item, index) => (
-                          <li key={`${item.field}:${index}`}>
-                            <strong>
-                              {aiPlanFields.find(([key]) => key === item.field)?.[1] || item.field}:
-                            </strong>{" "}
-                            {item.evidence_quotes?.map((quote) => `“${quote.quote}”`).join(" · ") ||
-                              "Có trích dẫn từ yêu cầu đã chọn"}
-                          </li>
-                        ))}
-                      </ul>
-                    </details>
-                  )}
-                  <div className="flex justify-end border-t border-border pt-3">
-                    <button
-                      className="apple-button"
-                      type="button"
-                      onClick={applyAiSuggestion}
-                      disabled={!selectedAiFields.size}
-                    >
-                      {selectedAiFields.size
-                        ? `Áp dụng ${selectedAiFields.size} mục có căn cứ`
-                        : "Chọn mục có căn cứ để áp dụng"}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </Panel>
-        )}
         <details
           className="order-2 rounded-control border border-border bg-surface p-4"
           open={openSections.additionalScope}

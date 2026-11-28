@@ -8,7 +8,7 @@
 - Router handlers found: 77
 - Public service methods: 79
 - Public repository methods: 27
-- Frontend pages mapped by app-route import: 0
+- Frontend pages mapped by app-route import: 3
 
 ## Domain model candidates
 - `StorageItem`: `AiProcessed`, `BrokenLinks`, `Color`, `CreatedAt`, `Description`, `DuplicateOf`, `Entities`, `EnvironmentReady`, `IsDuplicate`, `IsFolder`, `IsLocked`, `IsPublic`, `IsShortcut`, `IsStarred`, `IsTrashed`, `LockedAt`, `LockedBy`, `MimeType`, `Name`, `OwnerId`, `ParentId`, `ShareToken`, `SharedWith`, `Size`, `Tags`, `TargetId`, `UpdatedAt`, `Url`, `Versions` — source: backend/cloud/src/core/infrastructure/database.py:35, backend/cloud/src/core/infrastructure/database.py:38, backend/cloud/src/core/infrastructure/database.py:41
@@ -250,4 +250,11 @@
 - `reserve(filePath : string, ttlSeconds : int, reservation : json) : void` — `backend/cloud/src/repositories/storage.py:134`
 - `consume(filePath : string) : json` — `backend/cloud/src/repositories/storage.py:137`
 
-### Frontend pages
+### Frontend pages and panels with API dependencies
+- `DefectsPage` (page) from `frontend/features/testing/pages/workspace/DefectsPage.jsx` → `frontend/features/testing/pages/workspace/DefectsPage.jsx`
+  - API module `frontend/features/cloud/services/upload.service.js`; statically imported functions: uploadAssetAPI; literal paths: ${API_URL}/tai-len/tap-tin
+- `ExecutionPage` (page) from `frontend/features/testing/pages/workspace/ExecutionPage.jsx` → `frontend/features/testing/pages/workspace/ExecutionPage.jsx`
+  - API module `frontend/features/cloud/services/upload.service.js`; statically imported functions: uploadAssetAPI; literal paths: ${API_URL}/tai-len/tap-tin
+- `TestDesignPage` (page) from `frontend/features/testing/pages/workspace/TestDesignPage.jsx` → `frontend/features/testing/pages/workspace/TestDesignPage.jsx`
+  - API module `frontend/features/cloud/services/upload.service.js`; statically imported functions: uploadAssetAPI; literal paths: ${API_URL}/tai-len/tap-tin
+  - API module `frontend/features/cloud/services/upload.service.js`; statically imported functions: uploadAssetAPI; literal paths: ${API_URL}/tai-len/tap-tin
